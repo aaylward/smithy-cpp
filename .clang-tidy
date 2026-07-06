@@ -1,0 +1,12 @@
+---
+Checks: >
+  bugprone-*,
+  performance-*,
+  modernize-*,
+  readability-*,
+  -modernize-use-trailing-return-type,
+  -readability-identifier-length,
+  -readability-magic-numbers
+WarningsAsErrors: "*"
+HeaderFilterRegex: "runtime/include/.*"
+FormatStyle: file

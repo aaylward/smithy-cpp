@@ -1,0 +1,17 @@
+# Bazel
+bazel-*
+/.bazelrc.user
+
+# Gradle / JVM
+.gradle/
+build/
+out/
+
+# IDEs & editors
+.idea/
+.vscode/
+*.iml
+compile_commands.json
+
+# OS noise
+.DS_Store

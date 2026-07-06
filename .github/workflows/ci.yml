@@ -71,8 +71,11 @@ jobs:
       - name: clang-format
         run: |
           find runtime -name '*.h' -o -name '*.cc' | xargs clang-format --dry-run --Werror
+      # src/json/json.cc is excluded: it includes the nlohmann backend, which
+      # only exists inside the Bazel build graph.
       - name: clang-tidy
         run: |
-          clang-tidy runtime/src/core/version.cc -- -Iruntime/include -std=c++20
+          find runtime/src examples -name '*.cc' ! -name '*_test.cc' ! -path '*/src/json/*' \
+            -print0 | xargs -0 -I{} clang-tidy --quiet {} -- -Iruntime/include -I. -std=c++20
       - name: buildifier
         run: npx -y @bazel/buildifier@8.2.1 --lint=warn --mode=check -r .

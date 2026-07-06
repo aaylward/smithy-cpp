@@ -1,3 +1,14 @@
+# Disabled checks, and why:
+# - modernize-use-trailing-return-type, -raw-string-literal, -use-nodiscard,
+#   -return-braced-init-list, readability-braces-around-statements,
+#   -else-after-return, -identifier-length, -magic-numbers,
+#   readability-function-cognitive-complexity, bugprone-easily-swappable-
+#   parameters, performance-enum-size: style noise; we follow Google style
+#   via .clang-format.
+# - clang-analyzer-core.uninitialized.Assign: false positives through
+#   std::variant internals at every Outcome<T>::error() && call site.
+# - bugprone-empty-catch: destructor teardown paths legitimately swallow
+#   exceptions (documented inline); no logging facility exists yet.
 ---
 Checks: >
   bugprone-*,
@@ -5,8 +16,18 @@ Checks: >
   modernize-*,
   readability-*,
   -modernize-use-trailing-return-type,
+  -modernize-raw-string-literal,
+  -modernize-use-nodiscard,
+  -modernize-return-braced-init-list,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-empty-catch,
+  -performance-enum-size,
+  -clang-analyzer-core.uninitialized.Assign,
   -readability-identifier-length,
-  -readability-magic-numbers
+  -readability-magic-numbers,
+  -readability-braces-around-statements,
+  -readability-function-cognitive-complexity,
+  -readability-else-after-return
 WarningsAsErrors: "*"
 HeaderFilterRegex: "runtime/include/.*"
 FormatStyle: file

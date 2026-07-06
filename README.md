@@ -17,7 +17,7 @@ See [`docs/PLAN.md`](docs/PLAN.md) for the full phased plan and
 |---|---|---|
 | 0 | Foundations: Bazel 9 workspace, codegen skeleton, CI, ADRs, fixture models | ✅ Done |
 | 1 | C++ runtime library (`smithy/core`, `json`, `cbor`, `http`, `client`, `server`) | ✅ Done ([docs/runtime.md](docs/runtime.md)) incl. Boost.Beast production server transport (ADR-0006) |
-| 2 | Codegen plugin + type generation | **In progress** — types generated for both fixtures, golden+compile+behavior tested ([docs/design/codegen-architecture.md](docs/design/codegen-architecture.md)) |
+| 2 | Codegen plugin + type generation | ✅ Done — types generated for both fixtures, golden+compile+behavior tested ([docs/design/codegen-architecture.md](docs/design/codegen-architecture.md)) |
 | 3 | Client generation (restJson1 + rpcv2Cbor) | Not started |
 | 4 | Server generation (restJson1 + rpcv2Cbor) | Not started |
 | 5 | Generated-client ↔ generated-server integration harness | Not started |

@@ -51,7 +51,7 @@ smithy::Outcome<GetOrderInput> DeserializeGetOrderInput(const smithy::Document& 
 smithy::Document SerializeCancelledStatus(const CancelledStatus& value) {
   smithy::DocumentMap map;
   if (value.reason.has_value()) {
-    map.emplace("reason", smithy::Document(*value.reason));
+    map.emplace("reason", smithy::Document((*value.reason)));
   }
   return smithy::Document(std::move(map));
 }
@@ -235,8 +235,11 @@ smithy::Outcome<DairyMilk> DeserializeDairyMilk(const smithy::Document& doc) {
     if (member == nullptr || member->is_null()) {
       return smithy::Error::Serialization("DairyMilk: missing required member: percentFat");
     }
-    if (!member->is_int() && !member->is_double()) return smithy::Error::Serialization("DairyMilk.percentFat: unexpected type on the wire");
-    out.percentFat = static_cast<float>(member->AsNumber());
+    {
+      auto parsed = smithy::DoubleFromDocument(*member);
+      if (!parsed) return smithy::Error::Serialization("DairyMilk.percentFat: expected a number");
+      out.percentFat = static_cast<float>(*parsed);
+    }
   }
   return out;
 }
@@ -287,10 +290,10 @@ smithy::Document SerializeOrderCoffeeInput(const OrderCoffeeInput& value) {
   smithy::DocumentMap map;
   map.emplace("coffeeType", smithy::Document(std::string(value.coffeeType.ToString())));
   if (value.milk.has_value()) {
-    map.emplace("milk", SerializeMilkOption(*value.milk));
+    map.emplace("milk", SerializeMilkOption((*value.milk)));
   }
   if (value.clientToken.has_value()) {
-    map.emplace("clientToken", smithy::Document(*value.clientToken));
+    map.emplace("clientToken", smithy::Document((*value.clientToken)));
   }
   return smithy::Document(std::move(map));
 }
@@ -365,7 +368,7 @@ smithy::Outcome<OrderCoffeeOutput> DeserializeOrderCoffeeOutput(const smithy::Do
 smithy::Document SerializeOutOfBeans(const OutOfBeans& value) {
   smithy::DocumentMap map;
   if (value.message.has_value()) {
-    map.emplace("message", smithy::Document(*value.message));
+    map.emplace("message", smithy::Document((*value.message)));
   }
   return smithy::Document(std::move(map));
 }

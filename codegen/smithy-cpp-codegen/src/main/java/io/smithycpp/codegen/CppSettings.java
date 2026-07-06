@@ -20,11 +20,14 @@ public final class CppSettings {
   private final ShapeId service;
   private final String namespace;
   private final String runtimeTarget;
+  private final String protocolTestsPackage;
 
-  private CppSettings(ShapeId service, String namespace, String runtimeTarget) {
+  private CppSettings(
+      ShapeId service, String namespace, String runtimeTarget, String protocolTestsPackage) {
     this.service = service;
     this.namespace = namespace;
     this.runtimeTarget = runtimeTarget;
+    this.protocolTestsPackage = protocolTestsPackage;
   }
 
   public static CppSettings fromNode(ObjectNode node) {
@@ -32,11 +35,12 @@ public final class CppSettings {
     String namespace = node.expectStringMember("namespace").getValue();
     String runtimeTarget =
         node.getStringMemberOrDefault("runtimeTarget", "@smithy_cpp//runtime:core");
+    String protocolTestsPackage = node.getStringMemberOrDefault("protocolTestsPackage", null);
     if (!namespace.matches("[A-Za-z_][A-Za-z0-9_]*(::[A-Za-z_][A-Za-z0-9_]*)*")) {
       throw new IllegalArgumentException(
           "cpp-codegen: 'namespace' must be a C++ namespace like a::b, got: " + namespace);
     }
-    return new CppSettings(service, namespace, runtimeTarget);
+    return new CppSettings(service, namespace, runtimeTarget, protocolTestsPackage);
   }
 
   public ShapeId service() {
@@ -77,6 +81,14 @@ public final class CppSettings {
     return colon < 0 ? runtimeTarget : runtimeTarget.substring(0, colon);
   }
 
+  /**
+   * Bazel package of the generated module (e.g. {@code //protocol-tests/restjson1/generated}); when
+   * set, protocol conformance tests are generated into {@code tests/}. Null otherwise.
+   */
+  public String protocolTestsPackage() {
+    return protocolTestsPackage;
+  }
+
   @Override
   public boolean equals(Object other) {
     if (!(other instanceof CppSettings that)) {
@@ -84,11 +96,12 @@ public final class CppSettings {
     }
     return service.equals(that.service)
         && namespace.equals(that.namespace)
-        && runtimeTarget.equals(that.runtimeTarget);
+        && runtimeTarget.equals(that.runtimeTarget)
+        && Objects.equals(protocolTestsPackage, that.protocolTestsPackage);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(service, namespace, runtimeTarget);
+    return Objects.hash(service, namespace, runtimeTarget, protocolTestsPackage);
   }
 }

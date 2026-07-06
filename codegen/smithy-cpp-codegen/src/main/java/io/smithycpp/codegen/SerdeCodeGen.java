@@ -23,8 +23,8 @@ final class SerdeCodeGen {
     return context.model().expectShape(member.getTarget());
   }
 
-  static String serdeFunctionSuffix(Shape shape) {
-    return CppReservedWords.escape(shape.getId().getName());
+  static String serdeFunctionSuffix(CppContext context, Shape shape) {
+    return context.cppSymbols().declaredName(shape);
   }
 
   /** C++ TimestampFormat constant for a member, honoring @timestampFormat. */
@@ -66,7 +66,7 @@ final class SerdeCodeGen {
           "smithy::Document::FromTimestamp(" + valueExpr + ", " + timestampFormat(member) + ")";
       case DOCUMENT -> valueExpr;
       case STRUCTURE, UNION, LIST, MAP ->
-          "Serialize" + serdeFunctionSuffix(shape) + "(" + valueExpr + ")";
+          "Serialize" + serdeFunctionSuffix(context, shape) + "(" + valueExpr + ")";
       default ->
           throw new CodegenException(
               "cpp-codegen: cannot serialize member targeting " + shape.getId());
@@ -104,8 +104,12 @@ final class SerdeCodeGen {
       }
       case FLOAT, DOUBLE -> {
         String type = context.cppSymbols().toSymbol(shape).getName();
-        w.write("if (!$L->is_int() && !$L->is_double()) $L", docExpr, docExpr, wrong);
-        w.write("$L = static_cast<$L>($L->AsNumber());", outExpr, type, docExpr);
+        w.openBlock("{");
+        w.write("auto parsed = smithy::DoubleFromDocument(*$L);", docExpr);
+        w.write(
+            "if (!parsed) return smithy::Error::Serialization($S);", path + ": expected a number");
+        w.write("$L = static_cast<$L>(*parsed);", outExpr, type);
+        w.closeBlock("}");
       }
       case STRING -> {
         w.write("if (!$L->is_string()) $L", docExpr, wrong);
@@ -136,7 +140,7 @@ final class SerdeCodeGen {
       case DOCUMENT -> w.write("$L = *$L;", outExpr, docExpr);
       case STRUCTURE, UNION, LIST, MAP -> {
         w.openBlock("{");
-        w.write("auto parsed = Deserialize$L(*$L);", serdeFunctionSuffix(shape), docExpr);
+        w.write("auto parsed = Deserialize$L(*$L);", serdeFunctionSuffix(context, shape), docExpr);
         w.write("if (!parsed) return std::move(parsed).error();");
         w.write("$L = std::move(*parsed);", outExpr);
         w.closeBlock("}");

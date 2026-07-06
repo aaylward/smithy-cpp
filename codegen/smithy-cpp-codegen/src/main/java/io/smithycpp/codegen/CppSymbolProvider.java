@@ -85,10 +85,84 @@ final class CppSymbolProvider implements SymbolProvider {
   }
 
   private Symbol declared(Shape shape) {
-    String name = CppReservedWords.escape(shape.getId().getName());
-    return builder(name, Set.of("\"" + settings.includePrefix() + "/types.h\""))
+    return builder(declaredName(shape), Set.of("\"" + settings.includePrefix() + "/types.h\""))
         .definitionFile(settings.typesHeaderFile())
         .build();
+  }
+
+  /**
+   * The C++ identifier a shape declares (type name, serde-function suffix). Generated modules
+   * flatten every Smithy namespace in the service closure into one C++ namespace, so shapes from
+   * outside the service's own namespace get its last namespace segment appended when their plain
+   * name collides (aws.example#Greeting + aws.shared#Greeting -> Greeting + GreetingShared).
+   */
+  String declaredName(Shape shape) {
+    if (declaredNames == null) {
+      declaredNames = computeDeclaredNames();
+    }
+    return declaredNames.getOrDefault(
+        shape.getId(), CppReservedWords.escape(shape.getId().getName()));
+  }
+
+  private java.util.Map<software.amazon.smithy.model.shapes.ShapeId, String> declaredNames;
+
+  private java.util.Map<software.amazon.smithy.model.shapes.ShapeId, String>
+      computeDeclaredNames() {
+    java.util.Map<software.amazon.smithy.model.shapes.ShapeId, String> names =
+        new java.util.HashMap<>();
+    if (model.getShape(settings.service()).isEmpty()) {
+      return names;
+    }
+    java.util.Map<String, java.util.List<Shape>> byName = new java.util.TreeMap<>();
+    for (Shape shape :
+        new software.amazon.smithy.model.neighbor.Walker(model)
+            .walkShapes(model.expectShape(settings.service()))) {
+      boolean declares =
+          shape.isStructureShape()
+              || shape.isUnionShape()
+              || shape.isEnumShape()
+              || shape.isIntEnumShape()
+              || shape.isListShape()
+              || shape.isMapShape();
+      if (!declares || shape.getId().toString().equals("smithy.api#Unit")) {
+        continue;
+      }
+      byName
+          .computeIfAbsent(
+              CppReservedWords.escape(shape.getId().getName()), key -> new java.util.ArrayList<>())
+          .add(shape);
+    }
+    String homeNamespace = settings.service().getNamespace();
+    for (var entry : byName.entrySet()) {
+      if (entry.getValue().size() < 2) {
+        continue;
+      }
+      for (Shape shape : entry.getValue()) {
+        String namespace = shape.getId().getNamespace();
+        if (namespace.equals(homeNamespace)) {
+          continue; // The service's own namespace keeps the plain name.
+        }
+        String segment = namespace.substring(namespace.lastIndexOf('.') + 1);
+        names.put(
+            shape.getId(),
+            entry.getKey() + software.amazon.smithy.utils.CaseUtils.toPascalCase(segment));
+      }
+    }
+    java.util.Set<String> seen = new java.util.HashSet<>();
+    for (var entry : byName.entrySet()) {
+      for (Shape shape : entry.getValue()) {
+        String name = names.getOrDefault(shape.getId(), entry.getKey());
+        if (!seen.add(name)) {
+          throw new CodegenException(
+              "cpp-codegen: cannot disambiguate C++ type name '"
+                  + name
+                  + "' ("
+                  + shape.getId()
+                  + " still collides after namespace suffixing)");
+        }
+      }
+    }
+    return names;
   }
 
   private final class Visitor extends ShapeVisitor.Default<Symbol> {

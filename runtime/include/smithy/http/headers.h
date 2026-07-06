@@ -34,6 +34,16 @@ class Headers {
 // ASCII case-insensitive equality, as HTTP header names require.
 bool HeaderNameEquals(std::string_view a, std::string_view b);
 
+// Splits a comma-separated list-valued header into entries with surrounding
+// whitespace trimmed ("a, b,c" -> {"a", "b", "c"}). Quoted-string entries are
+// returned verbatim, quotes included — unescaping is the caller's concern.
+std::vector<std::string> SplitHeaderListValues(std::string_view value);
+
+// Splits a list-valued header of HTTP-dates, which themselves contain one
+// comma ("Mon, 16 Dec 2019 23:48:18 GMT, Tue, 17 Dec ..."): consecutive
+// comma-separated tokens are re-joined two at a time.
+std::vector<std::string> SplitHttpDateHeaderValues(std::string_view value);
+
 }  // namespace smithy::http
 
 #endif  // SMITHY_HTTP_HEADERS_H_

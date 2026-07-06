@@ -8,6 +8,7 @@
 #include "example/cafe/serde.h"
 #include "smithy/cbor/cbor.h"
 #include "smithy/core/blob.h"
+#include "smithy/core/document_serde.h"
 #include "smithy/core/uuid.h"
 #include "smithy/http/socket_transport.h"
 #include "smithy/http/uri.h"
@@ -24,20 +25,69 @@ std::string SanitizeErrorCode(std::string_view raw) {
   return std::string(raw);
 }
 
-smithy::Error DeserializeError(const smithy::http::HttpResponse& response) {
+struct ParsedError {
+  int status = 0;
   std::string code = "UnknownError";
-  std::string message = "HTTP " + std::to_string(response.status);
-  const auto doc = smithy::cbor::Decode(smithy::Blob::FromString(response.body));
-  if (doc.ok() && doc->is_map()) {
-    const smithy::Document* type = doc->Find("__type");
-    if (type == nullptr) type = doc->Find("code");
-    if (type != nullptr && type->is_string()) code = SanitizeErrorCode(type->as_string());
-    const smithy::Document* text = doc->Find("message");
-    if (text != nullptr && text->is_string()) message = text->as_string();
+  std::string message;
+  smithy::Document doc;
+};
+
+ParsedError ParseError(const smithy::http::HttpResponse& response) {
+  ParsedError parsed;
+  parsed.status = response.status;
+  parsed.message = "HTTP " + std::to_string(response.status);
+  auto doc = smithy::cbor::Decode(smithy::Blob::FromString(response.body));
+  if (doc.ok()) parsed.doc = *std::move(doc);
+  if (parsed.doc.is_map()) {
+    const smithy::Document* type = parsed.doc.Find("__type");
+    if (type == nullptr) type = parsed.doc.Find("code");
+    if (parsed.code == "UnknownError" && type != nullptr && type->is_string()) parsed.code = SanitizeErrorCode(type->as_string());
+    const smithy::Document* text = parsed.doc.Find("message");
+    if (text != nullptr && text->is_string()) parsed.message = text->as_string();
   }
-  const bool retryable = response.status >= 500;
-  if (code == "UnknownError") return smithy::Error(smithy::ErrorKind::kUnknown, code, message, retryable);
-  return smithy::Error::Modeled(std::move(code), std::move(message), retryable);
+  return parsed;
+}
+
+smithy::Error GenericError(ParsedError parsed) {
+  const bool retryable = parsed.status >= 500;
+  if (parsed.code == "UnknownError") return smithy::Error(smithy::ErrorKind::kUnknown, std::move(parsed.code), std::move(parsed.message), retryable);
+  return smithy::Error::Modeled(std::move(parsed.code), std::move(parsed.message), retryable);
+}
+
+smithy::Error MakeOrderNotFoundError(const smithy::http::HttpResponse& response, ParsedError parsed) {
+  (void)response;
+  const bool retryable = parsed.status >= 500;
+  smithy::Error error = smithy::Error::Modeled("OrderNotFound", std::move(parsed.message), retryable);
+  if (!parsed.doc.is_map()) parsed.doc = smithy::Document(smithy::DocumentMap{});
+  auto detail = DeserializeOrderNotFound(parsed.doc);
+  if (detail.ok()) {
+    error.set_detail(*std::move(detail));
+  }
+  return error;
+}
+
+smithy::Error MakeOutOfBeansError(const smithy::http::HttpResponse& response, ParsedError parsed) {
+  (void)response;
+  const bool retryable = true;  // @retryable
+  smithy::Error error = smithy::Error::Modeled("OutOfBeans", std::move(parsed.message), retryable);
+  if (!parsed.doc.is_map()) parsed.doc = smithy::Document(smithy::DocumentMap{});
+  auto detail = DeserializeOutOfBeans(parsed.doc);
+  if (detail.ok()) {
+    error.set_detail(*std::move(detail));
+  }
+  return error;
+}
+
+smithy::Error DeserializeGetOrderError(const smithy::http::HttpResponse& response) {
+  ParsedError parsed = ParseError(response);
+  if (parsed.code == "OrderNotFound") return MakeOrderNotFoundError(response, std::move(parsed));
+  return GenericError(std::move(parsed));
+}
+
+smithy::Error DeserializeOrderCoffeeError(const smithy::http::HttpResponse& response) {
+  ParsedError parsed = ParseError(response);
+  if (parsed.code == "OutOfBeans") return MakeOutOfBeansError(response, std::move(parsed));
+  return GenericError(std::move(parsed));
 }
 
 }  // namespace
@@ -67,6 +117,9 @@ CafeClient::CafeClient(smithy::ClientConfig config, std::shared_ptr<smithy::http
 smithy::Outcome<smithy::http::HttpResponse> CafeClient::Send(smithy::http::HttpRequest request) const {
   request.headers.Set("accept", "application/cbor");
   request.headers.Set("user-agent", config_.user_agent);
+  if (!request.body.empty()) {
+    request.headers.Set("content-length", std::to_string(request.body.size()));
+  }
   return transport_->Send(request);
 }
 
@@ -79,7 +132,7 @@ smithy::Outcome<GetOrderOutput> CafeClient::GetOrder(const GetOrderInput& input)
   request.body = smithy::cbor::Encode(SerializeGetOrderInput(input)).ToString();
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return DeserializeError(*response);
+  if (response->status != 200) return DeserializeGetOrderError(*response);
   auto body_doc = smithy::cbor::Decode(smithy::Blob::FromString(response->body));
   if (!body_doc) return std::move(body_doc).error();
   return DeserializeGetOrderOutput(*body_doc);
@@ -96,7 +149,7 @@ smithy::Outcome<OrderCoffeeOutput> CafeClient::OrderCoffee(const OrderCoffeeInpu
   request.body = smithy::cbor::Encode(SerializeOrderCoffeeInput(prepared)).ToString();
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return DeserializeError(*response);
+  if (response->status != 200) return DeserializeOrderCoffeeError(*response);
   auto body_doc = smithy::cbor::Decode(smithy::Blob::FromString(response->body));
   if (!body_doc) return std::move(body_doc).error();
   return DeserializeOrderCoffeeOutput(*body_doc);

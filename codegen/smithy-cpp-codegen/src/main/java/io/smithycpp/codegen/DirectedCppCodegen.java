@@ -45,7 +45,8 @@ public final class DirectedCppCodegen
     software.amazon.smithy.model.shapes.ServiceShape service = directive.shape();
     ProtocolGenerator protocol = resolveProtocol(service);
 
-    SerdeGenerator serdeGenerator = new SerdeGenerator(directive.context());
+    SerdeGenerator serdeGenerator =
+        new SerdeGenerator(directive.context(), protocol != null && protocol.usesJsonName());
     boolean hasSerde = !serdeGenerator.serdeShapes().isEmpty();
     if (hasSerde) {
       serdeGenerator.run();
@@ -57,6 +58,11 @@ public final class DirectedCppCodegen
       if (!clientGenerator.operations().isEmpty()) {
         clientGenerator.run();
         hasClient = true;
+        if (directive.settings().protocolTestsPackage() != null) {
+          new ProtocolTestGenerator(
+                  directive.context(), service, protocol, clientGenerator.operations())
+              .run();
+        }
       }
     }
     BuildFileGenerator.run(directive.context(), protocol, hasClient, hasSerde);

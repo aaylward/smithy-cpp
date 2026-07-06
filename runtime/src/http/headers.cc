@@ -48,4 +48,32 @@ void Headers::Remove(std::string_view name) {
       entries_.end());
 }
 
+std::vector<std::string> SplitHeaderListValues(std::string_view value) {
+  std::vector<std::string> out;
+  std::size_t start = 0;
+  while (start <= value.size()) {
+    std::size_t comma = value.find(',', start);
+    std::string_view part =
+        value.substr(start, comma == std::string_view::npos ? comma : comma - start);
+    while (!part.empty() && (part.front() == ' ' || part.front() == '\t')) part.remove_prefix(1);
+    while (!part.empty() && (part.back() == ' ' || part.back() == '\t')) part.remove_suffix(1);
+    out.emplace_back(part);
+    if (comma == std::string_view::npos) break;
+    start = comma + 1;
+  }
+  return out;
+}
+
+std::vector<std::string> SplitHttpDateHeaderValues(std::string_view value) {
+  std::vector<std::string> tokens = SplitHeaderListValues(value);
+  std::vector<std::string> out;
+  for (std::size_t i = 0; i + 1 < tokens.size(); i += 2) {
+    out.push_back(tokens[i] + ", " + tokens[i + 1]);
+  }
+  if (tokens.size() % 2 != 0 && !tokens.back().empty()) {
+    out.push_back(tokens.back());
+  }
+  return out;
+}
+
 }  // namespace smithy::http

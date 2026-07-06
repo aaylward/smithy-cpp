@@ -1,6 +1,7 @@
 #ifndef SMITHY_CORE_ERROR_H_
 #define SMITHY_CORE_ERROR_H_
 
+#include <any>
 #include <string>
 #include <utility>
 
@@ -47,6 +48,19 @@ class Error {
   const std::string& message() const { return message_; }
   bool retryable() const { return retryable_; }
 
+  // Typed payload for modeled errors: generated clients attach the
+  // deserialized error structure so callers can recover it without re-parsing.
+  //
+  //   if (const auto* e = outcome.error().detail<OrderNotFound>()) use(e->orderId);
+  void set_detail(std::any detail) { detail_ = std::move(detail); }
+  bool has_detail() const { return detail_.has_value(); }
+  template <typename T>
+  const T* detail() const {
+    return std::any_cast<T>(&detail_);
+  }
+
+  // Equality ignores detail(): two errors with the same classification compare
+  // equal whether or not a typed payload was attached.
   friend bool operator==(const Error& a, const Error& b) {
     return a.kind_ == b.kind_ && a.code_ == b.code_ && a.message_ == b.message_ &&
            a.retryable_ == b.retryable_;
@@ -57,6 +71,7 @@ class Error {
   std::string code_ = "UnknownError";
   std::string message_;
   bool retryable_ = false;
+  std::any detail_;
 };
 
 }  // namespace smithy

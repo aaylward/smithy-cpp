@@ -50,8 +50,9 @@ final class ClientGenerator {
 
     String name = clientName();
     w.write("/// $L client for $L.", protocol.name(), service.getId().toString());
-    w.write("/// Modeled service errors surface as smithy::Error with kind kModeled and");
-    w.write("/// code() set to the error shape name.");
+    w.write("/// Modeled service errors surface as smithy::Error with kind kModeled,");
+    w.write("/// code() set to the error shape name, and the deserialized error");
+    w.write("/// structure attached: error.detail<TheErrorShape>().");
     w.openBlock("class $L {", name);
     w.write("public:").indent();
     w.write("/// Fails when the endpoint cannot be parsed and no transport is injected.");
@@ -107,6 +108,7 @@ final class ClientGenerator {
     w.write("namespace {");
     w.write("");
     protocol.writeClientHelpers(w, context);
+    ProtocolSupport.writeOperationErrorDeserializers(w, context, service, protocol, operations());
     w.write("}  // namespace");
     w.write("");
 
@@ -149,6 +151,9 @@ final class ClientGenerator {
         name);
     w.write("request.headers.Set(\"accept\", $S);", protocol.contentType());
     w.write("request.headers.Set(\"user-agent\", config_.user_agent);");
+    w.openBlock("if (!request.body.empty()) {");
+    w.write("request.headers.Set(\"content-length\", std::to_string(request.body.size()));");
+    w.closeBlock("}");
     w.write("return transport_->Send(request);");
     w.closeBlock("}");
     w.write("");

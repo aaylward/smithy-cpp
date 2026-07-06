@@ -172,7 +172,9 @@ Outcome<HttpResponse> SocketHttpClient::Send(const HttpRequest& request) {
 
   std::string wire = request.method + " " + request.target + " HTTP/1.1\r\n";
   wire += "host: " + host_ + ":" + port_text + "\r\n";
-  wire += "content-length: " + std::to_string(request.body.size()) + "\r\n";
+  if (!request.headers.Has("content-length")) {
+    wire += "content-length: " + std::to_string(request.body.size()) + "\r\n";
+  }
   wire += "connection: close\r\n";
   for (const auto& [name, value] : request.headers.entries()) {
     wire += name;

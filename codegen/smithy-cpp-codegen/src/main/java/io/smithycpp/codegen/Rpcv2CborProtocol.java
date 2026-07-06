@@ -18,6 +18,11 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
   }
 
   @Override
+  public software.amazon.smithy.model.shapes.ShapeId traitId() {
+    return software.amazon.smithy.protocol.traits.Rpcv2CborTrait.ID;
+  }
+
+  @Override
   public String contentType() {
     return "application/cbor";
   }
@@ -34,8 +39,10 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
 
   @Override
   public void writeClientHelpers(CppWriter w, CppContext context) {
-    ProtocolSupport.writeErrorDeserializer(
-        w, "const auto doc = smithy::cbor::Decode(smithy::Blob::FromString(response.body));");
+    ProtocolSupport.writeErrorSupport(
+        w,
+        "auto doc = smithy::cbor::Decode(smithy::Blob::FromString(response.body));",
+        /* errorTypeHeader= */ false);
   }
 
   @Override
@@ -55,15 +62,28 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
         service.getId().getName(),
         operation.getId().getName());
     w.write("request.headers.Set(\"smithy-protocol\", \"rpc-v2-cbor\");");
-    w.write("request.headers.Set(\"content-type\", \"application/cbor\");");
-    w.write(
-        "request.body = smithy::cbor::Encode(Serialize$L($L)).ToString();",
-        SerdeCodeGen.serdeFunctionSuffix(input),
-        in);
+    // Operations with no modeled input (smithy.api#Unit) send no body and no
+    // Content-Type, per the rpcv2Cbor spec; empty input structures still send
+    // an (empty) CBOR map body.
+    boolean noModeledInput =
+        input.getId().toString().equals("smithy.api#Unit")
+            || input
+                .getTrait(software.amazon.smithy.model.traits.synthetic.OriginalShapeIdTrait.class)
+                .map(t -> t.getOriginalId().toString().equals("smithy.api#Unit"))
+                .orElse(false);
+    if (!noModeledInput) {
+      w.write("request.headers.Set(\"content-type\", \"application/cbor\");");
+      w.write(
+          "request.body = smithy::cbor::Encode(Serialize$L($L)).ToString();",
+          SerdeCodeGen.serdeFunctionSuffix(context, input),
+          in);
+    }
 
     w.write("auto response = Send(std::move(request));");
     w.write("if (!response) return std::move(response).error();");
-    w.write("if (response->status != 200) return DeserializeError(*response);");
+    w.write(
+        "if (response->status != 200) return $L;",
+        ProtocolSupport.errorExpression(context, service, operation));
 
     String outType = context.cppSymbols().toSymbol(output).getName();
     if (output.members().isEmpty()) {
@@ -76,6 +96,6 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
     }
     w.write("auto body_doc = smithy::cbor::Decode(smithy::Blob::FromString(response->body));");
     w.write("if (!body_doc) return std::move(body_doc).error();");
-    w.write("return Deserialize$L(*body_doc);", SerdeCodeGen.serdeFunctionSuffix(output));
+    w.write("return Deserialize$L(*body_doc);", SerdeCodeGen.serdeFunctionSuffix(context, output));
   }
 }

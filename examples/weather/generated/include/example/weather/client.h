@@ -13,8 +13,9 @@
 namespace example::weather {
 
 /// restJson1 client for example.weather#Weather.
-/// Modeled service errors surface as smithy::Error with kind kModeled and
-/// code() set to the error shape name.
+/// Modeled service errors surface as smithy::Error with kind kModeled,
+/// code() set to the error shape name, and the deserialized error
+/// structure attached: error.detail<TheErrorShape>().
 class WeatherClient {
   public:
     /// Fails when the endpoint cannot be parsed and no transport is injected.

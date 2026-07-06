@@ -13,8 +13,9 @@
 namespace example::cafe {
 
 /// rpcv2Cbor client for example.cafe#Cafe.
-/// Modeled service errors surface as smithy::Error with kind kModeled and
-/// code() set to the error shape name.
+/// Modeled service errors surface as smithy::Error with kind kModeled,
+/// code() set to the error shape name, and the deserialized error
+/// structure attached: error.detail<TheErrorShape>().
 class CafeClient {
   public:
     /// Fails when the endpoint cannot be parsed and no transport is injected.

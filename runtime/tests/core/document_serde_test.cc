@@ -2,6 +2,9 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
+#include <limits>
+
 #include "smithy/core/uuid.h"
 
 namespace smithy {
@@ -68,4 +71,25 @@ TEST(UuidTest, GeneratesDistinctValues) {
 }
 
 }  // namespace
+TEST(DocumentSerdeTest, DoubleFromDocumentAcceptsNonFiniteSpellings) {
+  EXPECT_EQ(*DoubleFromDocument(Document(1.5)), 1.5);
+  EXPECT_EQ(*DoubleFromDocument(Document(std::int64_t{2})), 2.0);
+  EXPECT_TRUE(std::isnan(*DoubleFromDocument(Document(std::string("NaN")))));
+  EXPECT_EQ(*DoubleFromDocument(Document(std::string("Infinity"))),
+            std::numeric_limits<double>::infinity());
+  EXPECT_EQ(*DoubleFromDocument(Document(std::string("-Infinity"))),
+            -std::numeric_limits<double>::infinity());
+  EXPECT_FALSE(DoubleFromDocument(Document(std::string("other"))).ok());
+  EXPECT_FALSE(DoubleFromDocument(Document(true)).ok());
+}
+
+TEST(DocumentSerdeTest, FormatFloatingPoint) {
+  EXPECT_EQ(FormatDouble(4.1), "4.1");
+  EXPECT_EQ(FormatFloat(4.1F), "4.1");
+  EXPECT_EQ(FormatDouble(5.0), "5.0");
+  EXPECT_EQ(FormatDouble(std::numeric_limits<double>::quiet_NaN()), "NaN");
+  EXPECT_EQ(FormatDouble(std::numeric_limits<double>::infinity()), "Infinity");
+  EXPECT_EQ(FormatFloat(-std::numeric_limits<float>::infinity()), "-Infinity");
+}
+
 }  // namespace smithy

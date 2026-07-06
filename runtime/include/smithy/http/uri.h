@@ -27,12 +27,23 @@ Outcome<std::string> PercentDecode(std::string_view text);
 // Accumulates query parameters into "?k=v&k2=v2" form with encoding applied.
 class QueryString {
  public:
+  // Adds "key=value" ("key=" when the value is empty).
   void Add(std::string_view key, std::string_view value);
+  // Adds a bare valueless "key" (used for valueless @http query literals).
+  void AddFlag(std::string_view key);
+  // True when a parameter with this (raw, pre-encoding) key was added; used by
+  // generated code for @httpQueryParams precedence (bound members win).
+  bool Has(std::string_view key) const;
   // "" when empty, otherwise "?...".
   std::string ToString() const;
 
  private:
-  std::vector<std::pair<std::string, std::string>> params_;
+  struct Param {
+    std::string key;
+    std::string value;
+    bool flag = false;
+  };
+  std::vector<Param> params_;
 };
 
 // Splits a raw target like "/cities/a%20b?page=2&size=10" into a decoded

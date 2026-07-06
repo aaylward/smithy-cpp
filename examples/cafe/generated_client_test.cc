@@ -123,6 +123,7 @@ TEST_F(CafeClientTest, ModeledErrorsDeserialize) {
   DocumentMap error;
   error.emplace("__type", Document("example.cafe#OrderNotFound"));
   error.emplace("message", Document("no such order"));
+  error.emplace("orderId", Document("missing"));
   transport_->next_response = {404, {}, EncodeBody(Document(std::move(error)))};
 
   const auto result = client_->GetOrder(GetOrderInput{.orderId = "missing"});
@@ -131,16 +132,38 @@ TEST_F(CafeClientTest, ModeledErrorsDeserialize) {
   EXPECT_EQ(result.error().code(), "OrderNotFound");
   EXPECT_EQ(result.error().message(), "no such order");
   EXPECT_FALSE(result.error().retryable());
+
+  // The deserialized error structure rides along as the typed detail.
+  const auto* detail = result.error().detail<OrderNotFound>();
+  ASSERT_NE(detail, nullptr);
+  EXPECT_EQ(detail->orderId, "missing");
+  EXPECT_EQ(result.error().detail<OutOfBeans>(), nullptr);
 }
 
 TEST_F(CafeClientTest, ServerErrorsAreRetryable) {
   DocumentMap error;
   error.emplace("__type", Document("example.cafe#OutOfBeans"));
   transport_->next_response = {500, {}, EncodeBody(Document(std::move(error)))};
+  // OrderCoffee declares OutOfBeans, so the client attaches the typed detail.
+  const auto result =
+      client_->OrderCoffee(OrderCoffeeInput{.coffeeType = CoffeeType(CoffeeType::Value::kDrip)});
+  ASSERT_FALSE(result.ok());
+  EXPECT_EQ(result.error().code(), "OutOfBeans");
+  EXPECT_TRUE(result.error().retryable());
+  EXPECT_NE(result.error().detail<OutOfBeans>(), nullptr);
+}
+
+TEST_F(CafeClientTest, UndeclaredErrorsSurfaceWithoutDetail) {
+  DocumentMap error;
+  error.emplace("__type", Document("example.cafe#OutOfBeans"));
+  transport_->next_response = {500, {}, EncodeBody(Document(std::move(error)))};
+  // GetOrder does not declare OutOfBeans: the code still surfaces, but no
+  // typed detail is attached for errors outside the operation's contract.
   const auto result = client_->GetOrder(GetOrderInput{.orderId = "o-1"});
   ASSERT_FALSE(result.ok());
   EXPECT_EQ(result.error().code(), "OutOfBeans");
   EXPECT_TRUE(result.error().retryable());
+  EXPECT_FALSE(result.error().has_detail());
 }
 
 TEST_F(CafeClientTest, UnknownResponseMembersAreIgnored) {

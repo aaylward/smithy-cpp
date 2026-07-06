@@ -79,6 +79,33 @@ cc_library(
     deps = [":core"],
 )
 
+# Support library for the generated protocol conformance tests
+# (protocol-tests/): capturing transport, query/body equivalence assertions.
+cc_library(
+    name = "protocol_test_support",
+    testonly = True,
+    hdrs = ["testing/include/smithy/testing/protocol_test.h"],
+    includes = ["testing/include"],
+    deps = [
+        ":cbor",
+        ":core",
+        ":http",
+        ":json",
+        "@googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "protocol_test_support_test",
+    size = "small",
+    srcs = ["tests/testing/protocol_test_support_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":protocol_test_support",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_test(
     name = "http_test",
     size = "small",

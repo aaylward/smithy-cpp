@@ -3,6 +3,7 @@ package io.smithycpp.codegen;
 import java.util.List;
 import software.amazon.smithy.model.shapes.OperationShape;
 import software.amazon.smithy.model.shapes.ServiceShape;
+import software.amazon.smithy.model.shapes.ShapeId;
 
 /**
  * Protocol plug point (mirrors smithy-rs's protocol layer): owns the HTTP binding/dispatch code
@@ -13,6 +14,9 @@ interface ProtocolGenerator {
   /** e.g. "restJson1". */
   String name();
 
+  /** The protocol trait's shape id (used to filter protocol test cases). */
+  ShapeId traitId();
+
   /** Value for the Accept header and error-body content type. */
   String contentType();
 
@@ -22,8 +26,21 @@ interface ProtocolGenerator {
   /** Includes needed by client.cc beyond the shared set. */
   List<String> clientIncludes();
 
+  /** Whether the protocol renames JSON body keys via @jsonName (restJson1 does). */
+  default boolean usesJsonName() {
+    return false;
+  }
+
   /** Emits the file-local helpers (error deserializer etc.) into client.cc's anon namespace. */
   void writeClientHelpers(CppWriter w, CppContext context);
+
+  /**
+   * Emits statements patching protocol-specific bindings (e.g. restJson1 error @httpHeader members)
+   * into {@code detail->...}; runs inside Make&lt;Error&gt;Error with {@code response} in scope.
+   * Default: nothing.
+   */
+  default void writeErrorDetailPatches(
+      CppWriter w, CppContext context, software.amazon.smithy.model.shapes.StructureShape error) {}
 
   /** Emits the body of one operation method (inside the function braces). */
   void writeOperationBody(

@@ -1,0 +1,33 @@
+# Protocol test exclusion list (smithy-rs FailingTest pattern). One entry per
+# line: <service shape id> <request|response|error|any> <test id> <reason>.
+# Every entry must match a test that would otherwise be generated — stale
+# entries fail generation — and the list must only shrink over time.
+
+# @default / @clientOptional value population is not implemented yet.
+aws.protocoltests.restjson#RestJson request RestJsonClientPopulatesDefaultValuesInInput @default population is not implemented yet
+aws.protocoltests.restjson#RestJson request RestJsonClientPopulatesNestedDefaultValuesWhenMissing @default population is not implemented yet
+aws.protocoltests.restjson#RestJson response RestJsonClientPopulatesDefaultsValuesWhenMissingInResponse @default population is not implemented yet
+aws.protocoltests.restjson#RestJson response RestJsonClientPopulatesNestedDefaultsWhenMissingInResponseBody @default population is not implemented yet
+smithy.protocoltests.rpcv2Cbor#RpcV2Protocol request RpcV2CborClientPopulatesDefaultValuesInInput @default population is not implemented yet
+smithy.protocoltests.rpcv2Cbor#RpcV2Protocol response RpcV2CborClientPopulatesDefaultsValuesWhenMissingInResponse @default population is not implemented yet
+
+# Generated output comparison uses operator==, under which NaN != NaN; the
+# client deserializes these payloads correctly but the assertion cannot pass.
+aws.protocoltests.restjson#RestJson response RestJsonSupportsNaNFloatInputs NaN output members compare unequal under operator==
+aws.protocoltests.restjson#RestJson response RestJsonSupportsNaNFloatHeaderOutputs NaN output members compare unequal under operator==
+smithy.protocoltests.rpcv2Cbor#RpcV2Protocol response RpcV2CborSupportsNaNFloatOutputs NaN output members compare unequal under operator==
+smithy.protocoltests.rpcv2Cbor#RpcV2Protocol response RpcV2CborFloat16LSBNaN NaN output members compare unequal under operator==
+smithy.protocoltests.rpcv2Cbor#RpcV2Protocol response RpcV2CborFloat16MSBNaN NaN output members compare unequal under operator==
+
+# Quoted-string list headers need RFC 9110 quoting/unquoting.
+aws.protocoltests.restjson#RestJson any RestJsonInputAndOutputWithQuotedStringHeaders quoted-string list headers are not implemented yet
+
+# @httpChecksumRequired (Content-MD5) is not implemented yet.
+aws.protocoltests.restjson#RestJson request RestJsonHttpChecksumRequired @httpChecksumRequired is not implemented yet
+
+# @requestCompression (gzip) is not implemented yet.
+aws.protocoltests.restjson#RestJson request SDKAppliedContentEncoding_restJson1 @requestCompression is not implemented yet
+aws.protocoltests.restjson#RestJson request SDKAppendedGzipAfterProvidedEncoding_restJson1 @requestCompression is not implemented yet
+
+# The test asserts an all-zero UUID, which needs an injectable token source.
+aws.protocoltests.restjson#RestJson request RestJsonQueryIdempotencyTokenAutoFill deterministic idempotency tokens need an injectable source

@@ -49,6 +49,24 @@ TEST(ErrorTest, FactoriesSetKindAndCode) {
   EXPECT_EQ(modeled.code(), "NoSuchResource");
 }
 
+TEST(ErrorTest, DetailCarriesTypedPayload) {
+  struct OrderNotFound {
+    std::string orderId;
+  };
+  Error error = Error::Modeled("OrderNotFound", "gone");
+  EXPECT_FALSE(error.has_detail());
+  EXPECT_EQ(error.detail<OrderNotFound>(), nullptr);
+
+  error.set_detail(OrderNotFound{"o-1"});
+  ASSERT_TRUE(error.has_detail());
+  ASSERT_NE(error.detail<OrderNotFound>(), nullptr);
+  EXPECT_EQ(error.detail<OrderNotFound>()->orderId, "o-1");
+  EXPECT_EQ(error.detail<int>(), nullptr) << "wrong type must not cast";
+
+  // Equality is classification-only; detail never participates.
+  EXPECT_EQ(error, Error::Modeled("OrderNotFound", "gone"));
+}
+
 TEST(BlobTest, RoundTripsThroughString) {
   const Blob blob = Blob::FromString("hello");
   EXPECT_EQ(blob.size(), 5u);

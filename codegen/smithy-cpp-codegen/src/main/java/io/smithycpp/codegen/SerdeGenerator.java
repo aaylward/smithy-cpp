@@ -22,10 +22,23 @@ final class SerdeGenerator {
 
   private final CppContext context;
   private final SerdeCodeGen serde;
+  private final boolean useJsonName;
 
-  SerdeGenerator(CppContext context) {
+  SerdeGenerator(CppContext context, boolean useJsonName) {
     this.context = context;
     this.serde = new SerdeCodeGen(context);
+    this.useJsonName = useJsonName;
+  }
+
+  /** The body key for a member: @jsonName when the module's protocol honors it. */
+  private String wireName(MemberShape member) {
+    if (useJsonName) {
+      var trait = member.getTrait(software.amazon.smithy.model.traits.JsonNameTrait.class);
+      if (trait.isPresent()) {
+        return trait.get().getValue();
+      }
+    }
+    return member.getMemberName();
   }
 
   /** Aggregate shapes in the closure, topologically ordered, excluding smithy.api#Unit. */
@@ -74,7 +87,7 @@ final class SerdeGenerator {
     w.write("// mismatches and enforce @required members.");
     w.write("");
     for (Shape shape : shapes) {
-      String suffix = SerdeCodeGen.serdeFunctionSuffix(shape);
+      String suffix = SerdeCodeGen.serdeFunctionSuffix(context, shape);
       String type = valueType(shape);
       w.addIncludesFor(context.cppSymbols().toSymbol(shape));
       w.write("smithy::Document Serialize$L(const $L& value);", suffix, type);
@@ -102,7 +115,7 @@ final class SerdeGenerator {
   }
 
   private void writeStructure(CppWriter w, StructureShape shape) {
-    String suffix = SerdeCodeGen.serdeFunctionSuffix(shape);
+    String suffix = SerdeCodeGen.serdeFunctionSuffix(context, shape);
     String type = valueType(shape);
 
     w.openBlock("smithy::Document Serialize$L(const $L& value) {", suffix, type);
@@ -110,16 +123,13 @@ final class SerdeGenerator {
     for (MemberShape member : shape.members()) {
       String field = "value." + context.cppSymbols().toMemberName(member);
       if (member.isRequired()) {
-        w.write(
-            "map.emplace($S, $L);",
-            member.getMemberName(),
-            serde.serializeExpression(member, field));
+        w.write("map.emplace($S, $L);", wireName(member), serde.serializeExpression(member, field));
       } else {
         w.openBlock("if ($L.has_value()) {", field);
         w.write(
             "map.emplace($S, $L);",
-            member.getMemberName(),
-            serde.serializeExpression(member, "*" + field));
+            wireName(member),
+            serde.serializeExpression(member, "(*" + field + ")"));
         w.closeBlock("}");
       }
     }
@@ -133,9 +143,9 @@ final class SerdeGenerator {
         type + ": expected a map on the wire");
     w.write("$L out;", type);
     for (MemberShape member : shape.members()) {
-      String name = member.getMemberName();
+      String name = wireName(member);
       String field = "out." + context.cppSymbols().toMemberName(member);
-      String path = type + "." + name;
+      String path = type + "." + member.getMemberName();
       w.openBlock("{");
       w.write("const smithy::Document* member = doc.Find($S);", name);
       if (member.isRequired()) {
@@ -162,7 +172,7 @@ final class SerdeGenerator {
   }
 
   private void writeUnion(CppWriter w, UnionShape shape) {
-    String suffix = SerdeCodeGen.serdeFunctionSuffix(shape);
+    String suffix = SerdeCodeGen.serdeFunctionSuffix(context, shape);
     String type = valueType(shape);
 
     w.openBlock("smithy::Document Serialize$L(const $L& value) {", suffix, type);
@@ -172,7 +182,7 @@ final class SerdeGenerator {
       w.openBlock("if (value.is_$L()) {", name);
       w.write(
           "map.emplace($S, $L);",
-          member.getMemberName(),
+          wireName(member),
           serde.serializeExpression(member, "value.as_" + name + "()"));
       w.closeBlock("}");
     }
@@ -185,7 +195,7 @@ final class SerdeGenerator {
         "if (!doc.is_map()) return smithy::Error::Serialization($S);",
         type + ": expected a map on the wire");
     for (MemberShape member : shape.members()) {
-      String wireName = member.getMemberName();
+      String wireName = wireName(member);
       Symbol targetType =
           context.cppSymbols().toSymbol(context.model().expectShape(member.getTarget()));
       w.openBlock(
@@ -206,7 +216,7 @@ final class SerdeGenerator {
   }
 
   private void writeList(CppWriter w, ListShape shape) {
-    String suffix = SerdeCodeGen.serdeFunctionSuffix(shape);
+    String suffix = SerdeCodeGen.serdeFunctionSuffix(context, shape);
     String type = valueType(shape);
     MemberShape member = shape.getMember();
     boolean sparse = shape.hasTrait(SparseTrait.class);
@@ -221,7 +231,7 @@ final class SerdeGenerator {
       w.write("list.emplace_back(nullptr);");
       w.write("continue;");
       w.closeBlock("}");
-      w.write("list.push_back($L);", serde.serializeExpression(member, "*item"));
+      w.write("list.push_back($L);", serde.serializeExpression(member, "(*item)"));
     } else {
       w.write("list.push_back($L);", serde.serializeExpression(member, "item"));
     }
@@ -258,7 +268,7 @@ final class SerdeGenerator {
   }
 
   private void writeMap(CppWriter w, MapShape shape) {
-    String suffix = SerdeCodeGen.serdeFunctionSuffix(shape);
+    String suffix = SerdeCodeGen.serdeFunctionSuffix(context, shape);
     String type = valueType(shape);
     MemberShape member = shape.getValue();
     boolean sparse = shape.hasTrait(SparseTrait.class);
@@ -272,7 +282,7 @@ final class SerdeGenerator {
       w.write("map.emplace(key, smithy::Document(nullptr));");
       w.write("continue;");
       w.closeBlock("}");
-      w.write("map.emplace(key, $L);", serde.serializeExpression(member, "*item"));
+      w.write("map.emplace(key, $L);", serde.serializeExpression(member, "(*item)"));
     } else {
       w.write("map.emplace(key, $L);", serde.serializeExpression(member, "item"));
     }
@@ -294,9 +304,8 @@ final class SerdeGenerator {
       w.write("continue;");
       w.closeBlock("}");
     } else {
-      w.write(
-          "if (item->is_null()) return smithy::Error::Serialization($S);",
-          type + ": null value in a dense map");
+      w.write("// Tolerant read: null values in dense maps are skipped, not errors.");
+      w.write("if (item->is_null()) continue;");
     }
     w.write("$L parsed_item{};", element.getName());
     serde.writeDeserializeInto(w, member, "item", "parsed_item", type + "{}");

@@ -1,5 +1,6 @@
 #include "smithy/http/uri.h"
 
+#include <algorithm>
 #include <cstdint>
 
 namespace smithy::http {
@@ -67,7 +68,17 @@ Outcome<std::string> PercentDecode(std::string_view text) {
 }
 
 void QueryString::Add(std::string_view key, std::string_view value) {
-  params_.emplace_back(EncodeQueryComponent(key), EncodeQueryComponent(value));
+  params_.push_back({EncodeQueryComponent(key), EncodeQueryComponent(value), false});
+}
+
+void QueryString::AddFlag(std::string_view key) {
+  params_.push_back({EncodeQueryComponent(key), "", true});
+}
+
+bool QueryString::Has(std::string_view key) const {
+  const std::string encoded = EncodeQueryComponent(key);
+  return std::any_of(params_.begin(), params_.end(),
+                     [&](const Param& param) { return param.key == encoded; });
 }
 
 std::string QueryString::ToString() const {
@@ -75,10 +86,12 @@ std::string QueryString::ToString() const {
   std::string out = "?";
   for (std::size_t i = 0; i < params_.size(); ++i) {
     if (i > 0) out.push_back('&');
-    out += params_[i].first;
-    if (!params_[i].second.empty()) {
-      out.push_back('=');
-      out += params_[i].second;
+    out += params_[i].key;
+    if (params_[i].flag) continue;
+    // Always write '=': Smithy serializes empty query values as "key=".
+    out.push_back('=');
+    if (!params_[i].value.empty()) {
+      out += params_[i].value;
     }
   }
   return out;

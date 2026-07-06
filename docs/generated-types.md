@@ -104,5 +104,15 @@ auto city   = client->GetCity(GetCityInput{.cityId = "seattle"});  // Outcome<Ge
 - `@idempotencyToken` members are auto-filled with a UUIDv4 when unset; caller-provided values
   pass through untouched.
 - HTTP 4xx/5xx map to `smithy::ErrorKind::kModeled` with the sanitized error code
-  (`ns#Shape` → `Shape`); 5xx and `@retryable` errors are marked retryable. Typed error
-  structures land in Phase 3b.
+  (`ns#Shape` → `Shape`, restJson1 also reads the `x-amzn-errortype` header); `@retryable`
+  errors and 5xx responses are marked retryable.
+- **Typed errors**: when the code matches an error the operation declares, the deserialized
+  error structure rides along as the error's detail —
+  `if (const auto* e = outcome.error().detail<OrderNotFound>()) use(e->orderId);`
+  Undeclared codes still surface generically (code + message, no detail).
+- restJson1 honors `@jsonName` body keys, serializes non-finite numbers as
+  `"NaN"`/`"Infinity"`/`"-Infinity"`, and binds response `@httpHeader` members (including
+  comma-joined lists and base64 `@mediaType` strings).
+- Cross-namespace name collisions in a service closure are disambiguated by appending the
+  foreign namespace's last segment (`shared#Greeting` → `GreetingShared`); the service's own
+  namespace keeps plain names, and wire-level error codes always use the Smithy shape name.

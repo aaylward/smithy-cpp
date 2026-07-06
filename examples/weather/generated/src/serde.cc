@@ -31,7 +31,7 @@ smithy::Outcome<GetForecastInput> DeserializeGetForecastInput(const smithy::Docu
 smithy::Document SerializeGetForecastOutput(const GetForecastOutput& value) {
   smithy::DocumentMap map;
   if (value.chanceOfRain.has_value()) {
-    map.emplace("chanceOfRain", smithy::Document(static_cast<double>(*value.chanceOfRain)));
+    map.emplace("chanceOfRain", smithy::Document(static_cast<double>((*value.chanceOfRain))));
   }
   return smithy::Document(std::move(map));
 }
@@ -43,8 +43,11 @@ smithy::Outcome<GetForecastOutput> DeserializeGetForecastOutput(const smithy::Do
     const smithy::Document* member = doc.Find("chanceOfRain");
     if (member != nullptr && !member->is_null()) {
       float parsed_member{};
-      if (!member->is_int() && !member->is_double()) return smithy::Error::Serialization("GetForecastOutput.chanceOfRain: unexpected type on the wire");
-      parsed_member = static_cast<float>(member->AsNumber());
+      {
+        auto parsed = smithy::DoubleFromDocument(*member);
+        if (!parsed) return smithy::Error::Serialization("GetForecastOutput.chanceOfRain: expected a number");
+        parsed_member = static_cast<float>(*parsed);
+      }
       out.chanceOfRain = std::move(parsed_member);
     }
   }
@@ -106,16 +109,22 @@ smithy::Outcome<CityCoordinates> DeserializeCityCoordinates(const smithy::Docume
     if (member == nullptr || member->is_null()) {
       return smithy::Error::Serialization("CityCoordinates: missing required member: latitude");
     }
-    if (!member->is_int() && !member->is_double()) return smithy::Error::Serialization("CityCoordinates.latitude: unexpected type on the wire");
-    out.latitude = static_cast<float>(member->AsNumber());
+    {
+      auto parsed = smithy::DoubleFromDocument(*member);
+      if (!parsed) return smithy::Error::Serialization("CityCoordinates.latitude: expected a number");
+      out.latitude = static_cast<float>(*parsed);
+    }
   }
   {
     const smithy::Document* member = doc.Find("longitude");
     if (member == nullptr || member->is_null()) {
       return smithy::Error::Serialization("CityCoordinates: missing required member: longitude");
     }
-    if (!member->is_int() && !member->is_double()) return smithy::Error::Serialization("CityCoordinates.longitude: unexpected type on the wire");
-    out.longitude = static_cast<float>(member->AsNumber());
+    {
+      auto parsed = smithy::DoubleFromDocument(*member);
+      if (!parsed) return smithy::Error::Serialization("CityCoordinates.longitude: expected a number");
+      out.longitude = static_cast<float>(*parsed);
+    }
   }
   return out;
 }
@@ -155,10 +164,10 @@ smithy::Outcome<GetCityOutput> DeserializeGetCityOutput(const smithy::Document& 
 smithy::Document SerializeListCitiesInput(const ListCitiesInput& value) {
   smithy::DocumentMap map;
   if (value.nextToken.has_value()) {
-    map.emplace("nextToken", smithy::Document(*value.nextToken));
+    map.emplace("nextToken", smithy::Document((*value.nextToken)));
   }
   if (value.pageSize.has_value()) {
-    map.emplace("pageSize", smithy::Document(static_cast<std::int64_t>(*value.pageSize)));
+    map.emplace("pageSize", smithy::Document(static_cast<std::int64_t>((*value.pageSize))));
   }
   return smithy::Document(std::move(map));
 }
@@ -246,7 +255,7 @@ smithy::Outcome<std::vector<CitySummary>> DeserializeCitySummaries(const smithy:
 smithy::Document SerializeListCitiesOutput(const ListCitiesOutput& value) {
   smithy::DocumentMap map;
   if (value.nextToken.has_value()) {
-    map.emplace("nextToken", smithy::Document(*value.nextToken));
+    map.emplace("nextToken", smithy::Document((*value.nextToken)));
   }
   map.emplace("items", SerializeCitySummaries(value.items));
   return smithy::Document(std::move(map));

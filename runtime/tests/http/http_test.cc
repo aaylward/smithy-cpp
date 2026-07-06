@@ -55,8 +55,34 @@ TEST(UriTest, BuildsQueryStrings) {
   EXPECT_EQ(query.ToString(), "");
   query.Add("pageSize", "10");
   query.Add("filter", "a b&c");
-  query.Add("flag", "");
-  EXPECT_EQ(query.ToString(), "?pageSize=10&filter=a%20b%26c&flag");
+  query.Add("empty", "");
+  query.AddFlag("flag");
+  EXPECT_EQ(query.ToString(), "?pageSize=10&filter=a%20b%26c&empty=&flag");
+}
+
+TEST(HeadersTest, SplitHeaderListValues) {
+  EXPECT_EQ(SplitHeaderListValues("a, b,c"), (std::vector<std::string>{"a", "b", "c"}));
+  EXPECT_EQ(SplitHeaderListValues("one"), (std::vector<std::string>{"one"}));
+  EXPECT_EQ(SplitHeaderListValues("a, ,b"), (std::vector<std::string>{"a", "", "b"}));
+  EXPECT_EQ(SplitHeaderListValues(""), (std::vector<std::string>{""}));
+}
+
+TEST(HeadersTest, SplitHttpDateHeaderValues) {
+  EXPECT_EQ(
+      SplitHttpDateHeaderValues("Mon, 16 Dec 2019 23:48:18 GMT, Mon, 16 Dec 2019 23:48:18 GMT"),
+      (std::vector<std::string>{"Mon, 16 Dec 2019 23:48:18 GMT", "Mon, 16 Dec 2019 23:48:18 GMT"}));
+  EXPECT_EQ(SplitHttpDateHeaderValues("Mon, 16 Dec 2019 23:48:18 GMT"),
+            (std::vector<std::string>{"Mon, 16 Dec 2019 23:48:18 GMT"}));
+  EXPECT_TRUE(SplitHttpDateHeaderValues("").empty());
+}
+
+TEST(UriTest, QueryStringHasMatchesRawKeys) {
+  QueryString query;
+  EXPECT_FALSE(query.Has("a b"));
+  query.Add("a b", "1");
+  EXPECT_TRUE(query.Has("a b")) << "keys compare pre-encoding";
+  EXPECT_FALSE(query.Has("a%20b"));
+  EXPECT_FALSE(query.Has("other"));
 }
 
 TEST(UriTest, ParsesRequestTargets) {

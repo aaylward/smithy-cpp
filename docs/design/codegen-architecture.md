@@ -21,11 +21,14 @@ smithy-rs's `codegen-core` structure (PLAN §3.2a).
 | `ProtocolSupport` | Shared protocol emission: error deserialization + code sanitization, `@idempotencyToken` auto-fill, header/query to-string conversion |
 | `ClientGenerator` | `client.h`/`src/client.cc`: `<Service>Client` with `Create(ClientConfig)` and one method per operation |
 | `BuildFileGenerator` | The generated module's `BUILD.bazel` (buildifier-clean, sorted deps) |
+| `ProtocolTestGenerator` | GoogleTest conformance suites from `smithy.test#httpRequestTests`/`#httpResponseTests` (client cases, incl. error shapes), with the must-shrink exclusion list in `resources/.../protocol-test-exclusions.txt` |
+| `NodeLiteralGenerator` / `CppLiterals` | Protocol-test `params` nodes → C++ literals constructing generated types |
 | `CppCodegenRunner` | CLI main used by the `generateFixtures` Gradle task (generation without smithy-build) |
 
 Shapes are generated in topological order (a DirectedCodegen guarantee), so the single
 `include/<ns>/types.h` needs no forward declarations. Recursive shapes are rejected at the door
-until boxed-recursion support lands (tracked for Phase 3).
+until boxed-recursion support lands (tracked in PLAN; the protocol-test suites prune their
+recursive-shape operations for the same reason).
 
 ## Golden strategy: checked-in generated fixtures
 
@@ -45,10 +48,26 @@ the repo** and serves three purposes at once:
 This is smithy-rs's `codegen-*-test` generate→compile→run pipeline with the golden check folded
 in; Phases 3–5 extend it to clients, servers, and the integration harness.
 
+## Official protocol conformance suites
+
+`gradle generateProtocolTests` regenerates `protocol-tests/{restjson1,rpcv2cbor}/generated` from
+the published `smithy-aws-protocol-tests` / `smithy-protocol-tests` models: a normal generated
+module (types/serde/client) plus `tests/{request,response}_tests.cc` GoogleTest suites derived
+from the `httpRequestTests`/`httpResponseTests` traits (~240 cases green in CI). Two must-shrink
+escape hatches, both with reasons in-repo:
+
+- **Pruned operations** (`build.gradle.kts` task args): operations using bindings the generator
+  does not implement yet (`@httpPayload`, `@httpPrefixHeaders`, `@httpResponseCode`, recursion,
+  streaming) are removed from the model before generation.
+- **Excluded cases** (`protocol-test-exclusions.txt`): individually skipped tests
+  (`@default` population, NaN output equality, quoted-string list headers, …); stale entries
+  fail generation, and the skipped ids are echoed into the generated file header.
+
 ## Regenerating
 
 ```sh
-cd codegen && gradle generateFixtures   # rewrites examples/{weather,cafe}/generated
+cd codegen && gradle generateFixtures        # rewrites examples/{weather,cafe}/generated
+cd codegen && gradle generateProtocolTests   # rewrites protocol-tests/*/generated
 ```
 
 Determinism is a hard requirement (sorted includes, model-order members, stable map iteration);

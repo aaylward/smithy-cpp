@@ -62,12 +62,13 @@ jobs:
       - name: gradle build
         run: gradle build spotlessCheck
         working-directory: codegen
-      # The checked-in generated code under examples/*/generated is the golden
-      # output; regeneration must be byte-identical.
+      # The checked-in generated code under examples/*/generated and
+      # protocol-tests/ is the golden output; regeneration must be
+      # byte-identical.
       - name: check generated fixtures are current
         run: |
-          (cd codegen && gradle generateFixtures)
-          git diff --exit-code -- examples
+          (cd codegen && gradle generateFixtures generateProtocolTests)
+          git diff --exit-code -- examples protocol-tests
 
   lint:
     name: lint

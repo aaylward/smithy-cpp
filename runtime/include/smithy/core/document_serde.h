@@ -20,6 +20,16 @@ Outcome<Timestamp> TimestampFromDocument(const Document& doc, TimestampFormat fo
 // Accepts a blob node (CBOR byte string) or a base64 string (JSON).
 Outcome<Blob> BlobFromDocument(const Document& doc);
 
+// Accepts a number, or the Smithy JSON non-finite encodings "NaN",
+// "Infinity", "-Infinity".
+Outcome<double> DoubleFromDocument(const Document& doc);
+
+// Shortest round-trip decimal text (std::to_chars); non-finite values render
+// as the Smithy wire spellings "NaN" / "Infinity" / "-Infinity". Used for
+// HTTP label/query/header bindings and JSON bodies.
+std::string FormatDouble(double value);
+std::string FormatFloat(float value);
+
 }  // namespace smithy
 
 #endif  // SMITHY_CORE_DOCUMENT_SERDE_H_

@@ -1,5 +1,6 @@
 #include "smithy/json/json.h"
 
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <nlohmann/json.hpp>
@@ -13,7 +14,13 @@ nlohmann::json ToBackend(const Document& doc) {
   if (doc.is_null()) return nullptr;
   if (doc.is_bool()) return doc.as_bool();
   if (doc.is_int()) return doc.as_int();
-  if (doc.is_double()) return doc.as_double();
+  if (doc.is_double()) {
+    const double value = doc.as_double();
+    // Smithy JSON protocols encode non-finite numbers as strings.
+    if (std::isnan(value)) return "NaN";
+    if (std::isinf(value)) return value > 0 ? "Infinity" : "-Infinity";
+    return value;
+  }
   if (doc.is_string()) return doc.as_string();
   if (doc.is_blob()) return Base64Encode(doc.as_blob());
   if (doc.is_timestamp()) {

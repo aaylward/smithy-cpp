@@ -12,7 +12,7 @@
 #include "smithy/core/document.h"
 #include "smithy/core/outcome.h"
 
-namespace example::weather {
+namespace example::weather::handwritten {
 
 struct CityCoordinates {
   double latitude = 0;
@@ -84,6 +84,6 @@ smithy::Outcome<GetCurrentTimeOutput> DeserializeGetCurrentTimeOutput(const smit
 // Modeled error code shared by client and server ("NoSuchResource" per model).
 inline constexpr char kNoSuchResourceCode[] = "NoSuchResource";
 
-}  // namespace example::weather
+}  // namespace example::weather::handwritten
 
 #endif  // SMITHY_EXAMPLES_WEATHER_HANDWRITTEN_WEATHER_TYPES_H_

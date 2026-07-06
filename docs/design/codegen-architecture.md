@@ -12,8 +12,15 @@ smithy-rs's `codegen-core` structure (PLAN §3.2a).
 | `CppSettings` | Plugin settings: `service`, C++ `namespace`, `runtimeTarget` (Bazel label of `//runtime:core` / `@smithy_cpp//runtime:core`) |
 | `CppSymbolProvider` | Shape → C++ type mapping (docs/generated-types.md). A `Symbol`'s name is the full C++ type text; required `#include`s ride along in a symbol property |
 | `CppWriter` | `SymbolWriter` per generated file: collects includes while the body is written, renders header comment + `#pragma once` + sorted includes + namespace wrapper. Byte deterministic |
-| `DirectedCppCodegen` | Implements `DirectedCodegen`; Phase 2 handles structure/error/union/enum/intEnum directives and emits the module BUILD file from the service directive |
+| `DirectedCppCodegen` | Implements `DirectedCodegen`; handles structure/error/union/enum/intEnum directives, then (service directive) resolves the protocol and drives serde → client → BUILD generation |
 | `TypeGenerators` | The actual C++ emission for data shapes |
+| `SerdeGenerator` / `SerdeCodeGen` | `serde.h`/`src/serde.cc`: per-shape `Serialize*`/`Deserialize*` functions over the `smithy::Document` pivot, in topological order (`TopologicalIndex`) |
+| `ProtocolGenerator` (interface) | Per-protocol request building + response/error handling emission; `resolveProtocol` picks the implementation from the service's protocol traits |
+| `RestJson1Protocol` | `aws.protocols#restJson1`: HTTP bindings via `HttpBindingIndex` (labels incl. greedy, query, headers, status), JSON bodies |
+| `Rpcv2CborProtocol` | `smithy.protocols#rpcv2Cbor`: fixed `/service/{S}/operation/{O}` target, `smithy-protocol` header, CBOR bodies |
+| `ProtocolSupport` | Shared protocol emission: error deserialization + code sanitization, `@idempotencyToken` auto-fill, header/query to-string conversion |
+| `ClientGenerator` | `client.h`/`src/client.cc`: `<Service>Client` with `Create(ClientConfig)` and one method per operation |
+| `BuildFileGenerator` | The generated module's `BUILD.bazel` (buildifier-clean, sorted deps) |
 | `CppCodegenRunner` | CLI main used by the `generateFixtures` Gradle task (generation without smithy-build) |
 
 Shapes are generated in topological order (a DirectedCodegen guarantee), so the single
@@ -29,9 +36,11 @@ the repo** and serves three purposes at once:
    every generator change shows its blast radius in review.
 2. **Compile test** — the generated `BUILD.bazel`/`types.h` build as ordinary Bazel targets in
    `bazel test //...` on every platform, warning-clean.
-3. **Behavior test** — hand-written GoogleTests (`examples/*/generated_types_test.cc`) pin the
-   generated API's semantics: enum unknown-value preservation, union accessors, equality,
-   optionality.
+3. **Behavior test** — hand-written GoogleTests pin the generated API's semantics:
+   `examples/*/generated_types_test.cc` (enums, unions, equality, optionality),
+   `examples/cafe/generated_client_test.cc` (wire-level rpcv2Cbor request/response shape against
+   a capturing mock transport), and `examples/weather/generated_client_e2e_test.cc` (generated
+   restJson1 client against the Phase 1 hand-written server over loopback and real sockets).
 
 This is smithy-rs's `codegen-*-test` generate→compile→run pipeline with the golden check folded
 in; Phases 3–5 extend it to clients, servers, and the integration harness.

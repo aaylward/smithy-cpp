@@ -36,6 +36,18 @@ cc_test(
 )
 
 cc_test(
+    name = "generated_client_e2e_test",
+    size = "small",
+    srcs = ["generated_client_e2e_test.cc"],
+    tags = ["requires-network"],
+    deps = [
+        ":weather_handwritten",
+        "//examples/weather/generated:client",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "weather_e2e_test",
     size = "small",
     srcs = ["handwritten/weather_e2e_test.cc"],

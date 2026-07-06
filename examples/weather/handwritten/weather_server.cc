@@ -6,7 +6,7 @@
 
 #include "smithy/json/json.h"
 
-namespace example::weather {
+namespace example::weather::handwritten {
 namespace {
 
 using smithy::Document;
@@ -87,4 +87,4 @@ smithy::http::RequestHandler WeatherService::Handler() const {
   return [router](const HttpRequest& request) { return router->Route(request); };
 }
 
-}  // namespace example::weather
+}  // namespace example::weather::handwritten

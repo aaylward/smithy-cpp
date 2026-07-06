@@ -7,7 +7,7 @@
 #include "smithy/http/transport.h"
 #include "smithy/server/router.h"
 
-namespace example::weather {
+namespace example::weather::handwritten {
 
 // Hand-written mirror of the generated server scaffold (PLAN Phase 4): users
 // implement this interface; the service owns routing and serialization.
@@ -35,6 +35,6 @@ class WeatherService {
   std::shared_ptr<smithy::server::Router> router_;
 };
 
-}  // namespace example::weather
+}  // namespace example::weather::handwritten
 
 #endif  // SMITHY_EXAMPLES_WEATHER_HANDWRITTEN_WEATHER_SERVER_H_

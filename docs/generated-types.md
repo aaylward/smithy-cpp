@@ -1,7 +1,7 @@
 # Generated types: the Smithy → C++ mapping contract
 
-What `cpp-codegen` emits per shape (Phase 2 scope: data types). This is a compatibility
-contract: changes to it are breaking for consumers of generated code.
+What `cpp-codegen` emits per shape (Phase 2: data types; Phase 3: serde + clients). This is a
+compatibility contract: changes to it are breaking for consumers of generated code.
 
 ## Type mapping
 
@@ -31,9 +31,10 @@ contract: changes to it are breaking for consumers of generated code.
 - **Optionality**: `@required` members map to the plain type; everything else is
   `std::optional<T>`.
 - **Docs**: `@documentation` becomes `///` comments.
-- **Files**: one `include/<namespace path>/types.h` per module plus a generated `BUILD.bazel`
-  exposing `cc_library ":types"` that depends on the smithy-cpp runtime (`runtimeTarget`
-  setting).
+- **Files**: per module, `include/<namespace path>/types.h`, `serde.h` + `src/serde.cc`,
+  `client.h` + `src/client.cc`, and a generated `BUILD.bazel` exposing `cc_library ":types"`
+  and `":client"` targets that depend on the smithy-cpp runtime (`runtimeTarget` /
+  `runtimePackage` settings).
 
 ## Enums
 
@@ -66,4 +67,42 @@ class MilkOption {
 ```
 
 Backed by `std::variant<std::monostate, ...members>` — index-addressed, so duplicate member
-target types are fine. Unknown-member tolerance on the wire is a Phase 3 serde concern.
+target types are fine.
+
+## Serde (Phase 3)
+
+`serde.h`/`src/serde.cc` emit one pair of free functions per aggregate shape reachable from an
+operation:
+
+```cpp
+smithy::Document SerializeOrderCoffeeInput(const OrderCoffeeInput& value);
+smithy::Outcome<OrderCoffeeInput> DeserializeOrderCoffeeInput(const smithy::Document& value);
+```
+
+- **Pivot type**: `smithy::Document` — protocol-independent; the client picks the JSON or CBOR
+  codec at the wire boundary, so serde is generated once per shape, not once per protocol.
+- **Tolerant reads**: unknown response members are ignored; unknown enum values are preserved
+  (`Value::kUnknown` + original text). Missing `@required` members produce a
+  `smithy::ErrorKind::kSerialization` error naming the member.
+- **Sparse** lists/maps serialize `std::nullopt` as explicit nulls; timestamps honor
+  `@timestampFormat` with the protocol default applied where unspecified.
+
+## Clients (Phase 3)
+
+`client.h`/`src/client.cc` emit a `<Service>Client` per service:
+
+```cpp
+auto client = WeatherClient::Create(std::move(config));   // Outcome; validates config
+auto city   = client->GetCity(GetCityInput{.cityId = "seattle"});  // Outcome<GetCityOutput>
+```
+
+- **Transport-agnostic**: `smithy::ClientConfig` supplies either an `endpoint` (uses the default
+  socket transport) or an explicit `http_client` (loopback for tests, Beast, custom).
+- **Protocol binding** is chosen at generation time from the service's protocol trait:
+  restJson1 (HTTP bindings: labels, query, headers, status codes) or rpcv2Cbor
+  (`POST /service/{S}/operation/{O}`, `smithy-protocol: rpc-v2-cbor`, CBOR bodies).
+- `@idempotencyToken` members are auto-filled with a UUIDv4 when unset; caller-provided values
+  pass through untouched.
+- HTTP 4xx/5xx map to `smithy::ErrorKind::kModeled` with the sanitized error code
+  (`ns#Shape` → `Shape`); 5xx and `@retryable` errors are marked retryable. Typed error
+  structures land in Phase 3b.

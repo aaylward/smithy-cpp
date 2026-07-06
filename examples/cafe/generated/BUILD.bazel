@@ -10,3 +10,23 @@ cc_library(
     includes = ["include"],
     deps = ["//runtime:core"],
 )
+
+cc_library(
+    name = "client",
+    srcs = [
+        "src/client.cc",
+        "src/serde.cc",
+    ],
+    hdrs = [
+        "include/example/cafe/client.h",
+        "include/example/cafe/serde.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":types",
+        "//runtime:cbor",
+        "//runtime:client",
+        "//runtime:core",
+        "//runtime:http",
+    ],
+)

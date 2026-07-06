@@ -9,7 +9,7 @@
 #include "smithy/core/outcome.h"
 #include "smithy/http/uri.h"
 
-namespace example::weather {
+namespace example::weather::handwritten {
 
 // Hand-written mirror of the generated restJson1 client (PLAN Phase 3).
 // Modeled errors surface as Error with kind kModeled and code() equal to the
@@ -39,6 +39,6 @@ class WeatherClient {
   std::string path_prefix_;
 };
 
-}  // namespace example::weather
+}  // namespace example::weather::handwritten
 
 #endif  // SMITHY_EXAMPLES_WEATHER_HANDWRITTEN_WEATHER_CLIENT_H_

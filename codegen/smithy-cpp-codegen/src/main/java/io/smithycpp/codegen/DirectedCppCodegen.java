@@ -42,8 +42,36 @@ public final class DirectedCppCodegen
 
   @Override
   public void generateService(GenerateServiceDirective<CppContext, CppSettings> directive) {
-    // Client/server generation lands in Phases 3-4; Phase 2 emits the module's BUILD file.
-    BuildFileGenerator.run(directive.context());
+    software.amazon.smithy.model.shapes.ServiceShape service = directive.shape();
+    ProtocolGenerator protocol = resolveProtocol(service);
+
+    SerdeGenerator serdeGenerator = new SerdeGenerator(directive.context());
+    boolean hasSerde = !serdeGenerator.serdeShapes().isEmpty();
+    if (hasSerde) {
+      serdeGenerator.run();
+    }
+
+    boolean hasClient = false;
+    if (protocol != null) {
+      ClientGenerator clientGenerator = new ClientGenerator(directive.context(), service, protocol);
+      if (!clientGenerator.operations().isEmpty()) {
+        clientGenerator.run();
+        hasClient = true;
+      }
+    }
+    BuildFileGenerator.run(directive.context(), protocol, hasClient, hasSerde);
+  }
+
+  /** Null when the service declares no supported protocol (types+serde still generate). */
+  private static ProtocolGenerator resolveProtocol(
+      software.amazon.smithy.model.shapes.ServiceShape service) {
+    if (service.hasTrait(software.amazon.smithy.aws.traits.protocols.RestJson1Trait.class)) {
+      return new RestJson1Protocol();
+    }
+    if (service.hasTrait(software.amazon.smithy.protocol.traits.Rpcv2CborTrait.class)) {
+      return new Rpcv2CborProtocol();
+    }
+    return null;
   }
 
   @Override

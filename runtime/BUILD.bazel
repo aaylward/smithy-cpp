@@ -102,7 +102,10 @@ cc_test(
 # only need the client, loopback, or test transports don't pull in Boost.
 cc_library(
     name = "http_beast",
-    srcs = ["src/http/beast_transport.cc"],
+    srcs = [
+        "src/http/beast_src.cc",
+        "src/http/beast_transport.cc",
+    ],
     hdrs = ["include/smithy/http/beast_transport.h"],
     copts = COPTS,
     defines = select({

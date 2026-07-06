@@ -74,17 +74,23 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      # Boost headers so clang-tidy can process the Beast transport.
+      - name: install boost headers
+        run: sudo apt-get update -q && sudo apt-get install -y -q libboost-dev
       # Generated code (examples/*/generated) is exempt from format checks;
       # its shape is locked by the golden diff check in the codegen job.
       - name: clang-format
         run: |
           find runtime examples \( -name '*.h' -o -name '*.cc' \) ! -path '*/generated/*' \
             | xargs clang-format --dry-run --Werror
-      # src/json/json.cc is excluded: it includes the nlohmann backend, which
-      # only exists inside the Bazel build graph.
+      # Excluded from tidy: src/json/json.cc includes the nlohmann backend,
+      # which only exists inside the Bazel build graph; beast_src.cc is the
+      # Boost implementation TU and only compiles with the BCR modules'
+      # BOOST_*_SEPARATE_COMPILATION defines (no first-party code in it).
       - name: clang-tidy
         run: |
           find runtime/src examples -name '*.cc' ! -name '*_test.cc' ! -path '*/src/json/*' \
-            -print0 | xargs -0 -I{} clang-tidy --quiet {} -- -Iruntime/include -I. -std=c++20
+            ! -name 'beast_src.cc' -print0 \
+            | xargs -0 -I{} clang-tidy --quiet {} -- -Iruntime/include -I. -std=c++20
       - name: buildifier
         run: npx -y @bazel/buildifier@8.2.1 --lint=warn --mode=check -r .

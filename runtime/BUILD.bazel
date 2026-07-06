@@ -98,6 +98,46 @@ cc_test(
     ],
 )
 
+# Production server transport (ADR-0006). Separate target so consumers that
+# only need the client, loopback, or test transports don't pull in Boost.
+cc_library(
+    name = "http_beast",
+    srcs = [
+        "src/http/beast_src.cc",
+        "src/http/beast_transport.cc",
+    ],
+    hdrs = ["include/smithy/http/beast_transport.h"],
+    copts = COPTS,
+    defines = select({
+        "@platforms//os:windows": ["_WIN32_WINNT=0x0A00"],
+        "//conditions:default": [],
+    }),
+    includes = ["include"],
+    # Static only: Bazel's dynamic test linking would put the asio/beast
+    # implementation (beast_src.cc) in a .so whose vague-linkage typeinfo
+    # duplicates the consumers' — ASan flags that as an ODR violation.
+    linkstatic = True,
+    deps = [
+        ":core",
+        ":http",
+        "@boost.asio",
+        "@boost.beast",
+    ],
+)
+
+cc_test(
+    name = "beast_transport_test",
+    size = "small",
+    srcs = ["tests/http/beast_transport_test.cc"],
+    copts = COPTS,
+    tags = ["requires-network"],
+    deps = [
+        ":http",
+        ":http_beast",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "client",
     hdrs = ["include/smithy/client/config.h"],

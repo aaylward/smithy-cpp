@@ -29,5 +29,8 @@ Checks: >
   -readability-function-cognitive-complexity,
   -readability-else-after-return
 WarningsAsErrors: "*"
+CheckOptions:
+  - key: bugprone-unused-return-value.AllowCastToVoid
+    value: true
 HeaderFilterRegex: "runtime/include/.*"
 FormatStyle: file

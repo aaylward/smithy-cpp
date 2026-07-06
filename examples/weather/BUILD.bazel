@@ -45,3 +45,18 @@ cc_test(
         "@googletest//:gtest_main",
     ],
 )
+
+# Same e2e suite with the production Beast transport as a third variant.
+# Separate target so the Boost dependency stays out of the dep-light tests.
+cc_test(
+    name = "weather_e2e_beast_test",
+    size = "small",
+    srcs = ["handwritten/weather_e2e_test.cc"],
+    defines = ["SMITHY_E2E_HAVE_BEAST"],
+    tags = ["requires-network"],
+    deps = [
+        ":weather_handwritten",
+        "//runtime:http_beast",
+        "@googletest//:gtest_main",
+    ],
+)

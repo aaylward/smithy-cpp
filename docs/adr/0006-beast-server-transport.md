@@ -1,6 +1,6 @@
 # ADR-0006: Boost.Beast is the production server transport
 
-**Status:** Accepted (2026-07-06). Amends ADR-0005.
+**Status:** Accepted (2026-07-06). Amends ADR-0005. Implemented: `//runtime:http_beast` (`BeastServerTransport`).
 
 ## Context
 

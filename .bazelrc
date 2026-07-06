@@ -21,12 +21,15 @@ build:asan --copt=-g
 build:asan --linkopt=-fsanitize=address
 
 # UndefinedBehaviorSanitizer: bazel test //... --config=ubsan
+# Assumes clang (CC=clang CXX=clang++): Bazel links through the C driver, which
+# omits the UBSan C++ runtime (vptr checks) unless asked for it explicitly.
 build:ubsan --strip=never
 build:ubsan --copt=-fsanitize=undefined
 build:ubsan --copt=-fno-sanitize-recover=all
 build:ubsan --copt=-g
 build:ubsan --linkopt=-fsanitize=undefined
 build:ubsan --linkopt=-fno-sanitize-recover=all
+build:ubsan --linkopt=-fsanitize-link-c++-runtime
 
 # CI settings.
 build:ci --announce_rc --verbose_failures

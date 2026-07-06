@@ -75,6 +75,4 @@ jobs:
         run: |
           clang-tidy runtime/src/core/version.cc -- -Iruntime/include -std=c++20
       - name: buildifier
-        run: |
-          npm install -g @bazel/buildifier@8.2.1
-          buildifier --lint=warn --mode=check -r .
+        run: npx -y @bazel/buildifier@8.2.1 --lint=warn --mode=check -r .

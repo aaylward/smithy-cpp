@@ -50,3 +50,8 @@ cd codegen && gradle spotlessApply
   codegen and the client↔server integration harness (PLAN Phases 2–5).
 - Machine-specific Bazel flags go in `.bazelrc.user` (gitignored), e.g. a
   `--downloader_config` when working behind a proxy that blocks GitHub downloads.
+- The Boost-dependent targets (`//runtime:http_beast` and the tests that use it) fetch ~30
+  modular Boost archives. Behind a proxy that blocks GitHub they won't fetch; exclude them and
+  run everything else with
+  `bazel test //... -- -//runtime:http_beast -//runtime:beast_transport_test -//examples/weather:weather_e2e_beast_test`
+  (the Beast code can still be exercised against system Boost headers with plain g++).

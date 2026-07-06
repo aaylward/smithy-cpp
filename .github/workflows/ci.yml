@@ -74,6 +74,9 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      # Boost headers so clang-tidy can process the Beast transport.
+      - name: install boost headers
+        run: sudo apt-get update -q && sudo apt-get install -y -q libboost-dev
       # Generated code (examples/*/generated) is exempt from format checks;
       # its shape is locked by the golden diff check in the codegen job.
       - name: clang-format

@@ -10,7 +10,8 @@ crates (PLAN §3.2a).
 | `//runtime:core` | `smithy` | `Outcome<T, E>` + `Error` (ADR-0003), `Blob`, `Timestamp` (epoch-seconds / RFC 3339 date-time / IMF-fixdate http-date), `Document` (dynamic value + serde pivot), base64 |
 | `//runtime:json` | `smithy::json` | `Document` ⇄ JSON text via nlohmann (blobs as base64, timestamps per stored format) |
 | `//runtime:cbor` | `smithy::cbor` | `Document` ⇄ deterministic CBOR (RFC 8949; tag-1 timestamps; tolerant decoder) — ADR-0005 |
-| `//runtime:http` | `smithy::http` | `Headers` (case-insensitive), URI percent-encoding per the Smithy HTTP binding rules, `HttpRequest`/`HttpResponse`, `HttpClient`/`HttpServerTransport` interfaces, `Loopback` in-memory transport, built-in `SocketHttpClient`/`SocketHttpServer` (test/reference only — ADR-0006; the production `BeastServerTransport` on BCR modular Boost.Beast is the next runtime addition) |
+| `//runtime:http` | `smithy::http` | `Headers` (case-insensitive), URI percent-encoding per the Smithy HTTP binding rules, `HttpRequest`/`HttpResponse`, `HttpClient`/`HttpServerTransport` interfaces, `Loopback` in-memory transport, built-in `SocketHttpClient`/`SocketHttpServer` (test/reference only — ADR-0006) |
+| `//runtime:http_beast` | `smithy::http` | `BeastServerTransport` (ADR-0006): the production server transport on BCR modular Boost.Beast/asio — concurrent connections on a thread pool, keep-alive, per-connection timeouts, body-size limits, graceful shutdown. Separate target so Boost stays out of dep-light builds |
 | `//runtime:client` | `smithy` | `ClientConfig` (endpoint, timeout, user-agent, transport injection) |
 | `//runtime:server` | `smithy::server` | `Router` (literal > label > greedy precedence, 404/405/400), `RequestContext`, `MakeErrorResponse`, `ValidationFailure` |
 

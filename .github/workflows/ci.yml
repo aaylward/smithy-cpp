@@ -62,15 +62,24 @@ jobs:
       - name: gradle build
         run: gradle build spotlessCheck
         working-directory: codegen
+      # The checked-in generated code under examples/*/generated is the golden
+      # output; regeneration must be byte-identical.
+      - name: check generated fixtures are current
+        run: |
+          (cd codegen && gradle generateFixtures)
+          git diff --exit-code -- examples
 
   lint:
     name: lint
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      # Generated code (examples/*/generated) is exempt from format checks;
+      # its shape is locked by the golden diff check in the codegen job.
       - name: clang-format
         run: |
-          find runtime -name '*.h' -o -name '*.cc' | xargs clang-format --dry-run --Werror
+          find runtime examples \( -name '*.h' -o -name '*.cc' \) ! -path '*/generated/*' \
+            | xargs clang-format --dry-run --Werror
       # src/json/json.cc is excluded: it includes the nlohmann backend, which
       # only exists inside the Bazel build graph.
       - name: clang-tidy

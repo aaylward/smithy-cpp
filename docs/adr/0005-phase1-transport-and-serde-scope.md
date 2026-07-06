@@ -1,6 +1,8 @@
 # ADR-0005: Phase 1 transport and serde implementation choices
 
-**Status:** Accepted (2026-07-06)
+**Status:** Accepted (2026-07-06). Amended by ADR-0006: the built-in socket transport is now a
+test/reference transport only; Boost.Beast (BCR modular Boost) is the supported server
+transport for generated services.
 
 ## Context
 

@@ -1,0 +1,13 @@
+load("@rules_cc//cc:defs.bzl", "cc_test")
+
+# Behavior tests for the generated cafe types (rpcv2Cbor fixture model).
+
+cc_test(
+    name = "generated_types_test",
+    size = "small",
+    srcs = ["generated_types_test.cc"],
+    deps = [
+        "//examples/cafe/generated:types",
+        "@googletest//:gtest_main",
+    ],
+)

@@ -617,8 +617,11 @@ Vendor-specific traits and auth schemes remain out of scope entirely (§2), not 
 2. Async model for 0.1: `std::future` now, coroutine (`co_await`) client in a later minor —
    confirm in Phase 3 design; revisit when designing the Phase 8 streaming API.
 3. Minimum compiler floor: proposal gcc 11 / clang 14 / MSVC 19.30 — confirm in Phase 0.
-4. Whether server transport ships Beast-only or also a plain-asio minimal HTTP/1.1 impl to cut
-   the Boost dependency — decide in Phase 1 after prototyping.
+4. ~~Whether server transport ships Beast-only or also a plain-asio minimal HTTP/1.1 impl.~~
+   **Resolved (ADR-0006):** Boost.Beast via the BCR's modular `boost.beast` is the supported
+   server transport (asio concurrency, TLS path via `boringssl`, `beast::websocket` for
+   Phase 8); libcurl (BCR) remains the planned production client transport. The Phase 1
+   built-in socket transport is retained as a zero-dependency test/reference transport only.
 
 ---
 

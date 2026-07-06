@@ -1,0 +1,20 @@
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "core",
+    srcs = ["src/core/version.cc"],
+    hdrs = ["include/smithy/core/version.h"],
+    includes = ["include"],
+)
+
+cc_test(
+    name = "core_test",
+    size = "small",
+    srcs = ["tests/core/version_test.cc"],
+    deps = [
+        ":core",
+        "@googletest//:gtest_main",
+    ],
+)

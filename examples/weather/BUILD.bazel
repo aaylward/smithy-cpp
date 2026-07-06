@@ -26,6 +26,16 @@ cc_library(
 )
 
 cc_test(
+    name = "generated_types_test",
+    size = "small",
+    srcs = ["generated_types_test.cc"],
+    deps = [
+        "//examples/weather/generated:types",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "weather_e2e_test",
     size = "small",
     srcs = ["handwritten/weather_e2e_test.cc"],

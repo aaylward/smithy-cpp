@@ -1,0 +1,140 @@
+// Phase 1 exit criterion (PLAN §Phase 1): a hand-written weather client and
+// server, both built on the runtime, complete real requests over an in-memory
+// loopback AND real TCP sockets — with the same test body.
+
+#include <gtest/gtest.h>
+
+#include <memory>
+#include <string>
+
+#include "examples/weather/handwritten/weather_client.h"
+#include "examples/weather/handwritten/weather_server.h"
+#include "smithy/http/loopback.h"
+#include "smithy/http/socket_transport.h"
+
+namespace example::weather {
+namespace {
+
+// Reference handler: two cities, deterministic time.
+class ReferenceHandler final : public WeatherHandler {
+ public:
+  smithy::Outcome<GetCityOutput> GetCity(const GetCityInput& input) override {
+    if (input.cityId == "seattle") {
+      return GetCityOutput{"Seattle", CityCoordinates{47.6062, -122.3321}};
+    }
+    if (input.cityId == "rain city") {  // exercises percent-encoded labels
+      return GetCityOutput{"Rain City", CityCoordinates{45.0, -120.0}};
+    }
+    return smithy::Error::Modeled(kNoSuchResourceCode, "no city: " + input.cityId);
+  }
+
+  smithy::Outcome<ListCitiesOutput> ListCities(const ListCitiesInput& input) override {
+    ListCitiesOutput out;
+    if (!input.nextToken.has_value()) {
+      out.items.push_back(CitySummary{"seattle", "Seattle"});
+      if (input.pageSize.value_or(2) < 2) {
+        out.nextToken = "page-2";
+        return out;
+      }
+    }
+    out.items.push_back(CitySummary{"rain city", "Rain City"});
+    return out;
+  }
+
+  smithy::Outcome<GetForecastOutput> GetForecast(const GetForecastInput& input) override {
+    if (input.cityId != "seattle") {
+      return smithy::Error::Modeled(kNoSuchResourceCode, "no city: " + input.cityId);
+    }
+    return GetForecastOutput{0.75};
+  }
+
+  smithy::Outcome<GetCurrentTimeOutput> GetCurrentTime() override {
+    return GetCurrentTimeOutput{smithy::Timestamp::FromEpochMilliseconds(1398796238500)};
+  }
+};
+
+enum class Transport { kLoopback, kSocket };
+
+class WeatherEndToEndTest : public testing::TestWithParam<Transport> {
+ protected:
+  void SetUp() override {
+    service_ = std::make_unique<WeatherService>(std::make_shared<ReferenceHandler>());
+    smithy::ClientConfig config;
+    if (GetParam() == Transport::kLoopback) {
+      auto loopback = std::make_shared<smithy::http::Loopback>();
+      ASSERT_TRUE(loopback->Start(service_->Handler()).ok());
+      transport_holder_ = loopback;
+      config.http_client = loopback;
+    } else {
+      socket_server_ = std::make_unique<smithy::http::SocketHttpServer>();
+      ASSERT_TRUE(socket_server_->Start(service_->Handler()).ok());
+      config.endpoint = "http://127.0.0.1:" + std::to_string(socket_server_->port());
+    }
+    auto client = WeatherClient::Create(std::move(config));
+    ASSERT_TRUE(client.ok()) << client.error().message();
+    client_ = std::make_unique<WeatherClient>(std::move(*client));
+  }
+
+  void TearDown() override {
+    if (socket_server_ != nullptr) socket_server_->Stop();
+  }
+
+  std::unique_ptr<WeatherService> service_;
+  std::shared_ptr<smithy::http::HttpClient> transport_holder_;
+  std::unique_ptr<smithy::http::SocketHttpServer> socket_server_;
+  std::unique_ptr<WeatherClient> client_;
+};
+
+TEST_P(WeatherEndToEndTest, GetCityRoundTrips) {
+  const auto city = client_->GetCity(GetCityInput{"seattle"});
+  ASSERT_TRUE(city.ok()) << city.error().message();
+  EXPECT_EQ(*city, (GetCityOutput{"Seattle", CityCoordinates{47.6062, -122.3321}}));
+}
+
+TEST_P(WeatherEndToEndTest, LabelsWithSpacesAreEncodedCorrectly) {
+  const auto city = client_->GetCity(GetCityInput{"rain city"});
+  ASSERT_TRUE(city.ok()) << city.error().message();
+  EXPECT_EQ(city->name, "Rain City");
+}
+
+TEST_P(WeatherEndToEndTest, ModeledErrorsSurfaceWithCodeAndStatus) {
+  const auto city = client_->GetCity(GetCityInput{"atlantis"});
+  ASSERT_FALSE(city.ok());
+  EXPECT_EQ(city.error().kind(), smithy::ErrorKind::kModeled);
+  EXPECT_EQ(city.error().code(), kNoSuchResourceCode);
+  EXPECT_EQ(city.error().message(), "no city: atlantis");
+}
+
+TEST_P(WeatherEndToEndTest, ListCitiesPaginates) {
+  const auto first = client_->ListCities(ListCitiesInput{std::nullopt, 1});
+  ASSERT_TRUE(first.ok()) << first.error().message();
+  ASSERT_EQ(first->items.size(), 1u);
+  ASSERT_TRUE(first->nextToken.has_value());
+
+  const auto second = client_->ListCities(ListCitiesInput{first->nextToken, 1});
+  ASSERT_TRUE(second.ok());
+  ASSERT_EQ(second->items.size(), 1u);
+  EXPECT_EQ(second->items[0].cityId, "rain city");
+  EXPECT_FALSE(second->nextToken.has_value());
+}
+
+TEST_P(WeatherEndToEndTest, GetForecastReturnsOptionalMember) {
+  const auto forecast = client_->GetForecast(GetForecastInput{"seattle"});
+  ASSERT_TRUE(forecast.ok()) << forecast.error().message();
+  EXPECT_DOUBLE_EQ(forecast->chanceOfRain.value(), 0.75);
+}
+
+TEST_P(WeatherEndToEndTest, GetCurrentTimeRoundTripsTimestamp) {
+  const auto time = client_->GetCurrentTime();
+  ASSERT_TRUE(time.ok()) << time.error().message();
+  EXPECT_EQ(time->time.epoch_milliseconds(), 1398796238500);
+}
+
+INSTANTIATE_TEST_SUITE_P(Transports, WeatherEndToEndTest,
+                         testing::Values(Transport::kLoopback, Transport::kSocket),
+                         [](const testing::TestParamInfo<Transport>& info) {
+                           return info.param == Transport::kLoopback ? "Loopback" : "Sockets";
+                         });
+
+}  // namespace
+}  // namespace example::weather

@@ -2,17 +2,167 @@ load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
+COPTS = select({
+    "@platforms//os:windows": [],
+    "//conditions:default": [
+        "-Wall",
+        "-Wextra",
+    ],
+})
+
 cc_library(
     name = "core",
-    srcs = ["src/core/version.cc"],
-    hdrs = ["include/smithy/core/version.h"],
+    srcs = [
+        "src/core/base64.cc",
+        "src/core/timestamp.cc",
+        "src/core/version.cc",
+    ],
+    hdrs = [
+        "include/smithy/core/base64.h",
+        "include/smithy/core/blob.h",
+        "include/smithy/core/document.h",
+        "include/smithy/core/error.h",
+        "include/smithy/core/outcome.h",
+        "include/smithy/core/timestamp.h",
+        "include/smithy/core/version.h",
+    ],
+    copts = COPTS,
     includes = ["include"],
+)
+
+cc_library(
+    name = "json",
+    srcs = ["src/json/json.cc"],
+    hdrs = ["include/smithy/json/json.h"],
+    copts = COPTS,
+    includes = ["include"],
+    deps = [
+        ":core",
+        "@nlohmann_json//:json",
+    ],
+)
+
+cc_library(
+    name = "cbor",
+    srcs = ["src/cbor/cbor.cc"],
+    hdrs = ["include/smithy/cbor/cbor.h"],
+    copts = COPTS,
+    includes = ["include"],
+    deps = [":core"],
+)
+
+cc_library(
+    name = "http",
+    srcs = [
+        "src/http/headers.cc",
+        "src/http/socket_transport.cc",
+        "src/http/uri.cc",
+    ],
+    hdrs = [
+        "include/smithy/http/headers.h",
+        "include/smithy/http/loopback.h",
+        "include/smithy/http/message.h",
+        "include/smithy/http/socket_transport.h",
+        "include/smithy/http/transport.h",
+        "include/smithy/http/uri.h",
+    ],
+    copts = COPTS,
+    includes = ["include"],
+    linkopts = select({
+        "@platforms//os:windows": ["ws2_32.lib"],
+        "//conditions:default": [],
+    }),
+    deps = [":core"],
+)
+
+cc_test(
+    name = "http_test",
+    size = "small",
+    srcs = ["tests/http/http_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":http",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "socket_transport_test",
+    size = "small",
+    srcs = ["tests/http/socket_transport_test.cc"],
+    copts = COPTS,
+    tags = ["requires-network"],
+    deps = [
+        ":http",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "client",
+    hdrs = ["include/smithy/client/config.h"],
+    copts = COPTS,
+    includes = ["include"],
+    deps = [
+        ":core",
+        ":http",
+    ],
+)
+
+cc_library(
+    name = "server",
+    srcs = ["src/server/router.cc"],
+    hdrs = ["include/smithy/server/router.h"],
+    copts = COPTS,
+    includes = ["include"],
+    deps = [
+        ":core",
+        ":http",
+    ],
+)
+
+cc_test(
+    name = "router_test",
+    size = "small",
+    srcs = ["tests/server/router_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":server",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "json_test",
+    size = "small",
+    srcs = ["tests/json/json_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":json",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "cbor_test",
+    size = "small",
+    srcs = ["tests/cbor/cbor_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":cbor",
+        "@googletest//:gtest_main",
+    ],
 )
 
 cc_test(
     name = "core_test",
     size = "small",
-    srcs = ["tests/core/version_test.cc"],
+    srcs = [
+        "tests/core/core_test.cc",
+        "tests/core/timestamp_test.cc",
+        "tests/core/version_test.cc",
+    ],
+    copts = COPTS,
     deps = [
         ":core",
         "@googletest//:gtest_main",

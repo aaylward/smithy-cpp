@@ -1,0 +1,37 @@
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+
+# Hand-written prototype of the code the Phase 2/3/4 generators will emit for
+# model/weather.smithy; its e2e test is the Phase 1 exit criterion.
+
+cc_library(
+    name = "weather_handwritten",
+    srcs = [
+        "handwritten/weather_client.cc",
+        "handwritten/weather_server.cc",
+        "handwritten/weather_types.cc",
+    ],
+    hdrs = [
+        "handwritten/weather_client.h",
+        "handwritten/weather_server.h",
+        "handwritten/weather_types.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//runtime:client",
+        "//runtime:core",
+        "//runtime:http",
+        "//runtime:json",
+        "//runtime:server",
+    ],
+)
+
+cc_test(
+    name = "weather_e2e_test",
+    size = "small",
+    srcs = ["handwritten/weather_e2e_test.cc"],
+    tags = ["requires-network"],
+    deps = [
+        ":weather_handwritten",
+        "@googletest//:gtest_main",
+    ],
+)

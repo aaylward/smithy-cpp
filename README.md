@@ -15,8 +15,8 @@ See [`docs/PLAN.md`](docs/PLAN.md) for the full phased plan and
 
 | Phase | Scope | Status |
 |---|---|---|
-| 0 | Foundations: Bazel 9 workspace, codegen skeleton, CI, ADRs, fixture models | **In progress** |
-| 1 | C++ runtime library (`smithy/core`, `json`, `cbor`, `http`, `client`, `server`) | Not started |
+| 0 | Foundations: Bazel 9 workspace, codegen skeleton, CI, ADRs, fixture models | ✅ Done |
+| 1 | C++ runtime library (`smithy/core`, `json`, `cbor`, `http`, `client`, `server`) | **In progress** — core delivered ([docs/runtime.md](docs/runtime.md)); curl/TLS transport adapters deferred (ADR-0005) |
 | 2 | Codegen plugin + type generation | Not started |
 | 3 | Client generation (restJson1 + rpcv2Cbor) | Not started |
 | 4 | Server generation (restJson1 + rpcv2Cbor) | Not started |

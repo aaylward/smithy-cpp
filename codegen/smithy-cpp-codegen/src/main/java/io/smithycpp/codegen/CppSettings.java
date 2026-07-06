@@ -63,6 +63,20 @@ public final class CppSettings {
     return "include/" + includePrefix() + "/types.h";
   }
 
+  public String serdeHeaderFile() {
+    return "include/" + includePrefix() + "/serde.h";
+  }
+
+  public String clientHeaderFile() {
+    return "include/" + includePrefix() + "/client.h";
+  }
+
+  /** Bazel package of the runtime, e.g. {@code //runtime} or {@code @smithy_cpp//runtime}. */
+  public String runtimePackage() {
+    int colon = runtimeTarget.lastIndexOf(':');
+    return colon < 0 ? runtimeTarget : runtimeTarget.substring(0, colon);
+  }
+
   @Override
   public boolean equals(Object other) {
     if (!(other instanceof CppSettings that)) {

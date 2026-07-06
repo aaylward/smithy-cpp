@@ -5,7 +5,7 @@
 #include "smithy/http/socket_transport.h"
 #include "smithy/json/json.h"
 
-namespace example::weather {
+namespace example::weather::handwritten {
 namespace {
 
 using smithy::Document;
@@ -100,4 +100,4 @@ smithy::Outcome<GetCurrentTimeOutput> WeatherClient::GetCurrentTime() const {
   return ParseBody(*response, &DeserializeGetCurrentTimeOutput);
 }
 
-}  // namespace example::weather
+}  // namespace example::weather::handwritten

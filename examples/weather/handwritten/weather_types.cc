@@ -1,6 +1,6 @@
 #include "examples/weather/handwritten/weather_types.h"
 
-namespace example::weather {
+namespace example::weather::handwritten {
 namespace {
 
 using smithy::Document;
@@ -125,4 +125,4 @@ Outcome<GetCurrentTimeOutput> DeserializeGetCurrentTimeOutput(const Document& do
   return out;
 }
 
-}  // namespace example::weather
+}  // namespace example::weather::handwritten

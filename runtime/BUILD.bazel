@@ -14,16 +14,20 @@ cc_library(
     name = "core",
     srcs = [
         "src/core/base64.cc",
+        "src/core/document_serde.cc",
         "src/core/timestamp.cc",
+        "src/core/uuid.cc",
         "src/core/version.cc",
     ],
     hdrs = [
         "include/smithy/core/base64.h",
         "include/smithy/core/blob.h",
         "include/smithy/core/document.h",
+        "include/smithy/core/document_serde.h",
         "include/smithy/core/error.h",
         "include/smithy/core/outcome.h",
         "include/smithy/core/timestamp.h",
+        "include/smithy/core/uuid.h",
         "include/smithy/core/version.h",
     ],
     copts = COPTS,
@@ -172,6 +176,51 @@ cc_test(
     ],
 )
 
+# Test-only helpers (random Document generator for property tests).
+cc_library(
+    name = "testing",
+    testonly = True,
+    hdrs = ["tests/testing/random_document.h"],
+    copts = COPTS,
+    includes = ["."],
+    deps = [":core"],
+)
+
+cc_test(
+    name = "cbor_property_test",
+    size = "small",
+    srcs = ["tests/cbor/cbor_property_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":cbor",
+        ":testing",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "json_property_test",
+    size = "small",
+    srcs = ["tests/json/json_property_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":json",
+        ":testing",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "uri_property_test",
+    size = "small",
+    srcs = ["tests/http/uri_property_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":http",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_test(
     name = "json_test",
     size = "small",
@@ -199,6 +248,8 @@ cc_test(
     size = "small",
     srcs = [
         "tests/core/core_test.cc",
+        "tests/core/document_serde_test.cc",
+        "tests/core/timestamp_differential_test.cc",
         "tests/core/timestamp_test.cc",
         "tests/core/version_test.cc",
     ],

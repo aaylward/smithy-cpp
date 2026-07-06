@@ -10,3 +10,23 @@ cc_library(
     includes = ["include"],
     deps = ["//runtime:core"],
 )
+
+cc_library(
+    name = "client",
+    srcs = [
+        "src/client.cc",
+        "src/serde.cc",
+    ],
+    hdrs = [
+        "include/example/weather/client.h",
+        "include/example/weather/serde.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":types",
+        "//runtime:client",
+        "//runtime:core",
+        "//runtime:http",
+        "//runtime:json",
+    ],
+)

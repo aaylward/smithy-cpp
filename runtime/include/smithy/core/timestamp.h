@@ -33,6 +33,8 @@ class Timestamp {
   std::int64_t epoch_milliseconds() const { return ms_; }
   double epoch_seconds() const { return static_cast<double>(ms_) / 1000.0; }
 
+  // String formats are defined for years 0000-9999 (RFC 3339 / IMF-fixdate
+  // four-digit years); instants outside that range produce unparsable text.
   std::string Format(TimestampFormat format) const;
   static Outcome<Timestamp> Parse(std::string_view text, TimestampFormat format);
 

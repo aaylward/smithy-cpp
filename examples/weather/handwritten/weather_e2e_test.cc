@@ -15,7 +15,7 @@
 #include "smithy/http/beast_transport.h"
 #endif
 
-namespace example::weather {
+namespace example::weather::handwritten {
 namespace {
 
 // Reference handler: two cities, deterministic time.
@@ -170,4 +170,4 @@ INSTANTIATE_TEST_SUITE_P(Transports, WeatherEndToEndTest,
 #endif
 
 }  // namespace
-}  // namespace example::weather
+}  // namespace example::weather::handwritten

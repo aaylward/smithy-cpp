@@ -391,6 +391,12 @@ validation, handler dispatch, response serialization.
   assert parsed input) and `httpMalformedRequestTests` (assert 400s) — the malformed-request
   suite is the server's validation conformance test. smithy-rs's `ServerProtocolTestGenerator`
   is the template.
+- **Generated service smoke tests** (user-facing): for every generated service, also emit a
+  ready-to-run GoogleTest target (`:service_smoke_test` + BUILD entry) that spins up the
+  `<Service>Server` with a generated stub handler and calls **every operation** through the
+  generated client over the loopback transport — asserting routing, serde symmetry, required
+  members, and modeled-error mapping end to end. Users get a passing baseline test for their
+  service the moment they generate it, and a natural place to plug in their real handler.
 
 **Testing**
 - Server protocol-test + malformed-request suites for both protocols in CI with exclusion list.
@@ -403,7 +409,8 @@ validation, handler dispatch, response serialization.
 validation behavior reference.
 
 **Exit criteria:** generated weather server (restJson1) and an RPC fixture server (rpcv2Cbor)
-pass server-side protocol tests; hand-written client round-trips against the weather server in CI.
+pass server-side protocol tests; hand-written client round-trips against the weather server in CI;
+the generated smoke-test target passes out of the box for every fixture model.
 
 ---
 

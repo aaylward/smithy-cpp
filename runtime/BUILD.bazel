@@ -113,6 +113,10 @@ cc_library(
         "//conditions:default": [],
     }),
     includes = ["include"],
+    # Static only: Bazel's dynamic test linking would put the asio/beast
+    # implementation (beast_src.cc) in a .so whose vague-linkage typeinfo
+    # duplicates the consumers' — ASan flags that as an ODR violation.
+    linkstatic = True,
     deps = [
         ":core",
         ":http",

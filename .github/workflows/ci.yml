@@ -83,11 +83,14 @@ jobs:
         run: |
           find runtime examples \( -name '*.h' -o -name '*.cc' \) ! -path '*/generated/*' \
             | xargs clang-format --dry-run --Werror
-      # src/json/json.cc is excluded: it includes the nlohmann backend, which
-      # only exists inside the Bazel build graph.
+      # Excluded from tidy: src/json/json.cc includes the nlohmann backend,
+      # which only exists inside the Bazel build graph; beast_src.cc is the
+      # Boost implementation TU and only compiles with the BCR modules'
+      # BOOST_*_SEPARATE_COMPILATION defines (no first-party code in it).
       - name: clang-tidy
         run: |
           find runtime/src examples -name '*.cc' ! -name '*_test.cc' ! -path '*/src/json/*' \
-            -print0 | xargs -0 -I{} clang-tidy --quiet {} -- -Iruntime/include -I. -std=c++20
+            ! -name 'beast_src.cc' -print0 \
+            | xargs -0 -I{} clang-tidy --quiet {} -- -Iruntime/include -I. -std=c++20
       - name: buildifier
         run: npx -y @bazel/buildifier@8.2.1 --lint=warn --mode=check -r .

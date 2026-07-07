@@ -40,6 +40,17 @@ struct RequestObservation {
 Middleware Observe(std::function<void(const RequestObservation&)> callback,
                    std::function<std::chrono::steady_clock::time_point()> now = nullptr);
 
+// 401 unless the request carries "authorization: Bearer <token>" (scheme
+// matched case-insensitively per RFC 6750) and validator(token) returns
+// true — the server-side counterpart of @httpBearerAuth.
+Middleware RequireBearerAuth(std::function<bool(const std::string&)> validator);
+
+// 401 unless header_name carries the key — prefixed "<scheme> " when scheme
+// is non-empty — and validator(key) returns true; the server-side
+// counterpart of @httpApiKeyAuth(in: "header").
+Middleware RequireApiKeyHeader(std::string header_name, std::string scheme,
+                               std::function<bool(const std::string&)> validator);
+
 }  // namespace smithy::server
 
 #endif  // SMITHY_SERVER_MIDDLEWARE_H_

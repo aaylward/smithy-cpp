@@ -9,6 +9,7 @@ use smithy.protocols#rpcv2Cbor
 /// served over restJson1 (with every supported HTTP binding) and rpcv2Cbor,
 /// so random round-trips exercise both protocols' serde end to end.
 @restJson1
+@httpApiKeyAuth(name: "api-key", in: "query")
 service RoundTripRest {
     version: "2026-01-01"
     operations: [PutSink, UploadAttachment, DescribeSink]

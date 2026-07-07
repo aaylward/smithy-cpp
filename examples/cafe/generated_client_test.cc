@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "example/cafe/client.h"
@@ -222,6 +223,23 @@ TEST_F(CafeClientTest, SerdeRoundTripsThroughGeneratedFunctions) {
   const auto round = DeserializeOrderCoffeeInput(SerializeOrderCoffeeInput(input));
   ASSERT_TRUE(round.ok()) << round.error().message();
   EXPECT_EQ(*round, input);
+}
+
+// @httpApiKeyAuth(name: "x-api-key", in: "header") — the configured key
+// rides every request; absent config leaves requests anonymous.
+TEST_F(CafeClientTest, ApiKeyHeaderComesFromConfig) {
+  EXPECT_FALSE(transport_->last_request.headers.Get("x-api-key").has_value());
+
+  auto transport = std::make_shared<CapturingTransport>();
+  smithy::ClientConfig config;
+  config.http_client = transport;
+  config.api_key = [] { return std::string("cafe-key"); };
+  auto client = CafeClient::Create(std::move(config));
+  ASSERT_TRUE(client.ok());
+  transport->next_response.body = EncodeBody(Document(DocumentMap{}));
+  transport->next_response.headers.Set("smithy-protocol", "rpc-v2-cbor");
+  (void)client->GetOrder(GetOrderInput{.orderId = "abc"});
+  EXPECT_EQ(transport->last_request.headers.Get("x-api-key"), "cafe-key");
 }
 
 }  // namespace

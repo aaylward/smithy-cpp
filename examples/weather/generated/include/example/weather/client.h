@@ -3,7 +3,9 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 
 #include "example/weather/types.h"
 #include "smithy/client/config.h"
@@ -11,6 +13,8 @@
 #include "smithy/http/transport.h"
 
 namespace example::weather {
+
+class ListCitiesPaginator;
 
 /// restJson1 client for example.weather#Weather.
 /// Modeled service errors surface as smithy::Error with kind kModeled,
@@ -27,6 +31,8 @@ class WeatherClient {
     smithy::Outcome<GetCurrentTimeOutput> GetCurrentTime(const GetCurrentTimeInput& input = {}) const;
     smithy::Outcome<GetForecastOutput> GetForecast(const GetForecastInput& input) const;
     smithy::Outcome<ListCitiesOutput> ListCities(const ListCitiesInput& input) const;
+    /// Pages ListCities until the service stops returning a next token (@paginated).
+    ListCitiesPaginator PaginateListCities(ListCitiesInput input) const;
 
   private:
     WeatherClient(smithy::ClientConfig config, std::shared_ptr<smithy::http::HttpClient> transport, std::string path_prefix);
@@ -35,6 +41,21 @@ class WeatherClient {
     smithy::ClientConfig config_;
     std::shared_ptr<smithy::http::HttpClient> transport_;
     std::string path_prefix_;
+};
+
+/// Lazily pages ListCities; owns a copy of the client and the input.
+class ListCitiesPaginator {
+  public:
+    /// The next page, std::nullopt once pagination is complete, or the
+    /// first failed call's error (pagination then stops).
+    smithy::Outcome<std::optional<ListCitiesOutput>> Next();
+
+  private:
+    friend class WeatherClient;
+    ListCitiesPaginator(WeatherClient client, ListCitiesInput input) : client_(std::move(client)), input_(std::move(input)) {}
+    WeatherClient client_;
+    ListCitiesInput input_;
+    bool done_ = false;
 };
 
 }  // namespace example::weather

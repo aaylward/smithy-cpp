@@ -155,6 +155,10 @@ smithy::Outcome<smithy::http::HttpResponse> WeatherClient::Send(smithy::http::Ht
   // Operations with a non-document response payload set their own accept.
   if (!request.headers.Get("accept").has_value()) request.headers.Set("accept", "application/json");
   request.headers.Set("user-agent", config_.user_agent);
+  // @httpBearerAuth: attach the configured token (fetched per request).
+  if (config_.bearer_token) {
+    request.headers.Set("authorization", "Bearer " + config_.bearer_token());
+  }
   if (!request.body.empty()) {
     request.headers.Set("content-length", std::to_string(request.body.size()));
   }
@@ -244,6 +248,25 @@ smithy::Outcome<ListCitiesOutput> WeatherClient::ListCities(const ListCitiesInpu
   auto body_doc = smithy::json::Decode(response->body);
   if (!body_doc) return std::move(body_doc).error();
   return DeserializeListCitiesOutput(*body_doc);
+}
+
+ListCitiesPaginator WeatherClient::PaginateListCities(ListCitiesInput input) const {
+  return ListCitiesPaginator(*this, std::move(input));
+}
+
+smithy::Outcome<std::optional<ListCitiesOutput>> ListCitiesPaginator::Next() {
+  if (done_) return std::optional<ListCitiesOutput>();
+  auto page = client_.ListCities(input_);
+  if (!page) {
+    done_ = true;
+    return std::move(page).error();
+  }
+  if (!page->nextToken.has_value() || page->nextToken->empty()) {
+    done_ = true;
+  } else {
+    input_.nextToken = *page->nextToken;
+  }
+  return std::optional<ListCitiesOutput>(std::move(*page));
 }
 
 }  // namespace example::weather

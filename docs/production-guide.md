@@ -86,6 +86,58 @@ Compression trades CPU for bytes: leave the 10 KiB threshold alone unless
 you have measured small-payload wins; compressing tiny bodies usually
 inflates them.
 
+## Auth
+
+Services modeled with `@httpBearerAuth` or `@httpApiKeyAuth` get credential
+wiring generated into their clients — set the provider on the config and
+every request carries it (providers are called per request, so rotation
+just works):
+
+```cpp
+config.bearer_token = [] { return LoadToken(); };   // @httpBearerAuth
+config.api_key = [] { return LoadApiKey(); };       // @httpApiKeyAuth
+```
+
+Bearer tokens ride as `authorization: Bearer <token>`; API keys go where
+the model binds them — a named header (with the trait's scheme prefix, if
+any) or a query parameter. A null provider leaves requests anonymous.
+
+Server-side, the matching guards ship as middleware
+(`smithy/server/middleware.h`):
+
+```cpp
+transport.Start(smithy::server::Chain(
+    {smithy::server::RequireBearerAuth([](const std::string& token) {
+      return TokenIsValid(token);  // 401 otherwise
+    })},
+    server.Handler()));
+// Or: smithy::server::RequireApiKeyHeader("x-api-key", /*scheme=*/"", validator)
+```
+
+Vendor-specific signing schemes (e.g. SigV4) are out of scope by design;
+implement them as an `Interceptor` (below).
+
+## Pagination
+
+Operations modeled with `@paginated` (top-level string tokens) get a
+generated paginator: `client.PaginateListCities(input)` returns a
+`ListCitiesPaginator` whose `Next()` yields one page at a time and
+`std::nullopt` once the service stops returning a next token. The paginator
+owns a copy of the client and input, so it outlives both:
+
+```cpp
+auto paginator = client.PaginateListCities({.pageSize = 100});
+while (true) {
+  auto page = paginator.Next();
+  if (!page.ok()) return page.error();   // pagination stops on first error
+  if (!page->has_value()) break;         // exhausted
+  for (const auto& city : (*page)->items) Process(city);
+}
+```
+
+An empty-string token is treated as end-of-pagination (defensive: it can
+never loop forever on a server echoing empty tokens).
+
 ## Client interceptors
 
 `config.interceptors` (`smithy/client/interceptor.h`) hooks user code around

@@ -51,6 +51,7 @@ surface conformance-tested and integration-tested in CI.
   (keep-alive connection pool, per-request timeouts, TLS via BoringSSL with
   certificate + hostname verification on by default).
 - Fuzz harnesses (JSON, CBOR, URI, server dispatch) and a Google Benchmark
-  suite (serde, codecs, per-protocol request round trips) run in CI.
+  suite (serde, codecs, per-protocol request round trips, real-TCP transport
+  round trips incl. Beast and Beast TLS) run in CI.
 
 [0.1.0]: https://github.com/aaylward/smithy-cpp/releases/tag/v0.1.0

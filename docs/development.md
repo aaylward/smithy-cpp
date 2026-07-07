@@ -31,9 +31,10 @@ cd codegen && gradle build spotlessCheck
 ```sh
 bazel run -c opt //benchmarks:serde_benchmark      # Document pivot + JSON/CBOR codecs
 bazel run -c opt //benchmarks:request_benchmark    # per-protocol client<->server round trips
+bazel run -c opt //benchmarks:beast_benchmark      # real-TCP transports: socket, Beast, Beast TLS
 ```
 
-CI runs both as an informational job (no pass/fail threshold yet — the
+CI runs all three as an informational job (no pass/fail threshold yet — the
 numbers establish the baseline; see PLAN Phase 7).
 
 ## Formatting and linting

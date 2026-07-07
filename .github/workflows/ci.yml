@@ -123,6 +123,8 @@ jobs:
         run: bazel run -c opt //benchmarks:serde_benchmark -- --benchmark_min_time=0.2s
       - name: request benchmarks
         run: bazel run -c opt //benchmarks:request_benchmark -- --benchmark_min_time=0.2s
+      - name: transport benchmarks (socket, beast, beast tls)
+        run: bazel run -c opt //benchmarks:beast_benchmark -- --benchmark_min_time=0.2s
 
   lint:
     name: lint

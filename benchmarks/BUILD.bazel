@@ -18,6 +18,20 @@ cc_binary(
 )
 
 cc_binary(
+    name = "beast_benchmark",
+    testonly = True,
+    srcs = ["beast_benchmark.cc"],
+    deps = [
+        "//examples/roundtrip/rest/generated:client",
+        "//examples/roundtrip/rest/generated:server",
+        "//runtime:client",
+        "//runtime:http",
+        "//runtime:http_beast",
+        "@google_benchmark//:benchmark",
+    ],
+)
+
+cc_binary(
     name = "request_benchmark",
     testonly = True,
     srcs = ["request_benchmark.cc"],

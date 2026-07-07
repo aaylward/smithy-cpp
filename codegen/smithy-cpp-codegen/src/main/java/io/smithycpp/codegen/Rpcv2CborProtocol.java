@@ -45,6 +45,9 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
         /* errorTypeHeader= */ false);
   }
 
+  /** Set up by writeServerHelpers (always called before the routes are emitted). */
+  private ValidationGenerator validation;
+
   @Override
   public List<String> serverIncludes() {
     return List.of("\"smithy/cbor/cbor.h\"", "\"smithy/core/blob.h\"");
@@ -70,6 +73,14 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
     w.write("");
     ProtocolSupport.writeServerErrorToResponse(
         w, context, service, operations, "CborError", /* errortypeHeader= */ false);
+    validation = new ValidationGenerator(context, operations);
+    if (validation.hasValidators()) {
+      ValidationGenerator.writeFailureHelper(w);
+      validation.writeValidators(w);
+      // rpcv2Cbor error identity travels in the body, as the fully qualified shape id.
+      ValidationGenerator.writeValidationErrorResponse(
+          w, "CborError", "smithy.framework#ValidationException", /* errortypeHeader= */ false);
+    }
   }
 
   @Override
@@ -120,6 +131,13 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
           "if (!parsed) return CborError(400, \"SerializationException\", "
               + "parsed.error().message(), {});");
       w.write("input = *std::move(parsed);");
+    }
+    if (validation != null && validation.validates(operation)) {
+      w.write("std::vector<smithy::server::ValidationFailure> validation_failures;");
+      w.write("$L(input, \"\", &validation_failures);", validation.validatorNameFor(operation));
+      w.write(
+          "if (!validation_failures.empty()) "
+              + "return ValidationErrorResponse(validation_failures);");
     }
     w.write("auto outcome = handler->$L(input);", opName);
     w.write("if (!outcome) return ErrorToResponse(outcome.error());");

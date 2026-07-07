@@ -304,10 +304,11 @@ TEST(RpcV2ProtocolSmokeTest, ModeledErrorsMapAcrossTheWire) {
       smithy::Outcome<GreetingWithErrorsOutput> GreetingWithErrors(const GreetingWithErrorsInput& input) override {
         (void)input;
         smithy::Error error = smithy::Error::Modeled("InvalidGreeting", "smoke");
-            error.set_detail([] {
+            auto detail = [] {
           InvalidGreeting v{};
           return v;
-        }());
+        }();
+        error.set_detail(std::move(detail));
         return error;
       }
   };

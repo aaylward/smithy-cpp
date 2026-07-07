@@ -1927,10 +1927,11 @@ TEST(RestJsonSmokeTest, ModeledErrorsMapAcrossTheWire) {
       smithy::Outcome<GreetingWithErrorsOutput> GreetingWithErrors(const GreetingWithErrorsInput& input) override {
         (void)input;
         smithy::Error error = smithy::Error::Modeled("FooError", "smoke");
-            error.set_detail([] {
+            auto detail = [] {
           FooError v{};
           return v;
-        }());
+        }();
+        error.set_detail(std::move(detail));
         return error;
       }
   };

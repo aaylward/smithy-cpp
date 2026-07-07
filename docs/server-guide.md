@@ -60,17 +60,32 @@ Every generated module ships `tests/smoke_test.cc` (target `:smoke_test` in the 
 — every operation round-trips a minimal valid value and one test proves modeled-error mapping.
 It passes out of the box and is the natural place to start testing a real handler.
 
+## Constraint validation
+
+Inputs are validated against the model's constraint traits after parsing and before your
+handler runs: `@required` (top-level body/query/header members), `@length` (strings count
+Unicode code points), `@range`, `@pattern`, `@uniqueItems`, and enum membership, recursively
+through structures, unions, lists, and maps. Failures never reach the handler — the server
+responds with the standard 400 `ValidationException` wire shape (`message` summary plus a
+`fieldList` of per-member `{path, message}` entries, JSON-pointer paths like `/list/0`), with
+the exact message formats the official validation conformance suite pins. `@internal` enum
+members stay accepted on the wire but are omitted from the advertised value set.
+
 ## Conformance
 
 Generated servers pass the official server-mode `httpRequestTests`/`httpResponseTests` suites
-(220 cases across restJson1 and rpcv2Cbor, with a documented must-shrink exclusion list): wire
-requests parse into the exact modeled inputs, and handler outputs/errors serialize to the exact
-wire responses — including `@httpResponseCode`, 415 Content-Type enforcement (parameters like
-`; charset=utf-8` accepted), and all-query-params `@httpQueryParams` maps. Ambiguous route
+(220 cases across restJson1 and rpcv2Cbor) plus the `RestJsonValidation`
+`httpMalformedRequestTests` suite (122 constraint-validation cases), all with a documented
+must-shrink exclusion list: wire requests parse into the exact modeled inputs, malformed ones
+produce the exact `ValidationException` bodies, and handler outputs/errors serialize to the
+exact wire responses — including `@httpResponseCode`, 415 Content-Type enforcement (parameters
+like `; charset=utf-8` accepted), and all-query-params `@httpQueryParams` maps. Ambiguous route
 tables fail at generation time.
 
-## Not yet generated (Phase 4c+)
+## Not yet generated (Phase 4d+)
 
-Constraint validation from traits (`@length`, `@range`, `@pattern`, ... → 400
-`ValidationException` before the handler runs), the `httpMalformedRequestTests` suite, and the
-bindings the client also lacks (`@httpPayload`, `@httpPrefixHeaders`).
+The bindings the client also lacks (`@httpPayload`, `@httpPrefixHeaders`), the main protocol
+suites' parser-strictness `httpMalformedRequestTests`, nested `@required` absences as
+`fieldList` entries (they are strict 400 deserialization errors today), and ReDoS-safe
+`@pattern` matching (`std::regex` backtracks, so the suite's deliberately catastrophic pattern
+is excluded).

@@ -17,6 +17,9 @@ import software.amazon.smithy.model.shapes.ServiceShape;
 import software.amazon.smithy.model.shapes.ShapeId;
 import software.amazon.smithy.model.shapes.StructureShape;
 import software.amazon.smithy.protocoltests.traits.AppliesTo;
+import software.amazon.smithy.protocoltests.traits.HttpMalformedRequestTestCase;
+import software.amazon.smithy.protocoltests.traits.HttpMalformedRequestTestsTrait;
+import software.amazon.smithy.protocoltests.traits.HttpMalformedResponseBodyDefinition;
 import software.amazon.smithy.protocoltests.traits.HttpRequestTestCase;
 import software.amazon.smithy.protocoltests.traits.HttpRequestTestsTrait;
 import software.amazon.smithy.protocoltests.traits.HttpResponseTestCase;
@@ -46,25 +49,37 @@ final class ProtocolTestGenerator {
   private final Map<String, String> unusedExclusions;
   private final List<String> excludedHere = new ArrayList<>();
 
+  private final boolean standardTests;
+  private final boolean malformedTests;
+
   ProtocolTestGenerator(
       CppContext context,
       ServiceShape service,
       ProtocolGenerator protocol,
-      List<OperationShape> operations) {
+      List<OperationShape> operations,
+      boolean standardTests,
+      boolean malformedTests) {
     this.context = context;
     this.service = service;
     this.protocol = protocol;
     this.operations = operations;
+    this.standardTests = standardTests;
+    this.malformedTests = malformedTests;
     this.literals = new NodeLiteralGenerator(context);
     this.exclusions = loadExclusions(service.getId());
     this.unusedExclusions = new LinkedHashMap<>(exclusions);
   }
 
   void run() {
-    writeRequestTests();
-    writeResponseTests();
-    writeServerRequestTests();
-    writeServerResponseTests();
+    if (standardTests) {
+      writeRequestTests();
+      writeResponseTests();
+      writeServerRequestTests();
+      writeServerResponseTests();
+    }
+    if (malformedTests) {
+      writeServerMalformedTests();
+    }
     if (!unusedExclusions.isEmpty()) {
       throw new CodegenException(
           "cpp-codegen: protocol-test-exclusions.txt has entries that matched no generated test"
@@ -780,6 +795,105 @@ final class ProtocolTestGenerator {
     return t.append("}").toString();
   }
 
+  private void writeServerMalformedTests() {
+    context
+        .writerDelegator()
+        .useFileWriter(
+            "tests/server_malformed_tests.cc",
+            w -> {
+              List<String> tests = new ArrayList<>();
+              for (OperationShape operation : operations) {
+                Optional<HttpMalformedRequestTestsTrait> trait =
+                    operation.getTrait(HttpMalformedRequestTestsTrait.class);
+                if (trait.isEmpty()) {
+                  continue;
+                }
+                // getTestCases() expands testParameters into concrete cases.
+                for (HttpMalformedRequestTestCase testCase : trait.get().getTestCases()) {
+                  if (!isThisProtocol(testCase.getProtocol())
+                      || excluded("server-malformed", testCase.getId())) {
+                    continue;
+                  }
+                  tests.add(serverMalformedTest(testCase));
+                }
+              }
+              writeServerCommonIncludes(w);
+              w.write("// Generated from smithy.test#httpMalformedRequestTests: each malformed");
+              w.write("// wire request is routed into the generated server, which must reject");
+              w.write("// it with the expected status/headers/body before the handler runs.");
+              writeExcludedComment(w);
+              w.write("namespace {");
+              w.write("");
+              writeRecordingHandler(w);
+              w.write("}  // namespace");
+              w.write("");
+              for (String test : tests) {
+                w.writeWithNoFormatting(test);
+                w.write("");
+              }
+            });
+  }
+
+  private String serverMalformedTest(HttpMalformedRequestTestCase testCase) {
+    var request = testCase.getRequest();
+    var response = testCase.getResponse();
+    StringBuilder t = new StringBuilder();
+    testCase
+        .getDocumentation()
+        .ifPresent(docs -> docs.lines().forEach(line -> t.append("// ").append(line).append('\n')));
+    t.append("TEST(")
+        .append(service.getId().getName())
+        .append("ServerMalformedTest, ")
+        .append(testCase.getId())
+        .append(") {\n");
+    t.append("  ").append(serverType()).append(" server(std::make_shared<RecordingHandler>());\n");
+    t.append(
+        wireRequest(
+            request.getMethod(),
+            request.expectUri(),
+            request.getQueryParams(),
+            request.getHeaders(),
+            request.getBody(),
+            request.getBodyMediaType()));
+    t.append("  const smithy::http::HttpResponse response = server.Handler()(request);\n");
+    t.append("  EXPECT_EQ(response.status, ")
+        .append(response.getCode())
+        .append(") << response.body;\n");
+    for (Map.Entry<String, String> header : new TreeMap<>(response.getHeaders()).entrySet()) {
+      t.append("  EXPECT_EQ(response.headers.Get(")
+          .append(CppLiterals.stringLiteral(header.getKey()))
+          .append(").value_or(\"<missing>\"), ")
+          .append(CppLiterals.stringLiteral(header.getValue()))
+          .append(");\n");
+    }
+    response.getBody().ifPresent(body -> t.append(malformedBodyAssertion(body)));
+    return t.append("}").toString();
+  }
+
+  private String malformedBodyAssertion(HttpMalformedResponseBodyDefinition body) {
+    if (body.getMessageRegex().isPresent()) {
+      return "  EXPECT_TRUE(smithy::testing::BodyMessageMatches("
+          + CppLiterals.stringLiteral(body.getMessageRegex().get())
+          + ", response.body)) << response.body;\n";
+    }
+    String contents = body.getContents().orElse("");
+    if (contents.isEmpty()) {
+      return "  EXPECT_TRUE(response.body.empty()) << response.body;\n";
+    }
+    String mediaType = body.getMediaType();
+    if (mediaType.equals("application/json") || mediaType.endsWith("+json")) {
+      return "  EXPECT_TRUE(smithy::testing::JsonBodyEquals("
+          + CppLiterals.stringLiteral(contents)
+          + ", response.body)) << response.body;\n";
+    }
+    if (mediaType.equals("application/cbor")) {
+      return "  EXPECT_TRUE(smithy::testing::CborBodyEqualsBase64("
+          + CppLiterals.stringLiteral(contents)
+          + ", response.body));\n";
+    }
+    return "  EXPECT_EQ(response.body, " + CppLiterals.stringLiteral(contents) + ");\n";
+  }
+
   /** Entries for {@code serviceId} from the shared exclusion resource. */
   private static Map<String, String> loadExclusions(ShapeId serviceId) {
     Map<String, String> exclusions = new LinkedHashMap<>();
@@ -799,7 +913,8 @@ final class ProtocolTestGenerator {
         String[] parts = line.split("\\s+", 4);
         if (parts.length < 4
             || !parts[1].matches(
-                "request|response|error|server-request|server-response|server-error|any")) {
+                "request|response|error|server-request|server-response|server-error"
+                    + "|server-malformed|any")) {
           throw new CodegenException(
               "cpp-codegen: bad exclusion line (want '<service> <request|response|error|any>"
                   + " <testId> <reason>'): "

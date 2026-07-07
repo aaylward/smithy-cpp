@@ -85,6 +85,13 @@ TEST(CborBodyEqualsTest, ComparesDecodedDocuments) {
   EXPECT_FALSE(CborBodyEqualsBase64(b64, "junk"));
 }
 
+TEST(BodyMessageMatchesTest, MatchesJsonMessageMember) {
+  EXPECT_TRUE(BodyMessageMatches("expected `true`", R"({"message": "found expected `true`"})"));
+  EXPECT_FALSE(BodyMessageMatches("expected `true`", R"({"message": "something else"})"));
+  EXPECT_FALSE(BodyMessageMatches(".*", R"({"no_message": 1})"));
+  EXPECT_FALSE(BodyMessageMatches(".*", "not json"));
+}
+
 TEST(CapturingTransportTest, RecordsAndReplays) {
   CapturingTransport transport;
   transport.next_response = {418, {}, "teapot"};

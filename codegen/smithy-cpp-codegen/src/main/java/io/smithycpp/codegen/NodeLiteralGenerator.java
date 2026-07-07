@@ -175,6 +175,79 @@ final class NodeLiteralGenerator {
     return out.append('}').toString();
   }
 
+  /**
+   * The smallest valid C++ value of a shape: default-constructed, except where defaults do not
+   * satisfy serde (required unions need a member, documents must be non-null). Used by the
+   * generated service smoke tests for inputs and stub-handler outputs.
+   */
+  String minimalExpression(Shape shape) {
+    return switch (shape.getType()) {
+      case BOOLEAN -> "false";
+      case BYTE, SHORT, INTEGER, INT_ENUM ->
+          shape.getType() == software.amazon.smithy.model.shapes.ShapeType.INT_ENUM
+              ? "static_cast<" + typeName(shape) + ">(0)"
+              : "0";
+      case LONG -> "0LL";
+      case FLOAT -> "0.0F";
+      case DOUBLE -> "0.0";
+      case STRING -> "\"\"";
+      case ENUM -> typeName(shape) + "::FromString(\"\")";
+      case BLOB -> "smithy::Blob()";
+      case TIMESTAMP -> "smithy::Timestamp::FromEpochMilliseconds(0)";
+      case DOCUMENT -> "smithy::Document(smithy::DocumentMap{})";
+      case LIST, MAP -> typeName(shape) + "{}";
+      case STRUCTURE -> minimalStructureExpression(shape.asStructureShape().orElseThrow());
+      case UNION -> minimalUnionExpression(shape.asUnionShape().orElseThrow());
+      default -> throw new CodegenException("cpp-codegen: no minimal value for " + shape.getId());
+    };
+  }
+
+  private String minimalStructureExpression(StructureShape shape) {
+    if (shape.getId().toString().equals("smithy.api#Unit")) {
+      return "smithy::Unit{}";
+    }
+    // Default construction is already minimal unless a required member's
+    // default is invalid on the wire (unions, documents, nested structures
+    // containing them).
+    StringBuilder out = new StringBuilder("[] {\n");
+    out.append("  ").append(typeName(shape)).append(" v{};\n");
+    for (MemberShape member : shape.members()) {
+      if (!member.isRequired()) {
+        continue;
+      }
+      Shape memberTarget = target(member);
+      if (needsExplicitMinimal(memberTarget, new java.util.HashSet<>())) {
+        out.append("  v.")
+            .append(context.cppSymbols().toMemberName(member))
+            .append(" = ")
+            .append(minimalExpression(memberTarget))
+            .append(";\n");
+      }
+    }
+    return out.append("  return v;\n}()").toString();
+  }
+
+  private String minimalUnionExpression(UnionShape shape) {
+    MemberShape first = shape.members().iterator().next();
+    String factory = CaseUtils.toPascalCase(context.cppSymbols().toMemberName(first));
+    return typeName(shape) + "::From" + factory + "(" + minimalExpression(target(first)) + ")";
+  }
+
+  /** True when a default-constructed value of this shape does not deserialize. */
+  private boolean needsExplicitMinimal(
+      Shape shape, java.util.Set<software.amazon.smithy.model.shapes.ShapeId> visiting) {
+    if (!visiting.add(shape.getId())) {
+      return false;
+    }
+    return switch (shape.getType()) {
+      case UNION, DOCUMENT -> true;
+      case STRUCTURE ->
+          shape.members().stream()
+              .anyMatch(m -> m.isRequired() && needsExplicitMinimal(target(m), visiting));
+      default -> false;
+    };
+  }
+
   private String documentExpression(Node node) {
     if (node.isNullNode()) {
       return "smithy::Document(nullptr)";

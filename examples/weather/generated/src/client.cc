@@ -61,8 +61,8 @@ smithy::Error GenericError(ParsedError parsed) {
   return smithy::Error::Modeled(std::move(parsed.code), std::move(parsed.message), retryable);
 }
 
-// Response @httpHeader value parsing ([[maybe_unused]]: emitted for every
-// client; individual services may bind no numeric/float headers).
+// Text value parsing for label/query/header bindings ([[maybe_unused]]:
+// emitted for every service; not every service binds numeric values).
 [[maybe_unused]] std::int64_t ParseHeaderInt64(const std::string& text) {
   return std::strtoll(text.c_str(), nullptr, 10);
 }

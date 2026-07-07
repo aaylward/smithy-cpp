@@ -48,6 +48,18 @@ cc_test(
 )
 
 cc_test(
+    name = "generated_server_e2e_test",
+    size = "small",
+    srcs = ["generated_server_e2e_test.cc"],
+    deps = [
+        ":weather_handwritten",
+        "//examples/weather/generated:server",
+        "//runtime:http",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "weather_e2e_test",
     size = "small",
     srcs = ["handwritten/weather_e2e_test.cc"],

@@ -97,19 +97,7 @@ final class RestJson1Protocol implements ProtocolGenerator {
   public void writeClientHelpers(CppWriter w, CppContext context) {
     ProtocolSupport.writeErrorSupport(
         w, "auto doc = smithy::json::Decode(response.body);", /* errorTypeHeader= */ true);
-    w.write("// Response @httpHeader value parsing ([[maybe_unused]]: emitted for every");
-    w.write("// client; individual services may bind no numeric/float headers).");
-    w.openBlock("[[maybe_unused]] std::int64_t ParseHeaderInt64(const std::string& text) {");
-    w.write("return std::strtoll(text.c_str(), nullptr, 10);");
-    w.closeBlock("}");
-    w.write("");
-    w.openBlock("[[maybe_unused]] double ParseHeaderDouble(const std::string& text) {");
-    w.write("if (text == \"NaN\") return std::numeric_limits<double>::quiet_NaN();");
-    w.write("if (text == \"Infinity\") return std::numeric_limits<double>::infinity();");
-    w.write("if (text == \"-Infinity\") return -std::numeric_limits<double>::infinity();");
-    w.write("return std::strtod(text.c_str(), nullptr);");
-    w.closeBlock("}");
-    w.write("");
+    ProtocolSupport.writeNumericParseHelpers(w);
   }
 
   @Override
@@ -304,11 +292,27 @@ final class RestJson1Protocol implements ProtocolGenerator {
   /** Patches one response @httpHeader member into {@code out} (member is always optional). */
   private void writeResponseHeaderBinding(
       CppWriter w, CppContext context, SerdeCodeGen serde, HttpBinding binding) {
+    writeHeaderReadBinding(w, context, serde, binding, "response->headers", "out.");
+  }
+
+  /**
+   * Reads one @httpHeader binding from {@code headersExpr} into {@code targetPrefix}<member>
+   * (client response headers and server request headers share this shape; failures return
+   * smithy::Error, so it must run inside an Outcome-returning function).
+   */
+  void writeHeaderReadBinding(
+      CppWriter w,
+      CppContext context,
+      SerdeCodeGen serde,
+      HttpBinding binding,
+      String headersExpr,
+      String targetPrefix) {
     MemberShape member = binding.getMember();
     Shape target = context.model().expectShape(member.getTarget());
-    String field = "out." + context.cppSymbols().toMemberName(member);
+    String field = targetPrefix + context.cppSymbols().toMemberName(member);
     w.openBlock(
-        "if (const auto header_value = response->headers.Get($S); header_value.has_value()) {",
+        "if (const auto header_value = $L.Get($S); header_value.has_value()) {",
+        headersExpr,
         binding.getLocationName());
     if (target.isListShape()) {
       var list = target.asListShape().orElseThrow();
@@ -475,9 +479,20 @@ final class RestJson1Protocol implements ProtocolGenerator {
    */
   private void writeHeaderBinding(
       CppWriter w, CppContext context, SerdeCodeGen serde, HttpBinding binding, String in) {
+    writeHeaderWriteBinding(w, context, serde, binding, in, "request.headers");
+  }
+
+  /** Writes one @httpHeader binding from {@code owner}.<member> into {@code headersExpr}. */
+  private void writeHeaderWriteBinding(
+      CppWriter w,
+      CppContext context,
+      SerdeCodeGen serde,
+      HttpBinding binding,
+      String owner,
+      String headersExpr) {
     MemberShape member = binding.getMember();
     Shape target = context.model().expectShape(member.getTarget());
-    String field = in + "." + context.cppSymbols().toMemberName(member);
+    String field = owner + "." + context.cppSymbols().toMemberName(member);
     String name = binding.getLocationName();
     String access = member.isRequired() ? field : "(*" + field + ")";
     if (!member.isRequired()) {
@@ -497,7 +512,7 @@ final class RestJson1Protocol implements ProtocolGenerator {
               "item",
               serde.timestampFormat(element, "smithy::TimestampFormat::kHttpDate")));
       w.closeBlock("}");
-      w.write("request.headers.Set($S, joined);", name);
+      w.write("$L.Set($S, joined);", headersExpr, name);
       w.closeBlock("}");
     } else {
       String expr =
@@ -511,10 +526,347 @@ final class RestJson1Protocol implements ProtocolGenerator {
         // restJson1: string headers with @mediaType are base64 encoded.
         expr = "smithy::Base64Encode(smithy::Blob::FromString(" + expr + "))";
       }
-      w.write("request.headers.Set($S, $L);", name, expr);
+      w.write("$L.Set($S, $L);", headersExpr, name, expr);
     }
     if (!member.isRequired()) {
       w.closeBlock("}");
     }
+  }
+
+  // ---------------------------------------------------------------------
+  // Server emission
+  // ---------------------------------------------------------------------
+
+  @Override
+  public List<String> serverIncludes() {
+    return List.of(
+        "\"smithy/json/json.h\"",
+        "\"smithy/core/base64.h\"",
+        "\"smithy/core/document_serde.h\"",
+        "\"smithy/core/blob.h\"",
+        "\"smithy/http/headers.h\"",
+        "<cstdint>",
+        "<cstdlib>",
+        "<limits>");
+  }
+
+  @Override
+  public void writeServerHelpers(
+      CppWriter w, CppContext context, ServiceShape service, List<OperationShape> operations) {
+    SerdeCodeGen serde = new SerdeCodeGen(context);
+    ProtocolSupport.writeNumericParseHelpers(w);
+    w.openBlock(
+        "smithy::http::HttpResponse JsonError(int status, const std::string& code, "
+            + "const std::string& message, smithy::DocumentMap body) {");
+    w.write("body.insert_or_assign(\"__type\", smithy::Document(code));");
+    w.write("if (!message.empty()) body.insert_or_assign(\"message\", smithy::Document(message));");
+    w.write("smithy::http::HttpResponse response;");
+    w.write("response.status = status;");
+    w.write("response.headers.Set(\"content-type\", \"application/json\");");
+    w.write("response.body = smithy::json::Encode(smithy::Document(std::move(body)));");
+    w.write("return response;");
+    w.closeBlock("}");
+    w.write("");
+    ProtocolSupport.writeServerErrorToResponse(w, context, service, operations, "JsonError");
+    for (OperationShape operation : operations) {
+      writeParseInputFunction(w, context, serde, operation);
+      writeSerializeResponseFunction(w, context, serde, operation);
+    }
+  }
+
+  /** Emits Parse<Op>Input(request, context) -> Outcome<Input> (inverse of the client request). */
+  private void writeParseInputFunction(
+      CppWriter w, CppContext context, SerdeCodeGen serde, OperationShape operation) {
+    HttpBindingIndex index = HttpBindingIndex.of(context.model());
+    StructureShape input = ProtocolSupport.inputShape(context, operation);
+    String inputType = context.cppSymbols().toSymbol(input).getName();
+    String opName = CppReservedWords.escape(operation.getId().getName());
+
+    Map<String, HttpBinding> labels = new TreeMap<>();
+    Map<String, HttpBinding> queries = new TreeMap<>();
+    Map<String, HttpBinding> headers = new TreeMap<>();
+    List<HttpBinding> body = new java.util.ArrayList<>();
+    HttpBinding queryParams = null;
+    for (HttpBinding binding : index.getRequestBindings(operation).values()) {
+      switch (binding.getLocation()) {
+        case LABEL -> labels.put(binding.getLocationName(), binding);
+        case QUERY -> queries.put(binding.getLocationName(), binding);
+        case QUERY_PARAMS -> queryParams = binding;
+        case HEADER -> headers.put(binding.getLocationName(), binding);
+        case DOCUMENT -> body.add(binding);
+        default ->
+            throw new CodegenException(
+                "cpp-codegen: restJson1 server binding "
+                    + binding.getLocation()
+                    + " is not supported yet ("
+                    + operation.getId()
+                    + ")");
+      }
+    }
+
+    w.openBlock(
+        "smithy::Outcome<$L> Parse$LInput(const smithy::http::HttpRequest& request, "
+            + "const smithy::server::RequestContext& context) {",
+        inputType,
+        opName);
+    w.write("(void)request;");
+    w.write("(void)context;");
+    w.write("$L input{};", inputType);
+    for (HttpBinding binding : labels.values()) {
+      // @httpLabel members are always required, and route matching guarantees
+      // the label was captured.
+      MemberShape member = binding.getMember();
+      w.openBlock("{");
+      w.write("const std::string& label_value = context.labels.at($S);", binding.getLocationName());
+      writeTextValueInto(
+          w,
+          context,
+          serde,
+          member,
+          "label_value",
+          "input." + context.cppSymbols().toMemberName(member),
+          "smithy::TimestampFormat::kDateTime",
+          /* push= */ false);
+      w.closeBlock("}");
+    }
+    for (HttpBinding binding : headers.values()) {
+      writeHeaderReadBinding(w, context, serde, binding, "request.headers", "input.");
+    }
+    if (!queries.isEmpty() || queryParams != null) {
+      w.openBlock("for (const auto& [key, value] : context.query_params) {");
+      for (HttpBinding binding : queries.values()) {
+        MemberShape member = binding.getMember();
+        Shape target = context.model().expectShape(member.getTarget());
+        String field = "input." + context.cppSymbols().toMemberName(member);
+        w.openBlock("if (key == $S) {", binding.getLocationName());
+        if (target.isListShape()) {
+          MemberShape element = target.asListShape().orElseThrow().getMember();
+          if (!member.isRequired()) {
+            w.write("if (!$L.has_value()) $L.emplace();", field, field);
+          }
+          String container = member.isRequired() ? field : "(*" + field + ")";
+          writeTextValueInto(
+              w,
+              context,
+              serde,
+              element,
+              "value",
+              container + ".push_back",
+              "smithy::TimestampFormat::kDateTime",
+              /* push= */ true);
+        } else {
+          writeTextValueInto(
+              w,
+              context,
+              serde,
+              member,
+              "value",
+              field,
+              "smithy::TimestampFormat::kDateTime",
+              /* push= */ false);
+        }
+        w.write("continue;");
+        w.closeBlock("}");
+      }
+      if (queryParams != null) {
+        MemberShape member = queryParams.getMember();
+        var map = context.model().expectShape(member.getTarget()).asMapShape().orElseThrow();
+        Shape valueTarget = context.model().expectShape(map.getValue().getTarget());
+        String field = "input." + context.cppSymbols().toMemberName(member);
+        if (!member.isRequired()) {
+          w.write("if (!$L.has_value()) $L.emplace();", field, field);
+        }
+        String container = member.isRequired() ? field : "(*" + field + ")";
+        if (valueTarget.isListShape()) {
+          w.write("$L[key].push_back(value);", container);
+        } else {
+          w.write("$L.emplace(key, value);", container);
+        }
+      }
+      w.closeBlock("}");
+    }
+    if (!body.isEmpty()) {
+      w.write(
+          "auto body_doc = smithy::json::Decode(request.body.empty() ? \"{}\" : request.body);");
+      w.write("if (!body_doc) return std::move(body_doc).error();");
+      w.write(
+          "if (!body_doc->is_map()) return smithy::Error::Serialization($S);",
+          opName + ": expected a JSON object body");
+      for (HttpBinding binding : body) {
+        MemberShape member = binding.getMember();
+        String wireName =
+            member
+                .getTrait(software.amazon.smithy.model.traits.JsonNameTrait.class)
+                .map(software.amazon.smithy.model.traits.JsonNameTrait::getValue)
+                .orElse(member.getMemberName());
+        String field = "input." + context.cppSymbols().toMemberName(member);
+        String path = inputType + "." + member.getMemberName();
+        w.openBlock("{");
+        w.write("const smithy::Document* member = body_doc->Find($S);", wireName);
+        if (member.isRequired()) {
+          w.write(
+              "if (member == nullptr || member->is_null()) return "
+                  + "smithy::Error::Serialization($S);",
+              path + ": missing required member");
+          serde.writeDeserializeInto(w, member, "member", field, path);
+        } else {
+          w.openBlock("if (member != nullptr && !member->is_null()) {");
+          var targetType =
+              context.cppSymbols().toSymbol(context.model().expectShape(member.getTarget()));
+          w.write("$L parsed_member{};", targetType.getName());
+          serde.writeDeserializeInto(w, member, "member", "parsed_member", path);
+          w.write("$L = std::move(parsed_member);", field);
+          w.closeBlock("}");
+        }
+        w.closeBlock("}");
+      }
+    }
+    w.write("return input;");
+    w.closeBlock("}");
+    w.write("");
+  }
+
+  /**
+   * Emits statements converting a decoded text {@code valueExpr} into {@code sink} (assignment
+   * target, or a push_back callee when {@code push}). Runs inside an Outcome-returning function.
+   */
+  private void writeTextValueInto(
+      CppWriter w,
+      CppContext context,
+      SerdeCodeGen serde,
+      MemberShape member,
+      String valueExpr,
+      String sink,
+      String timestampDefault,
+      boolean push) {
+    Shape target = context.model().expectShape(member.getTarget());
+    String open = push ? sink + "(" : sink + " = ";
+    String close = push ? ");" : ";";
+    switch (target.getType()) {
+      case TIMESTAMP -> {
+        w.write(
+            "auto parsed_ts = smithy::Timestamp::Parse($L, $L);",
+            valueExpr,
+            serde.timestampFormat(member, timestampDefault));
+        w.write("if (!parsed_ts) return std::move(parsed_ts).error();");
+        w.write("$L*std::move(parsed_ts)$L", open, close);
+      }
+      case STRING -> w.write("$L$L$L", open, valueExpr, close);
+      case ENUM ->
+          w.write(
+              "$L$L::FromString($L)$L",
+              open,
+              context.cppSymbols().toSymbol(target).getName(),
+              valueExpr,
+              close);
+      case BYTE, SHORT, INTEGER, LONG, INT_ENUM ->
+          w.write(
+              "$Lstatic_cast<$L>(ParseHeaderInt64($L))$L",
+              open,
+              context.cppSymbols().toSymbol(target).getName(),
+              valueExpr,
+              close);
+      case FLOAT ->
+          w.write("$Lstatic_cast<float>(ParseHeaderDouble($L))$L", open, valueExpr, close);
+      case DOUBLE -> w.write("$LParseHeaderDouble($L)$L", open, valueExpr, close);
+      case BOOLEAN -> w.write("$L($L == \"true\")$L", open, valueExpr, close);
+      default ->
+          throw new CodegenException(
+              "cpp-codegen: label/query binding target " + target.getId() + " is not supported");
+    }
+  }
+
+  /** Emits Serialize<Op>Response(output) (inverse of the client response handling). */
+  private void writeSerializeResponseFunction(
+      CppWriter w, CppContext context, SerdeCodeGen serde, OperationShape operation) {
+    HttpBindingIndex index = HttpBindingIndex.of(context.model());
+    HttpTrait http = operation.expectTrait(HttpTrait.class);
+    StructureShape output = ProtocolSupport.outputShape(context, operation);
+    String outputType = context.cppSymbols().toSymbol(output).getName();
+    String opName = CppReservedWords.escape(operation.getId().getName());
+
+    Map<String, HttpBinding> responseHeaders = new TreeMap<>();
+    List<HttpBinding> responseBody = new java.util.ArrayList<>();
+    for (HttpBinding binding : index.getResponseBindings(operation).values()) {
+      switch (binding.getLocation()) {
+        case DOCUMENT -> responseBody.add(binding);
+        case HEADER -> responseHeaders.put(binding.getLocationName(), binding);
+        default ->
+            throw new CodegenException(
+                "cpp-codegen: restJson1 server output binding "
+                    + binding.getLocation()
+                    + " is not supported yet ("
+                    + operation.getId()
+                    + ")");
+      }
+    }
+
+    w.openBlock(
+        "smithy::http::HttpResponse Serialize$LResponse(const $L& output) {", opName, outputType);
+    w.write("(void)output;");
+    w.write("smithy::http::HttpResponse response;");
+    w.write("response.status = $L;", http.getCode());
+    for (HttpBinding binding : responseHeaders.values()) {
+      writeHeaderWriteBinding(w, context, serde, binding, "output", "response.headers");
+    }
+    if (!responseBody.isEmpty()) {
+      w.write("smithy::DocumentMap body_map;");
+      for (HttpBinding binding : responseBody) {
+        MemberShape member = binding.getMember();
+        String field = "output." + context.cppSymbols().toMemberName(member);
+        String wireName =
+            member
+                .getTrait(software.amazon.smithy.model.traits.JsonNameTrait.class)
+                .map(software.amazon.smithy.model.traits.JsonNameTrait::getValue)
+                .orElse(member.getMemberName());
+        if (member.isRequired()) {
+          w.write("body_map.emplace($S, $L);", wireName, serde.serializeExpression(member, field));
+        } else {
+          w.openBlock("if ($L.has_value()) {", field);
+          w.write(
+              "body_map.emplace($S, $L);",
+              wireName,
+              serde.serializeExpression(member, "(*" + field + ")"));
+          w.closeBlock("}");
+        }
+      }
+      w.write("response.headers.Set(\"content-type\", \"application/json\");");
+      w.write("response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));");
+    }
+    w.write("return response;");
+    w.closeBlock("}");
+    w.write("");
+  }
+
+  @Override
+  public void writeServerRoute(
+      CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
+    HttpTrait http = operation.expectTrait(HttpTrait.class);
+    String opName = CppReservedWords.escape(operation.getId().getName());
+    StringBuilder pattern = new StringBuilder();
+    for (SmithyPattern.Segment segment : http.getUri().getSegments()) {
+      pattern.append('/');
+      if (segment.isGreedyLabel()) {
+        pattern.append('{').append(segment.getContent()).append("+}");
+      } else if (segment.isLabel()) {
+        pattern.append('{').append(segment.getContent()).append('}');
+      } else {
+        pattern.append(segment.getContent());
+      }
+    }
+    if (pattern.length() == 0) {
+      pattern.append('/');
+    }
+    w.openBlock(
+        "(void)router_->Add($S, $S, [handler](const smithy::http::HttpRequest& request, "
+            + "const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {",
+        http.getMethod(),
+        pattern.toString());
+    w.write("auto input = Parse$LInput(request, context);", opName);
+    w.write("if (!input) return ErrorToResponse(input.error());");
+    w.write("auto outcome = handler->$L(*input);", opName);
+    w.write("if (!outcome) return ErrorToResponse(outcome.error());");
+    w.write("return Serialize$LResponse(*outcome);", opName);
+    w.closeBlock("});");
   }
 }

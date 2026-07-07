@@ -3,6 +3,19 @@
 load("@rules_cc//cc:defs.bzl", "cc_test")
 
 cc_test(
+    name = "smoke_test",
+    size = "small",
+    srcs = ["smoke_test.cc"],
+    deps = [
+        "//protocol-tests/rpcv2cbor/generated:client",
+        "//protocol-tests/rpcv2cbor/generated:server",
+        "//runtime:client",
+        "//runtime:http",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "request_tests",
     size = "small",
     srcs = ["request_tests.cc"],

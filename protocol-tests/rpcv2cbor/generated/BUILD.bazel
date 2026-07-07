@@ -12,21 +12,42 @@ cc_library(
 )
 
 cc_library(
-    name = "client",
-    srcs = [
-        "src/client.cc",
-        "src/serde.cc",
-    ],
-    hdrs = [
-        "include/smithy/protocoltests/rpcv2cbor/client.h",
-        "include/smithy/protocoltests/rpcv2cbor/serde.h",
-    ],
+    name = "serde",
+    srcs = ["src/serde.cc"],
+    hdrs = ["include/smithy/protocoltests/rpcv2cbor/serde.h"],
     includes = ["include"],
     deps = [
+        ":types",
+        "//runtime:core",
+    ],
+)
+
+cc_library(
+    name = "client",
+    srcs = ["src/client.cc"],
+    hdrs = ["include/smithy/protocoltests/rpcv2cbor/client.h"],
+    includes = ["include"],
+    deps = [
+        ":serde",
         ":types",
         "//runtime:cbor",
         "//runtime:client",
         "//runtime:core",
         "//runtime:http",
+    ],
+)
+
+cc_library(
+    name = "server",
+    srcs = ["src/server.cc"],
+    hdrs = ["include/smithy/protocoltests/rpcv2cbor/server.h"],
+    includes = ["include"],
+    deps = [
+        ":serde",
+        ":types",
+        "//runtime:cbor",
+        "//runtime:core",
+        "//runtime:http",
+        "//runtime:server",
     ],
 )

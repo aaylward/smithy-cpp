@@ -43,6 +43,47 @@ nlohmann::json ToBackend(const Document& doc) {
   return out;
 }
 
+// Deeply nested JSON would overflow the stack in nlohmann's recursive-descent
+// parser (and again in FromBackend) before any structural limit applies. This
+// O(n), iterative pre-scan rejects input past a fixed nesting depth so a
+// hostile body can't crash the process — the counterpart to CBOR's DecodeValue
+// depth guard. Brackets inside strings don't nest, so track string state.
+constexpr int kMaxNestingDepth = 512;
+
+bool ExceedsMaxDepth(std::string_view text) {
+  int depth = 0;
+  bool in_string = false;
+  bool escaped = false;
+  for (const char c : text) {
+    if (in_string) {
+      if (escaped) {
+        escaped = false;
+      } else if (c == '\\') {
+        escaped = true;
+      } else if (c == '"') {
+        in_string = false;
+      }
+      continue;
+    }
+    switch (c) {
+      case '"':
+        in_string = true;
+        break;
+      case '[':
+      case '{':
+        if (++depth > kMaxNestingDepth) return true;
+        break;
+      case ']':
+      case '}':
+        --depth;
+        break;
+      default:
+        break;
+    }
+  }
+  return false;
+}
+
 Outcome<Document> FromBackend(const nlohmann::json& value) {
   switch (value.type()) {
     case nlohmann::json::value_t::null:
@@ -99,6 +140,9 @@ std::string Encode(const Document& doc) {
 }
 
 Outcome<Document> Decode(std::string_view text) {
+  if (ExceedsMaxDepth(text)) {
+    return Error::Serialization("json: nesting too deep");
+  }
   const nlohmann::json parsed = nlohmann::json::parse(text, /*cb=*/nullptr,
                                                       /*allow_exceptions=*/false);
   if (parsed.is_discarded()) {

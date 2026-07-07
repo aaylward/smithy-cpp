@@ -87,6 +87,27 @@ TEST(JsonTest, EncodeReplacesInvalidUtf8InsteadOfThrowing) {
   EXPECT_EQ(Encode(Document(std::string("caf\xc3\xa9"))), "\"caf\xc3\xa9\"");
 }
 
+// Security regression: every generated JSON server calls Decode() on the
+// untrusted request body. Deeply nested input would overflow the stack in
+// nlohmann's recursive-descent parser and crash the process; the depth guard
+// must reject it as an ordinary error instead. ~100k levels is far past any
+// legitimate document and reliably overflowed before the fix.
+TEST(JsonTest, RejectsDeeplyNestedInputInsteadOfStackOverflow) {
+  for (const char open : {'[', '{'}) {
+    std::string bomb(100000, open);
+    // Well-formedness is irrelevant — the guard runs before the parser, so an
+    // unbalanced bomb is rejected for depth, not for being truncated.
+    const auto decoded = Decode(bomb);
+    EXPECT_FALSE(decoded.ok());
+  }
+  // Brackets inside strings don't nest, so a flat document with bracket-heavy
+  // string content stays acceptable.
+  std::string wide = "[";
+  for (int i = 0; i < 1000; ++i) wide += R"("[[[[[[[[[[",)";
+  wide += R"("end"])";
+  EXPECT_TRUE(Decode(wide).ok());
+}
+
 TEST(JsonTest, DecodesNestedLists) {
   const auto doc = Decode(R"([1,[2,"three"],null])");
   ASSERT_TRUE(doc.ok());

@@ -14,12 +14,6 @@
 namespace smithy::protocoltests::simplerestjson {
 
 // Generated from smithy.test#httpRequestTests (client cases).
-//
-// Excluded cases (protocol-test-exclusions.txt; the list must only shrink):
-//   OpenUnionsUnknownTaggedUnionCase (request) — alloy open/discriminated unions are not implemented
-//   OpenUnionsKnownDiscriminatedUnionCase (request) — alloy open/discriminated unions are not implemented
-//   OpenUnionsUnknownDiscriminatedUnionCase (request) — alloy open/discriminated unions are not implemented
-
 namespace {
 
 struct Fixture {
@@ -237,6 +231,74 @@ TEST(PizzaAdminServiceRequestTest, OpenUnionsKnownTaggedUnionCase) {
   EXPECT_EQ(request.headers.Get("Content-Type").value_or("<missing>"), "application/json");
   EXPECT_TRUE(request.headers.Has("Content-Length"));
   EXPECT_TRUE(smithy::testing::JsonBodyEquals("{\"tagged\": {\"str\": \"string value\"}}", request.body));
+}
+
+// Pass an unknown tagged union value in an open union
+TEST(PizzaAdminServiceRequestTest, OpenUnionsUnknownTaggedUnionCase) {
+  Fixture fixture = MakeFixture();
+  const OpenUnionsInput input = [] {
+  OpenUnionsInput v{};
+  v.data = OpenUnionsPayload::FromTagged(OpenTaggedUnion::FromOther([] {
+  smithy::DocumentMap map;
+  map.emplace("whatisthis", [] {
+  smithy::DocumentMap map;
+  map.emplace("nested", smithy::Document(std::string("something different")));
+  return smithy::Document(std::move(map));
+}());
+  return smithy::Document(std::move(map));
+}()));
+  return v;
+}();
+  (void)fixture.client.OpenUnions(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "PUT");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/openUnions");
+  EXPECT_EQ(request.headers.Get("Content-Type").value_or("<missing>"), "application/json");
+  EXPECT_TRUE(request.headers.Has("Content-Length"));
+  EXPECT_TRUE(smithy::testing::JsonBodyEquals("{\"tagged\": {\"whatisthis\": {\"nested\": \"something different\"}}}", request.body));
+}
+
+// Pass a known discriminated union value in an open union
+TEST(PizzaAdminServiceRequestTest, OpenUnionsKnownDiscriminatedUnionCase) {
+  Fixture fixture = MakeFixture();
+  const OpenUnionsInput input = [] {
+  OpenUnionsInput v{};
+  v.data = OpenUnionsPayload::FromDiscriminated(OpenDiscriminatedUnion::FromSmol([] {
+  SmallStruct v{};
+  v.content = "some string";
+  return v;
+}()));
+  return v;
+}();
+  (void)fixture.client.OpenUnions(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "PUT");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/openUnions");
+  EXPECT_EQ(request.headers.Get("Content-Type").value_or("<missing>"), "application/json");
+  EXPECT_TRUE(request.headers.Has("Content-Length"));
+  EXPECT_TRUE(smithy::testing::JsonBodyEquals("{\"discriminated\": {\"key\": \"smol\", \"content\": \"some string\"}}", request.body));
+}
+
+// Pass an unknown discriminated union value in an open union
+TEST(PizzaAdminServiceRequestTest, OpenUnionsUnknownDiscriminatedUnionCase) {
+  Fixture fixture = MakeFixture();
+  const OpenUnionsInput input = [] {
+  OpenUnionsInput v{};
+  v.data = OpenUnionsPayload::FromDiscriminated(OpenDiscriminatedUnion::FromOther([] {
+  smithy::DocumentMap map;
+  map.emplace("key", smithy::Document(std::string("mysterious_and_important")));
+  map.emplace("extras", smithy::Document(std::int64_t{42}));
+  return smithy::Document(std::move(map));
+}()));
+  return v;
+}();
+  (void)fixture.client.OpenUnions(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "PUT");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/openUnions");
+  EXPECT_EQ(request.headers.Get("Content-Type").value_or("<missing>"), "application/json");
+  EXPECT_TRUE(request.headers.Has("Content-Length"));
+  EXPECT_TRUE(smithy::testing::JsonBodyEquals("{\"discriminated\": {\"key\": \"mysterious_and_important\", \"extras\": 42}}", request.body));
 }
 
 TEST(PizzaAdminServiceRequestTest, RoundTripRequest) {

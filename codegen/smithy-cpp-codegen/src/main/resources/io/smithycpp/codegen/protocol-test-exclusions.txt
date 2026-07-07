@@ -45,11 +45,6 @@ smithy.protocoltests.rpcv2Cbor#RpcV2Protocol server-request RpcV2CborSupportsNaN
 
 # simpleRestJson (alloy) conformance exclusions.
 
-# alloy @discriminated / @untagged / open-union encodings are not implemented.
-alloy.test#PizzaAdminService any OpenUnionsUnknownTaggedUnionCase alloy open/discriminated unions are not implemented
-alloy.test#PizzaAdminService any OpenUnionsKnownDiscriminatedUnionCase alloy open/discriminated unions are not implemented
-alloy.test#PizzaAdminService any OpenUnionsUnknownDiscriminatedUnionCase alloy open/discriminated unions are not implemented
-
 # @httpResponseCode with a 3xx value: the client treats only 2xx as success.
 alloy.test#PizzaAdminService response CustomCodeOutput 3xx @httpResponseCode is not treated as a success status
 

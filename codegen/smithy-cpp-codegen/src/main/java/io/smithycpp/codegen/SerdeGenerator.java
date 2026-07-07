@@ -1,7 +1,10 @@
 package io.smithycpp.codegen;
 
+import alloy.DiscriminatedUnionTrait;
+import alloy.JsonUnknownTrait;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import software.amazon.smithy.codegen.core.Symbol;
 import software.amazon.smithy.codegen.core.TopologicalIndex;
@@ -203,13 +206,24 @@ final class SerdeGenerator {
   }
 
   private void writeUnion(CppWriter w, UnionShape shape) {
+    if (shape.hasTrait(DiscriminatedUnionTrait.class)) {
+      writeDiscriminatedUnion(w, shape);
+      return;
+    }
     String suffix = SerdeCodeGen.serdeFunctionSuffix(context, shape);
     String type = valueType(shape);
+    // alloy's @jsonUnknown member (open unions) carries the entire wire object
+    // for unrecognized tags; it has no tag key of its own.
+    Optional<MemberShape> unknown = jsonUnknownMember(shape);
 
     w.openBlock("smithy::Document Serialize$L(const $L& value) {", suffix, type);
     w.write("smithy::DocumentMap map;");
     for (MemberShape member : shape.members()) {
       String name = context.cppSymbols().toMemberName(member);
+      if (isJsonUnknown(member)) {
+        w.write("if (value.is_$L()) return value.as_$L();", name, name);
+        continue;
+      }
       w.openBlock("if (value.is_$L()) {", name);
       w.write(
           "map.emplace($S, $L);",
@@ -228,11 +242,19 @@ final class SerdeGenerator {
     // Unions are exactly one member on the wire; extra known or unknown
     // members are malformed (the malformed-request suite pins this), but a
     // "__type" hint is ignored (clients must tolerate it in responses).
-    w.write(
-        "if (doc.as_map().size() - (doc.Find(\"__type\") != nullptr ? 1 : 0) != 1) "
-            + "return smithy::Error::Serialization($S);",
-        type + ": expected exactly one union member");
+    // Open unions route anything else to the @jsonUnknown member instead.
+    if (unknown.isPresent()) {
+      w.openBlock("if (doc.as_map().size() - (doc.Find(\"__type\") != nullptr ? 1 : 0) == 1) {");
+    } else {
+      w.write(
+          "if (doc.as_map().size() - (doc.Find(\"__type\") != nullptr ? 1 : 0) != 1) "
+              + "return smithy::Error::Serialization($S);",
+          type + ": expected exactly one union member");
+    }
     for (MemberShape member : shape.members()) {
+      if (isJsonUnknown(member)) {
+        continue;
+      }
       String wireName = wireName(member);
       Symbol targetType =
           context.cppSymbols().toSymbol(context.model().expectShape(member.getTarget()));
@@ -248,9 +270,99 @@ final class SerdeGenerator {
           pascal(context.cppSymbols().toMemberName(member)));
       w.closeBlock("}");
     }
-    w.write("return smithy::Error::Serialization($S);", type + ": unknown or missing union member");
+    if (unknown.isPresent()) {
+      w.closeBlock("}");
+      w.write(
+          "return $L::From$L(doc);",
+          type,
+          pascal(context.cppSymbols().toMemberName(unknown.get())));
+    } else {
+      w.write(
+          "return smithy::Error::Serialization($S);", type + ": unknown or missing union member");
+    }
     w.closeBlock("}");
     w.write("");
+  }
+
+  /**
+   * alloy @discriminated unions: the wire form is the engaged member's own object with the
+   * discriminator field spliced in ({"key": "smol", ...member fields...}), not a single-key tagged
+   * wrapper. A @jsonUnknown member (open union) keeps the whole object — discriminator included —
+   * when the discriminator value matches no known member.
+   */
+  private void writeDiscriminatedUnion(CppWriter w, UnionShape shape) {
+    String suffix = SerdeCodeGen.serdeFunctionSuffix(context, shape);
+    String type = valueType(shape);
+    String discriminator = shape.expectTrait(DiscriminatedUnionTrait.class).getValue();
+    Optional<MemberShape> unknown = jsonUnknownMember(shape);
+
+    w.openBlock("smithy::Document Serialize$L(const $L& value) {", suffix, type);
+    for (MemberShape member : shape.members()) {
+      String name = context.cppSymbols().toMemberName(member);
+      if (isJsonUnknown(member)) {
+        w.write("if (value.is_$L()) return value.as_$L();", name, name);
+        continue;
+      }
+      w.openBlock("if (value.is_$L()) {", name);
+      w.write(
+          "smithy::Document member_doc = $L;",
+          serde.serializeExpression(member, "value.as_" + name + "()"));
+      w.write(
+          "member_doc.as_map().insert_or_assign($S, smithy::Document(std::string($S)));",
+          discriminator,
+          wireName(member));
+      w.write("return member_doc;");
+      w.closeBlock("}");
+    }
+    w.write("return smithy::Document(smithy::DocumentMap{});");
+    w.closeBlock("}");
+    w.write("");
+
+    w.openBlock("smithy::Outcome<$L> Deserialize$L(const smithy::Document& doc) {", type, suffix);
+    w.write(
+        "if (!doc.is_map()) return smithy::Error::Serialization($S);",
+        type + ": expected a map on the wire");
+    w.openBlock(
+        "if (const smithy::Document* discriminator = doc.Find($S);"
+            + " discriminator != nullptr && discriminator->is_string()) {",
+        discriminator);
+    for (MemberShape member : shape.members()) {
+      if (isJsonUnknown(member)) {
+        continue;
+      }
+      Symbol targetType =
+          context.cppSymbols().toSymbol(context.model().expectShape(member.getTarget()));
+      w.openBlock("if (discriminator->as_string() == $S) {", wireName(member));
+      w.write("const smithy::Document* member = &doc;");
+      w.write("$L parsed_member{};", targetType.getName());
+      serde.writeDeserializeInto(
+          w, member, "member", "parsed_member", type + "." + wireName(member));
+      w.write(
+          "return $L::From$L(std::move(parsed_member));",
+          type,
+          pascal(context.cppSymbols().toMemberName(member)));
+      w.closeBlock("}");
+    }
+    w.closeBlock("}");
+    if (unknown.isPresent()) {
+      w.write(
+          "return $L::From$L(doc);",
+          type,
+          pascal(context.cppSymbols().toMemberName(unknown.get())));
+    } else {
+      w.write(
+          "return smithy::Error::Serialization($S);", type + ": unknown or missing union member");
+    }
+    w.closeBlock("}");
+    w.write("");
+  }
+
+  private static Optional<MemberShape> jsonUnknownMember(UnionShape shape) {
+    return shape.members().stream().filter(SerdeGenerator::isJsonUnknown).findFirst();
+  }
+
+  private static boolean isJsonUnknown(MemberShape member) {
+    return member.hasTrait(JsonUnknownTrait.class);
   }
 
   private void writeList(CppWriter w, ListShape shape) {

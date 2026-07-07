@@ -90,6 +90,10 @@ smithy::Outcome<OrderCoffeeInput> DeserializeOrderCoffeeInput(const smithy::Docu
   `smithy::ErrorKind::kSerialization` error naming the member.
 - **Sparse** lists/maps serialize `std::nullopt` as explicit nulls; timestamps honor
   `@timestampFormat` with the protocol default applied where unspecified.
+- **alloy unions**: `@discriminated("key")` unions put the engaged member's fields inline with
+  the discriminator spliced into the same object (`{"key": "smol", ...fields}`); a
+  `@jsonUnknown` member (open unions, tagged or discriminated) retains the entire wire object
+  when the tag or discriminator value matches no known member.
 
 ## Clients (Phase 3)
 

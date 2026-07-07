@@ -1,0 +1,31 @@
+load("@rules_cc//cc:defs.bzl", "cc_test")
+load("@smithy_cpp//bazel:defs.bzl", "smithy_cpp_client_library", "smithy_cpp_server_library")
+
+smithy_cpp_client_library(
+    name = "todo_client",
+    srcs = ["model/todo.smithy"],
+    namespace = "acme::todo",
+    service = "acme.todo#Todo",
+)
+
+smithy_cpp_server_library(
+    name = "todo_server",
+    srcs = ["model/todo.smithy"],
+    namespace = "acme::todo",
+    service = "acme.todo#Todo",
+)
+
+# The generated client integration-tests the generated server (the Phase 5
+# pattern): loopback and a real socket on an ephemeral port.
+cc_test(
+    name = "todo_integration_test",
+    size = "small",
+    srcs = ["todo_integration_test.cc"],
+    deps = [
+        ":todo_client",
+        ":todo_server",
+        "@googletest//:gtest_main",
+        "@smithy_cpp//runtime:client",
+        "@smithy_cpp//runtime:http",
+    ],
+)

@@ -180,7 +180,9 @@ class Decoder {
   Outcome<std::string> DecodeChunkedString(Major major, bool indefinite, std::uint64_t length) {
     std::string out;
     if (!indefinite) {
-      if (pos_ + length > size_) return Fail("truncated string");
+      // length is attacker-controlled and may be near 2^64: compare against
+      // the remaining bytes so the check cannot overflow and wrap.
+      if (length > size_ - pos_) return Fail("truncated string");
       out.assign(reinterpret_cast<const char*>(data_ + pos_), length);
       pos_ += length;
       return out;
@@ -195,7 +197,7 @@ class Decoder {
       auto chunk_length = ReadArgument(initial & 0x1F, &chunk_indefinite);
       if (!chunk_length) return std::move(chunk_length).error();
       if (chunk_indefinite) return Fail("nested indefinite string chunk");
-      if (pos_ + *chunk_length > size_) return Fail("truncated string chunk");
+      if (*chunk_length > size_ - pos_) return Fail("truncated string chunk");
       out.append(reinterpret_cast<const char*>(data_ + pos_), *chunk_length);
       pos_ += *chunk_length;
     }

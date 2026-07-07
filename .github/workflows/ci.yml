@@ -47,6 +47,28 @@ jobs:
           CXX: clang++
         run: bazelisk test //... --config=ci --config=asan --config=ubsan
 
+  fuzz:
+    name: fuzz (libFuzzer smoke)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      # Each harness runs a short bounded libFuzzer session (a "smoke" run, not
+      # a soak) so regressions in the parsers surface on every PR. The
+      # deterministic-driver variants also run as ordinary tests in the bazel
+      # matrix above; this job additionally exercises the real fuzzer runtime.
+      - name: build fuzz targets
+        env:
+          CC: clang
+          CXX: clang++
+        run: bazelisk build --config=fuzz //fuzz:all
+      - name: run each harness (30s)
+        run: |
+          set -euo pipefail
+          for target in json_decode cbor_decode uri server_dispatch; do
+            echo "== fuzzing $target"
+            ./bazel-bin/fuzz/${target}_fuzz -max_total_time=30 -print_final_stats=1
+          done
+
   consumer:
     name: bazel consumer (${{ matrix.os }})
     strategy:

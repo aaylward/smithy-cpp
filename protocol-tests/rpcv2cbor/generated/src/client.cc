@@ -152,7 +152,7 @@ smithy::Outcome<smithy::http::HttpResponse> RpcV2ProtocolClient::Send(smithy::ht
   if (!request.body.empty()) {
     request.headers.Set("content-length", std::to_string(request.body.size()));
   }
-  return smithy::SendWithRetries(*transport_, request, config_.retry);
+  return smithy::SendWithRetries(*transport_, request, config_.retry, config_.interceptors);
 }
 
 smithy::Outcome<EmptyInputOutputOutput> RpcV2ProtocolClient::EmptyInputOutput(const EmptyInputOutputInput& input) const {

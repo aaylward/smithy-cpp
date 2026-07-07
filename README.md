@@ -22,7 +22,7 @@ See [`docs/PLAN.md`](docs/PLAN.md) for the full phased plan and
 | 4 | Server generation (restJson1 + rpcv2Cbor) | ✅ Done — handlers, routing, serde, all HTTP bindings incl. `@httpPayload`/`@httpPrefixHeaders`, constraint validation, parser strictness, content negotiation; ~1,175 official conformance cases green ([docs/server-guide.md](docs/server-guide.md)) |
 | 5 | Generated-client ↔ generated-server integration harness | ✅ Done — every fixture ships a generated integration suite: seeded random round-trips over loopback and real sockets, per-error mapping, unknown-member tolerance, mutation-checked ([docs/design/integration-testing.md](docs/design/integration-testing.md)) |
 | 6 | Bazel rules, CLI, packaging (BCR + Maven Central), docs site | 🔨 In progress — `smithy_cpp_{types,client,server}_library` rules run the generator hermetically inside the build graph, out-of-tree consumer module tested in CI, CLI via `bazel run //codegen:generator` ([docs/quickstart.md](docs/quickstart.md)); BCR/Maven publishing deferred until production validation; docs site pending |
-| 7 | Hardening, fuzzing, v0.1.0 | 🔨 In progress — retries with full-jitter exponential backoff, gzip `@requestCompression` (client + server), consumer CI across linux/macos/windows ([docs/production-guide.md](docs/production-guide.md)) |
+| 7 | Hardening, fuzzing, v0.1.0 | 🔨 In progress — retries with full-jitter exponential backoff, gzip `@requestCompression` (client + server), client interceptors + server middleware (auth/logging/metrics seams), Beast graceful drain + header limits, consumer CI across linux/macos/windows ([docs/production-guide.md](docs/production-guide.md)) |
 | 8 | Bidirectional streaming (event streams, WebSockets) | Not started |
 
 ## Building

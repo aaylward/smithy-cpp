@@ -158,7 +158,9 @@ final class ClientGenerator {
     w.openBlock("if (!request.body.empty()) {");
     w.write("request.headers.Set(\"content-length\", std::to_string(request.body.size()));");
     w.closeBlock("}");
-    w.write("return smithy::SendWithRetries(*transport_, request, config_.retry);");
+    w.write(
+        "return smithy::SendWithRetries(*transport_, request, config_.retry, "
+            + "config_.interceptors);");
     w.closeBlock("}");
     w.write("");
 

@@ -174,7 +174,7 @@ smithy::Outcome<smithy::http::HttpResponse> RoundTripRestClient::Send(smithy::ht
   if (!request.body.empty()) {
     request.headers.Set("content-length", std::to_string(request.body.size()));
   }
-  return smithy::SendWithRetries(*transport_, request, config_.retry);
+  return smithy::SendWithRetries(*transport_, request, config_.retry, config_.interceptors);
 }
 
 smithy::Outcome<DescribeSinkOutput> RoundTripRestClient::DescribeSink(const DescribeSinkInput& input) const {

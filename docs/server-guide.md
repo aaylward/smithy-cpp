@@ -47,6 +47,11 @@ transport.Start(server.Handler());
 // or smithy::http::Loopback for in-process tests, SocketHttpServer for the built-in listener.
 ```
 
+Cross-cutting behavior (auth checks, request logging, metrics) wraps `server.Handler()` as
+user-supplied middleware — `smithy::server::Chain` composes it outside the generated router,
+and `smithy::server::Observe` is the built-in logging/metrics hook. See
+[production-guide.md](production-guide.md).
+
 Routing (method + URI pattern from `@http`, greedy labels, 404/405 with `Allow`),
 request-binding deserialization (labels, query incl. `@httpQueryParams`, headers, JSON/CBOR
 bodies), and response serialization (status, headers, body) are all generated; rpcv2Cbor

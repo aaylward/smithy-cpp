@@ -6,12 +6,16 @@
 
 #include <chrono>
 #include <memory>
+#include <utility>
+#include <vector>
 
 #include "example/weather/client.h"
 #include "example/weather/server.h"
 #include "examples/weather/handwritten/weather_client.h"
+#include "smithy/client/interceptor.h"
 #include "smithy/http/loopback.h"
 #include "smithy/http/message.h"
+#include "smithy/server/middleware.h"
 
 namespace example::weather {
 namespace {
@@ -119,6 +123,65 @@ TEST_F(GeneratedServerEndToEndTest, GeneratedClientRetriesTransientFailures) {
   const auto city = client->GetCity(example::weather::GetCityInput{.cityId = "seattle"});
   ASSERT_TRUE(city.ok()) << city.error().message();
   EXPECT_EQ(city->name, "Seattle");
+}
+
+// Client interceptor + server middleware together (Phase 7b): the interceptor
+// injects a bearer token on every generated-client request; server middleware
+// rejects requests without it before the router runs, and Observe reports the
+// served request.
+TEST_F(GeneratedServerEndToEndTest, InterceptorAndMiddlewareCarryAuthAcrossTheWire) {
+  class BearerAuth final : public smithy::Interceptor {
+   public:
+    void ModifyBeforeTransmit(smithy::http::HttpRequest& request, int) override {
+      request.headers.Set("authorization", "Bearer smoke-token");
+    }
+  };
+
+  std::vector<smithy::server::RequestObservation> observations;
+  auto require_auth = [](smithy::http::RequestHandler next) {
+    return [next = std::move(next)](const smithy::http::HttpRequest& request) {
+      if (request.headers.Get("authorization") != "Bearer smoke-token") {
+        smithy::http::HttpResponse response;
+        response.status = 401;
+        return response;
+      }
+      return next(request);
+    };
+  };
+  auto handler = smithy::server::Chain(
+      {require_auth, smithy::server::Observe([&](const smithy::server::RequestObservation& o) {
+         observations.push_back(o);
+       })},
+      server_->Handler());
+
+  auto loopback = std::make_shared<smithy::http::Loopback>();
+  ASSERT_TRUE(loopback->Start(handler).ok());
+
+  // Without the interceptor the middleware rejects the call outright.
+  {
+    smithy::ClientConfig config;
+    config.http_client = loopback;
+    config.retry.max_attempts = 1;
+    auto client = example::weather::WeatherClient::Create(std::move(config));
+    ASSERT_TRUE(client.ok());
+    const auto city = client->GetCity(example::weather::GetCityInput{.cityId = "seattle"});
+    ASSERT_FALSE(city.ok());
+  }
+
+  smithy::ClientConfig config;
+  config.http_client = loopback;
+  config.interceptors.push_back(std::make_shared<BearerAuth>());
+  auto client = example::weather::WeatherClient::Create(std::move(config));
+  ASSERT_TRUE(client.ok());
+  const auto city = client->GetCity(example::weather::GetCityInput{.cityId = "seattle"});
+  ASSERT_TRUE(city.ok()) << city.error().message();
+  EXPECT_EQ(city->name, "Seattle");
+
+  // Observe sits inside the auth check, so only the authorized call reports.
+  ASSERT_EQ(observations.size(), 1u);
+  EXPECT_EQ(observations[0].method, "GET");
+  EXPECT_EQ(observations[0].target, "/cities/seattle");
+  EXPECT_EQ(observations[0].status, 200);
 }
 
 TEST_F(GeneratedServerEndToEndTest, DeleteCityIs204WithNoBody) {

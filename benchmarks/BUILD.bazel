@@ -1,0 +1,49 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+
+# Performance benchmarks (PLAN Phase 7): run with -c opt; CI runs them as an
+# informational job (no pass/fail threshold yet — publish numbers first).
+
+cc_binary(
+    name = "serde_benchmark",
+    testonly = True,
+    srcs = ["serde_benchmark.cc"],
+    deps = [
+        "//examples/roundtrip/rest/generated:serde",
+        "//examples/roundtrip/rest/generated:types",
+        "//runtime:cbor",
+        "//runtime:core",
+        "//runtime:json",
+        "@google_benchmark//:benchmark",
+    ],
+)
+
+cc_binary(
+    name = "beast_benchmark",
+    testonly = True,
+    srcs = ["beast_benchmark.cc"],
+    deps = [
+        "//examples/roundtrip/rest/generated:client",
+        "//examples/roundtrip/rest/generated:server",
+        "//runtime:client",
+        "//runtime:http",
+        "//runtime:http_beast",
+        "@google_benchmark//:benchmark",
+    ],
+)
+
+cc_binary(
+    name = "request_benchmark",
+    testonly = True,
+    srcs = ["request_benchmark.cc"],
+    deps = [
+        "//examples/roundtrip/jsonrpc/generated:client",
+        "//examples/roundtrip/jsonrpc/generated:server",
+        "//examples/roundtrip/rest/generated:client",
+        "//examples/roundtrip/rest/generated:server",
+        "//examples/roundtrip/rpc/generated:client",
+        "//examples/roundtrip/rpc/generated:server",
+        "//runtime:client",
+        "//runtime:http",
+        "@google_benchmark//:benchmark",
+    ],
+)

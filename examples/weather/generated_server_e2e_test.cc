@@ -6,6 +6,7 @@
 
 #include <chrono>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -182,6 +183,68 @@ TEST_F(GeneratedServerEndToEndTest, InterceptorAndMiddlewareCarryAuthAcrossTheWi
   EXPECT_EQ(observations[0].method, "GET");
   EXPECT_EQ(observations[0].target, "/cities/seattle");
   EXPECT_EQ(observations[0].status, 200);
+}
+
+// @httpBearerAuth end to end (Phase 7c): config.bearer_token feeds the
+// generated client; RequireBearerAuth guards the generated server.
+TEST_F(GeneratedServerEndToEndTest, BearerTokenFlowsFromConfigThroughAuthMiddleware) {
+  auto handler =
+      smithy::server::Chain({smithy::server::RequireBearerAuth(
+                                [](const std::string& token) { return token == "weather-token"; })},
+                            server_->Handler());
+  auto loopback = std::make_shared<smithy::http::Loopback>();
+  ASSERT_TRUE(loopback->Start(handler).ok());
+
+  {
+    smithy::ClientConfig config;
+    config.http_client = loopback;
+    config.retry.max_attempts = 1;
+    auto anonymous = example::weather::WeatherClient::Create(std::move(config));
+    ASSERT_TRUE(anonymous.ok());
+    EXPECT_FALSE(anonymous->GetCity(example::weather::GetCityInput{.cityId = "seattle"}).ok());
+  }
+
+  smithy::ClientConfig config;
+  config.http_client = loopback;
+  config.bearer_token = [] { return std::string("weather-token"); };
+  auto client = example::weather::WeatherClient::Create(std::move(config));
+  ASSERT_TRUE(client.ok());
+  const auto city = client->GetCity(example::weather::GetCityInput{.cityId = "seattle"});
+  ASSERT_TRUE(city.ok()) << city.error().message();
+  EXPECT_EQ(city->name, "Seattle");
+}
+
+// The generated @paginated paginator walks pages until the server stops
+// returning a next token (ReferenceHandler pages when pageSize < 2).
+TEST_F(GeneratedServerEndToEndTest, PaginatorWalksAllPages) {
+  auto loopback = std::make_shared<smithy::http::Loopback>();
+  ASSERT_TRUE(loopback->Start(server_->Handler()).ok());
+  smithy::ClientConfig config;
+  config.http_client = loopback;
+  auto client = example::weather::WeatherClient::Create(std::move(config));
+  ASSERT_TRUE(client.ok());
+
+  auto paginator = client->PaginateListCities(example::weather::ListCitiesInput{.pageSize = 1});
+
+  const auto first = paginator.Next();
+  ASSERT_TRUE(first.ok()) << first.error().message();
+  ASSERT_TRUE(first->has_value());
+  ASSERT_EQ((*first)->items.size(), 1u);
+  EXPECT_EQ((*first)->items[0].cityId, "seattle");
+
+  const auto second = paginator.Next();
+  ASSERT_TRUE(second.ok()) << second.error().message();
+  ASSERT_TRUE(second->has_value());
+  ASSERT_EQ((*second)->items.size(), 1u);
+  EXPECT_EQ((*second)->items[0].cityId, "rain city");
+
+  const auto done = paginator.Next();
+  ASSERT_TRUE(done.ok());
+  EXPECT_FALSE(done->has_value());
+  // Exhausted paginators stay exhausted.
+  const auto still_done = paginator.Next();
+  ASSERT_TRUE(still_done.ok());
+  EXPECT_FALSE(still_done->has_value());
 }
 
 TEST_F(GeneratedServerEndToEndTest, DeleteCityIs204WithNoBody) {

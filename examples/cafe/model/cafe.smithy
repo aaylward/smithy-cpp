@@ -12,6 +12,7 @@ use smithy.protocols#rpcv2Cbor
 /// @streaming shapes.
 @rpcv2Cbor
 @title("Cafe Service")
+@httpApiKeyAuth(name: "x-api-key", in: "header")
 service Cafe {
     version: "2026-07-06"
     operations: [OrderCoffee, GetOrder]

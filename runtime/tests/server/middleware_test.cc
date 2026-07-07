@@ -94,6 +94,54 @@ TEST(ObserveTest, ReportsMethodTargetStatusAndDuration) {
   EXPECT_EQ(observations[0].duration, milliseconds(7));
 }
 
+TEST(RequireBearerAuthTest, ValidatesTheBearerToken) {
+  auto handler = Chain({RequireBearerAuth([](const std::string& token) { return token == "s3"; })},
+                       [](const http::HttpRequest&) { return Ok("in"); });
+
+  http::HttpRequest request;
+  EXPECT_EQ(handler(request).status, 401);  // no header
+
+  request.headers.Set("authorization", "Bearer s3");
+  EXPECT_EQ(handler(request).status, 200);
+
+  request.headers.Set("authorization", "bearer s3");  // scheme is case-insensitive
+  EXPECT_EQ(handler(request).status, 200);
+
+  request.headers.Set("authorization", "Bearer nope");
+  EXPECT_EQ(handler(request).status, 401);
+
+  request.headers.Set("authorization", "Basic s3");  // wrong scheme
+  EXPECT_EQ(handler(request).status, 401);
+
+  request.headers.Set("authorization", "Bearer");  // scheme without credential
+  EXPECT_EQ(handler(request).status, 401);
+}
+
+TEST(RequireApiKeyHeaderTest, ValidatesTheNamedHeader) {
+  auto handler = Chain(
+      {RequireApiKeyHeader("x-api-key", "", [](const std::string& key) { return key == "k"; })},
+      [](const http::HttpRequest&) { return Ok("in"); });
+
+  http::HttpRequest request;
+  EXPECT_EQ(handler(request).status, 401);
+  request.headers.Set("x-api-key", "k");
+  EXPECT_EQ(handler(request).status, 200);
+  request.headers.Set("x-api-key", "wrong");
+  EXPECT_EQ(handler(request).status, 401);
+}
+
+TEST(RequireApiKeyHeaderTest, SchemePrefixesTheKey) {
+  auto handler = Chain({RequireApiKeyHeader("authorization", "ApiKey",
+                                            [](const std::string& key) { return key == "k"; })},
+                       [](const http::HttpRequest&) { return Ok("in"); });
+
+  http::HttpRequest request;
+  request.headers.Set("authorization", "ApiKey k");
+  EXPECT_EQ(handler(request).status, 200);
+  request.headers.Set("authorization", "k");  // missing scheme
+  EXPECT_EQ(handler(request).status, 401);
+}
+
 TEST(ObserveTest, CountsEveryRequest) {
   int count = 0;
   auto handler = Chain({Observe([&](const RequestObservation&) { ++count; })},

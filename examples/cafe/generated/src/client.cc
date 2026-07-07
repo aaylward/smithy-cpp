@@ -118,6 +118,10 @@ smithy::Outcome<smithy::http::HttpResponse> CafeClient::Send(smithy::http::HttpR
   // Operations with a non-document response payload set their own accept.
   if (!request.headers.Get("accept").has_value()) request.headers.Set("accept", "application/cbor");
   request.headers.Set("user-agent", config_.user_agent);
+  // @httpApiKeyAuth: attach the configured key where the model binds it.
+  if (config_.api_key) {
+    request.headers.Set("x-api-key", config_.api_key());
+  }
   if (!request.body.empty()) {
     request.headers.Set("content-length", std::to_string(request.body.size()));
   }

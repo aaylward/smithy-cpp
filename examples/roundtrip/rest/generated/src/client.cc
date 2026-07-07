@@ -171,6 +171,11 @@ smithy::Outcome<smithy::http::HttpResponse> RoundTripRestClient::Send(smithy::ht
   // Operations with a non-document response payload set their own accept.
   if (!request.headers.Get("accept").has_value()) request.headers.Set("accept", "application/json");
   request.headers.Set("user-agent", config_.user_agent);
+  // @httpApiKeyAuth: attach the configured key where the model binds it.
+  if (config_.api_key) {
+    request.target += request.target.find('?') == std::string::npos ? "?" : "&";
+    request.target += "api-key=" + smithy::http::EncodeQueryComponent(config_.api_key());
+  }
   if (!request.body.empty()) {
     request.headers.Set("content-length", std::to_string(request.body.size()));
   }

@@ -49,6 +49,16 @@ final class ClientGenerator {
     w.addInclude("\"smithy/http/transport.h\"");
 
     String name = clientName();
+    List<OperationShape> paginated =
+        operations().stream().filter(op -> pagination(op).isPresent()).toList();
+    if (!paginated.isEmpty()) {
+      w.addInclude("<optional>");
+      w.addInclude("<utility>");
+      for (OperationShape operation : paginated) {
+        w.write("class $L;", paginatorName(operation));
+      }
+      w.write("");
+    }
     w.write("/// $L client for $L.", protocol.name(), service.getId().toString());
     w.write("/// Modeled service errors surface as smithy::Error with kind kModeled,");
     w.write("/// code() set to the error shape name, and the deserialized error");
@@ -78,6 +88,17 @@ final class ClientGenerator {
           CppReservedWords.escape(operation.getId().getName()),
           inputType,
           defaulted);
+      if (pagination(operation).isPresent()) {
+        w.write(
+            "/// Pages $L until the service stops returning a next token (@paginated).",
+            CppReservedWords.escape(operation.getId().getName()));
+        w.write(
+            "$L Paginate$L($L input$L) const;",
+            paginatorName(operation),
+            CppReservedWords.escape(operation.getId().getName()),
+            inputType,
+            defaulted);
+      }
     }
     w.write("").dedent();
     w.write("private:").indent();
@@ -94,6 +115,94 @@ final class ClientGenerator {
     w.write("std::string path_prefix_;").dedent();
     w.closeBlock("};");
     w.write("");
+
+    for (OperationShape operation : paginated) {
+      String opName = CppReservedWords.escape(operation.getId().getName());
+      StructureShape input = ProtocolSupport.inputShape(context, operation);
+      String inputType = context.cppSymbols().toSymbol(input).getName();
+      String outputType =
+          context.cppSymbols().toSymbol(ProtocolSupport.outputShape(context, operation)).getName();
+      w.write("/// Lazily pages $L; owns a copy of the client and the input.", opName);
+      w.openBlock("class $L {", paginatorName(operation));
+      w.write("public:").indent();
+      w.write("/// The next page, std::nullopt once pagination is complete, or the");
+      w.write("/// first failed call's error (pagination then stops).");
+      w.write("smithy::Outcome<std::optional<$L>> Next();", outputType);
+      w.write("").dedent();
+      w.write("private:").indent();
+      w.write("friend class $L;", name);
+      w.write(
+          "$L($L client, $L input) : client_(std::move(client)), input_(std::move(input)) {}",
+          paginatorName(operation),
+          name,
+          inputType);
+      w.write("$L client_;", name);
+      w.write("$L input_;", inputType);
+      w.write("bool done_ = false;").dedent();
+      w.closeBlock("};");
+      w.write("");
+    }
+  }
+
+  /**
+   * Resolved pagination for the operation, when the generator supports it: top-level string
+   * input/output token members (nested output-token paths and non-string tokens are skipped).
+   */
+  private java.util.Optional<software.amazon.smithy.model.knowledge.PaginationInfo> pagination(
+      OperationShape operation) {
+    return software.amazon.smithy.model.knowledge.PaginatedIndex.of(context.model())
+        .getPaginationInfo(service, operation)
+        .filter(
+            info ->
+                info.getOutputTokenMemberPath().size() == 1
+                    && context
+                        .model()
+                        .expectShape(info.getInputTokenMember().getTarget())
+                        .isStringShape()
+                    && context
+                        .model()
+                        .expectShape(info.getOutputTokenMemberPath().get(0).getTarget())
+                        .isStringShape());
+  }
+
+  private String paginatorName(OperationShape operation) {
+    return CppReservedWords.escape(operation.getId().getName()) + "Paginator";
+  }
+
+  /** Auth from the service's traits; a null provider leaves the request anonymous. */
+  private void writeAuth(CppWriter w) {
+    if (service.hasTrait(software.amazon.smithy.model.traits.HttpBearerAuthTrait.class)) {
+      w.write("// @httpBearerAuth: attach the configured token (fetched per request).");
+      w.openBlock("if (config_.bearer_token) {");
+      w.write("request.headers.Set(\"authorization\", \"Bearer \" + config_.bearer_token());");
+      w.closeBlock("}");
+    }
+    service
+        .getTrait(software.amazon.smithy.model.traits.HttpApiKeyAuthTrait.class)
+        .ifPresent(
+            trait -> {
+              w.write("// @httpApiKeyAuth: attach the configured key where the model binds it.");
+              w.openBlock("if (config_.api_key) {");
+              if (trait.getIn()
+                  == software.amazon.smithy.model.traits.HttpApiKeyAuthTrait.Location.HEADER) {
+                String prefix = trait.getScheme().map(scheme -> scheme + " ").orElse("");
+                if (prefix.isEmpty()) {
+                  w.write("request.headers.Set($S, config_.api_key());", trait.getName());
+                } else {
+                  w.write(
+                      "request.headers.Set($S, $S + config_.api_key());", trait.getName(), prefix);
+                }
+              } else {
+                w.write(
+                    "request.target += request.target.find('?') == std::string::npos "
+                        + "? \"?\" : \"&\";");
+                w.write(
+                    "request.target += \"$L=\" + "
+                        + "smithy::http::EncodeQueryComponent(config_.api_key());",
+                    trait.getName());
+              }
+              w.closeBlock("}");
+            });
   }
 
   private void writeSource(CppWriter w) {
@@ -155,6 +264,7 @@ final class ClientGenerator {
             + "request.headers.Set(\"accept\", $S);",
         protocol.contentType());
     w.write("request.headers.Set(\"user-agent\", config_.user_agent);");
+    writeAuth(w);
     w.openBlock("if (!request.body.empty()) {");
     w.write("request.headers.Set(\"content-length\", std::to_string(request.body.size()));");
     w.closeBlock("}");
@@ -182,5 +292,54 @@ final class ClientGenerator {
       w.closeBlock("}");
       w.write("");
     }
+
+    for (OperationShape operation : operations()) {
+      pagination(operation).ifPresent(info -> writePaginator(w, operation, info));
+    }
+  }
+
+  private void writePaginator(
+      CppWriter w,
+      OperationShape operation,
+      software.amazon.smithy.model.knowledge.PaginationInfo info) {
+    String name = clientName();
+    String pager = paginatorName(operation);
+    String opName = CppReservedWords.escape(operation.getId().getName());
+    StructureShape input = ProtocolSupport.inputShape(context, operation);
+    String inputType = context.cppSymbols().toSymbol(input).getName();
+    String outputType =
+        context.cppSymbols().toSymbol(ProtocolSupport.outputShape(context, operation)).getName();
+    String inToken = context.cppSymbols().toMemberName(info.getInputTokenMember());
+    var outTokenMember = info.getOutputTokenMemberPath().get(0);
+    String outToken = context.cppSymbols().toMemberName(outTokenMember);
+    boolean outRequired = outTokenMember.isRequired();
+
+    w.openBlock("$L $L::Paginate$L($L input) const {", pager, name, opName, inputType);
+    w.write("return $L(*this, std::move(input));", pager);
+    w.closeBlock("}");
+    w.write("");
+
+    String exhausted =
+        outRequired
+            ? "page->" + outToken + ".empty()"
+            : "!page->" + outToken + ".has_value() || page->" + outToken + "->empty()";
+    String tokenValue = (outRequired ? "page->" : "*page->") + outToken;
+    w.openBlock("smithy::Outcome<std::optional<$L>> $L::Next() {", outputType, pager);
+    w.write("if (done_) return std::optional<$L>();", outputType);
+    w.write("auto page = client_.$L(input_);", opName);
+    w.openBlock("if (!page) {");
+    w.write("done_ = true;");
+    w.write("return std::move(page).error();");
+    w.closeBlock("}");
+    w.openBlock("if ($L) {", exhausted);
+    w.write("done_ = true;");
+    w.dedent();
+    w.write("} else {");
+    w.indent();
+    w.write("input_.$L = $L;", inToken, tokenValue);
+    w.closeBlock("}");
+    w.write("return std::optional<$L>(std::move(*page));", outputType);
+    w.closeBlock("}");
+    w.write("");
   }
 }

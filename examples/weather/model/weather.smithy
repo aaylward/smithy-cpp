@@ -12,6 +12,7 @@ use aws.protocols#restJson1
 @restJson1
 @title("Weather Service")
 @paginated(inputToken: "nextToken", outputToken: "nextToken", pageSize: "pageSize")
+@httpBearerAuth
 service Weather {
     version: "2026-07-06"
     resources: [City]

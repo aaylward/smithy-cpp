@@ -1,6 +1,7 @@
 #ifndef SMITHY_CLIENT_CONFIG_H_
 #define SMITHY_CLIENT_CONFIG_H_
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -31,6 +32,16 @@ struct ClientConfig {
   // @requestCompression: bodies at least this large are gzip-compressed
   // (the Smithy default; 0 compresses everything).
   int request_min_compression_size_bytes = 10240;
+
+  // @httpBearerAuth: when set on a service modeled with the trait, every
+  // request carries "authorization: Bearer <token>". Called per request, so
+  // rotating credentials just works.
+  std::function<std::string()> bearer_token;
+
+  // @httpApiKeyAuth: when set on a service modeled with the trait, every
+  // request carries the key where the model binds it (named header with
+  // optional scheme, or query parameter). Called per request.
+  std::function<std::string()> api_key;
 
   // User-supplied hooks around every HTTP attempt (auth headers, logging,
   // tracing); run in registration order. See smithy/client/interceptor.h.

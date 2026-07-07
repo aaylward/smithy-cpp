@@ -29,6 +29,8 @@ Middleware Observe(std::function<void(const RequestObservation&)> callback,
       RequestObservation observation;
       observation.method = request.method;
       observation.target = request.target;
+      observation.operation = response.operation;
+      observation.trace_parent = request.headers.Get("traceparent").value_or("");
       observation.status = response.status;
       observation.duration = std::chrono::duration_cast<std::chrono::milliseconds>(now() - start);
       callback(observation);

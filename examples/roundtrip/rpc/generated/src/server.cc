@@ -152,7 +152,7 @@ RoundTripRpcServer::RoundTripRpcServer(std::shared_ptr<RoundTripRpcHandler> hand
     response.headers.Set("content-type", "application/cbor");
     response.body = smithy::cbor::Encode(SerializePutSinkRpcOutput(*outcome)).ToString();
     return response;
-  });
+  }, "PutSinkRpc");
 }
 
 smithy::http::RequestHandler RoundTripRpcServer::Handler() const {

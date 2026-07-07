@@ -25,6 +25,11 @@ struct HttpResponse {
   int status = 200;
   Headers headers;
   Body body;
+  // Server-side annotation, never written to the wire: the Smithy operation
+  // whose route produced this response (stamped by the generated router so
+  // observability middleware can label by operation; empty on 404/405/400
+  // dispatch failures and hand-rolled handlers).
+  std::string operation;
 };
 
 }  // namespace smithy::http

@@ -103,4 +103,19 @@ struct GetCurrentTimeOutput {
   friend bool operator==(const GetCurrentTimeOutput&, const GetCurrentTimeOutput&) = default;
 };
 
+
+struct GetReportInput {
+  std::string reportPath{};
+
+  friend bool operator==(const GetReportInput&, const GetReportInput&) = default;
+};
+
+
+struct GetReportOutput {
+  std::string path{};
+  std::int64_t sizeBytes{};
+
+  friend bool operator==(const GetReportOutput&, const GetReportOutput&) = default;
+};
+
 }  // namespace example::weather

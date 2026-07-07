@@ -46,6 +46,13 @@ GetForecastOutput MinimalGetForecastOutput() {
   }();
 }
 
+GetReportOutput MinimalGetReportOutput() {
+    return [] {
+    GetReportOutput v{};
+    return v;
+  }();
+}
+
 ListCitiesOutput MinimalListCitiesOutput() {
     return [] {
     ListCitiesOutput v{};
@@ -70,6 +77,10 @@ class SmokeHandler : public WeatherHandler {
     smithy::Outcome<GetForecastOutput> GetForecast(const GetForecastInput& input) override {
       (void)input;
       return MinimalGetForecastOutput();
+    }
+    smithy::Outcome<GetReportOutput> GetReport(const GetReportInput& input) override {
+      (void)input;
+      return MinimalGetReportOutput();
     }
     smithy::Outcome<ListCitiesOutput> ListCities(const ListCitiesInput& input) override {
       (void)input;
@@ -138,6 +149,19 @@ TEST(WeatherSmokeTest, GetForecastRoundTrips) {
   const auto outcome = client.GetForecast(input);
   ASSERT_TRUE(outcome.ok()) << outcome.error().message();
   EXPECT_EQ(*outcome, MinimalGetForecastOutput());
+}
+
+TEST(WeatherSmokeTest, GetReportRoundTrips) {
+  WeatherClient client = MakeClient(std::make_shared<SmokeHandler>());
+    GetReportInput input = [] {
+    GetReportInput v{};
+    return v;
+  }();
+  // @httpLabel members must be non-empty to route.
+  input.reportPath = "smoke";
+  const auto outcome = client.GetReport(input);
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  EXPECT_EQ(*outcome, MinimalGetReportOutput());
 }
 
 TEST(WeatherSmokeTest, ListCitiesRoundTrips) {

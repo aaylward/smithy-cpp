@@ -1,17 +1,46 @@
 load("@rules_cc//cc:defs.bzl", "cc_test")
 load("@smithy_cpp//bazel:defs.bzl", "smithy_cpp_client_library", "smithy_cpp_server_library")
 
+# The base model is protocol-agnostic (the upstream Smithy way); each pair of
+# targets binds it to a concrete protocol with an `apply` overlay. The same
+# model generates a REST client/server and an RPC client/server side by side.
 smithy_cpp_client_library(
     name = "todo_client",
-    srcs = ["model/todo.smithy"],
+    srcs = [
+        "model/bindings/restjson1.smithy",
+        "model/todo.smithy",
+    ],
     namespace = "acme::todo",
     service = "acme.todo#Todo",
 )
 
 smithy_cpp_server_library(
     name = "todo_server",
-    srcs = ["model/todo.smithy"],
+    srcs = [
+        "model/bindings/restjson1.smithy",
+        "model/todo.smithy",
+    ],
     namespace = "acme::todo",
+    service = "acme.todo#Todo",
+)
+
+smithy_cpp_client_library(
+    name = "todo_cbor_client",
+    srcs = [
+        "model/bindings/rpcv2cbor.smithy",
+        "model/todo.smithy",
+    ],
+    namespace = "acme::todo::cbor",
+    service = "acme.todo#Todo",
+)
+
+smithy_cpp_server_library(
+    name = "todo_cbor_server",
+    srcs = [
+        "model/bindings/rpcv2cbor.smithy",
+        "model/todo.smithy",
+    ],
+    namespace = "acme::todo::cbor",
     service = "acme.todo#Todo",
 )
 
@@ -22,6 +51,8 @@ cc_test(
     size = "small",
     srcs = ["todo_integration_test.cc"],
     deps = [
+        ":todo_cbor_client",
+        ":todo_cbor_server",
         ":todo_client",
         ":todo_server",
         "@googletest//:gtest_main",

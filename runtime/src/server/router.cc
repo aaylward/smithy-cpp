@@ -58,7 +58,8 @@ Outcome<std::vector<Router::Segment>> Router::ParsePattern(std::string_view patt
   return segments;
 }
 
-Outcome<Unit> Router::Add(std::string_view method, std::string_view pattern, RouteHandler handler) {
+Outcome<Unit> Router::Add(std::string_view method, std::string_view pattern, RouteHandler handler,
+                          std::string_view operation) {
   auto segments = ParsePattern(pattern);
   if (!segments) return std::move(segments).error();
   for (const RouteEntry& existing : routes_) {
@@ -77,7 +78,8 @@ Outcome<Unit> Router::Add(std::string_view method, std::string_view pattern, Rou
                                std::string(pattern));
     }
   }
-  routes_.push_back(RouteEntry{std::string(method), std::move(*segments), std::move(handler)});
+  routes_.push_back(RouteEntry{std::string(method), std::move(*segments), std::move(handler),
+                               std::string(operation)});
   return Unit{};
 }
 
@@ -177,7 +179,9 @@ http::HttpResponse Router::Route(const http::HttpRequest& request) const {
   RequestContext context;
   context.labels = std::move(best_labels);
   context.query_params = target->query_params;
-  return best->handler(request, context);
+  http::HttpResponse response = best->handler(request, context);
+  if (!best->operation.empty()) response.operation = best->operation;
+  return response;
 }
 
 }  // namespace smithy::server

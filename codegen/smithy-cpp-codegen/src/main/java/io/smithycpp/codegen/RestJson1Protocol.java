@@ -1406,6 +1406,6 @@ final class RestJson1Protocol implements ProtocolGenerator {
     w.write("auto outcome = handler->$L(*input);", opName);
     w.write("if (!outcome) return ErrorToResponse(outcome.error());");
     w.write("return Serialize$LResponse(*outcome);", opName);
-    w.closeBlock("});");
+    w.closeBlock("}, $S);", operation.getId().getName());
   }
 }

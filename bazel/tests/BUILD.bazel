@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("//bazel:defs.bzl", "smithy_cpp_client_library", "smithy_cpp_server_library", "smithy_cpp_types_library")
 load(":defs_test.bzl", "defs_test_suite")
 
@@ -5,23 +6,48 @@ load(":defs_test.bzl", "defs_test_suite")
 # compile test of rule-generated code.
 smithy_cpp_client_library(
     name = "greeter_client",
-    srcs = ["greeter.smithy"],
+    srcs = [
+        "greeter.smithy",
+        "greeter_restjson1.smithy",
+    ],
     namespace = "smithy::cpp::ruletest",
     service = "smithy.cpp.ruletest#Greeter",
 )
 
 smithy_cpp_server_library(
     name = "greeter_server",
-    srcs = ["greeter.smithy"],
+    srcs = [
+        "greeter.smithy",
+        "greeter_restjson1.smithy",
+    ],
     namespace = "smithy::cpp::ruletest",
     service = "smithy.cpp.ruletest#Greeter",
 )
 
 smithy_cpp_types_library(
     name = "greeter_types",
-    srcs = ["greeter.smithy"],
+    srcs = [
+        "greeter.smithy",
+        "greeter_restjson1.smithy",
+    ],
     namespace = "smithy::cpp::ruletest",
     service = "smithy.cpp.ruletest#Greeter",
+)
+
+# Functional check that a model assembled from multiple files (base +
+# protocol overlay) generates working code: the generated client round-trips
+# against the generated server in-process.
+cc_test(
+    name = "greeter_roundtrip_test",
+    size = "small",
+    srcs = ["greeter_roundtrip_test.cc"],
+    deps = [
+        ":greeter_client",
+        ":greeter_server",
+        "//runtime:client",
+        "//runtime:http",
+        "@googletest//:gtest_main",
+    ],
 )
 
 defs_test_suite(name = "defs_tests")

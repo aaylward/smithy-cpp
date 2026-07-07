@@ -23,6 +23,10 @@ class WeatherHandler {
     virtual smithy::Outcome<GetCityOutput> GetCity(const GetCityInput& input) = 0;
     virtual smithy::Outcome<GetCurrentTimeOutput> GetCurrentTime(const GetCurrentTimeInput& input) = 0;
     virtual smithy::Outcome<GetForecastOutput> GetForecast(const GetForecastInput& input) = 0;
+    /// Fetches a rendered report by its slash-separated path. The greedy label
+    /// keeps embedded slashes: GET /reports/2026/q3/summary routes here with
+    /// reportPath = "2026/q3/summary".
+    virtual smithy::Outcome<GetReportOutput> GetReport(const GetReportInput& input) = 0;
     virtual smithy::Outcome<ListCitiesOutput> ListCities(const ListCitiesInput& input) = 0;
 };
 

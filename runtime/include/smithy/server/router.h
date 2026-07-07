@@ -34,8 +34,11 @@ using RouteHandler =
 class Router {
  public:
   // Fails on invalid patterns and on route conflicts (same method + pattern
-  // shape) — the generator surfaces this at build time.
-  Outcome<Unit> Add(std::string_view method, std::string_view pattern, RouteHandler handler);
+  // shape) — the generator surfaces this at build time. A non-empty
+  // operation name is stamped onto HttpResponse::operation for
+  // observability middleware.
+  Outcome<Unit> Add(std::string_view method, std::string_view pattern, RouteHandler handler,
+                    std::string_view operation = "");
 
   // Full dispatch: 404 (no pattern match), 405 (pattern match, wrong method,
   // with an Allow header), 400 (malformed target); otherwise the handler's
@@ -51,6 +54,7 @@ class Router {
     std::string method;
     std::vector<Segment> segments;
     RouteHandler handler;
+    std::string operation;
   };
 
   static Outcome<std::vector<Segment>> ParsePattern(std::string_view pattern);

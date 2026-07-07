@@ -18,6 +18,7 @@ service Cafe {
     operations: [OrderCoffee, GetOrder]
 }
 
+@requestCompression(encodings: ["gzip"])
 operation OrderCoffee {
     input := {
         @required

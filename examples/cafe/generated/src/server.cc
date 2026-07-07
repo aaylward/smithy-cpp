@@ -10,6 +10,7 @@
 #include "example/cafe/serde.h"
 #include "example/cafe/server.h"
 #include "smithy/cbor/cbor.h"
+#include "smithy/compression/gzip.h"
 #include "smithy/core/blob.h"
 #include "smithy/core/document.h"
 #include "smithy/core/text.h"
@@ -140,8 +141,17 @@ CafeServer::CafeServer(std::shared_ptr<CafeHandler> handler)
     response.headers.Set("content-type", "application/cbor");
     response.body = smithy::cbor::Encode(SerializeGetOrderOutput(*outcome)).ToString();
     return response;
-  });
-  (void)router_->Add("POST", "/service/Cafe/operation/OrderCoffee", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
+  }, "GetOrder");
+  (void)router_->Add("POST", "/service/Cafe/operation/OrderCoffee", [handler](const smithy::http::HttpRequest& raw_request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
+    smithy::http::HttpRequest request = raw_request;
+    // @requestCompression(gzip): decode before parsing.
+    if (const auto request_encoding = request.headers.Get("content-encoding"); request_encoding.has_value() && (*request_encoding == "gzip" || request_encoding->ends_with(", gzip"))) {
+      auto decompressed = smithy::GzipDecompress(request.body);
+      if (!decompressed) {
+        return CborError(400, "SerializationException", "invalid gzip request body", {});
+      }
+      request.body = *std::move(decompressed);
+    }
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
     }
@@ -171,7 +181,7 @@ CafeServer::CafeServer(std::shared_ptr<CafeHandler> handler)
     response.headers.Set("content-type", "application/cbor");
     response.body = smithy::cbor::Encode(SerializeOrderCoffeeOutput(*outcome)).ToString();
     return response;
-  });
+  }, "OrderCoffee");
 }
 
 smithy::http::RequestHandler CafeServer::Handler() const {

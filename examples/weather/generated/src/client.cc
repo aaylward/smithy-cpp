@@ -228,6 +228,22 @@ smithy::Outcome<GetForecastOutput> WeatherClient::GetForecast(const GetForecastI
   return DeserializeGetForecastOutput(*body_doc);
 }
 
+smithy::Outcome<GetReportOutput> WeatherClient::GetReport(const GetReportInput& input) const {
+  std::string target = path_prefix_;
+  target += "/reports";
+  target += "/";
+  target += smithy::http::EncodeGreedyPathSegment(input.reportPath);
+  smithy::http::HttpRequest request;
+  request.method = "GET";
+  request.target = std::move(target);
+  auto response = Send(std::move(request));
+  if (!response) return std::move(response).error();
+  if (response->status != 200) return GenericError(ParseError(*response));
+  auto body_doc = smithy::json::Decode(response->body);
+  if (!body_doc) return std::move(body_doc).error();
+  return DeserializeGetReportOutput(*body_doc);
+}
+
 smithy::Outcome<ListCitiesOutput> WeatherClient::ListCities(const ListCitiesInput& input) const {
   std::string target = path_prefix_;
   target += "/cities";

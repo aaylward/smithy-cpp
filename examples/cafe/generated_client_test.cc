@@ -12,6 +12,7 @@
 #include "example/cafe/client.h"
 #include "example/cafe/serde.h"
 #include "smithy/cbor/cbor.h"
+#include "smithy/compression/gzip.h"
 #include "smithy/http/transport.h"
 
 namespace example::cafe {
@@ -240,6 +241,52 @@ TEST_F(CafeClientTest, ApiKeyHeaderComesFromConfig) {
   transport->next_response.headers.Set("smithy-protocol", "rpc-v2-cbor");
   (void)client->GetOrder(GetOrderInput{.orderId = "abc"});
   EXPECT_EQ(transport->last_request.headers.Get("x-api-key"), "cafe-key");
+}
+
+// @requestCompression(encodings: ["gzip"]) on OrderCoffee: bodies at or
+// above the configured threshold are gzipped (Content-Encoding set, payload
+// decompresses back to the CBOR that would otherwise have been sent);
+// smaller bodies go out untouched.
+TEST_F(CafeClientTest, SmallOrderBodiesAreNotCompressed) {
+  transport_->next_response.headers.Set("smithy-protocol", "rpc-v2-cbor");
+  transport_->next_response.body = EncodeBody(Document(DocumentMap{}));
+  (void)client_->OrderCoffee(OrderCoffeeInput{.coffeeType = CoffeeType::FromString("LATTE")});
+  EXPECT_FALSE(transport_->last_request.headers.Get("content-encoding").has_value());
+  EXPECT_TRUE(DecodeBody(transport_->last_request.body).ok());
+}
+
+TEST_F(CafeClientTest, ThresholdZeroCompressesEverything) {
+  auto transport = std::make_shared<CapturingTransport>();
+  smithy::ClientConfig config;
+  config.http_client = transport;
+  config.request_min_compression_size_bytes = 0;
+  auto client = CafeClient::Create(std::move(config));
+  ASSERT_TRUE(client.ok());
+  transport->next_response.headers.Set("smithy-protocol", "rpc-v2-cbor");
+  transport->next_response.body = EncodeBody(Document(DocumentMap{}));
+
+  (void)client->OrderCoffee(OrderCoffeeInput{.coffeeType = CoffeeType::FromString("LATTE")});
+  EXPECT_EQ(transport->last_request.headers.Get("content-encoding"), "gzip");
+  const auto decompressed = smithy::GzipDecompress(transport->last_request.body);
+  ASSERT_TRUE(decompressed.ok()) << decompressed.error().message();
+  const auto doc = DecodeBody(*decompressed);
+  ASSERT_TRUE(doc.ok());
+  EXPECT_TRUE(doc->as_map().contains("coffeeType"));
+}
+
+TEST_F(CafeClientTest, LargeOrderBodiesCompressAtTheDefaultThreshold) {
+  // clientToken is an unconstrained string: pad the body past 10240 bytes.
+  OrderCoffeeInput input{.coffeeType = CoffeeType::FromString("LATTE"),
+                         .clientToken = std::string(16 * 1024, 't')};
+  transport_->next_response.headers.Set("smithy-protocol", "rpc-v2-cbor");
+  transport_->next_response.body = EncodeBody(Document(DocumentMap{}));
+  (void)client_->OrderCoffee(input);
+  EXPECT_EQ(transport_->last_request.headers.Get("content-encoding"), "gzip");
+  const auto decompressed = smithy::GzipDecompress(transport_->last_request.body);
+  ASSERT_TRUE(decompressed.ok());
+  const auto doc = DecodeBody(*decompressed);
+  ASSERT_TRUE(doc.ok());
+  EXPECT_EQ(doc->as_map().at("clientToken").as_string(), input.clientToken.value());
 }
 
 }  // namespace

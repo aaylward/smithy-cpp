@@ -16,7 +16,7 @@ use aws.protocols#restJson1
 service Weather {
     version: "2026-07-06"
     resources: [City]
-    operations: [GetCurrentTime]
+    operations: [GetCurrentTime, GetReport]
 }
 
 resource City {
@@ -122,6 +122,27 @@ operation GetForecast {
     }
 
     errors: [NoSuchResource]
+}
+
+/// Fetches a rendered report by its slash-separated path. The greedy label
+/// keeps embedded slashes: GET /reports/2026/q3/summary routes here with
+/// reportPath = "2026/q3/summary".
+@readonly
+@http(method: "GET", uri: "/reports/{reportPath+}")
+operation GetReport {
+    input := {
+        @required
+        @httpLabel
+        reportPath: String
+    }
+
+    output := {
+        @required
+        path: String
+
+        @required
+        sizeBytes: Long
+    }
 }
 
 @readonly

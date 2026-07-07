@@ -2,11 +2,14 @@ $version: "2.0"
 
 namespace acme.todo
 
-use aws.protocols#restJson1
-
 /// A deliberately small service: enough to show routing, bodies, constraint
 /// validation, and a modeled error end to end.
-@restJson1
+///
+/// Deliberately protocol-agnostic (the upstream Smithy way): the @http
+/// bindings below describe HTTP semantics without picking a wire protocol.
+/// The overlays next to this file bind the service to a concrete protocol
+/// with `apply` — see bindings/restjson1.smithy and bindings/rpcv2cbor.smithy
+/// — so one model can serve REST and RPC without being edited.
 service Todo {
     version: "2026-01-01"
     operations: [AddTask, GetTask]

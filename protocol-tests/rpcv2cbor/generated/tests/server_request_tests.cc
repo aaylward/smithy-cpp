@@ -19,7 +19,6 @@ namespace smithy::protocoltests::rpcv2cbor {
 // compared against the expected params.
 //
 // Excluded cases (protocol-test-exclusions.txt; the list must only shrink):
-//   RpcV2CborServerPopulatesDefaultsWhenMissingInRequestBody (server-request) — @default population is not implemented yet
 //   RpcV2CborSupportsNaNFloatInputs (server-request) — NaN input members compare unequal under operator==
 
 namespace {
@@ -301,6 +300,55 @@ TEST(RpcV2ProtocolServerRequestTest, NoInputServerAllowsEmptyBody) {
   return v;
 }();
   EXPECT_EQ(*handler->lastNoInputOutput, expected);
+}
+
+// Server populates default values when missing in request body.
+TEST(RpcV2ProtocolServerRequestTest, RpcV2CborServerPopulatesDefaultsWhenMissingInRequestBody) {
+  auto handler = std::make_shared<RecordingHandler>();
+  RpcV2ProtocolServer server(handler);
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = "/service/RpcV2Protocol/operation/OperationWithDefaults";
+  request.headers.Set("Accept", "application/cbor");
+  request.headers.Set("Content-Type", "application/cbor");
+  request.headers.Set("smithy-protocol", "rpc-v2-cbor");
+  request.body = smithy::testing::FromBase64("v2hkZWZhdWx0c6D/");
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  ASSERT_TRUE(handler->lastOperationWithDefaults.has_value()) << response.status << " " << response.body;
+  const OperationWithDefaultsInput expected = [] {
+  OperationWithDefaultsInput v{};
+  v.defaults = [] {
+  Defaults v{};
+  v.defaultString = "hi";
+  v.defaultBoolean = true;
+  v.defaultList = std::vector<std::string>{};
+  v.defaultTimestamp = smithy::Timestamp::FromEpochMilliseconds(0LL);
+  v.defaultBlob = smithy::Blob::FromString("abc");
+  v.defaultByte = 1;
+  v.defaultShort = 1;
+  v.defaultInteger = 10;
+  v.defaultLong = 100LL;
+  v.defaultFloat = 1.0F;
+  v.defaultDouble = 1.0;
+  v.defaultMap = std::map<std::string, std::string>{};
+  v.defaultEnum = TestEnum::FromString("FOO");
+  v.defaultIntEnum = static_cast<TestIntEnum>(1);
+  v.emptyString = "";
+  v.falseBoolean = false;
+  v.emptyBlob = smithy::Blob::FromString("");
+  v.zeroByte = 0;
+  v.zeroShort = 0;
+  v.zeroInteger = 0;
+  v.zeroLong = 0LL;
+  v.zeroFloat = 0.0F;
+  v.zeroDouble = 0.0;
+  return v;
+}();
+  v.topLevelDefault = "hi";
+  v.otherTopLevelDefault = 0;
+  return v;
+}();
+  EXPECT_EQ(*handler->lastOperationWithDefaults, expected);
 }
 
 // When input is empty we write CBOR equivalent of {}

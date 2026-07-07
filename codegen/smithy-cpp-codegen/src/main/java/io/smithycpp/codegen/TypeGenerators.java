@@ -97,7 +97,18 @@ final class TypeGenerators {
     for (MemberShape member : shape.members()) {
       Symbol type = symbols().toMemberSymbol(member);
       writer.addIncludesFor(type);
-      writer.write("$L $L{};", type.getName(), symbols().toMemberName(member));
+      Shape target = context.model().expectShape(member.getTarget());
+      boolean emptyAggregate = target.isListShape() || target.isMapShape();
+      if (MemberDefaults.populated(context.model(), member) && !emptyAggregate) {
+        // @default: plain member initialized to the default value.
+        writer.write(
+            "$L $L = $L;",
+            type.getName(),
+            symbols().toMemberName(member),
+            MemberDefaults.literal(context, member));
+      } else {
+        writer.write("$L $L{};", type.getName(), symbols().toMemberName(member));
+      }
     }
     if (!shape.members().isEmpty()) {
       writer.write("");

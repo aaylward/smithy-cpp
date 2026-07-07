@@ -17,10 +17,6 @@ namespace smithy::protocoltests::rpcv2cbor {
 // Generated from smithy.test#httpResponseTests (server cases): a stub
 // handler returns the expected params and the wire response the server
 // produced is compared against the test definition.
-//
-// Excluded cases (protocol-test-exclusions.txt; the list must only shrink):
-//   RpcV2CborServerPopulatesDefaultsInResponseWhenMissingInParams (server-response) — @default population is not implemented yet
-
 namespace {
 
 EmptyInputOutputOutput MinimalEmptyInputOutputOutput() {
@@ -211,6 +207,20 @@ smithy::http::HttpRequest MinimalRequestForNoInputOutput() {
   return transport->last_request;
 }
 
+smithy::http::HttpRequest MinimalRequestForOperationWithDefaults() {
+  auto transport = std::make_shared<smithy::testing::CapturingTransport>();
+  smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
+  config.http_client = transport;
+  auto client = *RpcV2ProtocolClient::Create(std::move(config));
+    OperationWithDefaultsInput input = [] {
+    OperationWithDefaultsInput v{};
+    return v;
+  }();
+  (void)client.OperationWithDefaults(input);
+  return transport->last_request;
+}
+
 smithy::http::HttpRequest MinimalRequestForOptionalInputOutput() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
@@ -361,6 +371,26 @@ TEST(RpcV2ProtocolServerResponseTest, no_output) {
   const smithy::http::HttpResponse response = server.Handler()(MinimalRequestForNoInputOutput());
   EXPECT_EQ(response.status, 200);
   EXPECT_EQ(response.headers.Get("smithy-protocol").value_or("<missing>"), "rpc-v2-cbor");
+}
+
+// Server populates default values in response when missing in params.
+TEST(RpcV2ProtocolServerResponseTest, RpcV2CborServerPopulatesDefaultsInResponseWhenMissingInParams) {
+  class Handler final : public RecordingHandler {
+   public:
+    smithy::Outcome<OperationWithDefaultsOutput> OperationWithDefaults(const OperationWithDefaultsInput& input) override {
+      (void)input;
+      return [] {
+  OperationWithDefaultsOutput v{};
+  return v;
+}();
+    }
+  };
+  RpcV2ProtocolServer server(std::make_shared<Handler>());
+  const smithy::http::HttpResponse response = server.Handler()(MinimalRequestForOperationWithDefaults());
+  EXPECT_EQ(response.status, 200);
+  EXPECT_EQ(response.headers.Get("Content-Type").value_or("<missing>"), "application/cbor");
+  EXPECT_EQ(response.headers.Get("smithy-protocol").value_or("<missing>"), "rpc-v2-cbor");
+  EXPECT_TRUE(smithy::testing::CborBodyEqualsBase64("v21kZWZhdWx0U3RyaW5nYmhpbmRlZmF1bHRCb29sZWFu9WtkZWZhdWx0TGlzdIBwZGVmYXVsdFRpbWVzdGFtcMH7AAAAAAAAAABrZGVmYXVsdEJsb2JDYWJja2RlZmF1bHRCeXRlAWxkZWZhdWx0U2hvcnQBbmRlZmF1bHRJbnRlZ2VyCmtkZWZhdWx0TG9uZxhkbGRlZmF1bHRGbG9hdPo/gAAAbWRlZmF1bHREb3VibGX7P/AAAAAAAABqZGVmYXVsdE1hcKBrZGVmYXVsdEVudW1jRk9PbmRlZmF1bHRJbnRFbnVtAWtlbXB0eVN0cmluZ2BsZmFsc2VCb29sZWFu9GllbXB0eUJsb2JAaHplcm9CeXRlAGl6ZXJvU2hvcnQAa3plcm9JbnRlZ2VyAGh6ZXJvTG9uZwBpemVyb0Zsb2F0+gAAAABqemVyb0RvdWJsZfsAAAAAAAAAAP8=", response.body));
 }
 
 // When output is empty we write CBOR equivalent of {}

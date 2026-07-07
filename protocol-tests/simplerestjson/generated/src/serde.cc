@@ -762,11 +762,10 @@ smithy::Outcome<HttpPayloadRequiredWithDefaultInput> DeserializeHttpPayloadRequi
   HttpPayloadRequiredWithDefaultInput out;
   {
     const smithy::Document* member = doc.Find("body");
-    if (member == nullptr || member->is_null()) {
-      return smithy::Error::Serialization("HttpPayloadRequiredWithDefaultInput: missing required member: body");
+    if (member != nullptr && !member->is_null()) {
+      if (!member->is_string()) return smithy::Error::Serialization("HttpPayloadRequiredWithDefaultInput.body: unexpected type on the wire");
+      out.body = member->as_string();
     }
-    if (!member->is_string()) return smithy::Error::Serialization("HttpPayloadRequiredWithDefaultInput.body: unexpected type on the wire");
-    out.body = member->as_string();
   }
   return out;
 }
@@ -782,11 +781,10 @@ smithy::Outcome<HttpPayloadRequiredWithDefaultOutput> DeserializeHttpPayloadRequ
   HttpPayloadRequiredWithDefaultOutput out;
   {
     const smithy::Document* member = doc.Find("body");
-    if (member == nullptr || member->is_null()) {
-      return smithy::Error::Serialization("HttpPayloadRequiredWithDefaultOutput: missing required member: body");
+    if (member != nullptr && !member->is_null()) {
+      if (!member->is_string()) return smithy::Error::Serialization("HttpPayloadRequiredWithDefaultOutput.body: unexpected type on the wire");
+      out.body = member->as_string();
     }
-    if (!member->is_string()) return smithy::Error::Serialization("HttpPayloadRequiredWithDefaultOutput.body: unexpected type on the wire");
-    out.body = member->as_string();
   }
   return out;
 }
@@ -809,6 +807,8 @@ smithy::Outcome<HttpPayloadWithDefaultInput> DeserializeHttpPayloadWithDefaultIn
       if (!member->is_string()) return smithy::Error::Serialization("HttpPayloadWithDefaultInput.body: unexpected type on the wire");
       parsed_member = member->as_string();
       out.body = std::move(parsed_member);
+    } else {
+      out.body = "default value";
     }
   }
   return out;
@@ -816,9 +816,7 @@ smithy::Outcome<HttpPayloadWithDefaultInput> DeserializeHttpPayloadWithDefaultIn
 
 smithy::Document SerializeHttpPayloadWithDefaultOutput(const HttpPayloadWithDefaultOutput& value) {
   smithy::DocumentMap map;
-  if (value.body.has_value()) {
-    map.emplace("body", smithy::Document((*value.body)));
-  }
+  map.emplace("body", smithy::Document(value.body));
   return smithy::Document(std::move(map));
 }
 

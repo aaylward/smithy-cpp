@@ -108,29 +108,29 @@ enum class TestIntEnum : std::int32_t {
 
 
 struct Defaults {
-  std::optional<std::string> defaultString{};
-  std::optional<bool> defaultBoolean{};
-  std::optional<std::vector<std::string>> defaultList{};
-  std::optional<smithy::Timestamp> defaultTimestamp{};
-  std::optional<smithy::Blob> defaultBlob{};
-  std::optional<std::int8_t> defaultByte{};
-  std::optional<std::int16_t> defaultShort{};
-  std::optional<std::int32_t> defaultInteger{};
-  std::optional<std::int64_t> defaultLong{};
-  std::optional<float> defaultFloat{};
-  std::optional<double> defaultDouble{};
-  std::optional<std::map<std::string, std::string>> defaultMap{};
-  std::optional<TestEnum> defaultEnum{};
-  std::optional<TestIntEnum> defaultIntEnum{};
-  std::optional<std::string> emptyString{};
-  std::optional<bool> falseBoolean{};
-  std::optional<smithy::Blob> emptyBlob{};
-  std::optional<std::int8_t> zeroByte{};
-  std::optional<std::int16_t> zeroShort{};
-  std::optional<std::int32_t> zeroInteger{};
-  std::optional<std::int64_t> zeroLong{};
-  std::optional<float> zeroFloat{};
-  std::optional<double> zeroDouble{};
+  std::string defaultString = "hi";
+  bool defaultBoolean = true;
+  std::vector<std::string> defaultList{};
+  smithy::Timestamp defaultTimestamp = smithy::Timestamp::FromEpochMilliseconds(0LL);
+  smithy::Blob defaultBlob = smithy::Blob::FromString("abc");
+  std::int8_t defaultByte = 1;
+  std::int16_t defaultShort = 1;
+  std::int32_t defaultInteger = 10;
+  std::int64_t defaultLong = 100;
+  float defaultFloat = static_cast<float>(1.0);
+  double defaultDouble = 1.0;
+  std::map<std::string, std::string> defaultMap{};
+  TestEnum defaultEnum = TestEnum::FromString("FOO");
+  TestIntEnum defaultIntEnum = static_cast<TestIntEnum>(1);
+  std::string emptyString = "";
+  bool falseBoolean = false;
+  smithy::Blob emptyBlob = smithy::Blob::FromString("");
+  std::int8_t zeroByte = 0;
+  std::int16_t zeroShort = 0;
+  std::int32_t zeroInteger = 0;
+  std::int64_t zeroLong = 0;
+  float zeroFloat = static_cast<float>(0.0);
+  double zeroDouble = 0.0;
 
   friend bool operator==(const Defaults&, const Defaults&) = default;
 };
@@ -218,29 +218,29 @@ struct OperationWithDefaultsInput {
 
 
 struct OperationWithDefaultsOutput {
-  std::optional<std::string> defaultString{};
-  std::optional<bool> defaultBoolean{};
-  std::optional<std::vector<std::string>> defaultList{};
-  std::optional<smithy::Timestamp> defaultTimestamp{};
-  std::optional<smithy::Blob> defaultBlob{};
-  std::optional<std::int8_t> defaultByte{};
-  std::optional<std::int16_t> defaultShort{};
-  std::optional<std::int32_t> defaultInteger{};
-  std::optional<std::int64_t> defaultLong{};
-  std::optional<float> defaultFloat{};
-  std::optional<double> defaultDouble{};
-  std::optional<std::map<std::string, std::string>> defaultMap{};
-  std::optional<TestEnum> defaultEnum{};
-  std::optional<TestIntEnum> defaultIntEnum{};
-  std::optional<std::string> emptyString{};
-  std::optional<bool> falseBoolean{};
-  std::optional<smithy::Blob> emptyBlob{};
-  std::optional<std::int8_t> zeroByte{};
-  std::optional<std::int16_t> zeroShort{};
-  std::optional<std::int32_t> zeroInteger{};
-  std::optional<std::int64_t> zeroLong{};
-  std::optional<float> zeroFloat{};
-  std::optional<double> zeroDouble{};
+  std::string defaultString = "hi";
+  bool defaultBoolean = true;
+  std::vector<std::string> defaultList{};
+  smithy::Timestamp defaultTimestamp = smithy::Timestamp::FromEpochMilliseconds(0LL);
+  smithy::Blob defaultBlob = smithy::Blob::FromString("abc");
+  std::int8_t defaultByte = 1;
+  std::int16_t defaultShort = 1;
+  std::int32_t defaultInteger = 10;
+  std::int64_t defaultLong = 100;
+  float defaultFloat = static_cast<float>(1.0);
+  double defaultDouble = 1.0;
+  std::map<std::string, std::string> defaultMap{};
+  TestEnum defaultEnum = TestEnum::FromString("FOO");
+  TestIntEnum defaultIntEnum = static_cast<TestIntEnum>(1);
+  std::string emptyString = "";
+  bool falseBoolean = false;
+  smithy::Blob emptyBlob = smithy::Blob::FromString("");
+  std::int8_t zeroByte = 0;
+  std::int16_t zeroShort = 0;
+  std::int32_t zeroInteger = 0;
+  std::int64_t zeroLong = 0;
+  float zeroFloat = static_cast<float>(0.0);
+  double zeroDouble = 0.0;
 
   friend bool operator==(const OperationWithDefaultsOutput&, const OperationWithDefaultsOutput&) = default;
 };

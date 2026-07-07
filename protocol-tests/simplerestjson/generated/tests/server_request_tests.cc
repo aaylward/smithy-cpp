@@ -19,8 +19,6 @@ namespace smithy::protocoltests::simplerestjson {
 // compared against the expected params.
 //
 // Excluded cases (protocol-test-exclusions.txt; the list must only shrink):
-//   SimpleRestJsonNoneRequiredHttpPayloadWithDefault (server-request) — @default population is not implemented yet
-//   SimpleRestJsonNoneHttpPayloadWithDefault (server-request) — @default population is not implemented yet
 //   OpenUnionsUnknownTaggedUnionCase (server-request) — alloy open/discriminated unions are not implemented
 //   OpenUnionsKnownDiscriminatedUnionCase (server-request) — alloy open/discriminated unions are not implemented
 //   OpenUnionsUnknownDiscriminatedUnionCase (server-request) — alloy open/discriminated unions are not implemented
@@ -335,6 +333,23 @@ TEST(PizzaAdminServiceServerRequestTest, SimpleRestJsonSomeRequiredHttpPayloadWi
   EXPECT_EQ(*handler->lastHttpPayloadRequiredWithDefault, expected);
 }
 
+// Use default value when there is no payload
+TEST(PizzaAdminServiceServerRequestTest, SimpleRestJsonNoneRequiredHttpPayloadWithDefault) {
+  auto handler = std::make_shared<RecordingHandler>();
+  PizzaAdminServiceServer server(handler);
+  smithy::http::HttpRequest request;
+  request.method = "PUT";
+  request.target = "/httpPayloadRequiredWithDefault";
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  ASSERT_TRUE(handler->lastHttpPayloadRequiredWithDefault.has_value()) << response.status << " " << response.body;
+  const HttpPayloadRequiredWithDefaultInput expected = [] {
+  HttpPayloadRequiredWithDefaultInput v{};
+  v.body = "default value";
+  return v;
+}();
+  EXPECT_EQ(*handler->lastHttpPayloadRequiredWithDefault, expected);
+}
+
 // Pass JSON string value as is if payload provided
 TEST(PizzaAdminServiceServerRequestTest, SimpleRestJsonSomeHttpPayloadWithDefault) {
   auto handler = std::make_shared<RecordingHandler>();
@@ -349,6 +364,23 @@ TEST(PizzaAdminServiceServerRequestTest, SimpleRestJsonSomeHttpPayloadWithDefaul
   const HttpPayloadWithDefaultInput expected = [] {
   HttpPayloadWithDefaultInput v{};
   v.body = "custom value";
+  return v;
+}();
+  EXPECT_EQ(*handler->lastHttpPayloadWithDefault, expected);
+}
+
+// Use default value when there is no payload
+TEST(PizzaAdminServiceServerRequestTest, SimpleRestJsonNoneHttpPayloadWithDefault) {
+  auto handler = std::make_shared<RecordingHandler>();
+  PizzaAdminServiceServer server(handler);
+  smithy::http::HttpRequest request;
+  request.method = "PUT";
+  request.target = "/httpPayloadWithDefault";
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  ASSERT_TRUE(handler->lastHttpPayloadWithDefault.has_value()) << response.status << " " << response.body;
+  const HttpPayloadWithDefaultInput expected = [] {
+  HttpPayloadWithDefaultInput v{};
+  v.body = "default value";
   return v;
 }();
   EXPECT_EQ(*handler->lastHttpPayloadWithDefault, expected);

@@ -19,8 +19,6 @@ namespace smithy::protocoltests::simplerestjson {
 // Excluded cases (protocol-test-exclusions.txt; the list must only shrink):
 //   CustomCodeOutput (response) — 3xx @httpResponseCode is not treated as a success status
 //   GetEnumOutput (response) — under investigation (task #63): enum output server-side 400
-//   SimpleRestJsonNoneRequiredHttpPayloadWithDefault (response) — @default population is not implemented yet
-//   SimpleRestJsonNoneHttpPayloadWithDefault (response) — @default population is not implemented yet
 //   OpenUnionsUnknownTaggedUnionCase (response) — alloy open/discriminated unions are not implemented
 //   OpenUnionsKnownDiscriminatedUnionCase (response) — alloy open/discriminated unions are not implemented
 //   OpenUnionsUnknownDiscriminatedUnionCase (response) — alloy open/discriminated unions are not implemented
@@ -141,6 +139,21 @@ TEST(PizzaAdminServiceResponseTest, SimpleRestJsonSomeRequiredHttpPayloadWithDef
   EXPECT_EQ(*outcome, expected);
 }
 
+// Use default value when there is no payload
+TEST(PizzaAdminServiceResponseTest, SimpleRestJsonNoneRequiredHttpPayloadWithDefault) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 200;
+  fixture.transport->next_response.body = "";
+  const auto outcome = fixture.client.HttpPayloadRequiredWithDefault(HttpPayloadRequiredWithDefaultInput{});
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  const HttpPayloadRequiredWithDefaultOutput expected = [] {
+  HttpPayloadRequiredWithDefaultOutput v{};
+  v.body = "default value";
+  return v;
+}();
+  EXPECT_EQ(*outcome, expected);
+}
+
 // Pass JSON string value as is if payload provided
 TEST(PizzaAdminServiceResponseTest, SimpleRestJsonSomeHttpPayloadWithDefault) {
   Fixture fixture = MakeFixture();
@@ -152,6 +165,21 @@ TEST(PizzaAdminServiceResponseTest, SimpleRestJsonSomeHttpPayloadWithDefault) {
   const HttpPayloadWithDefaultOutput expected = [] {
   HttpPayloadWithDefaultOutput v{};
   v.body = "custom value";
+  return v;
+}();
+  EXPECT_EQ(*outcome, expected);
+}
+
+// Use default value when there is no payload
+TEST(PizzaAdminServiceResponseTest, SimpleRestJsonNoneHttpPayloadWithDefault) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 200;
+  fixture.transport->next_response.body = "";
+  const auto outcome = fixture.client.HttpPayloadWithDefault(HttpPayloadWithDefaultInput{});
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  const HttpPayloadWithDefaultOutput expected = [] {
+  HttpPayloadWithDefaultOutput v{};
+  v.body = "default value";
   return v;
 }();
   EXPECT_EQ(*outcome, expected);

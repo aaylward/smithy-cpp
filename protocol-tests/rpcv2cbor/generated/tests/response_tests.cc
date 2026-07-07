@@ -19,7 +19,6 @@ namespace smithy::protocoltests::rpcv2cbor {
 // Excluded cases (protocol-test-exclusions.txt; the list must only shrink):
 //   RpcV2CborFloat16LSBNaN (response) — NaN output members compare unequal under operator==
 //   RpcV2CborFloat16MSBNaN (response) — NaN output members compare unequal under operator==
-//   RpcV2CborClientPopulatesDefaultsValuesWhenMissingInResponse (response) — @default population is not implemented yet
 //   RpcV2CborSupportsNaNFloatOutputs (response) — NaN output members compare unequal under operator==
 
 namespace {
@@ -185,6 +184,45 @@ TEST(RpcV2ProtocolResponseTest, NoOutputClientAllowsEmptyBody) {
   ASSERT_TRUE(outcome.ok()) << outcome.error().message();
   const NoInputOutputOutput expected = [] {
   NoInputOutputOutput v{};
+  return v;
+}();
+  EXPECT_EQ(*outcome, expected);
+}
+
+// Client populates default values when missing in response.
+TEST(RpcV2ProtocolResponseTest, RpcV2CborClientPopulatesDefaultsValuesWhenMissingInResponse) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 200;
+  fixture.transport->next_response.headers.Set("Content-Type", "application/cbor");
+  fixture.transport->next_response.headers.Set("smithy-protocol", "rpc-v2-cbor");
+  fixture.transport->next_response.body = smithy::testing::FromBase64("v/8=");
+  const auto outcome = fixture.client.OperationWithDefaults(OperationWithDefaultsInput{});
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  const OperationWithDefaultsOutput expected = [] {
+  OperationWithDefaultsOutput v{};
+  v.defaultString = "hi";
+  v.defaultBoolean = true;
+  v.defaultList = std::vector<std::string>{};
+  v.defaultTimestamp = smithy::Timestamp::FromEpochMilliseconds(0LL);
+  v.defaultBlob = smithy::Blob::FromString("abc");
+  v.defaultByte = 1;
+  v.defaultShort = 1;
+  v.defaultInteger = 10;
+  v.defaultLong = 100LL;
+  v.defaultFloat = 1.0F;
+  v.defaultDouble = 1.0;
+  v.defaultMap = std::map<std::string, std::string>{};
+  v.defaultEnum = TestEnum::FromString("FOO");
+  v.defaultIntEnum = static_cast<TestIntEnum>(1);
+  v.emptyString = "";
+  v.falseBoolean = false;
+  v.emptyBlob = smithy::Blob::FromString("");
+  v.zeroByte = 0;
+  v.zeroShort = 0;
+  v.zeroInteger = 0;
+  v.zeroLong = 0LL;
+  v.zeroFloat = 0.0F;
+  v.zeroDouble = 0.0;
   return v;
 }();
   EXPECT_EQ(*outcome, expected);

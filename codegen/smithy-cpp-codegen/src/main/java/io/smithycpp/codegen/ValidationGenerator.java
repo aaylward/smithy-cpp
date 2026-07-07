@@ -306,7 +306,7 @@ final class ValidationGenerator {
       w.openBlock("if (value.is_$L()) {", name);
       field = "value.as_" + name + "()";
       guarded = true;
-    } else if (!member.isRequired()) {
+    } else if (!MemberDefaults.plain(context.model(), member)) {
       String rawField = "value." + context.cppSymbols().toMemberName(member);
       w.openBlock("if ($L.has_value()) {", rawField);
       field = "(*" + rawField + ")";

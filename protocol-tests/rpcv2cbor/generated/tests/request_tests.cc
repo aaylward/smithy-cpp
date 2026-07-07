@@ -14,10 +14,6 @@
 namespace smithy::protocoltests::rpcv2cbor {
 
 // Generated from smithy.test#httpRequestTests (client cases).
-//
-// Excluded cases (protocol-test-exclusions.txt; the list must only shrink):
-//   RpcV2CborClientPopulatesDefaultValuesInInput (request) — @default population is not implemented yet
-
 namespace {
 
 struct Fixture {
@@ -73,6 +69,28 @@ TEST(RpcV2ProtocolRequestTest, no_input) {
   EXPECT_FALSE(request.headers.Has("Content-Type"));
   EXPECT_FALSE(request.headers.Has("X-Amz-Target"));
   EXPECT_TRUE(request.body.empty()) << request.body;
+}
+
+// Client populates default values in input.
+TEST(RpcV2ProtocolRequestTest, RpcV2CborClientPopulatesDefaultValuesInInput) {
+  Fixture fixture = MakeFixture();
+  const OperationWithDefaultsInput input = [] {
+  OperationWithDefaultsInput v{};
+  v.defaults = [] {
+  Defaults v{};
+  return v;
+}();
+  return v;
+}();
+  (void)fixture.client.OperationWithDefaults(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "POST");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/service/RpcV2Protocol/operation/OperationWithDefaults");
+  EXPECT_EQ(request.headers.Get("Accept").value_or("<missing>"), "application/cbor");
+  EXPECT_EQ(request.headers.Get("Content-Type").value_or("<missing>"), "application/cbor");
+  EXPECT_EQ(request.headers.Get("smithy-protocol").value_or("<missing>"), "rpc-v2-cbor");
+  EXPECT_TRUE(request.headers.Has("Content-Length"));
+  EXPECT_TRUE(smithy::testing::CborBodyEqualsBase64("v2hkZWZhdWx0c79tZGVmYXVsdFN0cmluZ2JoaW5kZWZhdWx0Qm9vbGVhbvVrZGVmYXVsdExpc3Sf/3BkZWZhdWx0VGltZXN0YW1wwQBrZGVmYXVsdEJsb2JDYWJja2RlZmF1bHRCeXRlAWxkZWZhdWx0U2hvcnQBbmRlZmF1bHRJbnRlZ2VyCmtkZWZhdWx0TG9uZxhkbGRlZmF1bHRGbG9hdPo/gAAAbWRlZmF1bHREb3VibGX6P4AAAGpkZWZhdWx0TWFwv/9rZGVmYXVsdEVudW1jRk9PbmRlZmF1bHRJbnRFbnVtAWtlbXB0eVN0cmluZ2BsZmFsc2VCb29sZWFu9GllbXB0eUJsb2JAaHplcm9CeXRlAGl6ZXJvU2hvcnQAa3plcm9JbnRlZ2VyAGh6ZXJvTG9uZwBpemVyb0Zsb2F0+gAAAABqemVyb0RvdWJsZfoAAAAA//8=", request.body));
 }
 
 // Client skips top level default values in input.

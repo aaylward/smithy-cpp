@@ -73,19 +73,20 @@ final class CppSymbolProvider implements SymbolProvider {
 
   /**
    * Full member type text: the target type, wrapped in smithy::Boxed for recursive structure
-   * members and in std::optional unless @required.
+   * members and in std::optional unless @required or populated by @default.
    */
   Symbol toMemberSymbol(MemberShape member) {
     Symbol target = toSymbol(model.expectShape(member.getTarget()));
     String name = target.getName();
     Set<String> headers = new TreeSet<>(headersOf(target));
+    boolean plain = MemberDefaults.plain(model, member);
     if (recursion.isBoxed(member)) {
       name = "smithy::Boxed<" + name + ">";
       headers.add("\"smithy/core/boxed.h\"");
-    } else if (member.isRequired()) {
+    } else if (plain) {
       return target;
     }
-    if (member.isRequired()) {
+    if (plain) {
       return builder(name, headers).build();
     }
     headers.add("<optional>");

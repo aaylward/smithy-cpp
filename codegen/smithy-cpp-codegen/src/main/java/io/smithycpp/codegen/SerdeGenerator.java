@@ -136,7 +136,8 @@ final class SerdeGenerator {
     w.write("smithy::DocumentMap map;");
     for (MemberShape member : shape.members()) {
       String field = "value." + context.cppSymbols().toMemberName(member);
-      if (member.isRequired()) {
+      // Populated @default members are plain and always serialize their value.
+      if (MemberDefaults.plain(context.model(), member)) {
         w.write("map.emplace($S, $L);", wireName(member), serde.serializeExpression(member, field));
       } else {
         w.openBlock("if ($L.has_value()) {", field);
@@ -162,7 +163,13 @@ final class SerdeGenerator {
       String path = type + "." + member.getMemberName();
       w.openBlock("{");
       w.write("const smithy::Document* member = doc.Find($S);", name);
-      if (member.isRequired()) {
+      if (MemberDefaults.lenientRequired(context.model(), member)) {
+        // @required + @default (the evolution pattern): absence keeps the
+        // member's default initializer instead of failing.
+        w.openBlock("if (member != nullptr && !member->is_null()) {");
+        serde.writeDeserializeInto(w, member, "member", field, path);
+        w.closeBlock("}");
+      } else if (member.isRequired()) {
         w.openBlock("if (member == nullptr || member->is_null()) {");
         w.write(
             "return smithy::Error::Serialization($S);",
@@ -176,7 +183,17 @@ final class SerdeGenerator {
         w.write("$L parsed_member{};", targetType.getName());
         serde.writeDeserializeInto(w, member, "member", "parsed_member", path);
         w.write("$L = std::move(parsed_member);", field);
-        w.closeBlock("}");
+        if (MemberDefaults.fillOnParse(context.model(), member)) {
+          // @input members stay client-optional, but servers (the only
+          // consumers of input deserializers) fill the default when absent.
+          w.closeBlock("} else {");
+          w.indent();
+          w.write("$L = $L;", field, MemberDefaults.literal(context, member));
+          w.dedent();
+          w.write("}");
+        } else {
+          w.closeBlock("}");
+        }
       }
       w.closeBlock("}");
     }

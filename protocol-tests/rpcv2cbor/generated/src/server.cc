@@ -81,9 +81,9 @@ void AddValidationFailure(std::vector<smithy::server::ValidationFailure>* failur
 }
 
 void ValidateDefaults(const Defaults& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
-  if (value.defaultEnum.has_value()) {
+  {
     const std::string member_path = path + "/defaultEnum";
-    if ((*value.defaultEnum).value() == TestEnum::Value::kUnknown) {
+    if (value.defaultEnum.value() == TestEnum::Value::kUnknown) {
       AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy enum value set: [FOO, BAR, BAZ]");
     }
   }

@@ -413,14 +413,14 @@ struct HealthOutput {
 
 
 struct HttpPayloadRequiredWithDefaultInput {
-  std::string body{};
+  std::string body = "default value";
 
   friend bool operator==(const HttpPayloadRequiredWithDefaultInput&, const HttpPayloadRequiredWithDefaultInput&) = default;
 };
 
 
 struct HttpPayloadRequiredWithDefaultOutput {
-  std::string body{};
+  std::string body = "default value";
 
   friend bool operator==(const HttpPayloadRequiredWithDefaultOutput&, const HttpPayloadRequiredWithDefaultOutput&) = default;
 };
@@ -434,7 +434,7 @@ struct HttpPayloadWithDefaultInput {
 
 
 struct HttpPayloadWithDefaultOutput {
-  std::optional<std::string> body{};
+  std::string body = "default value";
 
   friend bool operator==(const HttpPayloadWithDefaultOutput&, const HttpPayloadWithDefaultOutput&) = default;
 };

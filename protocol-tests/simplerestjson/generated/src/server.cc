@@ -511,6 +511,7 @@ smithy::Outcome<HttpPayloadWithDefaultInput> ParseHttpPayloadWithDefaultInput(co
     if (!payload_doc->is_string()) return smithy::Error::Serialization("expected a JSON string payload");
     input.body = payload_doc->as_string();
   }
+  if (!input.body.has_value()) input.body = "default value";
   return input;
 }
 
@@ -518,10 +519,8 @@ smithy::http::HttpResponse SerializeHttpPayloadWithDefaultResponse(const HttpPay
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
-  if (output.body.has_value()) {
-    response.body = smithy::json::Encode(smithy::Document((*output.body)));
-    if (!response.headers.Get("content-type").has_value()) response.headers.Set("content-type", "application/json");
-  }
+  response.body = smithy::json::Encode(smithy::Document(output.body));
+  if (!response.headers.Get("content-type").has_value()) response.headers.Set("content-type", "application/json");
   response.headers.Set("content-length", std::to_string(response.body.size()));
   return response;
 }

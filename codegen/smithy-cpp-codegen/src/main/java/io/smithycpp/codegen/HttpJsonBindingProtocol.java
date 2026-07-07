@@ -269,7 +269,7 @@ abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
                 .getTrait(software.amazon.smithy.model.traits.JsonNameTrait.class)
                 .map(software.amazon.smithy.model.traits.JsonNameTrait::getValue)
                 .orElse(member.getMemberName());
-        if (member.isRequired()) {
+        if (MemberDefaults.plain(context.model(), member)) {
           w.write("body_map.emplace($S, $L);", wireName, serde.serializeExpression(member, field));
         } else {
           w.openBlock("if ($L.has_value()) {", field);
@@ -365,7 +365,11 @@ abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
         String path = outType + "." + member.getMemberName();
         w.openBlock("{");
         w.write("const smithy::Document* member = body_doc->Find($S);", wireName);
-        if (member.isRequired()) {
+        if (MemberDefaults.lenientRequired(context.model(), member)) {
+          w.openBlock("if (member != nullptr && !member->is_null()) {");
+          serde.writeDeserializeInto(w, member, "member", field, path);
+          w.closeBlock("}");
+        } else if (member.isRequired()) {
           w.write(
               "if (member == nullptr || member->is_null()) return "
                   + "smithy::Error::Serialization($S);",
@@ -496,7 +500,7 @@ abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
     MemberShape member = binding.getMember();
     Shape target = context.model().expectShape(member.getTarget());
     String field = in + "." + context.cppSymbols().toMemberName(member);
-    boolean optional = !member.isRequired();
+    boolean optional = !MemberDefaults.plain(context.model(), member);
     String value = optional ? "(*" + field + ")" : field;
     String contentType =
         "if (!"
@@ -642,7 +646,7 @@ abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
     MemberShape member = binding.getMember();
     String field = in + "." + context.cppSymbols().toMemberName(member);
     String prefix = binding.getLocationName();
-    boolean optional = !member.isRequired();
+    boolean optional = !MemberDefaults.plain(context.model(), member);
     String value = optional ? "(*" + field + ")" : field;
     if (optional) {
       w.openBlock("if ($L.has_value()) {", field);
@@ -669,7 +673,7 @@ abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
     MemberShape member = binding.getMember();
     String field = targetPrefix + context.cppSymbols().toMemberName(member);
     String prefix = binding.getLocationName();
-    boolean optional = !member.isRequired();
+    boolean optional = !MemberDefaults.plain(context.model(), member);
     w.openBlock("for (const auto& [header_name, header_value] : $L.entries()) {", headersExpr);
     w.write("if (!smithy::http::HeaderNameStartsWith(header_name, $S)) continue;", prefix);
     String container;
@@ -830,8 +834,9 @@ abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
     Shape target = context.model().expectShape(member.getTarget());
     String field = in + "." + context.cppSymbols().toMemberName(member);
     String name = binding.getLocationName();
-    String access = member.isRequired() ? field : "(*" + field + ")";
-    if (!member.isRequired()) {
+    boolean plain = MemberDefaults.plain(context.model(), member);
+    String access = plain ? field : "(*" + field + ")";
+    if (!plain) {
       w.openBlock("if ($L.has_value()) {", field);
     }
     if (target.isListShape()) {
@@ -856,7 +861,7 @@ abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
               access,
               serde.timestampFormat(member, "smithy::TimestampFormat::kDateTime")));
     }
-    if (!member.isRequired()) {
+    if (!plain) {
       w.closeBlock("}");
     }
   }
@@ -870,8 +875,9 @@ abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
     var map = context.model().expectShape(member.getTarget()).asMapShape().orElseThrow();
     Shape valueTarget = context.model().expectShape(map.getValue().getTarget());
     String field = in + "." + context.cppSymbols().toMemberName(member);
-    String access = member.isRequired() ? field : "(*" + field + ")";
-    if (!member.isRequired()) {
+    boolean plain = MemberDefaults.plain(context.model(), member);
+    String access = plain ? field : "(*" + field + ")";
+    if (!plain) {
       w.openBlock("if ($L.has_value()) {", field);
     }
     w.openBlock("for (const auto& [key, value] : $L) {", access);
@@ -884,7 +890,7 @@ abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
       w.write("query.Add(key, value);");
     }
     w.closeBlock("}");
-    if (!member.isRequired()) {
+    if (!plain) {
       w.closeBlock("}");
     }
   }
@@ -909,8 +915,9 @@ abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
     Shape target = context.model().expectShape(member.getTarget());
     String field = owner + "." + context.cppSymbols().toMemberName(member);
     String name = binding.getLocationName();
-    String access = member.isRequired() ? field : "(*" + field + ")";
-    if (!member.isRequired()) {
+    boolean plain = MemberDefaults.plain(context.model(), member);
+    String access = plain ? field : "(*" + field + ")";
+    if (!plain) {
       w.openBlock("if ($L.has_value()) {", field);
     }
     if (target.isListShape()) {
@@ -943,7 +950,7 @@ abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
       }
       w.write("$L.Set($S, $L);", headersExpr, name, expr);
     }
-    if (!member.isRequired()) {
+    if (!plain) {
       w.closeBlock("}");
     }
   }
@@ -1106,10 +1113,11 @@ abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
         }
         if (target.isListShape()) {
           MemberShape element = target.asListShape().orElseThrow().getMember();
-          if (!member.isRequired()) {
+          boolean plainQuery = MemberDefaults.plain(context.model(), member);
+          if (!plainQuery) {
             w.write("if (!$L.has_value()) $L.emplace();", field, field);
           }
-          String container = member.isRequired() ? field : "(*" + field + ")";
+          String container = plainQuery ? field : "(*" + field + ")";
           writeTextValueInto(
               w,
               context,
@@ -1150,10 +1158,11 @@ abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
         w.write("// Servers put every query parameter in the @httpQueryParams map,");
         w.write("// including ones bound to other members.");
         w.openBlock("for (const auto& [key, value] : context.query_params) {");
-        if (!member.isRequired()) {
+        boolean plainMap = MemberDefaults.plain(context.model(), member);
+        if (!plainMap) {
           w.write("if (!$L.has_value()) $L.emplace();", field, field);
         }
-        String container = member.isRequired() ? field : "(*" + field + ")";
+        String container = plainMap ? field : "(*" + field + ")";
         if (valueTarget.isListShape()) {
           w.write("$L[key].push_back(value);", container);
         } else {
@@ -1186,7 +1195,12 @@ abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
         String path = inputType + "." + member.getMemberName();
         w.openBlock("{");
         w.write("const smithy::Document* member = body_doc->Find($S);", wireName);
-        if (member.isRequired()) {
+        if (MemberDefaults.lenientRequired(context.model(), member)) {
+          // @required + @default: absence keeps the default initializer.
+          w.openBlock("if (member != nullptr && !member->is_null()) {");
+          serde.writeDeserializeInto(w, member, "member", field, path);
+          w.closeBlock("}");
+        } else if (member.isRequired()) {
           w.openBlock("if (member == nullptr || member->is_null()) {");
           w.write(
               "AddValidationFailure(validation_failures, $S, $S);",
@@ -1207,6 +1221,16 @@ abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
         }
         w.closeBlock("}");
       }
+    }
+    // @default on @input members: clients skip them when unset, servers fill
+    // the default for whatever the wire left unset (any binding location).
+    for (MemberShape member : input.members()) {
+      if (!MemberDefaults.fillOnParse(context.model(), member)) {
+        continue;
+      }
+      String field = "input." + context.cppSymbols().toMemberName(member);
+      w.write(
+          "if (!$L.has_value()) $L = $L;", field, field, MemberDefaults.literal(context, member));
     }
     w.write("return input;");
     w.closeBlock("}");
@@ -1341,7 +1365,7 @@ abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
     if (responseCode != null) {
       MemberShape codeMember = responseCode.getMember();
       String field = "output." + context.cppSymbols().toMemberName(codeMember);
-      if (codeMember.isRequired()) {
+      if (MemberDefaults.plain(context.model(), codeMember)) {
         w.write("response.status = static_cast<int>($L);", field);
       } else {
         w.write("if ($L.has_value()) response.status = static_cast<int>(*$L);", field, field);
@@ -1380,7 +1404,7 @@ abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
               .getTrait(software.amazon.smithy.model.traits.JsonNameTrait.class)
               .map(software.amazon.smithy.model.traits.JsonNameTrait::getValue)
               .orElse(member.getMemberName());
-      if (member.isRequired()) {
+      if (MemberDefaults.plain(context.model(), member)) {
         w.write("body_map.emplace($S, $L);", wireName, serde.serializeExpression(member, field));
       } else {
         w.openBlock("if ($L.has_value()) {", field);

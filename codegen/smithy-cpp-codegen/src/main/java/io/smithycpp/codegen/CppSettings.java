@@ -23,6 +23,8 @@ public final class CppSettings {
   private final String testsPackage;
   private final boolean malformedTests;
   private final boolean integrationTests;
+  private final String mode;
+  private final boolean emitBuildFile;
 
   private CppSettings(
       ShapeId service,
@@ -30,13 +32,17 @@ public final class CppSettings {
       String runtimeTarget,
       String testsPackage,
       boolean malformedTests,
-      boolean integrationTests) {
+      boolean integrationTests,
+      String mode,
+      boolean emitBuildFile) {
     this.service = service;
     this.namespace = namespace;
     this.runtimeTarget = runtimeTarget;
     this.testsPackage = testsPackage;
     this.malformedTests = malformedTests;
     this.integrationTests = integrationTests;
+    this.mode = mode;
+    this.emitBuildFile = emitBuildFile;
   }
 
   public static CppSettings fromNode(ObjectNode node) {
@@ -47,12 +53,25 @@ public final class CppSettings {
     String testsPackage = node.getStringMemberOrDefault("testsPackage", null);
     boolean malformedTests = node.getBooleanMemberOrDefault("malformedTests", false);
     boolean integrationTests = node.getBooleanMemberOrDefault("integrationTests", false);
+    String mode = node.getStringMemberOrDefault("mode", "both");
+    boolean emitBuildFile = node.getBooleanMemberOrDefault("emitBuildFile", true);
+    if (!mode.matches("types|client|server|both")) {
+      throw new IllegalArgumentException(
+          "cpp-codegen: 'mode' must be types, client, server, or both, got: " + mode);
+    }
     if (!namespace.matches("[A-Za-z_][A-Za-z0-9_]*(::[A-Za-z_][A-Za-z0-9_]*)*")) {
       throw new IllegalArgumentException(
           "cpp-codegen: 'namespace' must be a C++ namespace like a::b, got: " + namespace);
     }
     return new CppSettings(
-        service, namespace, runtimeTarget, testsPackage, malformedTests, integrationTests);
+        service,
+        namespace,
+        runtimeTarget,
+        testsPackage,
+        malformedTests,
+        integrationTests,
+        mode,
+        emitBuildFile);
   }
 
   public ShapeId service() {
@@ -124,6 +143,24 @@ public final class CppSettings {
     return integrationTests;
   }
 
+  /** What to generate: types | client | server | both (the Bazel rules pick one per target). */
+  public String mode() {
+    return mode;
+  }
+
+  public boolean generateClient() {
+    return mode.equals("client") || mode.equals("both");
+  }
+
+  public boolean generateServer() {
+    return mode.equals("server") || mode.equals("both");
+  }
+
+  /** Off when generation runs as a Bazel action (the consumer wrote the BUILD file). */
+  public boolean emitBuildFile() {
+    return emitBuildFile;
+  }
+
   @Override
   public boolean equals(Object other) {
     if (!(other instanceof CppSettings that)) {
@@ -134,12 +171,21 @@ public final class CppSettings {
         && runtimeTarget.equals(that.runtimeTarget)
         && Objects.equals(testsPackage, that.testsPackage)
         && malformedTests == that.malformedTests
-        && integrationTests == that.integrationTests;
+        && integrationTests == that.integrationTests
+        && mode.equals(that.mode)
+        && emitBuildFile == that.emitBuildFile;
   }
 
   @Override
   public int hashCode() {
     return Objects.hash(
-        service, namespace, runtimeTarget, testsPackage, malformedTests, integrationTests);
+        service,
+        namespace,
+        runtimeTarget,
+        testsPackage,
+        malformedTests,
+        integrationTests,
+        mode,
+        emitBuildFile);
   }
 }

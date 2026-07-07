@@ -1,0 +1,2 @@
+# Consumer-facing Bazel rules (defs.bzl); see docs/quickstart.md.
+exports_files(["defs.bzl"])

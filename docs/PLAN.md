@@ -469,6 +469,9 @@ without reading generator internals or touching Gradle.
     never as a "run this script first" step.
   - bzlmod module `smithy_cpp` published to the **Bazel Central Registry**; runtime targets
     (`@smithy_cpp//runtime:core`, `:client`, `:server`, …) consumable directly.
+    **Deferred**: BCR (and Maven Central) publishing waits until the project is validated in
+    production; until then consumers use `git_override`/`local_path_override` (see
+    docs/quickstart.md).
   - Out-of-tree consumer example (`examples/bazel-consumer/`) exercised in CI: a standalone
     Bazel 9 module that depends on the released `smithy_cpp` module, defines a model, builds
     client + server, and runs the Phase-5-style integration test — this is the quick-start
@@ -509,6 +512,9 @@ the project) completes the tutorial without help; BCR + Maven Central packaging 
 **Tasks**
 - **Client robustness**: retry policy (exponential backoff + jitter, honoring `@retryable`),
   connection pooling in the curl transport, request timeouts end-to-end, cancellation.
+- **`@requestCompression`** (gzip request bodies): a compression codec in the runtime (zlib via
+  BCR) plus client-side emission; unprunes the suite's compression operations and their
+  malformed tests.
 - **Server robustness**: thread-pool tuning knobs, graceful shutdown/drain, request size limits,
   slow-client timeouts, structured logging hooks, metrics hooks (request count/latency callbacks).
 - **Auth hooks**: `@httpBearerAuth` / `@httpApiKeyAuth` support — client-side credential
@@ -533,6 +539,17 @@ benchmark methodology.
 the full test matrix and the quick-start acceptance test.
 
 ---
+
+### Future protocols: JSON-RPC 2.0 (post-0.1.0, candidate phase)
+
+The generator is protocol-pluggable by construction — `ProtocolGenerator` is an interface and
+`resolveProtocol` picks the implementation from the service's protocol trait, which is how
+restJson1 and rpcv2Cbor coexist today. A JSON-RPC 2.0 protocol is a natural third
+implementation: a custom `@jsonRpc2` protocol trait, a fixed POST endpoint with
+`method` = operation name and `params`/`result` over the same `smithy::Document` serde pivot,
+and JSON-RPC error objects mapped to modeled errors. It inherits the whole test machinery
+(smoke, integration, goldens) for free. Not scheduled; recorded here so the protocol seam stays
+honest.
 
 ### Phase 8 — Bidirectional streaming (post-0.1.0, ≈6–8 weeks)
 

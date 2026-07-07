@@ -1,0 +1,3 @@
+# The out-of-tree consumer example is its own Bazel module (CI builds it
+# standalone); keep it out of this workspace's target graph.
+examples/bazel-consumer

@@ -1,0 +1,28 @@
+load("@rules_java//java:defs.bzl", "java_binary", "java_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# The generator, compiled from the same sources the Gradle build uses, so the
+# smithy_cpp_*_library rules (bazel/defs.bzl) can run generation as a hermetic
+# action inside the build graph. Gradle remains the dev workflow (unit tests,
+# fixture regeneration); this target exists for consumers.
+java_library(
+    name = "smithy_cpp_codegen_lib",
+    srcs = glob(["smithy-cpp-codegen/src/main/java/**/*.java"]),
+    resources = glob(["smithy-cpp-codegen/src/main/resources/**"]),
+    deps = [
+        "@smithy_cpp_codegen_maven//:software_amazon_smithy_smithy_aws_traits",
+        "@smithy_cpp_codegen_maven//:software_amazon_smithy_smithy_build",
+        "@smithy_cpp_codegen_maven//:software_amazon_smithy_smithy_codegen_core",
+        "@smithy_cpp_codegen_maven//:software_amazon_smithy_smithy_model",
+        "@smithy_cpp_codegen_maven//:software_amazon_smithy_smithy_protocol_test_traits",
+        "@smithy_cpp_codegen_maven//:software_amazon_smithy_smithy_protocol_traits",
+        "@smithy_cpp_codegen_maven//:software_amazon_smithy_smithy_utils",
+    ],
+)
+
+java_binary(
+    name = "generator",
+    main_class = "io.smithycpp.codegen.CppCodegenRunner",
+    runtime_deps = [":smithy_cpp_codegen_lib"],
+)

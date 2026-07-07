@@ -92,6 +92,16 @@ TEST(BodyMessageMatchesTest, MatchesJsonMessageMember) {
   EXPECT_FALSE(BodyMessageMatches(".*", "not json"));
 }
 
+TEST(MutatingTransportTest, MutatesSuccessfulResponses) {
+  auto inner = std::make_shared<CapturingTransport>();
+  inner->next_response = {200, {}, "before"};
+  MutatingTransport transport(inner,
+                              [](smithy::http::HttpResponse& response) { response.body += "!"; });
+  const auto response = transport.Send({});
+  ASSERT_TRUE(response.ok());
+  EXPECT_EQ(response->body, "before!");
+}
+
 TEST(CapturingTransportTest, RecordsAndReplays) {
   CapturingTransport transport;
   transport.next_response = {418, {}, "teapot"};

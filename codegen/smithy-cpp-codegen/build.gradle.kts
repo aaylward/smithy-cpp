@@ -20,6 +20,7 @@ fun registerFixtureTask(
         "--runtime-target", "//runtime:core",
         "--output", File(repoRoot, outputPath).absolutePath,
         "--tests-package", "//" + outputPath,
+        "--integration-tests", "true",
     )
     doFirst {
         project.delete(File(repoRoot, outputPath))
@@ -40,6 +41,24 @@ val generateCafeFixture = registerFixtureTask(
     "example.cafe#Cafe",
     "example::cafe",
     "examples/cafe/generated",
+)
+
+// The kitchen-sink round-trip fixture: one model, two protocol variants, so the
+// Phase 5 integration matrix covers REST and RPC with the same shapes.
+val generateRoundTripRestFixture = registerFixtureTask(
+    "generateRoundTripRestFixture",
+    "examples/roundtrip/model/roundtrip.smithy",
+    "example.roundtrip#RoundTripRest",
+    "example::roundtrip::rest",
+    "examples/roundtrip/rest/generated",
+)
+
+val generateRoundTripRpcFixture = registerFixtureTask(
+    "generateRoundTripRpcFixture",
+    "examples/roundtrip/model/roundtrip.smithy",
+    "example.roundtrip#RoundTripRpc",
+    "example::roundtrip::rpc",
+    "examples/roundtrip/rpc/generated",
 )
 
 // The official protocol-test suite models, kept off the main runtime classpath
@@ -131,7 +150,12 @@ tasks.register("generateProtocolTests") {
 tasks.register("generateFixtures") {
     group = "smithy-cpp"
     description = "Regenerates all checked-in generated code under examples/ (the goldens)"
-    dependsOn(generateWeatherFixture, generateCafeFixture)
+    dependsOn(
+        generateWeatherFixture,
+        generateCafeFixture,
+        generateRoundTripRestFixture,
+        generateRoundTripRpcFixture,
+    )
 }
 
 tasks.withType<Test>().configureEach {

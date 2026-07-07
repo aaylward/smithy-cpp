@@ -24,6 +24,8 @@ smithy-rs's `codegen-core` structure (PLAN §3.2a).
 | `ServerGenerator` | `server.h`/`src/server.cc`: `<Service>Handler` interface + `<Service>Server` over the runtime router (routing, request parsing, response serialization, error mapping) |
 | `SmokeTestGenerator` | `tests/smoke_test.cc`: generated client ↔ generated server over loopback, every operation + error mapping (user-facing, passes out of the box) |
 | `ValidationGenerator` | Server-side constraint validation: per-shape `Validate*` functions (`@required`, `@length`, `@range`, `@pattern`, `@uniqueItems`, enum membership) producing the suite-exact 400 `ValidationException` failures before the handler runs |
+| `IntegrationTestGenerator` | `tests/integration_test.cc`: generated client vs generated server over loopback AND real sockets — seeded random round-trips, maximal rows, per-error mapping, unknown-member tolerance (docs/design/integration-testing.md) |
+| `RandomValueGenerator` | Constraint-valid, wire-exact `Random<Shape>(Rng&)` builders backing the integration suites |
 | `ProtocolTestGenerator` | GoogleTest conformance suites from `smithy.test#httpRequestTests`/`#httpResponseTests`/`#httpMalformedRequestTests` (client and server cases, incl. error shapes), with the must-shrink exclusion list in `resources/.../protocol-test-exclusions.txt` |
 | `TestsBuildFileGenerator` | The module's `tests/BUILD.bazel` (smoke test + conformance suites when present) |
 | `NodeLiteralGenerator` / `CppLiterals` | Protocol-test `params` nodes → C++ literals constructing generated types |

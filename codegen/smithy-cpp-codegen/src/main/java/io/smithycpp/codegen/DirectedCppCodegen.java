@@ -91,7 +91,12 @@ public final class DirectedCppCodegen
                     hasMalformedTests)
                 .run();
           }
-          TestsBuildFileGenerator.run(directive.context(), hasProtocolTests, hasMalformedTests);
+          boolean hasIntegrationTests = directive.settings().integrationTests();
+          if (hasIntegrationTests) {
+            new IntegrationTestGenerator(directive.context(), service, protocol, operations).run();
+          }
+          TestsBuildFileGenerator.run(
+              directive.context(), hasProtocolTests, hasMalformedTests, hasIntegrationTests);
         }
       }
     }

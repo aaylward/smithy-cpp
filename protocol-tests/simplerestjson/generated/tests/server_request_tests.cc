@@ -22,7 +22,6 @@ namespace smithy::protocoltests::simplerestjson {
 //   OpenUnionsUnknownTaggedUnionCase (server-request) — alloy open/discriminated unions are not implemented
 //   OpenUnionsKnownDiscriminatedUnionCase (server-request) — alloy open/discriminated unions are not implemented
 //   OpenUnionsUnknownDiscriminatedUnionCase (server-request) — alloy open/discriminated unions are not implemented
-//   RoundTripRequest (server-request) — under investigation (task #63): mixed label/query/body echo
 
 namespace {
 
@@ -403,6 +402,27 @@ TEST(PizzaAdminServiceServerRequestTest, OpenUnionsKnownTaggedUnionCase) {
   return v;
 }();
   EXPECT_EQ(*handler->lastOpenUnions, expected);
+}
+
+TEST(PizzaAdminServiceServerRequestTest, RoundTripRequest) {
+  auto handler = std::make_shared<RecordingHandler>();
+  PizzaAdminServiceServer server(handler);
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = "/roundTrip/thelabel?query=the query";
+  request.headers.Set("HEADER", "the header");
+  request.body = "{\"body\":\"the body\"}";
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  ASSERT_TRUE(handler->lastRoundTrip.has_value()) << response.status << " " << response.body;
+  const RoundTripInput expected = [] {
+  RoundTripInput v{};
+  v.label = "thelabel";
+  v.header = "the header";
+  v.query = "the query";
+  v.body = "the body";
+  return v;
+}();
+  EXPECT_EQ(*handler->lastRoundTrip, expected);
 }
 
 }  // namespace smithy::protocoltests::simplerestjson

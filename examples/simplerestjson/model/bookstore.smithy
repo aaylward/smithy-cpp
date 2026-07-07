@@ -51,7 +51,7 @@ operation AddBook {
 
     output := {
         // Optional pending the @required @httpResponseCode client-deserialization
-        // fix (task #62): the value comes from the HTTP status, not the body.
+        // fix (issue #26): the value comes from the HTTP status, not the body.
         @httpResponseCode
         status: Integer
 

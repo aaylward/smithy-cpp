@@ -53,7 +53,3 @@ alloy.test#PizzaAdminService any OpenUnionsUnknownDiscriminatedUnionCase alloy o
 # @httpResponseCode with a 3xx value: the client treats only 2xx as success.
 alloy.test#PizzaAdminService response CustomCodeOutput 3xx @httpResponseCode is not treated as a success status
 
-# Under investigation (task #63): un-exclude once diagnosed.
-alloy.test#PizzaAdminService any GetEnumOutput under investigation (task #63): enum output server-side 400
-alloy.test#PizzaAdminService any RoundTripRequest under investigation (task #63): mixed label/query/body echo
-alloy.test#PizzaAdminService any RoundTripDataResponse under investigation (task #63): mixed label/query/body echo

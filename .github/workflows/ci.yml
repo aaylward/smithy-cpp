@@ -30,6 +30,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+          disk-cache: ${{ matrix.name }}
       - name: bazel test
         env:
           CC: ${{ matrix.cc }}
@@ -41,6 +46,11 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+          disk-cache: asan-ubsan
       - name: bazel test with sanitizers
         env:
           CC: clang
@@ -52,6 +62,11 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+          disk-cache: fuzz
       # Each harness runs a short bounded libFuzzer session (a "smoke" run, not
       # a soak) so regressions in the parsers surface on every PR. The
       # deterministic-driver variants also run as ordinary tests in the bazel
@@ -81,6 +96,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+          disk-cache: consumer
       # The quick-start acceptance test (docs/quickstart.md): a standalone
       # out-of-tree Bazel module consumes smithy_cpp via the rules in
       # bazel/defs.bzl — generation runs inside the consumer's build graph,
@@ -119,6 +139,11 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+      - uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+          disk-cache: benchmarks-opt
       - name: serde benchmarks
         run: bazel run -c opt //benchmarks:serde_benchmark -- --benchmark_min_time=0.2s
       - name: request benchmarks

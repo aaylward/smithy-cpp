@@ -130,6 +130,17 @@ Outcome<ParsedMessage> ReadMessage(SocketFd fd, bool body_until_eof) {
     header_block.remove_prefix(eol + 2);
   }
 
+  // Reject ambiguous or unsupported framing before trusting a body length —
+  // the classic request-smuggling desync vectors. Neither transport direction
+  // implements chunked transfer, and conflicting content-lengths let a proxy
+  // and this server disagree on message boundaries.
+  if (message.headers.GetAll("content-length").size() > 1) {
+    return Error::Transport("http: conflicting content-length");
+  }
+  if (message.headers.Has("transfer-encoding")) {
+    return Error::Transport("http: transfer-encoding is not supported");
+  }
+
   message.body = buffer.substr(header_end + 4);
   if (const auto length_text = message.headers.Get("content-length")) {
     char* end = nullptr;
@@ -292,6 +303,11 @@ void SocketHttpServer::AcceptLoop() {
       response = HttpResponse{400, {}, message.error().message()};
     }
 
+    // The transport is authoritative for framing, so drop any copies a handler
+    // set — otherwise they are emitted twice (a duplicate content-length is
+    // exactly the smuggling vector a strict peer now rejects).
+    response.headers.Remove("content-length");
+    response.headers.Remove("connection");
     std::string wire = "HTTP/1.1 " + std::to_string(response.status) + " \r\n";
     wire += "content-length: " + std::to_string(response.body.size()) + "\r\n";
     wire += "connection: close\r\n";

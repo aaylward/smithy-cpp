@@ -145,6 +145,18 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "socket_transport_hostile_test",
+    size = "small",
+    srcs = ["tests/http/socket_transport_hostile_test.cc"],
+    copts = COPTS,
+    tags = ["requires-network"],
+    deps = [
+        ":http",
+        "@googletest//:gtest_main",
+    ],
+)
+
 # Production server transport (ADR-0006). Separate target so consumers that
 # only need the client, loopback, or test transports don't pull in Boost.
 cc_library(
@@ -348,6 +360,51 @@ cc_test(
     copts = COPTS,
     deps = [
         ":json",
+        "@googletest//:gtest_main",
+    ],
+)
+
+# Bakes the vendored JSONTestSuite filenames into a source the conformance test
+# links: runfiles directory enumeration isn't portable, so the parametrized
+# case list comes from the checked-in files at build time.
+genrule(
+    name = "json_conformance_index",
+    srcs = glob(["tests/json/jsontestsuite/test_parsing/*.json"]),
+    outs = ["json_conformance_index.cc"],
+    cmd = "\n".join([
+        "{",
+        "  echo '#include <string>'",
+        "  echo '#include <vector>'",
+        "  echo 'namespace smithy::json {'",
+        "  echo 'std::vector<std::string> CorpusFiles() {'",
+        "  echo '  return {'",
+        "  for f in $(SRCS); do echo \"    \\\"$$(basename $$f)\\\",\"; done",
+        "  echo '  };'",
+        "  echo '}'",
+        "  echo '}  // namespace smithy::json'",
+        "} > $@",
+    ]),
+)
+
+cc_test(
+    name = "json_conformance_test",
+    size = "small",
+    srcs = [
+        "tests/json/json_conformance_test.cc",
+        ":json_conformance_index",
+    ],
+    copts = COPTS,
+    data = glob(["tests/json/jsontestsuite/test_parsing/*.json"]),
+    # The JSON parser is platform-independent; run the corpus on POSIX and skip
+    # the runfiles/genrule-bash portability surface on Windows for no added
+    # coverage.
+    target_compatible_with = select({
+        "@platforms//os:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":json",
+        "@bazel_tools//tools/cpp/runfiles",
         "@googletest//:gtest_main",
     ],
 )

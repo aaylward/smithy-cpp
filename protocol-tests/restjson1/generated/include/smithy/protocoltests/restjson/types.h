@@ -424,6 +424,22 @@ struct HttpChecksumRequiredOutput {
 };
 
 
+struct HttpEmptyPrefixHeadersInput {
+  std::optional<std::map<std::string, std::string>> prefixHeaders{};
+  std::optional<std::string> specificHeader{};
+
+  friend bool operator==(const HttpEmptyPrefixHeadersInput&, const HttpEmptyPrefixHeadersInput&) = default;
+};
+
+
+struct HttpEmptyPrefixHeadersOutput {
+  std::optional<std::map<std::string, std::string>> prefixHeaders{};
+  std::optional<std::string> specificHeader{};
+
+  friend bool operator==(const HttpEmptyPrefixHeadersOutput&, const HttpEmptyPrefixHeadersOutput&) = default;
+};
+
+
 class StringEnum {
   public:
     enum class Value {

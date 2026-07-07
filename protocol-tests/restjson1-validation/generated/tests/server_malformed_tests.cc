@@ -781,7 +781,6 @@ TEST(RestJsonValidationServerMalformedTest, RestJsonMalformedLengthQueryStringNo
   smithy::http::HttpRequest request;
   request.method = "POST";
   request.target = "/MalformedLengthQueryString?string";
-  request.headers.Set("content-type", "application/json");
   request.body = "{}";
   const smithy::http::HttpResponse response = server.Handler()(request);
   EXPECT_EQ(response.status, 400) << response.body;

@@ -315,6 +315,24 @@ TEST(RestJsonResponseTest, RestJsonGreetingWithErrorsNoPayload) {
   EXPECT_EQ(*outcome, expected);
 }
 
+// Deserializes all response headers with the same for prefix and specific
+TEST(RestJsonResponseTest, RestJsonHttpEmptyPrefixHeadersResponseClient) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 200;
+  fixture.transport->next_response.headers.Set("hello", "There");
+  fixture.transport->next_response.headers.Set("x-foo", "Foo");
+  fixture.transport->next_response.body = "";
+  const auto outcome = fixture.client.HttpEmptyPrefixHeaders(HttpEmptyPrefixHeadersInput{});
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  const HttpEmptyPrefixHeadersOutput expected = [] {
+  HttpEmptyPrefixHeadersOutput v{};
+  v.prefixHeaders = std::map<std::string, std::string>{{"x-foo", "Foo"}, {"hello", "There"}};
+  v.specificHeader = "There";
+  return v;
+}();
+  EXPECT_EQ(*outcome, expected);
+}
+
 TEST(RestJsonResponseTest, RestJsonEnumPayloadResponse) {
   Fixture fixture = MakeFixture();
   fixture.transport->next_response.status = 200;

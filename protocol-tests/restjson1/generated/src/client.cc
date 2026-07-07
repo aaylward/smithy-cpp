@@ -533,6 +533,35 @@ smithy::Outcome<HttpChecksumRequiredOutput> RestJsonClient::HttpChecksumRequired
   return DeserializeHttpChecksumRequiredOutput(*body_doc);
 }
 
+smithy::Outcome<HttpEmptyPrefixHeadersOutput> RestJsonClient::HttpEmptyPrefixHeaders(const HttpEmptyPrefixHeadersInput& input) const {
+  std::string target = path_prefix_;
+  target += "/HttpEmptyPrefixHeaders";
+  smithy::http::HttpRequest request;
+  request.method = "GET";
+  request.target = std::move(target);
+  if (input.specificHeader.has_value()) {
+    request.headers.Set("hello", (*input.specificHeader));
+  }
+  if (input.prefixHeaders.has_value()) {
+    for (const auto& [map_key, map_value] : (*input.prefixHeaders)) {
+      request.headers.Set("" + map_key, map_value);
+    }
+  }
+  auto response = Send(std::move(request));
+  if (!response) return std::move(response).error();
+  if (response->status != 200) return GenericError(ParseError(*response));
+  HttpEmptyPrefixHeadersOutput out{};
+  if (const auto header_value = response->headers.Get("hello"); header_value.has_value()) {
+    out.specificHeader = (*header_value);
+  }
+  for (const auto& [header_name, header_value] : response->headers.entries()) {
+    if (!smithy::http::HeaderNameStartsWith(header_name, "")) continue;
+    if (!out.prefixHeaders.has_value()) out.prefixHeaders.emplace();
+    (*out.prefixHeaders).insert_or_assign(header_name.substr(0), header_value);
+  }
+  return out;
+}
+
 smithy::Outcome<HttpEnumPayloadOutput> RestJsonClient::HttpEnumPayload(const HttpEnumPayloadInput& input) const {
   std::string target = path_prefix_;
   target += "/EnumPayload";

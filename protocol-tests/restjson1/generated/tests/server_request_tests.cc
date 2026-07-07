@@ -137,6 +137,13 @@ HttpChecksumRequiredOutput MinimalHttpChecksumRequiredOutput() {
   }();
 }
 
+HttpEmptyPrefixHeadersOutput MinimalHttpEmptyPrefixHeadersOutput() {
+    return [] {
+    HttpEmptyPrefixHeadersOutput v{};
+    return v;
+  }();
+}
+
 HttpEnumPayloadOutput MinimalHttpEnumPayloadOutput() {
     return [] {
     HttpEnumPayloadOutput v{};
@@ -811,6 +818,11 @@ class RecordingHandler : public RestJsonHandler {
       return MinimalHttpChecksumRequiredOutput();
     }
     std::optional<HttpChecksumRequiredInput> lastHttpChecksumRequired;
+    smithy::Outcome<HttpEmptyPrefixHeadersOutput> HttpEmptyPrefixHeaders(const HttpEmptyPrefixHeadersInput& input) override {
+      lastHttpEmptyPrefixHeaders = input;
+      return MinimalHttpEmptyPrefixHeadersOutput();
+    }
+    std::optional<HttpEmptyPrefixHeadersInput> lastHttpEmptyPrefixHeaders;
     smithy::Outcome<HttpEnumPayloadOutput> HttpEnumPayload(const HttpEnumPayloadInput& input) override {
       lastHttpEnumPayload = input;
       return MinimalHttpEnumPayloadOutput();
@@ -1733,6 +1745,26 @@ TEST(RestJsonServerRequestTest, RestJsonHttpChecksumRequired) {
   return v;
 }();
   EXPECT_EQ(*handler->lastHttpChecksumRequired, expected);
+}
+
+// Deserializes all request headers with the same for prefix and specific
+TEST(RestJsonServerRequestTest, RestJsonHttpEmptyPrefixHeadersRequestServer) {
+  auto handler = std::make_shared<RecordingHandler>();
+  RestJsonServer server(handler);
+  smithy::http::HttpRequest request;
+  request.method = "GET";
+  request.target = "/HttpEmptyPrefixHeaders";
+  request.headers.Set("hello", "There");
+  request.headers.Set("x-foo", "Foo");
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  ASSERT_TRUE(handler->lastHttpEmptyPrefixHeaders.has_value()) << response.status << " " << response.body;
+  const HttpEmptyPrefixHeadersInput expected = [] {
+  HttpEmptyPrefixHeadersInput v{};
+  v.prefixHeaders = std::map<std::string, std::string>{{"x-foo", "Foo"}, {"hello", "There"}};
+  v.specificHeader = "There";
+  return v;
+}();
+  EXPECT_EQ(*handler->lastHttpEmptyPrefixHeaders, expected);
 }
 
 TEST(RestJsonServerRequestTest, RestJsonEnumPayloadRequest) {

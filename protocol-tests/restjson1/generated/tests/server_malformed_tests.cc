@@ -131,6 +131,13 @@ HttpChecksumRequiredOutput MinimalHttpChecksumRequiredOutput() {
   }();
 }
 
+HttpEmptyPrefixHeadersOutput MinimalHttpEmptyPrefixHeadersOutput() {
+    return [] {
+    HttpEmptyPrefixHeadersOutput v{};
+    return v;
+  }();
+}
+
 HttpEnumPayloadOutput MinimalHttpEnumPayloadOutput() {
     return [] {
     HttpEnumPayloadOutput v{};
@@ -805,6 +812,11 @@ class RecordingHandler : public RestJsonHandler {
       return MinimalHttpChecksumRequiredOutput();
     }
     std::optional<HttpChecksumRequiredInput> lastHttpChecksumRequired;
+    smithy::Outcome<HttpEmptyPrefixHeadersOutput> HttpEmptyPrefixHeaders(const HttpEmptyPrefixHeadersInput& input) override {
+      lastHttpEmptyPrefixHeaders = input;
+      return MinimalHttpEmptyPrefixHeadersOutput();
+    }
+    std::optional<HttpEmptyPrefixHeadersInput> lastHttpEmptyPrefixHeaders;
     smithy::Outcome<HttpEnumPayloadOutput> HttpEnumPayload(const HttpEnumPayloadInput& input) override {
       lastHttpEnumPayload = input;
       return MinimalHttpEnumPayloadOutput();

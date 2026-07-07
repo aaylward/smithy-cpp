@@ -61,6 +61,8 @@ class RestJsonHandler {
     virtual smithy::Outcome<HostWithPathOperationOutput> HostWithPathOperation(const HostWithPathOperationInput& input) = 0;
     /// This example tests httpChecksumRequired trait
     virtual smithy::Outcome<HttpChecksumRequiredOutput> HttpChecksumRequired(const HttpChecksumRequiredInput& input) = 0;
+    /// Clients that perform this test extract all headers from the response.
+    virtual smithy::Outcome<HttpEmptyPrefixHeadersOutput> HttpEmptyPrefixHeaders(const HttpEmptyPrefixHeadersInput& input) = 0;
     virtual smithy::Outcome<HttpEnumPayloadOutput> HttpEnumPayload(const HttpEnumPayloadInput& input) = 0;
     /// This example serializes a blob shape in the payload.
     ///

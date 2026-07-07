@@ -130,6 +130,13 @@ HttpChecksumRequiredOutput MinimalHttpChecksumRequiredOutput() {
   }();
 }
 
+HttpEmptyPrefixHeadersOutput MinimalHttpEmptyPrefixHeadersOutput() {
+    return [] {
+    HttpEmptyPrefixHeadersOutput v{};
+    return v;
+  }();
+}
+
 HttpEnumPayloadOutput MinimalHttpEnumPayloadOutput() {
     return [] {
     HttpEnumPayloadOutput v{};
@@ -804,6 +811,11 @@ class RecordingHandler : public RestJsonHandler {
       return MinimalHttpChecksumRequiredOutput();
     }
     std::optional<HttpChecksumRequiredInput> lastHttpChecksumRequired;
+    smithy::Outcome<HttpEmptyPrefixHeadersOutput> HttpEmptyPrefixHeaders(const HttpEmptyPrefixHeadersInput& input) override {
+      lastHttpEmptyPrefixHeaders = input;
+      return MinimalHttpEmptyPrefixHeadersOutput();
+    }
+    std::optional<HttpEmptyPrefixHeadersInput> lastHttpEmptyPrefixHeaders;
     smithy::Outcome<HttpEnumPayloadOutput> HttpEnumPayload(const HttpEnumPayloadInput& input) override {
       lastHttpEnumPayload = input;
       return MinimalHttpEnumPayloadOutput();
@@ -1298,6 +1310,20 @@ smithy::http::HttpRequest MinimalRequestForGreetingWithErrors() {
     return v;
   }();
   (void)client.GreetingWithErrors(input);
+  return transport->last_request;
+}
+
+smithy::http::HttpRequest MinimalRequestForHttpEmptyPrefixHeaders() {
+  auto transport = std::make_shared<smithy::testing::CapturingTransport>();
+  smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
+  config.http_client = transport;
+  auto client = *RestJsonClient::Create(std::move(config));
+    HttpEmptyPrefixHeadersInput input = [] {
+    HttpEmptyPrefixHeadersInput v{};
+    return v;
+  }();
+  (void)client.HttpEmptyPrefixHeaders(input);
   return transport->last_request;
 }
 
@@ -1969,6 +1995,27 @@ TEST(RestJsonServerResponseTest, RestJsonGreetingWithErrors) {
   EXPECT_EQ(response.status, 200);
   EXPECT_EQ(response.headers.Get("X-Greeting").value_or("<missing>"), "Hello");
   EXPECT_TRUE(smithy::testing::JsonBodyEquals("{}", response.body));
+}
+
+// Serializes all response headers, using specific when present
+TEST(RestJsonServerResponseTest, RestJsonHttpEmptyPrefixHeadersResponseServer) {
+  class Handler final : public RecordingHandler {
+   public:
+    smithy::Outcome<HttpEmptyPrefixHeadersOutput> HttpEmptyPrefixHeaders(const HttpEmptyPrefixHeadersInput& input) override {
+      (void)input;
+      return [] {
+  HttpEmptyPrefixHeadersOutput v{};
+  v.prefixHeaders = std::map<std::string, std::string>{{"x-foo", "Foo"}, {"hello", "Hello"}};
+  v.specificHeader = "There";
+  return v;
+}();
+    }
+  };
+  RestJsonServer server(std::make_shared<Handler>());
+  const smithy::http::HttpResponse response = server.Handler()(MinimalRequestForHttpEmptyPrefixHeaders());
+  EXPECT_EQ(response.status, 200);
+  EXPECT_EQ(response.headers.Get("hello").value_or("<missing>"), "There");
+  EXPECT_EQ(response.headers.Get("x-foo").value_or("<missing>"), "Foo");
 }
 
 TEST(RestJsonServerResponseTest, RestJsonEnumPayloadResponse) {

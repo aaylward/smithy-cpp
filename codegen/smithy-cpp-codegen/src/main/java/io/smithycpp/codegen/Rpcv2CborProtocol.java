@@ -42,7 +42,7 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
     ProtocolSupport.writeErrorSupport(
         w,
         "auto doc = smithy::cbor::Decode(smithy::Blob::FromString(response.body));",
-        /* errorTypeHeader= */ false);
+        /* errorTypeHeader= */ "");
   }
 
   /** Set up by writeServerHelpers (always called before the routes are emitted). */
@@ -72,14 +72,14 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
     w.closeBlock("}");
     w.write("");
     ProtocolSupport.writeServerErrorToResponse(
-        w, context, service, operations, "CborError", /* errortypeHeader= */ false);
+        w, context, service, operations, "CborError", /* errortypeHeader= */ "");
     validation = new ValidationGenerator(context, operations);
     if (validation.hasValidators()) {
       ValidationGenerator.writeFailureHelper(w);
       validation.writeValidators(w);
       // rpcv2Cbor error identity travels in the body, as the fully qualified shape id.
       ValidationGenerator.writeValidationErrorResponse(
-          w, "CborError", "smithy.framework#ValidationException", /* errortypeHeader= */ false);
+          w, "CborError", "smithy.framework#ValidationException", /* errortypeHeader= */ "");
     }
   }
 

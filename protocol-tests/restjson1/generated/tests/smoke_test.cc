@@ -123,6 +123,13 @@ HttpChecksumRequiredOutput MinimalHttpChecksumRequiredOutput() {
   }();
 }
 
+HttpEmptyPrefixHeadersOutput MinimalHttpEmptyPrefixHeadersOutput() {
+    return [] {
+    HttpEmptyPrefixHeadersOutput v{};
+    return v;
+  }();
+}
+
 HttpEnumPayloadOutput MinimalHttpEnumPayloadOutput() {
     return [] {
     HttpEnumPayloadOutput v{};
@@ -788,6 +795,10 @@ class SmokeHandler : public RestJsonHandler {
       (void)input;
       return MinimalHttpChecksumRequiredOutput();
     }
+    smithy::Outcome<HttpEmptyPrefixHeadersOutput> HttpEmptyPrefixHeaders(const HttpEmptyPrefixHeadersInput& input) override {
+      (void)input;
+      return MinimalHttpEmptyPrefixHeadersOutput();
+    }
     smithy::Outcome<HttpEnumPayloadOutput> HttpEnumPayload(const HttpEnumPayloadInput& input) override {
       (void)input;
       return MinimalHttpEnumPayloadOutput();
@@ -1308,6 +1319,18 @@ TEST(RestJsonSmokeTest, HttpChecksumRequiredRoundTrips) {
   const auto outcome = client.HttpChecksumRequired(input);
   ASSERT_TRUE(outcome.ok()) << outcome.error().message();
   EXPECT_EQ(*outcome, MinimalHttpChecksumRequiredOutput());
+}
+
+TEST(RestJsonSmokeTest, HttpEmptyPrefixHeadersRoundTrips) {
+  RestJsonClient client = MakeClient(std::make_shared<SmokeHandler>());
+    const HttpEmptyPrefixHeadersInput input = [] {
+    HttpEmptyPrefixHeadersInput v{};
+    return v;
+  }();
+  const auto outcome = client.HttpEmptyPrefixHeaders(input);
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  // An empty-prefix @httpPrefixHeaders output member captures every
+  // response header (content-type, ...), so exact equality cannot hold.
 }
 
 TEST(RestJsonSmokeTest, HttpEnumPayloadRoundTrips) {
@@ -2258,9 +2281,9 @@ TEST(RestJsonSmokeTest, ModeledErrorsMapAcrossTheWire) {
     public:
       smithy::Outcome<GreetingWithErrorsOutput> GreetingWithErrors(const GreetingWithErrorsInput& input) override {
         (void)input;
-        smithy::Error error = smithy::Error::Modeled("FooError", "smoke");
+        smithy::Error error = smithy::Error::Modeled("InvalidGreeting", "smoke");
             auto detail = [] {
-          FooError v{};
+          InvalidGreeting v{};
           return v;
         }();
         error.set_detail(std::move(detail));
@@ -2276,9 +2299,9 @@ TEST(RestJsonSmokeTest, ModeledErrorsMapAcrossTheWire) {
   const auto outcome = client.GreetingWithErrors(input);
   ASSERT_FALSE(outcome.ok());
   EXPECT_EQ(outcome.error().kind(), smithy::ErrorKind::kModeled);
-  EXPECT_EQ(outcome.error().code(), "FooError");
+  EXPECT_EQ(outcome.error().code(), "InvalidGreeting");
   EXPECT_EQ(outcome.error().message(), "smoke");
-  EXPECT_NE(outcome.error().detail<FooError>(), nullptr);
+  EXPECT_NE(outcome.error().detail<InvalidGreeting>(), nullptr);
 }
 
 }  // namespace smithy::protocoltests::restjson

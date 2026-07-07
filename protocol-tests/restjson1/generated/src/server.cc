@@ -948,6 +948,45 @@ smithy::http::HttpResponse SerializeHttpChecksumRequiredResponse(const HttpCheck
   return response;
 }
 
+smithy::Outcome<HttpEmptyPrefixHeadersInput> ParseHttpEmptyPrefixHeadersInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
+  (void)request;
+  (void)context;
+  (void)validation_failures;
+  HttpEmptyPrefixHeadersInput input{};
+  if (const auto header_value = request.headers.Get("hello"); header_value.has_value()) {
+    input.specificHeader = (*header_value);
+  }
+  for (const auto& [header_name, header_value] : request.headers.entries()) {
+    if (!smithy::http::HeaderNameStartsWith(header_name, "")) continue;
+    if (!input.prefixHeaders.has_value()) input.prefixHeaders.emplace();
+    (*input.prefixHeaders).insert_or_assign(header_name.substr(0), header_value);
+  }
+  return input;
+}
+
+smithy::http::HttpResponse SerializeHttpEmptyPrefixHeadersResponse(const HttpEmptyPrefixHeadersOutput& output) {
+  (void)output;
+  smithy::http::HttpResponse response;
+  response.status = 200;
+  if (output.specificHeader.has_value()) {
+    response.headers.Set("hello", (*output.specificHeader));
+  }
+  if (output.prefixHeaders.has_value()) {
+    for (const auto& [map_key, map_value] : (*output.prefixHeaders)) {
+      response.headers.Set("" + map_key, map_value);
+    }
+  }
+  if (output.prefixHeaders.has_value()) {
+    for (const auto& [map_key, map_value] : (*output.prefixHeaders)) {
+      response.headers.Set("" + map_key, map_value);
+    }
+  }
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
+  return response;
+}
+
 smithy::Outcome<HttpEnumPayloadInput> ParseHttpEnumPayloadInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
   (void)request;
   (void)context;
@@ -4917,6 +4956,24 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeHttpChecksumRequiredResponse(*outcome);
   }, "HttpChecksumRequired");
+  (void)router_->Add("GET", "/HttpEmptyPrefixHeaders", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec (415), then Accept (406);
+    // the malformed-request suite pins the error-identity headers. A missing
+    // content-type is tolerated, and blob payloads without @mediaType accept
+    // any content type / accept.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      auto error_response = JsonError(415, "", "unsupported media type", {});
+      error_response.headers.Set("x-amzn-errortype", "UnsupportedMediaTypeException");
+      return error_response;
+    }
+    std::vector<smithy::server::ValidationFailure> validation_failures;
+    auto input = ParseHttpEmptyPrefixHeadersInput(request, context, &validation_failures);
+    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
+    if (!input) return ErrorToResponse(input.error());
+    auto outcome = handler->HttpEmptyPrefixHeaders(*input);
+    if (!outcome) return ErrorToResponse(outcome.error());
+    return SerializeHttpEmptyPrefixHeadersResponse(*outcome);
+  }, "HttpEmptyPrefixHeaders");
   (void)router_->Add("POST", "/EnumPayload", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing

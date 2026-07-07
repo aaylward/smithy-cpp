@@ -220,6 +220,12 @@ smithy::Outcome<HttpChecksumRequiredInput> DeserializeHttpChecksumRequiredInput(
 smithy::Document SerializeHttpChecksumRequiredOutput(const HttpChecksumRequiredOutput& value);
 smithy::Outcome<HttpChecksumRequiredOutput> DeserializeHttpChecksumRequiredOutput(const smithy::Document& doc);
 
+smithy::Document SerializeHttpEmptyPrefixHeadersInput(const HttpEmptyPrefixHeadersInput& value);
+smithy::Outcome<HttpEmptyPrefixHeadersInput> DeserializeHttpEmptyPrefixHeadersInput(const smithy::Document& doc);
+
+smithy::Document SerializeHttpEmptyPrefixHeadersOutput(const HttpEmptyPrefixHeadersOutput& value);
+smithy::Outcome<HttpEmptyPrefixHeadersOutput> DeserializeHttpEmptyPrefixHeadersOutput(const smithy::Document& doc);
+
 smithy::Document SerializeHttpEnumPayloadInput(const HttpEnumPayloadInput& value);
 smithy::Outcome<HttpEnumPayloadInput> DeserializeHttpEnumPayloadInput(const smithy::Document& doc);
 

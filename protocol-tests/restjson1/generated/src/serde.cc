@@ -2151,6 +2151,82 @@ smithy::Outcome<HttpChecksumRequiredOutput> DeserializeHttpChecksumRequiredOutpu
   return out;
 }
 
+smithy::Document SerializeHttpEmptyPrefixHeadersInput(const HttpEmptyPrefixHeadersInput& value) {
+  smithy::DocumentMap map;
+  if (value.prefixHeaders.has_value()) {
+    map.emplace("prefixHeaders", SerializeStringMap((*value.prefixHeaders)));
+  }
+  if (value.specificHeader.has_value()) {
+    map.emplace("specificHeader", smithy::Document((*value.specificHeader)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<HttpEmptyPrefixHeadersInput> DeserializeHttpEmptyPrefixHeadersInput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("HttpEmptyPrefixHeadersInput: expected a map on the wire");
+  HttpEmptyPrefixHeadersInput out;
+  {
+    const smithy::Document* member = doc.Find("prefixHeaders");
+    if (member != nullptr && !member->is_null()) {
+      std::map<std::string, std::string> parsed_member{};
+      {
+        auto parsed = DeserializeStringMap(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.prefixHeaders = std::move(parsed_member);
+    }
+  }
+  {
+    const smithy::Document* member = doc.Find("specificHeader");
+    if (member != nullptr && !member->is_null()) {
+      std::string parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("HttpEmptyPrefixHeadersInput.specificHeader: unexpected type on the wire");
+      parsed_member = member->as_string();
+      out.specificHeader = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeHttpEmptyPrefixHeadersOutput(const HttpEmptyPrefixHeadersOutput& value) {
+  smithy::DocumentMap map;
+  if (value.prefixHeaders.has_value()) {
+    map.emplace("prefixHeaders", SerializeStringMap((*value.prefixHeaders)));
+  }
+  if (value.specificHeader.has_value()) {
+    map.emplace("specificHeader", smithy::Document((*value.specificHeader)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<HttpEmptyPrefixHeadersOutput> DeserializeHttpEmptyPrefixHeadersOutput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("HttpEmptyPrefixHeadersOutput: expected a map on the wire");
+  HttpEmptyPrefixHeadersOutput out;
+  {
+    const smithy::Document* member = doc.Find("prefixHeaders");
+    if (member != nullptr && !member->is_null()) {
+      std::map<std::string, std::string> parsed_member{};
+      {
+        auto parsed = DeserializeStringMap(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.prefixHeaders = std::move(parsed_member);
+    }
+  }
+  {
+    const smithy::Document* member = doc.Find("specificHeader");
+    if (member != nullptr && !member->is_null()) {
+      std::string parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("HttpEmptyPrefixHeadersOutput.specificHeader: unexpected type on the wire");
+      parsed_member = member->as_string();
+      out.specificHeader = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
 smithy::Document SerializeHttpEnumPayloadInput(const HttpEnumPayloadInput& value) {
   smithy::DocumentMap map;
   if (value.payload.has_value()) {

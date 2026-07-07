@@ -43,6 +43,15 @@ val generateCafeFixture = registerFixtureTask(
     "examples/cafe/generated",
 )
 
+// simpleRestJson (alloy) fixture: the vendor-neutral REST/JSON protocol.
+val generateBookstoreFixture = registerFixtureTask(
+    "generateBookstoreFixture",
+    "examples/simplerestjson/model/bookstore.smithy",
+    "example.bookstore#Bookstore",
+    "example::bookstore",
+    "examples/simplerestjson/generated",
+)
+
 // The kitchen-sink round-trip fixture: one model, two protocol variants, so the
 // Phase 5 integration matrix covers REST and RPC with the same shapes.
 val generateRoundTripRestFixture = registerFixtureTask(
@@ -152,6 +161,7 @@ tasks.register("generateFixtures") {
     dependsOn(
         generateWeatherFixture,
         generateCafeFixture,
+        generateBookstoreFixture,
         generateRoundTripRestFixture,
         generateRoundTripRpcFixture,
     )
@@ -162,16 +172,23 @@ tasks.withType<Test>().configureEach {
 }
 
 dependencies {
-    api("software.amazon.smithy:smithy-codegen-core:1.53.0")
-    api("software.amazon.smithy:smithy-build:1.53.0")
+    api("software.amazon.smithy:smithy-codegen-core:1.58.0")
+    api("software.amazon.smithy:smithy-build:1.58.0")
     // Trait definitions used by the fixture models.
-    implementation("software.amazon.smithy:smithy-aws-traits:1.53.0")
-    implementation("software.amazon.smithy:smithy-protocol-traits:1.53.0")
+    // alloy#simpleRestJson — the vendor-neutral REST/JSON protocol (smithy4s).
+    // alloy is built against Smithy 1.58, which the whole build now pins to.
+    implementation("com.disneystreaming.alloy:alloy-core:0.3.21")
+    implementation("software.amazon.smithy:smithy-protocol-traits:1.58.0")
+    // TODO(phase-7e): drop once restJson1 is removed (task #60).
+    implementation("software.amazon.smithy:smithy-aws-traits:1.58.0")
     // smithy.test#http{Request,Response}Tests trait definitions.
-    implementation("software.amazon.smithy:smithy-protocol-test-traits:1.53.0")
+    implementation("software.amazon.smithy:smithy-protocol-test-traits:1.58.0")
     // The official conformance suite models (generateProtocolTests classpath only).
-    protocolTestModels("software.amazon.smithy:smithy-aws-protocol-tests:1.53.0")
-    protocolTestModels("software.amazon.smithy:smithy-protocol-tests:1.53.0")
+    // alloy's simpleRestJson conformance suite.
+    protocolTestModels("com.disneystreaming.alloy:alloy-protocol-tests:0.3.21")
+    protocolTestModels("software.amazon.smithy:smithy-protocol-tests:1.58.0")
+    // TODO(phase-7e): drop with restJson1 (task #60).
+    protocolTestModels("software.amazon.smithy:smithy-aws-protocol-tests:1.58.0")
 
     testImplementation(platform("org.junit:junit-bom:5.11.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")

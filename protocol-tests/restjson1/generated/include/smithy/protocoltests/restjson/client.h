@@ -64,6 +64,8 @@ class RestJsonClient {
     smithy::Outcome<HostWithPathOperationOutput> HostWithPathOperation(const HostWithPathOperationInput& input = {}) const;
     /// This example tests httpChecksumRequired trait
     smithy::Outcome<HttpChecksumRequiredOutput> HttpChecksumRequired(const HttpChecksumRequiredInput& input) const;
+    /// Clients that perform this test extract all headers from the response.
+    smithy::Outcome<HttpEmptyPrefixHeadersOutput> HttpEmptyPrefixHeaders(const HttpEmptyPrefixHeadersInput& input) const;
     smithy::Outcome<HttpEnumPayloadOutput> HttpEnumPayload(const HttpEnumPayloadInput& input) const;
     /// This example serializes a blob shape in the payload.
     ///

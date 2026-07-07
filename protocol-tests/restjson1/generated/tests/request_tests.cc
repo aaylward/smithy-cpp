@@ -472,6 +472,24 @@ TEST(RestJsonRequestTest, RestJsonHostWithPath) {
   EXPECT_TRUE(request.body.empty()) << request.body;
 }
 
+// Serializes all request headers, using specific when present
+TEST(RestJsonRequestTest, RestJsonHttpEmptyPrefixHeadersRequestClient) {
+  Fixture fixture = MakeFixture();
+  const HttpEmptyPrefixHeadersInput input = [] {
+  HttpEmptyPrefixHeadersInput v{};
+  v.prefixHeaders = std::map<std::string, std::string>{{"x-foo", "Foo"}, {"hello", "Hello"}};
+  v.specificHeader = "There";
+  return v;
+}();
+  (void)fixture.client.HttpEmptyPrefixHeaders(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "GET");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/HttpEmptyPrefixHeaders");
+  EXPECT_EQ(request.headers.Get("hello").value_or("<missing>"), "There");
+  EXPECT_EQ(request.headers.Get("x-foo").value_or("<missing>"), "Foo");
+  EXPECT_TRUE(request.body.empty()) << request.body;
+}
+
 TEST(RestJsonRequestTest, RestJsonEnumPayloadRequest) {
   Fixture fixture = MakeFixture();
   const HttpEnumPayloadInput input = [] {

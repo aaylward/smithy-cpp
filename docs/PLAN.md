@@ -574,37 +574,39 @@ the full test matrix and the quick-start acceptance test.
 ### Phase 7e — Protocol realignment to vendor-neutral (before 0.1.0)
 
 **Decision (2026-07):** the out-of-the-box protocols must be vendor-neutral. `restJson1` is
-AWS-namespaced (`aws.protocols`), and no neutral REST/JSON protocol exists in the Smithy
-ecosystem, so we define our own and **drop `restJson1` from the repo entirely**. Final protocol
-set for 0.1.0: **`smithy.cpp.protocols#httpJson` (REST/JSON, neutral) + `smithy.protocols#rpcv2Cbor`
-(RPC/CBOR, neutral) + `smithy.cpp.protocols#jsonRpc2` (RPC/JSON, neutral)**.
+AWS-namespaced (`aws.protocols`), so we **drop it entirely**. Rather than invent a homegrown REST
+protocol, we **adopt `alloy#simpleRestJson`** — the vendor-neutral HTTP+JSON protocol smithy4s
+uses (`com.disneystreaming.alloy:alloy-core`, Maven Central). It is restJson1's binding model
+with neutral error identity, and it ships an **official conformance suite**
+(`alloy-protocol-tests`) as a standard `smithy.test#httpRequestTests`/`httpResponseTests` model —
+which our `ProtocolTestGenerator` already consumes. Adopting it gives a documented spec, wire
+interop with the smithy4s ecosystem, and a ready-made conformance suite (no test authoring), while
+dropping every `aws.*` dependency. Final 0.1.0 protocol set: **`alloy#simpleRestJson` (REST/JSON) +
+`smithy.protocols#rpcv2Cbor` (RPC/CBOR) + `smithy.cpp.protocols#jsonRpc2` (RPC/JSON)** — all neutral.
+
+`simpleRestJson` error wire format (verified against alloy's own conformance model): modeled
+error → status from `@httpError`, response header **`X-Error-Type: <ShapeName>`** (name without
+namespace), body = the error structure's members as plain JSON. **No `__type` body field** — the
+header is the sole discriminator; the client falls back to the `@httpError` status when the header
+is absent. Deltas from restJson1: (1) header `x-error-type` not `x-amzn-errortype`, (2) no `__type`
+in the error body, (3) client status-code fallback.
 
 **Tasks**
-- **`httpJson` trait + protocol**: a `@protocolDefinition` trait authored in-repo
-  (`smithy.cpp.protocols#httpJson`). Semantics are restJson1's HTTP-binding model (@http labels/
-  query/headers/payload/prefixHeaders/responseCode) and JSON serde — reuse ~95% of
-  `RestJson1Protocol` — with the AWS specifics removed: **no `X-Amzn-Errortype` header**; the
-  error is discriminated by the `__type` field in the JSON body only (shape name). This is the
-  one real wire delta; factor `RestJson1Protocol`'s shared logic into a base and make the error
-  identity a protocol hook.
-- **Remove `restJson1`**: delete the trait from `resolveProtocol`, the fixtures, and the
-  `smithy-aws-traits` / `smithy-aws-protocol-tests` dependencies. Dropping the AWS jars is the
-  point — a truly neutral generator with no `aws.*` on the classpath.
-- **`jsonRpc2` protocol**: `@protocolDefinition` trait `smithy.cpp.protocols#jsonRpc2`; single
-  POST endpoint, `{"jsonrpc":"2.0","method":<operation>,"params":<input>,"id":…}` request and
-  `{"jsonrpc":"2.0","result":<output>,"id":…}` / `{"error":{code,message,data}}` response over
-  the same `smithy::Document` JSON pivot; JSON-RPC error objects map to modeled errors
-  (reserved codes for framework failures, `data` carries the modeled error shape). Inherits the
-  smoke/integration/goldens machinery.
-- **Conformance for the neutral protocols**: `rpcv2Cbor` keeps its official
-  `smithy-protocol-tests` suite. For `httpJson` and `jsonRpc2` we author our own
-  protocol-test model (httpRequestTests/httpResponseTests/httpMalformedRequestTests) — the
-  generator already consumes those traits, so it is a model-writing task, not new codegen. Seed
-  it from the behaviors the restJson1 suite pinned (bindings, parser strictness, content
-  negotiation) so coverage does not regress; author neutrally rather than transforming the
-  AWS-copyrighted test model.
-- **Migrate fixtures/examples**: weather + roundtrip REST move to `httpJson`; add a `jsonRpc2`
-  fixture. Consumer example's overlays become `httpJson` / `rpcv2cbor` / `jsonrpc2`.
+- **`simpleRestJson` protocol generator**: `SimpleRestJsonProtocol` targeting `alloy#simpleRestJson`,
+  reusing the shared HTTP+JSON binding code (now a base class extracted from `RestJson1Protocol`).
+  Protocol hooks carry the three error deltas above. Add `alloy-core` as a codegen dependency.
+- **Adopt the alloy conformance suite**: add `alloy-protocol-tests`; generate a simpleRestJson
+  protocol-test module the same way as the restjson1/rpcv2cbor suites; drive to green.
+- **Remove `restJson1`**: delete from `resolveProtocol`, drop `smithy-aws-traits` +
+  `smithy-aws-protocol-tests` — no `aws.*` on the classpath.
+- **`jsonRpc2` protocol** (homegrown; JSON-RPC 2.0 is an open standard, alloy has no equivalent):
+  `@protocolDefinition` trait `smithy.cpp.protocols#jsonRpc2`; single POST endpoint,
+  `{"jsonrpc":"2.0","method":<operation>,"params":<input>,"id":…}` request and
+  `{"jsonrpc":"2.0","result":<output>,"id":…}` / `{"error":{code,message,data}}` response over the
+  `smithy::Document` JSON pivot; JSON-RPC error objects map to modeled errors (`data` carries the
+  shape). We author its protocol-test model (no external suite exists).
+- **Migrate fixtures/examples**: weather + roundtrip REST move to `simpleRestJson`; add a `jsonRpc2`
+  fixture. Consumer example overlays become `simplerestjson` / `rpcv2cbor` / `jsonrpc2`.
 
 **Sequencing:** lands after Phase 7d fuzzing/benchmarks and before the 0.1.0 tag — no point
 cutting a release on a protocol surface we are about to replace. Release engineering (versioning,

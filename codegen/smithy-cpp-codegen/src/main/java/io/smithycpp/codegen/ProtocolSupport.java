@@ -22,7 +22,7 @@ final class ProtocolSupport {
    * Emits the protocol's shared error-parsing helpers (SanitizeErrorCode, ParsedError, ParseError,
    * GenericError); only the wire decode and the code-carrying header differ per protocol.
    */
-  static void writeErrorSupport(CppWriter w, String decodeStatement, boolean errorTypeHeader) {
+  static void writeErrorSupport(CppWriter w, String decodeStatement, String errorTypeHeader) {
     w.write("// The error shape name arrives namespaced (\"ns#Shape\") and possibly");
     w.write("// URI-qualified; modeled error codes keep only the shape name.");
     w.openBlock("std::string SanitizeErrorCode(std::string_view raw) {");
@@ -48,8 +48,8 @@ final class ProtocolSupport {
     w.write("parsed.message = \"HTTP \" + std::to_string(response.status);");
     w.write(decodeStatement);
     w.write("if (doc.ok()) parsed.doc = *std::move(doc);");
-    if (errorTypeHeader) {
-      w.write("const auto type_header = response.headers.Get(\"x-amzn-errortype\");");
+    if (!errorTypeHeader.isEmpty()) {
+      w.write("const auto type_header = response.headers.Get($S);", errorTypeHeader);
       w.write("if (type_header.has_value()) parsed.code = SanitizeErrorCode(*type_header);");
     }
     w.openBlock("if (parsed.doc.is_map()) {");
@@ -219,7 +219,7 @@ final class ProtocolSupport {
       ServiceShape service,
       List<OperationShape> operations,
       String errorBodyFn,
-      boolean errortypeHeader) {
+      String errortypeHeader) {
     Map<String, StructureShape> errorShapes = new TreeMap<>();
     for (OperationShape operation : operations) {
       for (ShapeId errorId : operation.getErrors(service)) {
@@ -229,7 +229,7 @@ final class ProtocolSupport {
       }
     }
     w.openBlock("smithy::http::HttpResponse ErrorToResponse(const smithy::Error& error) {");
-    if (errortypeHeader) {
+    if (!errortypeHeader.isEmpty()) {
       w.write("std::vector<std::pair<std::string, std::string>> header_values;");
       w.write("(void)header_values;");
     }
@@ -250,7 +250,7 @@ final class ProtocolSupport {
       w.openBlock("if (!has_message && !error.message().empty()) {");
       w.write("body.emplace(\"message\", smithy::Document(error.message()));");
       w.closeBlock("}");
-      if (errortypeHeader) {
+      if (!errortypeHeader.isEmpty()) {
         // restJson1: @httpHeader-bound error members travel as headers, and the
         // error shape name in X-Amzn-Errortype rather than the body.
         var index = software.amazon.smithy.model.knowledge.HttpBindingIndex.of(context.model());
@@ -279,7 +279,7 @@ final class ProtocolSupport {
             "auto response = $L($L, \"\", \"\", std::move(body));",
             errorBodyFn,
             errorStatus(shape));
-        w.write("response.headers.Set(\"x-amzn-errortype\", error.code());");
+        w.write("response.headers.Set($S, error.code());", errortypeHeader);
         w.write(
             "for (const auto& [name, value] : header_values) response.headers.Set(name, value);");
         w.write("return response;");
@@ -295,14 +295,14 @@ final class ProtocolSupport {
     }
     w.write("return $L(400, error.code(), error.message(), {});", errorBodyFn);
     w.closeBlock("}");
-    if (errortypeHeader) {
+    if (!errortypeHeader.isEmpty()) {
       // restJson1: parse failures answer 400 with the SerializationException
       // error identity in the header (the malformed-request suite pins this).
       w.openBlock(
           "if (error.kind() == smithy::ErrorKind::kValidation || error.kind() == "
               + "smithy::ErrorKind::kSerialization) {");
       w.write("auto response = $L(400, \"\", error.message(), {});", errorBodyFn);
-      w.write("response.headers.Set(\"x-amzn-errortype\", \"SerializationException\");");
+      w.write("response.headers.Set($S, \"SerializationException\");", errortypeHeader);
       w.write("return response;");
       w.closeBlock("}");
     } else {

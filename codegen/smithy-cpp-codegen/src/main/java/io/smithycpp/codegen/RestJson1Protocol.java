@@ -14,14 +14,35 @@ import software.amazon.smithy.model.shapes.Shape;
 import software.amazon.smithy.model.shapes.StructureShape;
 import software.amazon.smithy.model.traits.HttpTrait;
 
-/** restJson1 client bindings: HTTP method/URI from @http, labels, query, headers, JSON bodies. */
-final class RestJson1Protocol implements ProtocolGenerator {
+/**
+ * HTTP + JSON binding generator: HTTP method/URI from @http, labels, query, headers, JSON bodies.
+ * Shared base for the vendor-neutral {@link SimpleRestJsonProtocol} (the 0.1.0 REST protocol) and,
+ * during the Phase 7e transition, {@code restJson1} itself — the two differ only in error identity,
+ * exposed via {@link #errorTypeHeaderName()}.
+ */
+class RestJson1Protocol implements ProtocolGenerator {
 
   /** Set up by writeServerHelpers (always called before the routes are emitted). */
   private ValidationGenerator validation;
 
   /** Whether the service emits ValidationErrorResponse (constraints or top-level @required). */
   private boolean emitsValidation;
+
+  /**
+   * The response header carrying modeled-error identity (the error shape name), or "" when the
+   * protocol carries no error header. restJson1 uses {@code x-amzn-errortype}; the neutral
+   * simpleRestJson uses {@code x-error-type}.
+   */
+  protected String errorTypeHeaderName() {
+    return "x-amzn-errortype";
+  }
+
+  /** Emits the error-type header set; a no-op when the protocol has no error header. */
+  private void writeErrorTypeHeader(CppWriter w, String variable, String errorType) {
+    if (!errorTypeHeaderName().isEmpty()) {
+      w.write("$L.headers.Set($S, $S);", variable, errorTypeHeaderName(), errorType);
+    }
+  }
 
   @Override
   public String name() {
@@ -118,7 +139,7 @@ final class RestJson1Protocol implements ProtocolGenerator {
   @Override
   public void writeClientHelpers(CppWriter w, CppContext context) {
     ProtocolSupport.writeErrorSupport(
-        w, "auto doc = smithy::json::Decode(response.body);", /* errorTypeHeader= */ true);
+        w, "auto doc = smithy::json::Decode(response.body);", errorTypeHeaderName());
     ProtocolSupport.writeNumericParseHelpers(w);
   }
 
@@ -866,14 +887,13 @@ final class RestJson1Protocol implements ProtocolGenerator {
     w.closeBlock("}");
     w.write("");
     ProtocolSupport.writeServerErrorToResponse(
-        w, context, service, operations, "JsonError", /* errortypeHeader= */ true);
+        w, context, service, operations, "JsonError", errorTypeHeaderName());
     validation = new ValidationGenerator(context, operations);
     emitsValidation = validation.hasValidators() || anyTopLevelRequired(context, operations);
     if (emitsValidation) {
       ValidationGenerator.writeFailureHelper(w);
       validation.writeValidators(w);
-      ValidationGenerator.writeValidationErrorResponse(
-          w, "JsonError", "", /* errortypeHeader= */ true);
+      ValidationGenerator.writeValidationErrorResponse(w, "JsonError", "", errorTypeHeaderName());
     }
     for (OperationShape operation : operations) {
       writeParseInputFunction(w, context, serde, operation);
@@ -1343,8 +1363,7 @@ final class RestJson1Protocol implements ProtocolGenerator {
     if (noModeledInput) {
       w.openBlock("if (request.headers.Get(\"content-type\").has_value()) {");
       w.write("auto error_response = JsonError(415, \"\", \"unsupported media type\", {});");
-      w.write(
-          "error_response.headers.Set(\"x-amzn-errortype\", \"UnsupportedMediaTypeException\");");
+      writeErrorTypeHeader(w, "error_response", "UnsupportedMediaTypeException");
       w.write("return error_response;");
       w.closeBlock("}");
     } else if (!lenientPayload(context, bindingIndex, operation, /* response= */ false)) {
@@ -1369,8 +1388,7 @@ final class RestJson1Protocol implements ProtocolGenerator {
               + ") {",
           expected);
       w.write("auto error_response = JsonError(415, \"\", \"unsupported media type\", {});");
-      w.write(
-          "error_response.headers.Set(\"x-amzn-errortype\", \"UnsupportedMediaTypeException\");");
+      writeErrorTypeHeader(w, "error_response", "UnsupportedMediaTypeException");
       w.write("return error_response;");
       w.closeBlock("}");
     }
@@ -1385,7 +1403,7 @@ final class RestJson1Protocol implements ProtocolGenerator {
               + "!smithy::http::AcceptMatches(*accept, $S)) {",
           responseContentType);
       w.write("auto error_response = JsonError(406, \"\", \"not acceptable\", {});");
-      w.write("error_response.headers.Set(\"x-amzn-errortype\", \"NotAcceptableException\");");
+      writeErrorTypeHeader(w, "error_response", "NotAcceptableException");
       w.write("return error_response;");
       w.closeBlock("}");
     }

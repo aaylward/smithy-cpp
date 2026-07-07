@@ -72,7 +72,7 @@ void BM_JsonEncode(benchmark::State& state) {
   const smithy::Document doc = example::roundtrip::rest::SerializeKitchenSink(MakeSink());
   std::size_t bytes = 0;
   for (auto _ : state) {
-    const std::string text = smithy::json::Encode(doc);
+    std::string text = smithy::json::Encode(doc);
     bytes += text.size();
     benchmark::DoNotOptimize(text);
   }
@@ -96,7 +96,7 @@ void BM_CborEncode(benchmark::State& state) {
   const smithy::Document doc = example::roundtrip::rest::SerializeKitchenSink(MakeSink());
   std::size_t bytes = 0;
   for (auto _ : state) {
-    const smithy::Blob wire = smithy::cbor::Encode(doc);
+    smithy::Blob wire = smithy::cbor::Encode(doc);
     bytes += wire.size();
     benchmark::DoNotOptimize(wire);
   }

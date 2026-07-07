@@ -12,95 +12,9 @@
 #include <vector>
 
 #include "smithy/core/document.h"
+#include "smithy/core/timestamp.h"
 
 namespace smithy::protocoltests::simplerestjson {
-
-struct CustomCodeInput {
-  std::int32_t code{};
-
-  friend bool operator==(const CustomCodeInput&, const CustomCodeInput&) = default;
-};
-
-
-struct CustomCodeOutput {
-  std::optional<std::int32_t> code{};
-
-  friend bool operator==(const CustomCodeOutput&, const CustomCodeOutput&) = default;
-};
-
-
-struct GenericClientError {
-  std::string message{};
-
-  friend bool operator==(const GenericClientError&, const GenericClientError&) = default;
-};
-
-
-struct GenericServerError {
-  std::string message{};
-
-  friend bool operator==(const GenericServerError&, const GenericServerError&) = default;
-};
-
-
-class UnknownServerErrorCode {
-  public:
-    enum class Value {
-      kErrorCode,
-      kUnknown,
-    };
-
-    UnknownServerErrorCode() = default;
-    UnknownServerErrorCode(Value value) : value_(value) {}  // NOLINT(*-explicit-*)
-
-    /// Unknown wire values are preserved and reported as Value::kUnknown.
-    static UnknownServerErrorCode FromString(std::string_view text) {
-      if (text == "server.error") return UnknownServerErrorCode(Value::kErrorCode);
-      UnknownServerErrorCode result;
-      result.unknown_ = std::string(text);
-      return result;
-    }
-
-    Value value() const { return value_; }
-
-    /// The wire text, including the original text of unknown values.
-    std::string_view ToString() const {
-      switch (value_) {
-        case Value::kErrorCode: return "server.error";
-        case Value::kUnknown: return unknown_;
-      }
-      return unknown_;
-    }
-
-    friend bool operator==(const UnknownServerErrorCode&, const UnknownServerErrorCode&) = default;
-
-  private:
-    Value value_ = Value::kUnknown;
-    std::string unknown_;
-};
-
-
-struct UnknownServerError {
-  UnknownServerErrorCode errorCode{};
-  std::optional<std::string> description{};
-  std::optional<std::string> stateHash{};
-
-  friend bool operator==(const UnknownServerError&, const UnknownServerError&) = default;
-};
-
-
-enum class EnumResult : std::int32_t {
-  kFirst = 1,
-  kSecond = 2,
-};
-
-
-struct FallbackError {
-  std::string error{};
-
-  friend bool operator==(const FallbackError&, const FallbackError&) = default;
-};
-
 
 class PizzaBase {
   public:
@@ -256,6 +170,125 @@ class Food {
 };
 
 
+struct MenuItem {
+  Food food{};
+  float price{};
+
+  friend bool operator==(const MenuItem&, const MenuItem&) = default;
+};
+
+
+struct AddMenuItemInput {
+  std::string restaurant{};
+  MenuItem menuItem{};
+
+  friend bool operator==(const AddMenuItemInput&, const AddMenuItemInput&) = default;
+};
+
+
+struct AddMenuItemOutput {
+  std::string itemId{};
+  smithy::Timestamp added{};
+
+  friend bool operator==(const AddMenuItemOutput&, const AddMenuItemOutput&) = default;
+};
+
+
+struct GenericClientError {
+  std::string message{};
+
+  friend bool operator==(const GenericClientError&, const GenericClientError&) = default;
+};
+
+
+struct GenericServerError {
+  std::string message{};
+
+  friend bool operator==(const GenericServerError&, const GenericServerError&) = default;
+};
+
+
+struct PriceError {
+  std::string message{};
+  std::int32_t code{};
+
+  friend bool operator==(const PriceError&, const PriceError&) = default;
+};
+
+
+struct CustomCodeInput {
+  std::int32_t code{};
+
+  friend bool operator==(const CustomCodeInput&, const CustomCodeInput&) = default;
+};
+
+
+struct CustomCodeOutput {
+  std::optional<std::int32_t> code{};
+
+  friend bool operator==(const CustomCodeOutput&, const CustomCodeOutput&) = default;
+};
+
+
+class UnknownServerErrorCode {
+  public:
+    enum class Value {
+      kErrorCode,
+      kUnknown,
+    };
+
+    UnknownServerErrorCode() = default;
+    UnknownServerErrorCode(Value value) : value_(value) {}  // NOLINT(*-explicit-*)
+
+    /// Unknown wire values are preserved and reported as Value::kUnknown.
+    static UnknownServerErrorCode FromString(std::string_view text) {
+      if (text == "server.error") return UnknownServerErrorCode(Value::kErrorCode);
+      UnknownServerErrorCode result;
+      result.unknown_ = std::string(text);
+      return result;
+    }
+
+    Value value() const { return value_; }
+
+    /// The wire text, including the original text of unknown values.
+    std::string_view ToString() const {
+      switch (value_) {
+        case Value::kErrorCode: return "server.error";
+        case Value::kUnknown: return unknown_;
+      }
+      return unknown_;
+    }
+
+    friend bool operator==(const UnknownServerErrorCode&, const UnknownServerErrorCode&) = default;
+
+  private:
+    Value value_ = Value::kUnknown;
+    std::string unknown_;
+};
+
+
+struct UnknownServerError {
+  UnknownServerErrorCode errorCode{};
+  std::optional<std::string> description{};
+  std::optional<std::string> stateHash{};
+
+  friend bool operator==(const UnknownServerError&, const UnknownServerError&) = default;
+};
+
+
+enum class EnumResult : std::int32_t {
+  kFirst = 1,
+  kSecond = 2,
+};
+
+
+struct FallbackError {
+  std::string error{};
+
+  friend bool operator==(const FallbackError&, const FallbackError&) = default;
+};
+
+
 class TheEnum {
   public:
     enum class Value {
@@ -328,14 +361,6 @@ struct GetMenuInput {
   std::string restaurant{};
 
   friend bool operator==(const GetMenuInput&, const GetMenuInput&) = default;
-};
-
-
-struct MenuItem {
-  Food food{};
-  float price{};
-
-  friend bool operator==(const MenuItem&, const MenuItem&) = default;
 };
 
 

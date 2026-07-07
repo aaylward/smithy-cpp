@@ -108,26 +108,32 @@ void AddValidationFailure(std::vector<smithy::server::ValidationFailure>* failur
 }
 
 void ValidateDeleteCityInput(const DeleteCityInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
-  const std::string member_path = path + "/cityId";
-  static const std::regex kPattern0{R"__smithy(^[A-Za-z0-9 ]+$)__smithy", std::regex::ECMAScript};
-  if (!std::regex_search(value.cityId, kPattern0)) {
-    AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy regular expression pattern: " + std::string("^[A-Za-z0-9 ]+$"));
+  {
+    const std::string member_path = path + "/cityId";
+    static const std::regex kPattern0{R"__smithy(^[A-Za-z0-9 ]+$)__smithy", std::regex::ECMAScript};
+    if (!std::regex_search(value.cityId, kPattern0)) {
+      AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy regular expression pattern: " + std::string("^[A-Za-z0-9 ]+$"));
+    }
   }
 }
 
 void ValidateGetForecastInput(const GetForecastInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
-  const std::string member_path = path + "/cityId";
-  static const std::regex kPattern1{R"__smithy(^[A-Za-z0-9 ]+$)__smithy", std::regex::ECMAScript};
-  if (!std::regex_search(value.cityId, kPattern1)) {
-    AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy regular expression pattern: " + std::string("^[A-Za-z0-9 ]+$"));
+  {
+    const std::string member_path = path + "/cityId";
+    static const std::regex kPattern1{R"__smithy(^[A-Za-z0-9 ]+$)__smithy", std::regex::ECMAScript};
+    if (!std::regex_search(value.cityId, kPattern1)) {
+      AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy regular expression pattern: " + std::string("^[A-Za-z0-9 ]+$"));
+    }
   }
 }
 
 void ValidateGetCityInput(const GetCityInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
-  const std::string member_path = path + "/cityId";
-  static const std::regex kPattern2{R"__smithy(^[A-Za-z0-9 ]+$)__smithy", std::regex::ECMAScript};
-  if (!std::regex_search(value.cityId, kPattern2)) {
-    AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy regular expression pattern: " + std::string("^[A-Za-z0-9 ]+$"));
+  {
+    const std::string member_path = path + "/cityId";
+    static const std::regex kPattern2{R"__smithy(^[A-Za-z0-9 ]+$)__smithy", std::regex::ECMAScript};
+    if (!std::regex_search(value.cityId, kPattern2)) {
+      AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy regular expression pattern: " + std::string("^[A-Za-z0-9 ]+$"));
+    }
   }
 }
 

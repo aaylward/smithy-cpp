@@ -52,13 +52,14 @@ smithy.protocoltests.rpcv2Cbor#RpcV2Protocol server-request RpcV2CborSupportsNaN
 # to an empty-input operation and must succeed).
 
 # simpleRestJson (alloy) conformance exclusions.
-# Non-JSON @httpPayload bodies (string/blob text payloads): simpleRestJson
-# treats payloads as JSON — matches alloy's own disallowList for string payloads.
-alloy.test#PizzaAdminService any SimpleRestJsonSomeRequiredHttpPayloadWithDefault text @httpPayload bodies are not supported
-alloy.test#PizzaAdminService any SimpleRestJsonNoneRequiredHttpPayloadWithDefault text @httpPayload bodies are not supported
-alloy.test#PizzaAdminService any SimpleRestJsonSomeHttpPayloadWithDefault text @httpPayload bodies are not supported
-alloy.test#PizzaAdminService any SimpleRestJsonNoneHttpPayloadWithDefault text @httpPayload bodies are not supported
-alloy.test#PizzaAdminService any VersionOutput string @httpPayload body is not supported
+# The "None" payload-with-default variants exercise @default population: the
+# client must parse an absent payload as the default (response), and the
+# server must parse an absent request payload as the default (server-request).
+# The other kinds carry no body assertion and pass without @default.
+alloy.test#PizzaAdminService response SimpleRestJsonNoneRequiredHttpPayloadWithDefault @default population is not implemented yet
+alloy.test#PizzaAdminService server-request SimpleRestJsonNoneRequiredHttpPayloadWithDefault @default population is not implemented yet
+alloy.test#PizzaAdminService response SimpleRestJsonNoneHttpPayloadWithDefault @default population is not implemented yet
+alloy.test#PizzaAdminService server-request SimpleRestJsonNoneHttpPayloadWithDefault @default population is not implemented yet
 
 # alloy @discriminated / @untagged / open-union encodings are not implemented.
 alloy.test#PizzaAdminService any OpenUnionsUnknownTaggedUnionCase alloy open/discriminated unions are not implemented

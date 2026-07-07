@@ -101,6 +101,10 @@ smithy::http::HttpResponse ErrorToResponse(const smithy::Error& error) {
       if (!has_message && !error.message().empty()) {
         body.emplace("message", smithy::Document(error.message()));
       }
+      if (auto it = body.find("retryAfterSeconds"); it != body.end()) {
+        if (it->second.is_int()) header_values.emplace_back("x-retry-after-seconds", std::to_string(it->second.as_int()));
+        body.erase(it);
+      }
       auto response = JsonError(503, "", "", std::move(body));
       response.headers.Set("x-error-type", error.code());
       for (const auto& [name, value] : header_values) response.headers.Set(name, value);
@@ -124,16 +128,18 @@ void AddValidationFailure(std::vector<smithy::server::ValidationFailure>* failur
 }
 
 void ValidateDescribeSinkInput(const DescribeSinkInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
-  const std::string member_path = path + "/sinkId";
   {
-    const std::size_t member_length = smithy::Utf8CodePointCount(value.sinkId);
-    if (member_length < 1ULL || member_length > 32ULL) {
-      AddValidationFailure(failures, member_path, "Value with length " + std::to_string(member_length) + " at '" + member_path + "' failed to satisfy constraint: Member must have length between 1 and 32, inclusive");
+    const std::string member_path = path + "/sinkId";
+    {
+      const std::size_t member_length = smithy::Utf8CodePointCount(value.sinkId);
+      if (member_length < 1ULL || member_length > 32ULL) {
+        AddValidationFailure(failures, member_path, "Value with length " + std::to_string(member_length) + " at '" + member_path + "' failed to satisfy constraint: Member must have length between 1 and 32, inclusive");
+      }
     }
-  }
-  static const std::regex kPattern0{R"__smithy(^[A-Za-z0-9]+$)__smithy", std::regex::ECMAScript};
-  if (!std::regex_search(value.sinkId, kPattern0)) {
-    AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy regular expression pattern: " + std::string("^[A-Za-z0-9]+$"));
+    static const std::regex kPattern0{R"__smithy(^[A-Za-z0-9]+$)__smithy", std::regex::ECMAScript};
+    if (!std::regex_search(value.sinkId, kPattern0)) {
+      AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy regular expression pattern: " + std::string("^[A-Za-z0-9]+$"));
+    }
   }
 }
 
@@ -161,16 +167,18 @@ void ValidateKitchenSink(const KitchenSink& value, const std::string& path, std:
 }
 
 void ValidatePutSinkInput(const PutSinkInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
-  const std::string member_path = path + "/sinkId";
   {
-    const std::size_t member_length = smithy::Utf8CodePointCount(value.sinkId);
-    if (member_length < 1ULL || member_length > 32ULL) {
-      AddValidationFailure(failures, member_path, "Value with length " + std::to_string(member_length) + " at '" + member_path + "' failed to satisfy constraint: Member must have length between 1 and 32, inclusive");
+    const std::string member_path = path + "/sinkId";
+    {
+      const std::size_t member_length = smithy::Utf8CodePointCount(value.sinkId);
+      if (member_length < 1ULL || member_length > 32ULL) {
+        AddValidationFailure(failures, member_path, "Value with length " + std::to_string(member_length) + " at '" + member_path + "' failed to satisfy constraint: Member must have length between 1 and 32, inclusive");
+      }
     }
-  }
-  static const std::regex kPattern1{R"__smithy(^[A-Za-z0-9]+$)__smithy", std::regex::ECMAScript};
-  if (!std::regex_search(value.sinkId, kPattern1)) {
-    AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy regular expression pattern: " + std::string("^[A-Za-z0-9]+$"));
+    static const std::regex kPattern1{R"__smithy(^[A-Za-z0-9]+$)__smithy", std::regex::ECMAScript};
+    if (!std::regex_search(value.sinkId, kPattern1)) {
+      AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy regular expression pattern: " + std::string("^[A-Za-z0-9]+$"));
+    }
   }
   if (value.limit.has_value()) {
     const std::string member_path = path + "/limit";
@@ -191,16 +199,18 @@ void ValidatePutSinkInput(const PutSinkInput& value, const std::string& path, st
 }
 
 void ValidateUploadAttachmentInput(const UploadAttachmentInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
-  const std::string member_path = path + "/sinkId";
   {
-    const std::size_t member_length = smithy::Utf8CodePointCount(value.sinkId);
-    if (member_length < 1ULL || member_length > 32ULL) {
-      AddValidationFailure(failures, member_path, "Value with length " + std::to_string(member_length) + " at '" + member_path + "' failed to satisfy constraint: Member must have length between 1 and 32, inclusive");
+    const std::string member_path = path + "/sinkId";
+    {
+      const std::size_t member_length = smithy::Utf8CodePointCount(value.sinkId);
+      if (member_length < 1ULL || member_length > 32ULL) {
+        AddValidationFailure(failures, member_path, "Value with length " + std::to_string(member_length) + " at '" + member_path + "' failed to satisfy constraint: Member must have length between 1 and 32, inclusive");
+      }
     }
-  }
-  static const std::regex kPattern2{R"__smithy(^[A-Za-z0-9]+$)__smithy", std::regex::ECMAScript};
-  if (!std::regex_search(value.sinkId, kPattern2)) {
-    AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy regular expression pattern: " + std::string("^[A-Za-z0-9]+$"));
+    static const std::regex kPattern2{R"__smithy(^[A-Za-z0-9]+$)__smithy", std::regex::ECMAScript};
+    if (!std::regex_search(value.sinkId, kPattern2)) {
+      AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy regular expression pattern: " + std::string("^[A-Za-z0-9]+$"));
+    }
   }
 }
 

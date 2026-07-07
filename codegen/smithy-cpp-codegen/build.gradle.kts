@@ -131,10 +131,6 @@ val generateSimpleRestJsonProtocolTests = registerProtocolTestTask(
     "alloy.test#PizzaAdminService",
     "smithy::protocoltests::simplerestjson",
     "protocol-tests/simplerestjson/generated",
-    omitOperations = listOf(
-        // @required response @httpHeader members not generated yet (Phase 4d note).
-        "alloy.test#AddMenuItem",
-    ),
     malformedTests = true,
 )
 

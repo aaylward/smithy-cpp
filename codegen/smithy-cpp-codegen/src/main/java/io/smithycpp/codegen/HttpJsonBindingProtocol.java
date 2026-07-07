@@ -52,7 +52,7 @@ abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
   }
 
   @Override
-  public void writeErrorDetailPatches(CppWriter w, CppContext context, StructureShape error) {
+  public void writeErrorDocPatches(CppWriter w, CppContext context, StructureShape error) {
     HttpBindingIndex index = HttpBindingIndex.of(context.model());
     for (HttpBinding binding : new TreeMap<>(index.getResponseBindings(error)).values()) {
       if (binding.getLocation() != HttpBinding.Location.HEADER) {
@@ -61,10 +61,8 @@ abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
       MemberShape member = binding.getMember();
       Shape target = context.model().expectShape(member.getTarget());
       // Outcome-parsing kinds (timestamps, media-type strings) and lists are
-      // not patched into error details yet; the exclusion list documents any
-      // affected conformance cases.
-      String memberName = context.cppSymbols().toMemberName(member);
-      String typeName = context.cppSymbols().toSymbol(target).getName();
+      // not patched into error documents yet; the exclusion list documents
+      // any affected conformance cases.
       switch (target.getType()) {
         case STRING -> {
           if (target.hasTrait(software.amazon.smithy.model.traits.MediaTypeTrait.class)) {
@@ -76,31 +74,38 @@ abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
           continue;
         }
       }
+      // The document key is what the serde reads: @jsonName wins over the name.
+      String wireName =
+          member
+              .getTrait(software.amazon.smithy.model.traits.JsonNameTrait.class)
+              .map(software.amazon.smithy.model.traits.JsonNameTrait::getValue)
+              .orElse(member.getMemberName());
       w.openBlock(
           "if (const auto header_value = response.headers.Get($S); header_value.has_value()) {",
           binding.getLocationName());
       switch (target.getType()) {
-        case STRING -> w.write("detail->$L = *header_value;", memberName);
-        case ENUM -> w.write("detail->$L = $L::FromString(*header_value);", memberName, typeName);
-        // Error-detail patching is best effort: malformed header values are
+        case STRING, ENUM ->
+            w.write(
+                "parsed.doc.as_map().insert_or_assign($S, smithy::Document(*header_value));",
+                wireName);
+        // Document patching is best effort: malformed header values are
         // skipped, never failures.
         case BYTE, SHORT, INTEGER, LONG, INT_ENUM ->
             w.write(
                 "if (auto parsed_num = ParseInt64Text(*header_value, $L)) "
-                    + "detail->$L = static_cast<$L>(*parsed_num);",
+                    + "parsed.doc.as_map().insert_or_assign($S, smithy::Document(*parsed_num));",
                 ProtocolSupport.int64Bounds(target.getType()),
-                memberName,
-                typeName);
-        case FLOAT ->
+                wireName);
+        case FLOAT, DOUBLE ->
             w.write(
                 "if (auto parsed_num = ParseDoubleText(*header_value)) "
-                    + "detail->$L = static_cast<float>(*parsed_num);",
-                memberName);
-        case DOUBLE ->
+                    + "parsed.doc.as_map().insert_or_assign($S, smithy::Document(*parsed_num));",
+                wireName);
+        case BOOLEAN ->
             w.write(
-                "if (auto parsed_num = ParseDoubleText(*header_value)) detail->$L = *parsed_num;",
-                memberName);
-        case BOOLEAN -> w.write("detail->$L = (*header_value == \"true\");", memberName);
+                "parsed.doc.as_map().insert_or_assign($S, "
+                    + "smithy::Document(*header_value == \"true\"));",
+                wireName);
         default -> throw new CodegenException("unreachable");
       }
       w.closeBlock("}");
@@ -181,15 +186,7 @@ abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
         case RESPONSE_CODE -> responseCode = binding;
         case PAYLOAD -> responsePayload = binding;
         case PREFIX_HEADERS -> responsePrefixHeaders = binding;
-        case HEADER -> {
-          if (binding.getMember().isRequired()) {
-            throw new CodegenException(
-                "cpp-codegen: @required response @httpHeader members are not supported yet ("
-                    + operation.getId()
-                    + ")");
-          }
-          responseHeaders.put(binding.getLocationName(), binding);
-        }
+        case HEADER -> responseHeaders.put(binding.getLocationName(), binding);
         default ->
             throw new CodegenException(
                 "cpp-codegen: HTTP+JSON output binding "
@@ -326,9 +323,16 @@ abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
       return;
     }
     w.write("$L out{};", outType);
-    if (!responseBody.isEmpty()) {
-      // Header-bound members are always optional (checked above), so a
-      // required member here means a required body member: parse regardless.
+    // The whole-shape deserializer enforces every required member, so it only
+    // fits when required members all travel in the body; a required member
+    // bound elsewhere (header/@httpResponseCode) forces a member-by-member
+    // body parse (mirroring the server's input parse).
+    boolean requiredOutsideBody =
+        responseHeaders.values().stream().anyMatch(b -> b.getMember().isRequired())
+            || (responseCode != null && responseCode.getMember().isRequired())
+            || (responsePrefixHeaders != null && responsePrefixHeaders.getMember().isRequired());
+    if (!responseBody.isEmpty() && !requiredOutsideBody) {
+      // A required member here means a required body member: parse regardless.
       if (allOptional) {
         w.openBlock("if (!response->body.empty()) {");
       }
@@ -342,12 +346,56 @@ abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
       if (allOptional) {
         w.closeBlock("}");
       }
+    } else if (!responseBody.isEmpty()) {
+      w.write(
+          "auto body_doc = smithy::json::Decode(response->body.empty() ? \"{}\" "
+              + ": response->body);");
+      w.write("if (!body_doc) return std::move(body_doc).error();");
+      w.write(
+          "if (!body_doc->is_map()) return smithy::Error::Serialization($S);",
+          CppReservedWords.escape(operation.getId().getName()) + ": expected a JSON object body");
+      for (HttpBinding binding : responseBody) {
+        MemberShape member = binding.getMember();
+        String wireName =
+            member
+                .getTrait(software.amazon.smithy.model.traits.JsonNameTrait.class)
+                .map(software.amazon.smithy.model.traits.JsonNameTrait::getValue)
+                .orElse(member.getMemberName());
+        String field = "out." + context.cppSymbols().toMemberName(member);
+        String path = outType + "." + member.getMemberName();
+        w.openBlock("{");
+        w.write("const smithy::Document* member = body_doc->Find($S);", wireName);
+        if (member.isRequired()) {
+          w.write(
+              "if (member == nullptr || member->is_null()) return "
+                  + "smithy::Error::Serialization($S);",
+              "missing required member: " + member.getMemberName());
+          serde.writeDeserializeInto(w, member, "member", field, path);
+        } else {
+          w.openBlock("if (member != nullptr && !member->is_null()) {");
+          var targetType =
+              context.cppSymbols().toSymbol(context.model().expectShape(member.getTarget()));
+          w.write("$L parsed_member{};", targetType.getName());
+          serde.writeDeserializeInto(w, member, "member", "parsed_member", path);
+          w.write("$L = std::move(parsed_member);", field);
+          w.closeBlock("}");
+        }
+        w.closeBlock("}");
+      }
     }
     if (responsePayload != null) {
       writePayloadRead(w, context, serde, responsePayload, "response->body", "out.");
     }
     for (HttpBinding binding : responseHeaders.values()) {
       writeResponseHeaderBinding(w, context, serde, binding);
+      if (binding.getMember().isRequired()) {
+        // Clients are strict about required headers, like required body members.
+        w.write(
+            "if (!response->headers.Get($S).has_value()) return "
+                + "smithy::Error::Serialization($S);",
+            binding.getLocationName(),
+            "missing required header: " + binding.getLocationName());
+      }
     }
     if (responsePrefixHeaders != null) {
       writePrefixHeadersRead(w, context, responsePrefixHeaders, "response->headers", "out.");
@@ -397,10 +445,34 @@ abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
     };
   }
 
+  /**
+   * Whether the payload member is a string/enum without @mediaType: simpleRestJson carries those as
+   * JSON string values with content-type application/json (alloy's own conformance model pins this
+   * — e.g. VersionOutput's body is {@code "1.0"}, quotes included), unlike @mediaType strings and
+   * blobs, which stay raw.
+   */
+  private static boolean jsonTextPayload(CppContext context, MemberShape member) {
+    Shape target = context.model().expectShape(member.getTarget());
+    return switch (target.getType()) {
+      case STRING, ENUM ->
+          !member.hasTrait(software.amazon.smithy.model.traits.MediaTypeTrait.class)
+              && !target.hasTrait(software.amazon.smithy.model.traits.MediaTypeTrait.class);
+      default -> false;
+    };
+  }
+
   /** The message's content type when an @httpPayload member is bound (media-type aware). */
   private static String payloadContentType(
       CppContext context, OperationShape operation, boolean isRequest) {
     HttpBindingIndex index = HttpBindingIndex.of(context.model());
+    var bindings =
+        isRequest ? index.getRequestBindings(operation) : index.getResponseBindings(operation);
+    for (HttpBinding binding : bindings.values()) {
+      if (binding.getLocation() == HttpBinding.Location.PAYLOAD
+          && jsonTextPayload(context, binding.getMember())) {
+        return "application/json";
+      }
+    }
     return isRequest
         ? index.determineRequestContentType(operation, "application/json").orElse("")
         : index.determineResponseContentType(operation, "application/json").orElse("");
@@ -449,10 +521,27 @@ abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
       w.write("$L.body = \"{}\";", messageVar);
       w.closeBlock("}");
     } else {
+      boolean jsonText = jsonTextPayload(context, member);
       switch (target.getType()) {
         case BLOB -> w.write("$L.body = $L.ToString();", messageVar, value);
-        case STRING -> w.write("$L.body = $L;", messageVar, value);
-        case ENUM -> w.write("$L.body = std::string($L.ToString());", messageVar, value);
+        case STRING -> {
+          if (jsonText) {
+            // simpleRestJson: plain string payloads are JSON string values.
+            w.write("$L.body = smithy::json::Encode(smithy::Document($L));", messageVar, value);
+          } else {
+            w.write("$L.body = $L;", messageVar, value);
+          }
+        }
+        case ENUM -> {
+          if (jsonText) {
+            w.write(
+                "$L.body = smithy::json::Encode(smithy::Document(std::string($L.ToString())));",
+                messageVar,
+                value);
+          } else {
+            w.write("$L.body = std::string($L.ToString());", messageVar, value);
+          }
+        }
         default ->
             w.write(
                 "$L.body = smithy::json::Encode($L);",
@@ -490,16 +579,36 @@ abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
     Shape target = context.model().expectShape(member.getTarget());
     String field = targetPrefix + context.cppSymbols().toMemberName(member);
     String path = member.getMemberName();
+    boolean jsonText = jsonTextPayload(context, member);
     w.openBlock("if (!$L.empty()) {", bodyExpr);
     switch (target.getType()) {
       case BLOB -> w.write("$L = smithy::Blob::FromString($L);", field, bodyExpr);
-      case STRING -> w.write("$L = $L;", field, bodyExpr);
-      case ENUM ->
+      case STRING -> {
+        if (jsonText) {
+          // simpleRestJson: plain string payloads are JSON string values.
+          w.write("auto payload_doc = smithy::json::Decode($L);", bodyExpr);
+          w.write("if (!payload_doc) return std::move(payload_doc).error();");
           w.write(
-              "$L = $L::FromString($L);",
-              field,
-              context.cppSymbols().toSymbol(target).getName(),
-              bodyExpr);
+              "if (!payload_doc->is_string()) return smithy::Error::Serialization("
+                  + "\"expected a JSON string payload\");");
+          w.write("$L = payload_doc->as_string();", field);
+        } else {
+          w.write("$L = $L;", field, bodyExpr);
+        }
+      }
+      case ENUM -> {
+        String enumType = context.cppSymbols().toSymbol(target).getName();
+        if (jsonText) {
+          w.write("auto payload_doc = smithy::json::Decode($L);", bodyExpr);
+          w.write("if (!payload_doc) return std::move(payload_doc).error();");
+          w.write(
+              "if (!payload_doc->is_string()) return smithy::Error::Serialization("
+                  + "\"expected a JSON string payload\");");
+          w.write("$L = $L::FromString(payload_doc->as_string());", field, enumType);
+        } else {
+          w.write("$L = $L::FromString($L);", field, enumType, bodyExpr);
+        }
+      }
       default -> {
         w.write("auto payload_doc = smithy::json::Decode($L);", bodyExpr);
         w.write("if (!payload_doc) return std::move(payload_doc).error();");
@@ -575,7 +684,7 @@ abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
     w.closeBlock("}");
   }
 
-  /** Patches one response @httpHeader member into {@code out} (member is always optional). */
+  /** Patches one response @httpHeader member into {@code out}. */
   private void writeResponseHeaderBinding(
       CppWriter w, CppContext context, SerdeCodeGen serde, HttpBinding binding) {
     writeHeaderReadBinding(w, context, serde, binding, "response->headers", "out.");
@@ -1354,10 +1463,8 @@ abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
       w.write("return error_response;");
       w.closeBlock("}");
     } else if (!lenientPayload(context, bindingIndex, operation, /* response= */ false)) {
-      String expected =
-          bindingIndex
-              .determineRequestContentType(operation, "application/json")
-              .orElse("application/json");
+      String requestContentType = payloadContentType(context, operation, /* isRequest= */ true);
+      String expected = requestContentType.isEmpty() ? "application/json" : requestContentType;
       boolean hasRequestPayload =
           bindingIndex.getRequestBindings(operation).values().stream()
               .anyMatch(b -> b.getLocation() == HttpBinding.Location.PAYLOAD);
@@ -1381,10 +1488,8 @@ abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
     }
     if (hasResponseContent
         && !lenientPayload(context, bindingIndex, operation, /* response= */ true)) {
-      String responseContentType =
-          bindingIndex
-              .determineResponseContentType(operation, "application/json")
-              .orElse("application/json");
+      String determined = payloadContentType(context, operation, /* isRequest= */ false);
+      String responseContentType = determined.isEmpty() ? "application/json" : determined;
       w.openBlock(
           "if (const auto accept = request.headers.Get(\"accept\"); accept.has_value() && "
               + "!smithy::http::AcceptMatches(*accept, $S)) {",

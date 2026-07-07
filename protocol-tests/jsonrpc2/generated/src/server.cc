@@ -81,11 +81,13 @@ void AddValidationFailure(std::vector<smithy::server::ValidationFailure>* failur
 }
 
 void ValidatePutConstrainedInput(const PutConstrainedInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
-  const std::string member_path = path + "/name";
   {
-    const std::size_t member_length = smithy::Utf8CodePointCount(value.name);
-    if (member_length < 1ULL || member_length > 8ULL) {
-      AddValidationFailure(failures, member_path, "Value with length " + std::to_string(member_length) + " at '" + member_path + "' failed to satisfy constraint: Member must have length between 1 and 8, inclusive");
+    const std::string member_path = path + "/name";
+    {
+      const std::size_t member_length = smithy::Utf8CodePointCount(value.name);
+      if (member_length < 1ULL || member_length > 8ULL) {
+        AddValidationFailure(failures, member_path, "Value with length " + std::to_string(member_length) + " at '" + member_path + "' failed to satisfy constraint: Member must have length between 1 and 8, inclusive");
+      }
     }
   }
   if (value.limit.has_value()) {

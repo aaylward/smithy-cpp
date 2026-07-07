@@ -297,18 +297,36 @@ final class ProtocolSupport {
             continue;
           }
           Shape target = context.model().expectShape(binding.getMember().getTarget());
-          if (!target.isStringShape()
-              || target.hasTrait(software.amazon.smithy.model.traits.MediaTypeTrait.class)) {
-            // Non-string error headers are not serialized yet (exclusions document this).
+          if (target.hasTrait(software.amazon.smithy.model.traits.MediaTypeTrait.class)) {
+            // Media-type strings and non-scalar error headers are not
+            // serialized yet (exclusions document the affected cases).
+            continue;
+          }
+          // The lifted value comes from the serialized body document, so the
+          // conversion branches on the document node the serde produced.
+          String lift =
+              switch (target.getType()) {
+                case STRING, ENUM ->
+                    "if (it->second.is_string()) header_values.emplace_back($S, "
+                        + "it->second.as_string());";
+                case BYTE, SHORT, INTEGER, LONG, INT_ENUM ->
+                    "if (it->second.is_int()) header_values.emplace_back($S, "
+                        + "std::to_string(it->second.as_int()));";
+                case FLOAT, DOUBLE ->
+                    "if (it->second.is_double()) header_values.emplace_back($S, "
+                        + "smithy::FormatDouble(it->second.as_double()));";
+                case BOOLEAN ->
+                    "if (it->second.is_bool()) header_values.emplace_back($S, "
+                        + "it->second.as_bool() ? \"true\" : \"false\");";
+                default -> null;
+              };
+          if (lift == null) {
             continue;
           }
           w.openBlock(
               "if (auto it = body.find($S); it != body.end()) {",
               binding.getMember().getMemberName());
-          w.write(
-              "if (it->second.is_string()) header_values.emplace_back($S, "
-                  + "it->second.as_string());",
-              binding.getLocationName());
+          w.write(lift, binding.getLocationName());
           w.write("body.erase(it);");
           w.closeBlock("}");
         }
@@ -414,11 +432,13 @@ final class ProtocolSupport {
       // Errors with header-only payloads (or none at all) may have no body:
       // deserialize from an empty map so the typed detail still attaches.
       w.write("if (!parsed.doc.is_map()) parsed.doc = smithy::Document(smithy::DocumentMap{});");
+      // Header-bound members are patched into the document before it
+      // deserializes, so @required header members are satisfied.
+      protocol.writeErrorDocPatches(w, context, shape);
       w.write(
           "auto detail = Deserialize$L(parsed.doc);",
           SerdeCodeGen.serdeFunctionSuffix(context, shape));
       w.openBlock("if (detail.ok()) {");
-      protocol.writeErrorDetailPatches(w, context, shape);
       w.write("error.set_detail(*std::move(detail));");
       w.closeBlock("}");
       w.write("return error;");
@@ -445,6 +465,27 @@ final class ProtocolSupport {
             "if (parsed.code == $S) return Make$LError(response, std::move(parsed));",
             entry.getValue().getId().getName(),
             entry.getKey());
+      }
+      if (protocol.errorStatusFallback()) {
+        // Statuses claimed by exactly one declared error fall back by status
+        // when the response carried no error identity.
+        Map<Integer, List<Map.Entry<String, StructureShape>>> byStatus = new TreeMap<>();
+        for (Map.Entry<String, StructureShape> entry : sorted.entrySet()) {
+          byStatus
+              .computeIfAbsent(errorStatus(entry.getValue()), k -> new java.util.ArrayList<>())
+              .add(entry);
+        }
+        for (Map.Entry<Integer, List<Map.Entry<String, StructureShape>>> entry :
+            byStatus.entrySet()) {
+          if (entry.getValue().size() != 1) {
+            continue;
+          }
+          w.write(
+              "if (parsed.code == \"UnknownError\" && parsed.status == $L) "
+                  + "return Make$LError(response, std::move(parsed));",
+              entry.getKey(),
+              entry.getValue().get(0).getKey());
+        }
       }
       w.write("return GenericError(std::move(parsed));");
       w.closeBlock("}");

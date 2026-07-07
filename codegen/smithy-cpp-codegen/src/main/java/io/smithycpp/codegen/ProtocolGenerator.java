@@ -31,15 +31,25 @@ interface ProtocolGenerator {
     return false;
   }
 
+  /**
+   * Whether an unidentified error response falls back to matching the operation's declared errors
+   * by HTTP status (simpleRestJson: the X-Error-Type header is the discriminator, with status-code
+   * fallback when absent). Only statuses unique within the operation's error set are matched.
+   */
+  default boolean errorStatusFallback() {
+    return false;
+  }
+
   /** Emits the file-local helpers (error deserializer etc.) into client.cc's anon namespace. */
   void writeClientHelpers(CppWriter w, CppContext context);
 
   /**
-   * Emits statements patching protocol-specific bindings (e.g. restJson1 error @httpHeader members)
-   * into {@code detail->...}; runs inside Make&lt;Error&gt;Error with {@code response} in scope.
-   * Default: nothing.
+   * Emits statements patching protocol-specific bindings (e.g. simpleRestJson error @httpHeader
+   * members) into the parsed error document ({@code parsed.doc}, guaranteed to be a map) before the
+   * typed detail deserializes from it — so header-carried members satisfy @required. Runs inside
+   * Make&lt;Error&gt;Error with {@code response} and {@code parsed} in scope. Default: nothing.
    */
-  default void writeErrorDetailPatches(
+  default void writeErrorDocPatches(
       CppWriter w, CppContext context, software.amazon.smithy.model.shapes.StructureShape error) {}
 
   /** Emits the body of one operation method (inside the function braces). */

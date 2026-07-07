@@ -112,18 +112,21 @@ smithy::Error MakeNoSuchResourceError(const smithy::http::HttpResponse& response
 smithy::Error DeserializeDeleteCityError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "NoSuchResource") return MakeNoSuchResourceError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 404) return MakeNoSuchResourceError(response, std::move(parsed));
   return GenericError(std::move(parsed));
 }
 
 smithy::Error DeserializeGetCityError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "NoSuchResource") return MakeNoSuchResourceError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 404) return MakeNoSuchResourceError(response, std::move(parsed));
   return GenericError(std::move(parsed));
 }
 
 smithy::Error DeserializeGetForecastError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "NoSuchResource") return MakeNoSuchResourceError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 404) return MakeNoSuchResourceError(response, std::move(parsed));
   return GenericError(std::move(parsed));
 }
 

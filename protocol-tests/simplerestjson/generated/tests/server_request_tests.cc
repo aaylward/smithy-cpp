@@ -19,16 +19,21 @@ namespace smithy::protocoltests::simplerestjson {
 // compared against the expected params.
 //
 // Excluded cases (protocol-test-exclusions.txt; the list must only shrink):
-//   SimpleRestJsonSomeRequiredHttpPayloadWithDefault (server-request) — text @httpPayload bodies are not supported
-//   SimpleRestJsonNoneRequiredHttpPayloadWithDefault (server-request) — text @httpPayload bodies are not supported
-//   SimpleRestJsonSomeHttpPayloadWithDefault (server-request) — text @httpPayload bodies are not supported
-//   SimpleRestJsonNoneHttpPayloadWithDefault (server-request) — text @httpPayload bodies are not supported
+//   SimpleRestJsonNoneRequiredHttpPayloadWithDefault (server-request) — @default population is not implemented yet
+//   SimpleRestJsonNoneHttpPayloadWithDefault (server-request) — @default population is not implemented yet
 //   OpenUnionsUnknownTaggedUnionCase (server-request) — alloy open/discriminated unions are not implemented
 //   OpenUnionsKnownDiscriminatedUnionCase (server-request) — alloy open/discriminated unions are not implemented
 //   OpenUnionsUnknownDiscriminatedUnionCase (server-request) — alloy open/discriminated unions are not implemented
 //   RoundTripRequest (server-request) — under investigation (task #63): mixed label/query/body echo
 
 namespace {
+
+AddMenuItemOutput MinimalAddMenuItemOutput() {
+    return [] {
+    AddMenuItemOutput v{};
+    return v;
+  }();
+}
 
 CustomCodeOutput MinimalCustomCodeOutput() {
     return [] {
@@ -110,6 +115,11 @@ VersionOutput MinimalVersionOutput() {
 
 class RecordingHandler : public PizzaAdminServiceHandler {
   public:
+    smithy::Outcome<AddMenuItemOutput> AddMenuItem(const AddMenuItemInput& input) override {
+      lastAddMenuItem = input;
+      return MinimalAddMenuItemOutput();
+    }
+    std::optional<AddMenuItemInput> lastAddMenuItem;
     smithy::Outcome<CustomCodeOutput> CustomCode(const CustomCodeInput& input) override {
       lastCustomCode = input;
       return MinimalCustomCodeOutput();
@@ -168,6 +178,37 @@ class RecordingHandler : public PizzaAdminServiceHandler {
 };
 
 }  // namespace
+
+// add menu item tests
+TEST(PizzaAdminServiceServerRequestTest, AddMenuItem) {
+  auto handler = std::make_shared<RecordingHandler>();
+  PizzaAdminServiceServer server(handler);
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = "/restaurant/bobs/menu/item";
+  request.headers.Set("Content-Type", "application/json");
+  request.body = "{\"food\":{\"pizza\":{\"name\":\"margharita\",\"base\":\"T\",\"toppings\":[\"MUSHROOM\",\"TOMATO\"]}},\"price\":9.0}";
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  ASSERT_TRUE(handler->lastAddMenuItem.has_value()) << response.status << " " << response.body;
+  const AddMenuItemInput expected = [] {
+  AddMenuItemInput v{};
+  v.restaurant = "bobs";
+  v.menuItem = [] {
+  MenuItem v{};
+  v.food = Food::FromPizza([] {
+  Pizza v{};
+  v.name = "margharita";
+  v.base = PizzaBase::FromString("T");
+  v.toppings = std::vector<Ingredient>{Ingredient::FromString("MUSHROOM"), Ingredient::FromString("TOMATO")};
+  return v;
+}());
+  v.price = 9.0F;
+  return v;
+}();
+  return v;
+}();
+  EXPECT_EQ(*handler->lastAddMenuItem, expected);
+}
 
 // tests custom code as a label
 TEST(PizzaAdminServiceServerRequestTest, CustomCodeInput) {
@@ -273,6 +314,44 @@ TEST(PizzaAdminServiceServerRequestTest, HealthGet) {
   return v;
 }();
   EXPECT_EQ(*handler->lastHealth, expected);
+}
+
+// Pass JSON string value as is if payload provided
+TEST(PizzaAdminServiceServerRequestTest, SimpleRestJsonSomeRequiredHttpPayloadWithDefault) {
+  auto handler = std::make_shared<RecordingHandler>();
+  PizzaAdminServiceServer server(handler);
+  smithy::http::HttpRequest request;
+  request.method = "PUT";
+  request.target = "/httpPayloadRequiredWithDefault";
+  request.headers.Set("Content-Type", "application/json");
+  request.body = "\"custom value\"";
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  ASSERT_TRUE(handler->lastHttpPayloadRequiredWithDefault.has_value()) << response.status << " " << response.body;
+  const HttpPayloadRequiredWithDefaultInput expected = [] {
+  HttpPayloadRequiredWithDefaultInput v{};
+  v.body = "custom value";
+  return v;
+}();
+  EXPECT_EQ(*handler->lastHttpPayloadRequiredWithDefault, expected);
+}
+
+// Pass JSON string value as is if payload provided
+TEST(PizzaAdminServiceServerRequestTest, SimpleRestJsonSomeHttpPayloadWithDefault) {
+  auto handler = std::make_shared<RecordingHandler>();
+  PizzaAdminServiceServer server(handler);
+  smithy::http::HttpRequest request;
+  request.method = "PUT";
+  request.target = "/httpPayloadWithDefault";
+  request.headers.Set("Content-Type", "application/json");
+  request.body = "\"custom value\"";
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  ASSERT_TRUE(handler->lastHttpPayloadWithDefault.has_value()) << response.status << " " << response.body;
+  const HttpPayloadWithDefaultInput expected = [] {
+  HttpPayloadWithDefaultInput v{};
+  v.body = "custom value";
+  return v;
+}();
+  EXPECT_EQ(*handler->lastHttpPayloadWithDefault, expected);
 }
 
 // Pass a known tagged union value in an open union

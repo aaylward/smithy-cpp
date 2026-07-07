@@ -135,6 +135,25 @@ smithy::http::HttpResponse ErrorToResponse(const smithy::Error& error) {
       for (const auto& [name, value] : header_values) response.headers.Set(name, value);
       return response;
     }
+    if (error.code() == "PriceError") {
+      smithy::DocumentMap body;
+      if (const auto* detail = error.detail<PriceError>()) {
+        body = SerializePriceError(*detail).as_map();
+      }
+      // The typed detail's own message member wins over the generic one.
+      const bool has_message = body.count("message") != 0 || body.count("Message") != 0;
+      if (!has_message && !error.message().empty()) {
+        body.emplace("message", smithy::Document(error.message()));
+      }
+      if (auto it = body.find("code"); it != body.end()) {
+        if (it->second.is_int()) header_values.emplace_back("X-CODE", std::to_string(it->second.as_int()));
+        body.erase(it);
+      }
+      auto response = JsonError(400, "", "", std::move(body));
+      response.headers.Set("x-error-type", error.code());
+      for (const auto& [name, value] : header_values) response.headers.Set(name, value);
+      return response;
+    }
     if (error.code() == "UnknownServerError") {
       smithy::DocumentMap body;
       if (const auto* detail = error.detail<UnknownServerError>()) {
@@ -167,10 +186,66 @@ void AddValidationFailure(std::vector<smithy::server::ValidationFailure>* failur
   failures->push_back({std::move(path), std::move(message)});
 }
 
+void ValidateIngredients(const std::vector<Ingredient>& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
+  for (std::size_t i = 0; i < value.size(); ++i) {
+    const std::string item_path = path + "/" + std::to_string(i);
+    if (value[i].value() == Ingredient::Value::kUnknown) {
+      AddValidationFailure(failures, item_path, "Value at '" + item_path + "' failed to satisfy constraint: Member must satisfy enum value set: [TOMATO, CHEESE, PINEAPPLE, BACON, CHICKEN, Salad, MUSHROOM, OLIVES, ONIONS, PEPPERONI, PEPPERS]");
+    }
+  }
+}
+
+void ValidatePizza(const Pizza& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
+  {
+    const std::string member_path = path + "/base";
+    if (value.base.value() == PizzaBase::Value::kUnknown) {
+      AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy enum value set: [C, T]");
+    }
+  }
+  {
+    const std::string member_path = path + "/toppings";
+    ValidateIngredients(value.toppings, member_path, failures);
+  }
+}
+
+void ValidateSalad(const Salad& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
+  {
+    const std::string member_path = path + "/ingredients";
+    ValidateIngredients(value.ingredients, member_path, failures);
+  }
+}
+
+void ValidateFood(const Food& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
+  if (value.is_pizza()) {
+    const std::string member_path = path + "/pizza";
+    ValidatePizza(value.as_pizza(), member_path, failures);
+  }
+  if (value.is_salad()) {
+    const std::string member_path = path + "/salad";
+    ValidateSalad(value.as_salad(), member_path, failures);
+  }
+}
+
+void ValidateMenuItem(const MenuItem& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
+  {
+    const std::string member_path = path + "/food";
+    ValidateFood(value.food, member_path, failures);
+  }
+}
+
+void ValidateAddMenuItemInput(const AddMenuItemInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
+  {
+    const std::string member_path = path + "/menuItem";
+    ValidateMenuItem(value.menuItem, member_path, failures);
+  }
+}
+
 void ValidateGetEnumInput(const GetEnumInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
-  const std::string member_path = path + "/aa";
-  if (value.aa.value() == TheEnum::Value::kUnknown) {
-    AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy enum value set: [v1, v2]");
+  {
+    const std::string member_path = path + "/aa";
+    if (value.aa.value() == TheEnum::Value::kUnknown) {
+      AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy enum value set: [v1, v2]");
+    }
   }
 }
 
@@ -201,6 +276,39 @@ smithy::http::HttpResponse ValidationErrorResponse(const std::vector<smithy::ser
   body.emplace("fieldList", smithy::Document(std::move(field_list)));
   smithy::http::HttpResponse response = JsonError(400, "", summary, std::move(body));
   response.headers.Set("x-error-type", "ValidationException");
+  return response;
+}
+
+smithy::Outcome<AddMenuItemInput> ParseAddMenuItemInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
+  (void)request;
+  (void)context;
+  (void)validation_failures;
+  AddMenuItemInput input{};
+  {
+    const std::string& label_value = context.labels.at("restaurant");
+    input.restaurant = label_value;
+  }
+  if (!request.body.empty()) {
+    auto payload_doc = smithy::json::Decode(request.body);
+    if (!payload_doc) return std::move(payload_doc).error();
+    const smithy::Document* payload_ptr = &*payload_doc;
+    {
+      auto parsed = DeserializeMenuItem(*payload_ptr);
+      if (!parsed) return std::move(parsed).error();
+      input.menuItem = std::move(*parsed);
+    }
+  }
+  return input;
+}
+
+smithy::http::HttpResponse SerializeAddMenuItemResponse(const AddMenuItemOutput& output) {
+  (void)output;
+  smithy::http::HttpResponse response;
+  response.status = 201;
+  response.headers.Set("X-ADDED-AT", output.added.Format(smithy::TimestampFormat::kEpochSeconds));
+  response.body = smithy::json::Encode(smithy::Document(output.itemId));
+  if (!response.headers.Get("content-type").has_value()) response.headers.Set("content-type", "application/json");
+  response.headers.Set("content-length", std::to_string(response.body.size()));
   return response;
 }
 
@@ -374,7 +482,10 @@ smithy::Outcome<HttpPayloadRequiredWithDefaultInput> ParseHttpPayloadRequiredWit
   (void)validation_failures;
   HttpPayloadRequiredWithDefaultInput input{};
   if (!request.body.empty()) {
-    input.body = request.body;
+    auto payload_doc = smithy::json::Decode(request.body);
+    if (!payload_doc) return std::move(payload_doc).error();
+    if (!payload_doc->is_string()) return smithy::Error::Serialization("expected a JSON string payload");
+    input.body = payload_doc->as_string();
   }
   return input;
 }
@@ -383,8 +494,8 @@ smithy::http::HttpResponse SerializeHttpPayloadRequiredWithDefaultResponse(const
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
-  response.body = output.body;
-  if (!response.headers.Get("content-type").has_value()) response.headers.Set("content-type", "text/plain");
+  response.body = smithy::json::Encode(smithy::Document(output.body));
+  if (!response.headers.Get("content-type").has_value()) response.headers.Set("content-type", "application/json");
   response.headers.Set("content-length", std::to_string(response.body.size()));
   return response;
 }
@@ -395,7 +506,10 @@ smithy::Outcome<HttpPayloadWithDefaultInput> ParseHttpPayloadWithDefaultInput(co
   (void)validation_failures;
   HttpPayloadWithDefaultInput input{};
   if (!request.body.empty()) {
-    input.body = request.body;
+    auto payload_doc = smithy::json::Decode(request.body);
+    if (!payload_doc) return std::move(payload_doc).error();
+    if (!payload_doc->is_string()) return smithy::Error::Serialization("expected a JSON string payload");
+    input.body = payload_doc->as_string();
   }
   return input;
 }
@@ -405,8 +519,8 @@ smithy::http::HttpResponse SerializeHttpPayloadWithDefaultResponse(const HttpPay
   smithy::http::HttpResponse response;
   response.status = 200;
   if (output.body.has_value()) {
-    response.body = (*output.body);
-    if (!response.headers.Get("content-type").has_value()) response.headers.Set("content-type", "text/plain");
+    response.body = smithy::json::Encode(smithy::Document((*output.body)));
+    if (!response.headers.Get("content-type").has_value()) response.headers.Set("content-type", "application/json");
   }
   response.headers.Set("content-length", std::to_string(response.body.size()));
   return response;
@@ -505,8 +619,8 @@ smithy::http::HttpResponse SerializeVersionResponse(const VersionOutput& output)
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
-  response.body = output.version;
-  if (!response.headers.Get("content-type").has_value()) response.headers.Set("content-type", "text/plain");
+  response.body = smithy::json::Encode(smithy::Document(output.version));
+  if (!response.headers.Get("content-type").has_value()) response.headers.Set("content-type", "application/json");
   response.headers.Set("content-length", std::to_string(response.body.size()));
   return response;
 }
@@ -518,6 +632,31 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
   // The route table is derived from the model's @http traits; conflicts are
   // a modeling error surfaced by Router::Add (checked at generation time in a
   // later phase), so registration results are intentionally discarded.
+  (void)router_->Add("POST", "/restaurant/{restaurant}/menu/item", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec (415), then Accept (406);
+    // the malformed-request suite pins the error-identity headers. A missing
+    // content-type is tolerated, and blob payloads without @mediaType accept
+    // any content type / accept.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() ? smithy::http::MediaTypeOf(*content_type) != "application/json" : !request.body.empty()) {
+      auto error_response = JsonError(415, "", "unsupported media type", {});
+      error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
+      return error_response;
+    }
+    if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
+      auto error_response = JsonError(406, "", "not acceptable", {});
+      error_response.headers.Set("x-error-type", "NotAcceptableException");
+      return error_response;
+    }
+    std::vector<smithy::server::ValidationFailure> validation_failures;
+    auto input = ParseAddMenuItemInput(request, context, &validation_failures);
+    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
+    if (!input) return ErrorToResponse(input.error());
+    ValidateAddMenuItemInput(*input, "", &validation_failures);
+    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
+    auto outcome = handler->AddMenuItem(*input);
+    if (!outcome) return ErrorToResponse(outcome.error());
+    return SerializeAddMenuItemResponse(*outcome);
+  }, "AddMenuItem");
   (void)router_->Add("GET", "/custom-code/{code}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -655,12 +794,12 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     // the malformed-request suite pins the error-identity headers. A missing
     // content-type is tolerated, and blob payloads without @mediaType accept
     // any content type / accept.
-    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() ? smithy::http::MediaTypeOf(*content_type) != "text/plain" : !request.body.empty()) {
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() ? smithy::http::MediaTypeOf(*content_type) != "application/json" : !request.body.empty()) {
       auto error_response = JsonError(415, "", "unsupported media type", {});
       error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
-    if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "text/plain")) {
+    if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
       auto error_response = JsonError(406, "", "not acceptable", {});
       error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;
@@ -678,12 +817,12 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     // the malformed-request suite pins the error-identity headers. A missing
     // content-type is tolerated, and blob payloads without @mediaType accept
     // any content type / accept.
-    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() ? smithy::http::MediaTypeOf(*content_type) != "text/plain" : !request.body.empty()) {
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() ? smithy::http::MediaTypeOf(*content_type) != "application/json" : !request.body.empty()) {
       auto error_response = JsonError(415, "", "unsupported media type", {});
       error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
-    if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "text/plain")) {
+    if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
       auto error_response = JsonError(406, "", "not acceptable", {});
       error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;
@@ -752,7 +891,7 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
       error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
-    if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "text/plain")) {
+    if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
       auto error_response = JsonError(406, "", "not acceptable", {});
       error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;

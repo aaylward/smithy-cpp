@@ -19,15 +19,12 @@ namespace smithy::protocoltests::simplerestjson {
 // Excluded cases (protocol-test-exclusions.txt; the list must only shrink):
 //   CustomCodeOutput (response) — 3xx @httpResponseCode is not treated as a success status
 //   GetEnumOutput (response) — under investigation (task #63): enum output server-side 400
-//   SimpleRestJsonSomeRequiredHttpPayloadWithDefault (response) — text @httpPayload bodies are not supported
-//   SimpleRestJsonNoneRequiredHttpPayloadWithDefault (response) — text @httpPayload bodies are not supported
-//   SimpleRestJsonSomeHttpPayloadWithDefault (response) — text @httpPayload bodies are not supported
-//   SimpleRestJsonNoneHttpPayloadWithDefault (response) — text @httpPayload bodies are not supported
+//   SimpleRestJsonNoneRequiredHttpPayloadWithDefault (response) — @default population is not implemented yet
+//   SimpleRestJsonNoneHttpPayloadWithDefault (response) — @default population is not implemented yet
 //   OpenUnionsUnknownTaggedUnionCase (response) — alloy open/discriminated unions are not implemented
 //   OpenUnionsKnownDiscriminatedUnionCase (response) — alloy open/discriminated unions are not implemented
 //   OpenUnionsUnknownDiscriminatedUnionCase (response) — alloy open/discriminated unions are not implemented
 //   RoundTripDataResponse (response) — under investigation (task #63): mixed label/query/body echo
-//   VersionOutput (response) — string @httpPayload body is not supported
 
 namespace {
 
@@ -48,6 +45,24 @@ Fixture MakeFixture(const std::string& endpoint = "") {
 }
 
 }  // namespace
+
+// add menu item response tests
+TEST(PizzaAdminServiceResponseTest, AddMenuItemResult) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 201;
+  fixture.transport->next_response.headers.Set("Content-Type", "application/json");
+  fixture.transport->next_response.headers.Set("X-ADDED-AT", "1576540098");
+  fixture.transport->next_response.body = "\"1\"";
+  const auto outcome = fixture.client.AddMenuItem(AddMenuItemInput{});
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  const AddMenuItemOutput expected = [] {
+  AddMenuItemOutput v{};
+  v.itemId = "1";
+  v.added = smithy::Timestamp::FromEpochMilliseconds(1576540098000LL);
+  return v;
+}();
+  EXPECT_EQ(*outcome, expected);
+}
 
 TEST(PizzaAdminServiceResponseTest, GetIntEnumOutput) {
   Fixture fixture = MakeFixture();
@@ -110,6 +125,38 @@ TEST(PizzaAdminServiceResponseTest, headerEndpointResponse) {
   EXPECT_EQ(*outcome, expected);
 }
 
+// Pass JSON string value as is if payload provided
+TEST(PizzaAdminServiceResponseTest, SimpleRestJsonSomeRequiredHttpPayloadWithDefault) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 200;
+  fixture.transport->next_response.headers.Set("Content-Type", "application/json");
+  fixture.transport->next_response.body = "\"custom value\"";
+  const auto outcome = fixture.client.HttpPayloadRequiredWithDefault(HttpPayloadRequiredWithDefaultInput{});
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  const HttpPayloadRequiredWithDefaultOutput expected = [] {
+  HttpPayloadRequiredWithDefaultOutput v{};
+  v.body = "custom value";
+  return v;
+}();
+  EXPECT_EQ(*outcome, expected);
+}
+
+// Pass JSON string value as is if payload provided
+TEST(PizzaAdminServiceResponseTest, SimpleRestJsonSomeHttpPayloadWithDefault) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 200;
+  fixture.transport->next_response.headers.Set("Content-Type", "application/json");
+  fixture.transport->next_response.body = "\"custom value\"";
+  const auto outcome = fixture.client.HttpPayloadWithDefault(HttpPayloadWithDefaultInput{});
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  const HttpPayloadWithDefaultOutput expected = [] {
+  HttpPayloadWithDefaultOutput v{};
+  v.body = "custom value";
+  return v;
+}();
+  EXPECT_EQ(*outcome, expected);
+}
+
 // Return a known tagged union value in an open union
 TEST(PizzaAdminServiceResponseTest, OpenUnionsKnownTaggedUnionCase) {
   Fixture fixture = MakeFixture();
@@ -121,6 +168,20 @@ TEST(PizzaAdminServiceResponseTest, OpenUnionsKnownTaggedUnionCase) {
   const OpenUnionsOutput expected = [] {
   OpenUnionsOutput v{};
   v.data = OpenUnionsPayload::FromTagged(OpenTaggedUnion::FromStr("string value"));
+  return v;
+}();
+  EXPECT_EQ(*outcome, expected);
+}
+
+TEST(PizzaAdminServiceResponseTest, VersionOutput) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 200;
+  fixture.transport->next_response.body = "\"1.0\"";
+  const auto outcome = fixture.client.Version(VersionInput{});
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  const VersionOutput expected = [] {
+  VersionOutput v{};
+  v.version = "1.0";
   return v;
 }();
   EXPECT_EQ(*outcome, expected);
@@ -140,6 +201,27 @@ TEST(PizzaAdminServiceErrorTest, NotFoundError) {
   const NotFoundError expected = [] {
   NotFoundError v{};
   v.name = "unknown";
+  return v;
+}();
+  EXPECT_EQ(*detail, expected);
+}
+
+// the payload produced on price error
+TEST(PizzaAdminServiceErrorTest, PriceErrorTest) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 400;
+  fixture.transport->next_response.headers.Set("Content-Type", "application/json");
+  fixture.transport->next_response.headers.Set("X-CODE", "400");
+  fixture.transport->next_response.body = "{\"message\":\"Price must be greater than 0\"}";
+  const auto outcome = fixture.client.AddMenuItem(AddMenuItemInput{});
+  ASSERT_FALSE(outcome.ok());
+  EXPECT_EQ(outcome.error().code(), "PriceError");
+  const auto* detail = outcome.error().detail<PriceError>();
+  ASSERT_NE(detail, nullptr);
+  const PriceError expected = [] {
+  PriceError v{};
+  v.message = "Price must be greater than 0";
+  v.code = 400;
   return v;
 }();
   EXPECT_EQ(*detail, expected);

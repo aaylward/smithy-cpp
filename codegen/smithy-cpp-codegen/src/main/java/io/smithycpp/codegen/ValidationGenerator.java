@@ -294,8 +294,10 @@ final class ValidationGenerator {
       field = "(*" + rawField + ")";
       guarded = true;
     } else {
+      // Own scope: consecutive required members each declare member_path.
+      w.openBlock("{");
       field = "value." + context.cppSymbols().toMemberName(member);
-      guarded = false;
+      guarded = true;
     }
     String pathExpr = "path + \"/" + member.getMemberName() + "\"";
     w.write("const std::string member_path = $L;", pathExpr);

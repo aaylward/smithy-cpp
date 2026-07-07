@@ -8,155 +8,6 @@
 
 namespace smithy::protocoltests::simplerestjson {
 
-smithy::Document SerializeCustomCodeInput(const CustomCodeInput& value) {
-  smithy::DocumentMap map;
-  map.emplace("code", smithy::Document(static_cast<std::int64_t>(value.code)));
-  return smithy::Document(std::move(map));
-}
-
-smithy::Outcome<CustomCodeInput> DeserializeCustomCodeInput(const smithy::Document& doc) {
-  if (!doc.is_map()) return smithy::Error::Serialization("CustomCodeInput: expected a map on the wire");
-  CustomCodeInput out;
-  {
-    const smithy::Document* member = doc.Find("code");
-    if (member == nullptr || member->is_null()) {
-      return smithy::Error::Serialization("CustomCodeInput: missing required member: code");
-    }
-    if (!member->is_int()) return smithy::Error::Serialization("CustomCodeInput.code: unexpected type on the wire");
-    if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("CustomCodeInput.code: value out of range");
-    out.code = static_cast<std::int32_t>(member->as_int());
-  }
-  return out;
-}
-
-smithy::Document SerializeCustomCodeOutput(const CustomCodeOutput& value) {
-  smithy::DocumentMap map;
-  if (value.code.has_value()) {
-    map.emplace("code", smithy::Document(static_cast<std::int64_t>((*value.code))));
-  }
-  return smithy::Document(std::move(map));
-}
-
-smithy::Outcome<CustomCodeOutput> DeserializeCustomCodeOutput(const smithy::Document& doc) {
-  if (!doc.is_map()) return smithy::Error::Serialization("CustomCodeOutput: expected a map on the wire");
-  CustomCodeOutput out;
-  {
-    const smithy::Document* member = doc.Find("code");
-    if (member != nullptr && !member->is_null()) {
-      std::int32_t parsed_member{};
-      if (!member->is_int()) return smithy::Error::Serialization("CustomCodeOutput.code: unexpected type on the wire");
-      if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("CustomCodeOutput.code: value out of range");
-      parsed_member = static_cast<std::int32_t>(member->as_int());
-      out.code = std::move(parsed_member);
-    }
-  }
-  return out;
-}
-
-smithy::Document SerializeGenericClientError(const GenericClientError& value) {
-  smithy::DocumentMap map;
-  map.emplace("message", smithy::Document(value.message));
-  return smithy::Document(std::move(map));
-}
-
-smithy::Outcome<GenericClientError> DeserializeGenericClientError(const smithy::Document& doc) {
-  if (!doc.is_map()) return smithy::Error::Serialization("GenericClientError: expected a map on the wire");
-  GenericClientError out;
-  {
-    const smithy::Document* member = doc.Find("message");
-    if (member == nullptr || member->is_null()) {
-      return smithy::Error::Serialization("GenericClientError: missing required member: message");
-    }
-    if (!member->is_string()) return smithy::Error::Serialization("GenericClientError.message: unexpected type on the wire");
-    out.message = member->as_string();
-  }
-  return out;
-}
-
-smithy::Document SerializeGenericServerError(const GenericServerError& value) {
-  smithy::DocumentMap map;
-  map.emplace("message", smithy::Document(value.message));
-  return smithy::Document(std::move(map));
-}
-
-smithy::Outcome<GenericServerError> DeserializeGenericServerError(const smithy::Document& doc) {
-  if (!doc.is_map()) return smithy::Error::Serialization("GenericServerError: expected a map on the wire");
-  GenericServerError out;
-  {
-    const smithy::Document* member = doc.Find("message");
-    if (member == nullptr || member->is_null()) {
-      return smithy::Error::Serialization("GenericServerError: missing required member: message");
-    }
-    if (!member->is_string()) return smithy::Error::Serialization("GenericServerError.message: unexpected type on the wire");
-    out.message = member->as_string();
-  }
-  return out;
-}
-
-smithy::Document SerializeUnknownServerError(const UnknownServerError& value) {
-  smithy::DocumentMap map;
-  map.emplace("errorCode", smithy::Document(std::string(value.errorCode.ToString())));
-  if (value.description.has_value()) {
-    map.emplace("description", smithy::Document((*value.description)));
-  }
-  if (value.stateHash.has_value()) {
-    map.emplace("stateHash", smithy::Document((*value.stateHash)));
-  }
-  return smithy::Document(std::move(map));
-}
-
-smithy::Outcome<UnknownServerError> DeserializeUnknownServerError(const smithy::Document& doc) {
-  if (!doc.is_map()) return smithy::Error::Serialization("UnknownServerError: expected a map on the wire");
-  UnknownServerError out;
-  {
-    const smithy::Document* member = doc.Find("errorCode");
-    if (member == nullptr || member->is_null()) {
-      return smithy::Error::Serialization("UnknownServerError: missing required member: errorCode");
-    }
-    if (!member->is_string()) return smithy::Error::Serialization("UnknownServerError.errorCode: unexpected type on the wire");
-    out.errorCode = UnknownServerErrorCode::FromString(member->as_string());
-  }
-  {
-    const smithy::Document* member = doc.Find("description");
-    if (member != nullptr && !member->is_null()) {
-      std::string parsed_member{};
-      if (!member->is_string()) return smithy::Error::Serialization("UnknownServerError.description: unexpected type on the wire");
-      parsed_member = member->as_string();
-      out.description = std::move(parsed_member);
-    }
-  }
-  {
-    const smithy::Document* member = doc.Find("stateHash");
-    if (member != nullptr && !member->is_null()) {
-      std::string parsed_member{};
-      if (!member->is_string()) return smithy::Error::Serialization("UnknownServerError.stateHash: unexpected type on the wire");
-      parsed_member = member->as_string();
-      out.stateHash = std::move(parsed_member);
-    }
-  }
-  return out;
-}
-
-smithy::Document SerializeFallbackError(const FallbackError& value) {
-  smithy::DocumentMap map;
-  map.emplace("error", smithy::Document(value.error));
-  return smithy::Document(std::move(map));
-}
-
-smithy::Outcome<FallbackError> DeserializeFallbackError(const smithy::Document& doc) {
-  if (!doc.is_map()) return smithy::Error::Serialization("FallbackError: expected a map on the wire");
-  FallbackError out;
-  {
-    const smithy::Document* member = doc.Find("error");
-    if (member == nullptr || member->is_null()) {
-      return smithy::Error::Serialization("FallbackError: missing required member: error");
-    }
-    if (!member->is_string()) return smithy::Error::Serialization("FallbackError.error: unexpected type on the wire");
-    out.error = member->as_string();
-  }
-  return out;
-}
-
 smithy::Document SerializeIngredients(const std::vector<Ingredient>& value) {
   smithy::DocumentList list;
   list.reserve(value.size());
@@ -289,6 +140,284 @@ smithy::Outcome<Food> DeserializeFood(const smithy::Document& doc) {
   return smithy::Error::Serialization("Food: unknown or missing union member");
 }
 
+smithy::Document SerializeMenuItem(const MenuItem& value) {
+  smithy::DocumentMap map;
+  map.emplace("food", SerializeFood(value.food));
+  map.emplace("price", smithy::Document(static_cast<double>(value.price)));
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<MenuItem> DeserializeMenuItem(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("MenuItem: expected a map on the wire");
+  MenuItem out;
+  {
+    const smithy::Document* member = doc.Find("food");
+    if (member == nullptr || member->is_null()) {
+      return smithy::Error::Serialization("MenuItem: missing required member: food");
+    }
+    {
+      auto parsed = DeserializeFood(*member);
+      if (!parsed) return std::move(parsed).error();
+      out.food = std::move(*parsed);
+    }
+  }
+  {
+    const smithy::Document* member = doc.Find("price");
+    if (member == nullptr || member->is_null()) {
+      return smithy::Error::Serialization("MenuItem: missing required member: price");
+    }
+    {
+      auto parsed = smithy::DoubleFromDocument(*member);
+      if (!parsed) return smithy::Error::Serialization("MenuItem.price: expected a number");
+      out.price = static_cast<float>(*parsed);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeAddMenuItemInput(const AddMenuItemInput& value) {
+  smithy::DocumentMap map;
+  map.emplace("restaurant", smithy::Document(value.restaurant));
+  map.emplace("menuItem", SerializeMenuItem(value.menuItem));
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<AddMenuItemInput> DeserializeAddMenuItemInput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("AddMenuItemInput: expected a map on the wire");
+  AddMenuItemInput out;
+  {
+    const smithy::Document* member = doc.Find("restaurant");
+    if (member == nullptr || member->is_null()) {
+      return smithy::Error::Serialization("AddMenuItemInput: missing required member: restaurant");
+    }
+    if (!member->is_string()) return smithy::Error::Serialization("AddMenuItemInput.restaurant: unexpected type on the wire");
+    out.restaurant = member->as_string();
+  }
+  {
+    const smithy::Document* member = doc.Find("menuItem");
+    if (member == nullptr || member->is_null()) {
+      return smithy::Error::Serialization("AddMenuItemInput: missing required member: menuItem");
+    }
+    {
+      auto parsed = DeserializeMenuItem(*member);
+      if (!parsed) return std::move(parsed).error();
+      out.menuItem = std::move(*parsed);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeAddMenuItemOutput(const AddMenuItemOutput& value) {
+  smithy::DocumentMap map;
+  map.emplace("itemId", smithy::Document(value.itemId));
+  map.emplace("added", smithy::Document::FromTimestamp(value.added, smithy::TimestampFormat::kEpochSeconds));
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<AddMenuItemOutput> DeserializeAddMenuItemOutput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("AddMenuItemOutput: expected a map on the wire");
+  AddMenuItemOutput out;
+  {
+    const smithy::Document* member = doc.Find("itemId");
+    if (member == nullptr || member->is_null()) {
+      return smithy::Error::Serialization("AddMenuItemOutput: missing required member: itemId");
+    }
+    if (!member->is_string()) return smithy::Error::Serialization("AddMenuItemOutput.itemId: unexpected type on the wire");
+    out.itemId = member->as_string();
+  }
+  {
+    const smithy::Document* member = doc.Find("added");
+    if (member == nullptr || member->is_null()) {
+      return smithy::Error::Serialization("AddMenuItemOutput: missing required member: added");
+    }
+    {
+      auto parsed = smithy::TimestampFromDocument(*member, smithy::TimestampFormat::kEpochSeconds);
+      if (!parsed) return std::move(parsed).error();
+      out.added = *parsed;
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeGenericClientError(const GenericClientError& value) {
+  smithy::DocumentMap map;
+  map.emplace("message", smithy::Document(value.message));
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<GenericClientError> DeserializeGenericClientError(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("GenericClientError: expected a map on the wire");
+  GenericClientError out;
+  {
+    const smithy::Document* member = doc.Find("message");
+    if (member == nullptr || member->is_null()) {
+      return smithy::Error::Serialization("GenericClientError: missing required member: message");
+    }
+    if (!member->is_string()) return smithy::Error::Serialization("GenericClientError.message: unexpected type on the wire");
+    out.message = member->as_string();
+  }
+  return out;
+}
+
+smithy::Document SerializeGenericServerError(const GenericServerError& value) {
+  smithy::DocumentMap map;
+  map.emplace("message", smithy::Document(value.message));
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<GenericServerError> DeserializeGenericServerError(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("GenericServerError: expected a map on the wire");
+  GenericServerError out;
+  {
+    const smithy::Document* member = doc.Find("message");
+    if (member == nullptr || member->is_null()) {
+      return smithy::Error::Serialization("GenericServerError: missing required member: message");
+    }
+    if (!member->is_string()) return smithy::Error::Serialization("GenericServerError.message: unexpected type on the wire");
+    out.message = member->as_string();
+  }
+  return out;
+}
+
+smithy::Document SerializePriceError(const PriceError& value) {
+  smithy::DocumentMap map;
+  map.emplace("message", smithy::Document(value.message));
+  map.emplace("code", smithy::Document(static_cast<std::int64_t>(value.code)));
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<PriceError> DeserializePriceError(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("PriceError: expected a map on the wire");
+  PriceError out;
+  {
+    const smithy::Document* member = doc.Find("message");
+    if (member == nullptr || member->is_null()) {
+      return smithy::Error::Serialization("PriceError: missing required member: message");
+    }
+    if (!member->is_string()) return smithy::Error::Serialization("PriceError.message: unexpected type on the wire");
+    out.message = member->as_string();
+  }
+  {
+    const smithy::Document* member = doc.Find("code");
+    if (member == nullptr || member->is_null()) {
+      return smithy::Error::Serialization("PriceError: missing required member: code");
+    }
+    if (!member->is_int()) return smithy::Error::Serialization("PriceError.code: unexpected type on the wire");
+    if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("PriceError.code: value out of range");
+    out.code = static_cast<std::int32_t>(member->as_int());
+  }
+  return out;
+}
+
+smithy::Document SerializeCustomCodeInput(const CustomCodeInput& value) {
+  smithy::DocumentMap map;
+  map.emplace("code", smithy::Document(static_cast<std::int64_t>(value.code)));
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<CustomCodeInput> DeserializeCustomCodeInput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("CustomCodeInput: expected a map on the wire");
+  CustomCodeInput out;
+  {
+    const smithy::Document* member = doc.Find("code");
+    if (member == nullptr || member->is_null()) {
+      return smithy::Error::Serialization("CustomCodeInput: missing required member: code");
+    }
+    if (!member->is_int()) return smithy::Error::Serialization("CustomCodeInput.code: unexpected type on the wire");
+    if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("CustomCodeInput.code: value out of range");
+    out.code = static_cast<std::int32_t>(member->as_int());
+  }
+  return out;
+}
+
+smithy::Document SerializeCustomCodeOutput(const CustomCodeOutput& value) {
+  smithy::DocumentMap map;
+  if (value.code.has_value()) {
+    map.emplace("code", smithy::Document(static_cast<std::int64_t>((*value.code))));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<CustomCodeOutput> DeserializeCustomCodeOutput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("CustomCodeOutput: expected a map on the wire");
+  CustomCodeOutput out;
+  {
+    const smithy::Document* member = doc.Find("code");
+    if (member != nullptr && !member->is_null()) {
+      std::int32_t parsed_member{};
+      if (!member->is_int()) return smithy::Error::Serialization("CustomCodeOutput.code: unexpected type on the wire");
+      if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("CustomCodeOutput.code: value out of range");
+      parsed_member = static_cast<std::int32_t>(member->as_int());
+      out.code = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeUnknownServerError(const UnknownServerError& value) {
+  smithy::DocumentMap map;
+  map.emplace("errorCode", smithy::Document(std::string(value.errorCode.ToString())));
+  if (value.description.has_value()) {
+    map.emplace("description", smithy::Document((*value.description)));
+  }
+  if (value.stateHash.has_value()) {
+    map.emplace("stateHash", smithy::Document((*value.stateHash)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<UnknownServerError> DeserializeUnknownServerError(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("UnknownServerError: expected a map on the wire");
+  UnknownServerError out;
+  {
+    const smithy::Document* member = doc.Find("errorCode");
+    if (member == nullptr || member->is_null()) {
+      return smithy::Error::Serialization("UnknownServerError: missing required member: errorCode");
+    }
+    if (!member->is_string()) return smithy::Error::Serialization("UnknownServerError.errorCode: unexpected type on the wire");
+    out.errorCode = UnknownServerErrorCode::FromString(member->as_string());
+  }
+  {
+    const smithy::Document* member = doc.Find("description");
+    if (member != nullptr && !member->is_null()) {
+      std::string parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("UnknownServerError.description: unexpected type on the wire");
+      parsed_member = member->as_string();
+      out.description = std::move(parsed_member);
+    }
+  }
+  {
+    const smithy::Document* member = doc.Find("stateHash");
+    if (member != nullptr && !member->is_null()) {
+      std::string parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("UnknownServerError.stateHash: unexpected type on the wire");
+      parsed_member = member->as_string();
+      out.stateHash = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeFallbackError(const FallbackError& value) {
+  smithy::DocumentMap map;
+  map.emplace("error", smithy::Document(value.error));
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<FallbackError> DeserializeFallbackError(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("FallbackError: expected a map on the wire");
+  FallbackError out;
+  {
+    const smithy::Document* member = doc.Find("error");
+    if (member == nullptr || member->is_null()) {
+      return smithy::Error::Serialization("FallbackError: missing required member: error");
+    }
+    if (!member->is_string()) return smithy::Error::Serialization("FallbackError.error: unexpected type on the wire");
+    out.error = member->as_string();
+  }
+  return out;
+}
+
 smithy::Document SerializeGetEnumInput(const GetEnumInput& value) {
   smithy::DocumentMap map;
   map.emplace("aa", smithy::Document(std::string(value.aa.ToString())));
@@ -388,41 +517,6 @@ smithy::Outcome<GetMenuInput> DeserializeGetMenuInput(const smithy::Document& do
     }
     if (!member->is_string()) return smithy::Error::Serialization("GetMenuInput.restaurant: unexpected type on the wire");
     out.restaurant = member->as_string();
-  }
-  return out;
-}
-
-smithy::Document SerializeMenuItem(const MenuItem& value) {
-  smithy::DocumentMap map;
-  map.emplace("food", SerializeFood(value.food));
-  map.emplace("price", smithy::Document(static_cast<double>(value.price)));
-  return smithy::Document(std::move(map));
-}
-
-smithy::Outcome<MenuItem> DeserializeMenuItem(const smithy::Document& doc) {
-  if (!doc.is_map()) return smithy::Error::Serialization("MenuItem: expected a map on the wire");
-  MenuItem out;
-  {
-    const smithy::Document* member = doc.Find("food");
-    if (member == nullptr || member->is_null()) {
-      return smithy::Error::Serialization("MenuItem: missing required member: food");
-    }
-    {
-      auto parsed = DeserializeFood(*member);
-      if (!parsed) return std::move(parsed).error();
-      out.food = std::move(*parsed);
-    }
-  }
-  {
-    const smithy::Document* member = doc.Find("price");
-    if (member == nullptr || member->is_null()) {
-      return smithy::Error::Serialization("MenuItem: missing required member: price");
-    }
-    {
-      auto parsed = smithy::DoubleFromDocument(*member);
-      if (!parsed) return smithy::Error::Serialization("MenuItem.price: expected a number");
-      out.price = static_cast<float>(*parsed);
-    }
   }
   return out;
 }

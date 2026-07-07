@@ -16,10 +16,6 @@ namespace smithy::protocoltests::simplerestjson {
 // Generated from smithy.test#httpRequestTests (client cases).
 //
 // Excluded cases (protocol-test-exclusions.txt; the list must only shrink):
-//   SimpleRestJsonSomeRequiredHttpPayloadWithDefault (request) — text @httpPayload bodies are not supported
-//   SimpleRestJsonNoneRequiredHttpPayloadWithDefault (request) — text @httpPayload bodies are not supported
-//   SimpleRestJsonSomeHttpPayloadWithDefault (request) — text @httpPayload bodies are not supported
-//   SimpleRestJsonNoneHttpPayloadWithDefault (request) — text @httpPayload bodies are not supported
 //   OpenUnionsUnknownTaggedUnionCase (request) — alloy open/discriminated unions are not implemented
 //   OpenUnionsKnownDiscriminatedUnionCase (request) — alloy open/discriminated unions are not implemented
 //   OpenUnionsUnknownDiscriminatedUnionCase (request) — alloy open/discriminated unions are not implemented
@@ -44,6 +40,34 @@ Fixture MakeFixture(const std::string& endpoint = "") {
 }
 
 }  // namespace
+
+// add menu item tests
+TEST(PizzaAdminServiceRequestTest, AddMenuItem) {
+  Fixture fixture = MakeFixture();
+  const AddMenuItemInput input = [] {
+  AddMenuItemInput v{};
+  v.restaurant = "bobs";
+  v.menuItem = [] {
+  MenuItem v{};
+  v.food = Food::FromPizza([] {
+  Pizza v{};
+  v.name = "margharita";
+  v.base = PizzaBase::FromString("T");
+  v.toppings = std::vector<Ingredient>{Ingredient::FromString("MUSHROOM"), Ingredient::FromString("TOMATO")};
+  return v;
+}());
+  v.price = 9.0F;
+  return v;
+}();
+  return v;
+}();
+  (void)fixture.client.AddMenuItem(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "POST");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/restaurant/bobs/menu/item");
+  EXPECT_EQ(request.headers.Get("Content-Type").value_or("<missing>"), "application/json");
+  EXPECT_TRUE(smithy::testing::JsonBodyEquals("{\"food\":{\"pizza\":{\"name\":\"margharita\",\"base\":\"T\",\"toppings\":[\"MUSHROOM\",\"TOMATO\"]}},\"price\":9.0}", request.body));
+}
 
 // tests custom code as a label
 TEST(PizzaAdminServiceRequestTest, CustomCodeInput) {
@@ -135,6 +159,68 @@ TEST(PizzaAdminServiceRequestTest, HealthGet) {
   EXPECT_EQ(smithy::testing::UriPath(request.target), "/health");
   EXPECT_TRUE(smithy::testing::QueryContains(request.target, {"query=hello"}));
   EXPECT_TRUE(request.body.empty()) << request.body;
+}
+
+// Pass JSON string value as is if payload provided
+TEST(PizzaAdminServiceRequestTest, SimpleRestJsonSomeRequiredHttpPayloadWithDefault) {
+  Fixture fixture = MakeFixture();
+  const HttpPayloadRequiredWithDefaultInput input = [] {
+  HttpPayloadRequiredWithDefaultInput v{};
+  v.body = "custom value";
+  return v;
+}();
+  (void)fixture.client.HttpPayloadRequiredWithDefault(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "PUT");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/httpPayloadRequiredWithDefault");
+  EXPECT_EQ(request.headers.Get("Content-Type").value_or("<missing>"), "application/json");
+  EXPECT_TRUE(request.headers.Has("Content-Length"));
+  EXPECT_TRUE(smithy::testing::JsonBodyEquals("\"custom value\"", request.body));
+}
+
+// Use default value when there is no payload
+TEST(PizzaAdminServiceRequestTest, SimpleRestJsonNoneRequiredHttpPayloadWithDefault) {
+  Fixture fixture = MakeFixture();
+  const HttpPayloadRequiredWithDefaultInput input = [] {
+  HttpPayloadRequiredWithDefaultInput v{};
+  v.body = "default value";
+  return v;
+}();
+  (void)fixture.client.HttpPayloadRequiredWithDefault(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "PUT");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/httpPayloadRequiredWithDefault");
+}
+
+// Pass JSON string value as is if payload provided
+TEST(PizzaAdminServiceRequestTest, SimpleRestJsonSomeHttpPayloadWithDefault) {
+  Fixture fixture = MakeFixture();
+  const HttpPayloadWithDefaultInput input = [] {
+  HttpPayloadWithDefaultInput v{};
+  v.body = "custom value";
+  return v;
+}();
+  (void)fixture.client.HttpPayloadWithDefault(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "PUT");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/httpPayloadWithDefault");
+  EXPECT_EQ(request.headers.Get("Content-Type").value_or("<missing>"), "application/json");
+  EXPECT_TRUE(request.headers.Has("Content-Length"));
+  EXPECT_TRUE(smithy::testing::JsonBodyEquals("\"custom value\"", request.body));
+}
+
+// Use default value when there is no payload
+TEST(PizzaAdminServiceRequestTest, SimpleRestJsonNoneHttpPayloadWithDefault) {
+  Fixture fixture = MakeFixture();
+  const HttpPayloadWithDefaultInput input = [] {
+  HttpPayloadWithDefaultInput v{};
+  v.body = "default value";
+  return v;
+}();
+  (void)fixture.client.HttpPayloadWithDefault(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "PUT");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/httpPayloadWithDefault");
 }
 
 // Pass a known tagged union value in an open union

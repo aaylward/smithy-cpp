@@ -16,24 +16,6 @@ namespace smithy::protocoltests::simplerestjson {
 // Serializers never fail; deserializers return smithy::Error on wire
 // mismatches and enforce @required members.
 
-smithy::Document SerializeCustomCodeInput(const CustomCodeInput& value);
-smithy::Outcome<CustomCodeInput> DeserializeCustomCodeInput(const smithy::Document& doc);
-
-smithy::Document SerializeCustomCodeOutput(const CustomCodeOutput& value);
-smithy::Outcome<CustomCodeOutput> DeserializeCustomCodeOutput(const smithy::Document& doc);
-
-smithy::Document SerializeGenericClientError(const GenericClientError& value);
-smithy::Outcome<GenericClientError> DeserializeGenericClientError(const smithy::Document& doc);
-
-smithy::Document SerializeGenericServerError(const GenericServerError& value);
-smithy::Outcome<GenericServerError> DeserializeGenericServerError(const smithy::Document& doc);
-
-smithy::Document SerializeUnknownServerError(const UnknownServerError& value);
-smithy::Outcome<UnknownServerError> DeserializeUnknownServerError(const smithy::Document& doc);
-
-smithy::Document SerializeFallbackError(const FallbackError& value);
-smithy::Outcome<FallbackError> DeserializeFallbackError(const smithy::Document& doc);
-
 smithy::Document SerializeIngredients(const std::vector<Ingredient>& value);
 smithy::Outcome<std::vector<Ingredient>> DeserializeIngredients(const smithy::Document& doc);
 
@@ -45,6 +27,36 @@ smithy::Outcome<Salad> DeserializeSalad(const smithy::Document& doc);
 
 smithy::Document SerializeFood(const Food& value);
 smithy::Outcome<Food> DeserializeFood(const smithy::Document& doc);
+
+smithy::Document SerializeMenuItem(const MenuItem& value);
+smithy::Outcome<MenuItem> DeserializeMenuItem(const smithy::Document& doc);
+
+smithy::Document SerializeAddMenuItemInput(const AddMenuItemInput& value);
+smithy::Outcome<AddMenuItemInput> DeserializeAddMenuItemInput(const smithy::Document& doc);
+
+smithy::Document SerializeAddMenuItemOutput(const AddMenuItemOutput& value);
+smithy::Outcome<AddMenuItemOutput> DeserializeAddMenuItemOutput(const smithy::Document& doc);
+
+smithy::Document SerializeGenericClientError(const GenericClientError& value);
+smithy::Outcome<GenericClientError> DeserializeGenericClientError(const smithy::Document& doc);
+
+smithy::Document SerializeGenericServerError(const GenericServerError& value);
+smithy::Outcome<GenericServerError> DeserializeGenericServerError(const smithy::Document& doc);
+
+smithy::Document SerializePriceError(const PriceError& value);
+smithy::Outcome<PriceError> DeserializePriceError(const smithy::Document& doc);
+
+smithy::Document SerializeCustomCodeInput(const CustomCodeInput& value);
+smithy::Outcome<CustomCodeInput> DeserializeCustomCodeInput(const smithy::Document& doc);
+
+smithy::Document SerializeCustomCodeOutput(const CustomCodeOutput& value);
+smithy::Outcome<CustomCodeOutput> DeserializeCustomCodeOutput(const smithy::Document& doc);
+
+smithy::Document SerializeUnknownServerError(const UnknownServerError& value);
+smithy::Outcome<UnknownServerError> DeserializeUnknownServerError(const smithy::Document& doc);
+
+smithy::Document SerializeFallbackError(const FallbackError& value);
+smithy::Outcome<FallbackError> DeserializeFallbackError(const smithy::Document& doc);
 
 smithy::Document SerializeGetEnumInput(const GetEnumInput& value);
 smithy::Outcome<GetEnumInput> DeserializeGetEnumInput(const smithy::Document& doc);
@@ -60,9 +72,6 @@ smithy::Outcome<GetIntEnumOutput> DeserializeGetIntEnumOutput(const smithy::Docu
 
 smithy::Document SerializeGetMenuInput(const GetMenuInput& value);
 smithy::Outcome<GetMenuInput> DeserializeGetMenuInput(const smithy::Document& doc);
-
-smithy::Document SerializeMenuItem(const MenuItem& value);
-smithy::Outcome<MenuItem> DeserializeMenuItem(const smithy::Document& doc);
 
 smithy::Document SerializeMenu(const std::map<std::string, MenuItem>& value);
 smithy::Outcome<std::map<std::string, MenuItem>> DeserializeMenu(const smithy::Document& doc);

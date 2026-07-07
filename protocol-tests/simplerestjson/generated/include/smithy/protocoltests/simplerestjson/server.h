@@ -18,6 +18,7 @@ class PizzaAdminServiceHandler {
   public:
     virtual ~PizzaAdminServiceHandler() = default;
 
+    virtual smithy::Outcome<AddMenuItemOutput> AddMenuItem(const AddMenuItemInput& input) = 0;
     virtual smithy::Outcome<CustomCodeOutput> CustomCode(const CustomCodeInput& input) = 0;
     virtual smithy::Outcome<GetEnumOutput> GetEnum(const GetEnumInput& input) = 0;
     virtual smithy::Outcome<GetIntEnumOutput> GetIntEnum(const GetIntEnumInput& input) = 0;

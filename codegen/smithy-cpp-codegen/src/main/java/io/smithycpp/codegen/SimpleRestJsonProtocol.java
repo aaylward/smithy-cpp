@@ -19,6 +19,11 @@ final class SimpleRestJsonProtocol extends HttpJsonBindingProtocol {
   }
 
   @Override
+  public boolean errorStatusFallback() {
+    return true;
+  }
+
+  @Override
   public String name() {
     return "simpleRestJson";
   }

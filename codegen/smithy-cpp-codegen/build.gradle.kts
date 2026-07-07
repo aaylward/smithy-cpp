@@ -19,6 +19,7 @@ fun registerFixtureTask(
         "--namespace", cppNamespace,
         "--runtime-target", "//runtime:core",
         "--output", File(repoRoot, outputPath).absolutePath,
+        "--tests-package", "//" + outputPath,
     )
     doFirst {
         project.delete(File(repoRoot, outputPath))
@@ -61,7 +62,7 @@ fun registerProtocolTestTask(
         "--namespace", cppNamespace,
         "--runtime-target", "//runtime:core",
         "--output", File(repoRoot, outputPath).absolutePath,
-        "--protocol-tests-package", "//" + outputPath,
+        "--tests-package", "//" + outputPath,
     ) + omitOperations.flatMap { listOf("--omit-operation", it) }
     doFirst {
         project.delete(File(repoRoot, outputPath))

@@ -55,13 +55,28 @@ public final class DirectedCppCodegen
     boolean hasClient = false;
     if (protocol != null) {
       ClientGenerator clientGenerator = new ClientGenerator(directive.context(), service, protocol);
-      if (!clientGenerator.operations().isEmpty()) {
+      java.util.List<software.amazon.smithy.model.shapes.OperationShape> operations =
+          clientGenerator.operations();
+      if (!operations.isEmpty()) {
         clientGenerator.run();
         hasClient = true;
-        if (directive.settings().protocolTestsPackage() != null) {
-          new ProtocolTestGenerator(
-                  directive.context(), service, protocol, clientGenerator.operations())
-              .run();
+        new ServerGenerator(directive.context(), service, protocol, operations).run();
+        if (directive.settings().testsPackage() != null) {
+          new SmokeTestGenerator(directive.context(), service, operations).run();
+          boolean hasProtocolTests =
+              operations.stream()
+                  .anyMatch(
+                      op ->
+                          op.hasTrait(
+                                  software.amazon.smithy.protocoltests.traits.HttpRequestTestsTrait
+                                      .class)
+                              || op.hasTrait(
+                                  software.amazon.smithy.protocoltests.traits.HttpResponseTestsTrait
+                                      .class));
+          if (hasProtocolTests) {
+            new ProtocolTestGenerator(directive.context(), service, protocol, operations).run();
+          }
+          TestsBuildFileGenerator.run(directive.context(), hasProtocolTests);
         }
       }
     }

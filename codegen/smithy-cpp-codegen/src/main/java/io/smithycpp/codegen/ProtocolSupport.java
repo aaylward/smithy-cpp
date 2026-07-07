@@ -76,6 +76,93 @@ final class ProtocolSupport {
     w.write("");
   }
 
+  /** Text-to-number helpers used for header/label/query bindings. */
+  static void writeNumericParseHelpers(CppWriter w) {
+    w.write("// Text value parsing for label/query/header bindings ([[maybe_unused]]:");
+    w.write("// emitted for every service; not every service binds numeric values).");
+    w.openBlock("[[maybe_unused]] std::int64_t ParseHeaderInt64(const std::string& text) {");
+    w.write("return std::strtoll(text.c_str(), nullptr, 10);");
+    w.closeBlock("}");
+    w.write("");
+    w.openBlock("[[maybe_unused]] double ParseHeaderDouble(const std::string& text) {");
+    w.write("if (text == \"NaN\") return std::numeric_limits<double>::quiet_NaN();");
+    w.write("if (text == \"Infinity\") return std::numeric_limits<double>::infinity();");
+    w.write("if (text == \"-Infinity\") return -std::numeric_limits<double>::infinity();");
+    w.write("return std::strtod(text.c_str(), nullptr);");
+    w.closeBlock("}");
+    w.write("");
+  }
+
+  /** HTTP status for a modeled error shape: @httpError, else @error class default. */
+  static int errorStatus(StructureShape shape) {
+    var httpError = shape.getTrait(software.amazon.smithy.model.traits.HttpErrorTrait.class);
+    if (httpError.isPresent()) {
+      return httpError.get().getCode();
+    }
+    var error = shape.expectTrait(software.amazon.smithy.model.traits.ErrorTrait.class);
+    return error.isClientError() ? 400 : 500;
+  }
+
+  /**
+   * Emits the server's ErrorToResponse over {@code errorBodyFn(status, code, message, body)}:
+   * modeled errors get their @httpError status and serialized detail; validation/serialization
+   * failures map to 400; anything else is a non-leaking 500.
+   */
+  static void writeServerErrorToResponse(
+      CppWriter w,
+      CppContext context,
+      ServiceShape service,
+      List<OperationShape> operations,
+      String errorBodyFn) {
+    Map<String, StructureShape> errorShapes = new TreeMap<>();
+    for (OperationShape operation : operations) {
+      for (ShapeId errorId : operation.getErrors(service)) {
+        StructureShape shape =
+            context.model().expectShape(errorId).asStructureShape().orElseThrow();
+        errorShapes.put(context.cppSymbols().toSymbol(shape).getName(), shape);
+      }
+    }
+    w.openBlock("smithy::http::HttpResponse ErrorToResponse(const smithy::Error& error) {");
+    w.openBlock("if (error.kind() == smithy::ErrorKind::kModeled) {");
+    for (StructureShape shape : errorShapes.values()) {
+      String type = context.cppSymbols().toSymbol(shape).getName();
+      w.openBlock("if (error.code() == $S) {", shape.getId().getName());
+      w.write("smithy::DocumentMap body;");
+      w.openBlock("if (const auto* detail = error.detail<$L>()) {", type);
+      w.write(
+          "body = Serialize$L(*detail).as_map();",
+          SerdeCodeGen.serdeFunctionSuffix(context, shape));
+      w.closeBlock("}");
+      w.write(
+          "return $L($L, error.code(), error.message(), std::move(body));",
+          errorBodyFn,
+          errorStatus(shape));
+      w.closeBlock("}");
+    }
+    w.write("return $L(400, error.code(), error.message(), {});", errorBodyFn);
+    w.closeBlock("}");
+    w.write(
+        "if (error.kind() == smithy::ErrorKind::kValidation || error.kind() == "
+            + "smithy::ErrorKind::kSerialization) return $L(400, \"ValidationException\", "
+            + "error.message(), {});",
+        errorBodyFn);
+    w.write("// Never leak internal detail on unexpected failures.");
+    w.write("return $L(500, \"InternalFailure\", \"internal failure\", {});", errorBodyFn);
+    w.closeBlock("}");
+    w.write("");
+  }
+
+  static List<String> sharedServerIncludes(CppContext context) {
+    return List.of(
+        "\"" + context.settings().includePrefix() + "/server.h\"",
+        "\"" + context.settings().includePrefix() + "/serde.h\"",
+        "\"smithy/server/router.h\"",
+        "<memory>",
+        "<string>",
+        "<string_view>",
+        "<utility>");
+  }
+
   /**
    * Emits Make&lt;Error&gt;Error for every error shape any operation declares (typed detail via the
    * shape's serde, @retryable honored) plus a Deserialize&lt;Op&gt;Error dispatcher per operation

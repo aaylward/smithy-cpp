@@ -1,6 +1,7 @@
 package io.smithycpp.codegen;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 /** Emits the Bazel BUILD file for a generated module (buildifier-clean). */
@@ -30,42 +31,7 @@ final class BuildFileGenerator {
             .formatted(settings.typesHeaderFile(), settings.runtimeTarget()));
 
     String pkg = settings.runtimePackage();
-    if (hasClient) {
-      List<String> deps = new ArrayList<>();
-      deps.add("\":types\"");
-      deps.add("\"" + pkg + ":client\"");
-      deps.add("\"" + pkg + ":core\"");
-      deps.add("\"" + pkg + ":http\"");
-      for (String dep : protocol.runtimeDeps()) {
-        deps.add("\"" + pkg + dep + "\"");
-      }
-      // Match buildifier's label ordering: same-package (":x") labels sort
-      // before absolute ("//pkg:x") ones, lexicographic within each group.
-      deps.sort(
-          java.util.Comparator.comparing((String d) -> !d.startsWith("\":"))
-              .thenComparing(java.util.Comparator.naturalOrder()));
-      out.append(
-          """
-
-          cc_library(
-              name = "client",
-              srcs = [
-                  "src/client.cc",
-                  "src/serde.cc",
-              ],
-              hdrs = [
-                  "%s",
-                  "%s",
-              ],
-              includes = ["include"],
-              deps = [
-          """
-              .formatted(settings.clientHeaderFile(), settings.serdeHeaderFile()));
-      for (String dep : deps) {
-        out.append("        ").append(dep).append(",\n");
-      }
-      out.append("    ],\n)\n");
-    } else if (hasSerde) {
+    if (hasSerde) {
       out.append(
           """
 
@@ -82,6 +48,70 @@ final class BuildFileGenerator {
           """
               .formatted(settings.serdeHeaderFile(), pkg));
     }
+    if (hasClient) {
+      List<String> deps = new ArrayList<>();
+      deps.add("\":serde\"");
+      deps.add("\":types\"");
+      deps.add("\"" + pkg + ":client\"");
+      deps.add("\"" + pkg + ":core\"");
+      deps.add("\"" + pkg + ":http\"");
+      for (String dep : protocol.runtimeDeps()) {
+        deps.add("\"" + pkg + dep + "\"");
+      }
+      sortLabels(deps);
+      out.append(
+          """
+
+          cc_library(
+              name = "client",
+              srcs = ["src/client.cc"],
+              hdrs = ["%s"],
+              includes = ["include"],
+              deps = [
+          """
+              .formatted(settings.clientHeaderFile()));
+      appendDeps(out, deps);
+
+      List<String> serverDeps = new ArrayList<>();
+      serverDeps.add("\":serde\"");
+      serverDeps.add("\":types\"");
+      serverDeps.add("\"" + pkg + ":core\"");
+      serverDeps.add("\"" + pkg + ":http\"");
+      serverDeps.add("\"" + pkg + ":server\"");
+      for (String dep : protocol.runtimeDeps()) {
+        serverDeps.add("\"" + pkg + dep + "\"");
+      }
+      sortLabels(serverDeps);
+      out.append(
+          """
+
+          cc_library(
+              name = "server",
+              srcs = ["src/server.cc"],
+              hdrs = ["%s"],
+              includes = ["include"],
+              deps = [
+          """
+              .formatted(settings.serverHeaderFile()));
+      appendDeps(out, serverDeps);
+    }
     context.fileManifest().writeFile("BUILD.bazel", out.toString());
+  }
+
+  /**
+   * Buildifier's label ordering: same-package (":x") labels sort before absolute ("//pkg:x") ones,
+   * lexicographic within each group.
+   */
+  private static void sortLabels(List<String> deps) {
+    deps.sort(
+        Comparator.comparing((String d) -> !d.startsWith("\":"))
+            .thenComparing(Comparator.naturalOrder()));
+  }
+
+  private static void appendDeps(StringBuilder out, List<String> deps) {
+    for (String dep : deps) {
+      out.append("        ").append(dep).append(",\n");
+    }
+    out.append("    ],\n)\n");
   }
 }

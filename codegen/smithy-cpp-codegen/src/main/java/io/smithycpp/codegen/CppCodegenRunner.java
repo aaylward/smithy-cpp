@@ -21,7 +21,7 @@ import software.amazon.smithy.model.transform.ModelTransformer;
  * <pre>
  * CppCodegenRunner [--model M.smithy] --service NS#Svc --namespace a::b \
  *     --runtime-target //runtime:core --output DIR \
- *     [--protocol-tests-package //pkg] [--omit-operation NS#Op]...
+ *     [--tests-package //pkg] [--omit-operation NS#Op]...
  * </pre>
  *
  * <p>Models are discovered from the classpath (so the official protocol-test suites generate
@@ -39,7 +39,7 @@ public final class CppCodegenRunner {
     String namespace = null;
     String runtimeTarget = "@smithy_cpp//runtime:core";
     String output = null;
-    String protocolTestsPackage = null;
+    String testsPackage = null;
     List<String> omitOperations = new ArrayList<>();
     for (int i = 0; i + 1 < args.length; i += 2) {
       switch (args[i]) {
@@ -48,7 +48,7 @@ public final class CppCodegenRunner {
         case "--namespace" -> namespace = args[i + 1];
         case "--runtime-target" -> runtimeTarget = args[i + 1];
         case "--output" -> output = args[i + 1];
-        case "--protocol-tests-package" -> protocolTestsPackage = args[i + 1];
+        case "--tests-package" -> testsPackage = args[i + 1];
         case "--omit-operation" -> omitOperations.add(args[i + 1]);
         default -> throw new IllegalArgumentException("unknown argument: " + args[i]);
       }
@@ -79,8 +79,8 @@ public final class CppCodegenRunner {
             .withMember("service", service)
             .withMember("namespace", namespace)
             .withMember("runtimeTarget", runtimeTarget);
-    if (protocolTestsPackage != null) {
-      settings.withMember("protocolTestsPackage", protocolTestsPackage);
+    if (testsPackage != null) {
+      settings.withMember("testsPackage", testsPackage);
     }
 
     PluginContext context =

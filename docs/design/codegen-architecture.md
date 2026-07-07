@@ -21,7 +21,10 @@ smithy-rs's `codegen-core` structure (PLAN §3.2a).
 | `ProtocolSupport` | Shared protocol emission: error deserialization + code sanitization, `@idempotencyToken` auto-fill, header/query to-string conversion |
 | `ClientGenerator` | `client.h`/`src/client.cc`: `<Service>Client` with `Create(ClientConfig)` and one method per operation |
 | `BuildFileGenerator` | The generated module's `BUILD.bazel` (buildifier-clean, sorted deps) |
+| `ServerGenerator` | `server.h`/`src/server.cc`: `<Service>Handler` interface + `<Service>Server` over the runtime router (routing, request parsing, response serialization, error mapping) |
+| `SmokeTestGenerator` | `tests/smoke_test.cc`: generated client ↔ generated server over loopback, every operation + error mapping (user-facing, passes out of the box) |
 | `ProtocolTestGenerator` | GoogleTest conformance suites from `smithy.test#httpRequestTests`/`#httpResponseTests` (client cases, incl. error shapes), with the must-shrink exclusion list in `resources/.../protocol-test-exclusions.txt` |
+| `TestsBuildFileGenerator` | The module's `tests/BUILD.bazel` (smoke test + conformance suites when present) |
 | `NodeLiteralGenerator` / `CppLiterals` | Protocol-test `params` nodes → C++ literals constructing generated types |
 | `CppCodegenRunner` | CLI main used by the `generateFixtures` Gradle task (generation without smithy-build) |
 

@@ -20,14 +20,14 @@ public final class CppSettings {
   private final ShapeId service;
   private final String namespace;
   private final String runtimeTarget;
-  private final String protocolTestsPackage;
+  private final String testsPackage;
 
   private CppSettings(
-      ShapeId service, String namespace, String runtimeTarget, String protocolTestsPackage) {
+      ShapeId service, String namespace, String runtimeTarget, String testsPackage) {
     this.service = service;
     this.namespace = namespace;
     this.runtimeTarget = runtimeTarget;
-    this.protocolTestsPackage = protocolTestsPackage;
+    this.testsPackage = testsPackage;
   }
 
   public static CppSettings fromNode(ObjectNode node) {
@@ -35,12 +35,12 @@ public final class CppSettings {
     String namespace = node.expectStringMember("namespace").getValue();
     String runtimeTarget =
         node.getStringMemberOrDefault("runtimeTarget", "@smithy_cpp//runtime:core");
-    String protocolTestsPackage = node.getStringMemberOrDefault("protocolTestsPackage", null);
+    String testsPackage = node.getStringMemberOrDefault("testsPackage", null);
     if (!namespace.matches("[A-Za-z_][A-Za-z0-9_]*(::[A-Za-z_][A-Za-z0-9_]*)*")) {
       throw new IllegalArgumentException(
           "cpp-codegen: 'namespace' must be a C++ namespace like a::b, got: " + namespace);
     }
-    return new CppSettings(service, namespace, runtimeTarget, protocolTestsPackage);
+    return new CppSettings(service, namespace, runtimeTarget, testsPackage);
   }
 
   public ShapeId service() {
@@ -75,6 +75,10 @@ public final class CppSettings {
     return "include/" + includePrefix() + "/client.h";
   }
 
+  public String serverHeaderFile() {
+    return "include/" + includePrefix() + "/server.h";
+  }
+
   /** Bazel package of the runtime, e.g. {@code //runtime} or {@code @smithy_cpp//runtime}. */
   public String runtimePackage() {
     int colon = runtimeTarget.lastIndexOf(':');
@@ -82,11 +86,12 @@ public final class CppSettings {
   }
 
   /**
-   * Bazel package of the generated module (e.g. {@code //protocol-tests/restjson1/generated}); when
-   * set, protocol conformance tests are generated into {@code tests/}. Null otherwise.
+   * Bazel package of the generated module (e.g. {@code //examples/weather/generated}); when set,
+   * tests are generated into {@code tests/}: service smoke tests always, protocol conformance tests
+   * when the model carries smithy.test traits. Null otherwise.
    */
-  public String protocolTestsPackage() {
-    return protocolTestsPackage;
+  public String testsPackage() {
+    return testsPackage;
   }
 
   @Override
@@ -97,11 +102,11 @@ public final class CppSettings {
     return service.equals(that.service)
         && namespace.equals(that.namespace)
         && runtimeTarget.equals(that.runtimeTarget)
-        && Objects.equals(protocolTestsPackage, that.protocolTestsPackage);
+        && Objects.equals(testsPackage, that.testsPackage);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(service, namespace, runtimeTarget, protocolTestsPackage);
+    return Objects.hash(service, namespace, runtimeTarget, testsPackage);
   }
 }

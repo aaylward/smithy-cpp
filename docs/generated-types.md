@@ -113,6 +113,18 @@ auto city   = client->GetCity(GetCityInput{.cityId = "seattle"});  // Outcome<Ge
 - restJson1 honors `@jsonName` body keys, serializes non-finite numbers as
   `"NaN"`/`"Infinity"`/`"-Infinity"`, and binds response `@httpHeader` members (including
   comma-joined lists and base64 `@mediaType` strings).
+
+## Servers (Phase 4)
+
+`server.h`/`src/server.cc` emit a pure-virtual `<Service>Handler` (one `Outcome`-returning
+method per operation) and a `<Service>Server` that binds it to the runtime router; `Handler()`
+returns a transport-agnostic `smithy::http::RequestHandler`. Routing, binding deserialization,
+response serialization, and modeled-error mapping (`@httpError` status, `__type` body, typed
+detail via `set_detail`) are generated — see [docs/server-guide.md](server-guide.md). Every
+module also gets `tests/smoke_test.cc`: generated client ↔ generated server over loopback.
+
+## Naming
+
 - Cross-namespace name collisions in a service closure are disambiguated by appending the
   foreign namespace's last segment (`shared#Greeting` → `GreetingShared`); the service's own
   namespace keeps plain names, and wire-level error codes always use the Smithy shape name.

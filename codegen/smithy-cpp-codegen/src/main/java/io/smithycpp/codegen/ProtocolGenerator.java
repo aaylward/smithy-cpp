@@ -45,4 +45,15 @@ interface ProtocolGenerator {
   /** Emits the body of one operation method (inside the function braces). */
   void writeOperationBody(
       CppWriter w, CppContext context, ServiceShape service, OperationShape operation);
+
+  /** Includes server.cc needs beyond the shared set. */
+  List<String> serverIncludes();
+
+  /** Emits server-side file-local helpers (error mapping, per-op parse/serialize functions). */
+  void writeServerHelpers(
+      CppWriter w, CppContext context, ServiceShape service, List<OperationShape> operations);
+
+  /** Emits the constructor statements registering one operation's route. */
+  void writeServerRoute(
+      CppWriter w, CppContext context, ServiceShape service, OperationShape operation);
 }

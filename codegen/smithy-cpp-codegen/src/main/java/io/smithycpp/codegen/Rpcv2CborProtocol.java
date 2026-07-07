@@ -46,6 +46,83 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
   }
 
   @Override
+  public List<String> serverIncludes() {
+    return List.of("\"smithy/cbor/cbor.h\"", "\"smithy/core/blob.h\"");
+  }
+
+  @Override
+  public void writeServerHelpers(
+      CppWriter w, CppContext context, ServiceShape service, List<OperationShape> operations) {
+    w.openBlock(
+        "smithy::http::HttpResponse CborError(int status, const std::string& code, "
+            + "const std::string& message, smithy::DocumentMap body) {");
+    w.write("body.insert_or_assign(\"__type\", smithy::Document(code));");
+    w.write(
+        "if (!message.empty()) body.insert_or_assign(\"message\", "
+            + "smithy::Document(message));");
+    w.write("smithy::http::HttpResponse response;");
+    w.write("response.status = status;");
+    w.write("response.headers.Set(\"smithy-protocol\", \"rpc-v2-cbor\");");
+    w.write("response.headers.Set(\"content-type\", \"application/cbor\");");
+    w.write("response.body = smithy::cbor::Encode(smithy::Document(std::move(body))).ToString();");
+    w.write("return response;");
+    w.closeBlock("}");
+    w.write("");
+    ProtocolSupport.writeServerErrorToResponse(w, context, service, operations, "CborError");
+  }
+
+  @Override
+  public void writeServerRoute(
+      CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
+    StructureShape input = ProtocolSupport.inputShape(context, operation);
+    StructureShape output = ProtocolSupport.outputShape(context, operation);
+    String inputType = context.cppSymbols().toSymbol(input).getName();
+    String opName = CppReservedWords.escape(operation.getId().getName());
+
+    w.openBlock(
+        "(void)router_->Add(\"POST\", \"/service/$L/operation/$L\", "
+            + "[handler](const smithy::http::HttpRequest& request, "
+            + "const smithy::server::RequestContext&) -> smithy::http::HttpResponse {",
+        service.getId().getName(),
+        operation.getId().getName());
+    w.openBlock(
+        "if (request.headers.Get(\"smithy-protocol\").value_or(\"\") != \"rpc-v2-cbor\") {");
+    w.write(
+        "return CborError(400, \"SerializationException\", "
+            + "\"expected smithy-protocol: rpc-v2-cbor\", {});");
+    w.closeBlock("}");
+    w.write("$L input{};", inputType);
+    if (!input.getId().toString().equals("smithy.api#Unit")) {
+      w.write("// An absent body deserializes like an empty CBOR map.");
+      w.write("smithy::Document body_doc{smithy::DocumentMap{}};");
+      w.openBlock("if (!request.body.empty()) {");
+      w.write("auto decoded = smithy::cbor::Decode(smithy::Blob::FromString(request.body));");
+      w.write(
+          "if (!decoded) return CborError(400, \"SerializationException\", "
+              + "decoded.error().message(), {});");
+      w.write("body_doc = *std::move(decoded);");
+      w.closeBlock("}");
+      w.write(
+          "auto parsed = Deserialize$L(body_doc);",
+          SerdeCodeGen.serdeFunctionSuffix(context, input));
+      w.write(
+          "if (!parsed) return CborError(400, \"SerializationException\", "
+              + "parsed.error().message(), {});");
+      w.write("input = *std::move(parsed);");
+    }
+    w.write("auto outcome = handler->$L(input);", opName);
+    w.write("if (!outcome) return ErrorToResponse(outcome.error());");
+    w.write("smithy::http::HttpResponse response;");
+    w.write("response.headers.Set(\"smithy-protocol\", \"rpc-v2-cbor\");");
+    w.write("response.headers.Set(\"content-type\", \"application/cbor\");");
+    w.write(
+        "response.body = smithy::cbor::Encode(Serialize$L(*outcome)).ToString();",
+        SerdeCodeGen.serdeFunctionSuffix(context, output));
+    w.write("return response;");
+    w.closeBlock("});");
+  }
+
+  @Override
   public void writeOperationBody(
       CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
     StructureShape input = ProtocolSupport.inputShape(context, operation);

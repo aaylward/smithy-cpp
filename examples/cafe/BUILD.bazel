@@ -9,6 +9,7 @@ cc_test(
     deps = [
         "//examples/cafe/generated:client",
         "//runtime:cbor",
+        "//runtime:compression",
         "@googletest//:gtest_main",
     ],
 )

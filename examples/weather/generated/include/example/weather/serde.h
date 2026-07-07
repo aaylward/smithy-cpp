@@ -56,4 +56,10 @@ smithy::Outcome<GetCurrentTimeInput> DeserializeGetCurrentTimeInput(const smithy
 smithy::Document SerializeGetCurrentTimeOutput(const GetCurrentTimeOutput& value);
 smithy::Outcome<GetCurrentTimeOutput> DeserializeGetCurrentTimeOutput(const smithy::Document& doc);
 
+smithy::Document SerializeGetReportInput(const GetReportInput& value);
+smithy::Outcome<GetReportInput> DeserializeGetReportInput(const smithy::Document& doc);
+
+smithy::Document SerializeGetReportOutput(const GetReportOutput& value);
+smithy::Outcome<GetReportOutput> DeserializeGetReportOutput(const smithy::Document& doc);
+
 }  // namespace example::weather

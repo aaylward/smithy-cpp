@@ -1,0 +1,13 @@
+load("@rules_cc//cc:defs.bzl", "cc_test")
+
+cc_test(
+    name = "api_key_wire_test",
+    size = "small",
+    srcs = ["api_key_wire_test.cc"],
+    deps = [
+        "//examples/roundtrip/rest/generated:client",
+        "//runtime:client",
+        "//runtime:http",
+        "@googletest//:gtest_main",
+    ],
+)

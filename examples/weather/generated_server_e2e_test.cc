@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -26,7 +27,7 @@ namespace {
 namespace hw = example::weather::handwritten;
 
 // Reference implementation of the GENERATED handler interface.
-class ReferenceHandler final : public WeatherHandler {
+class ReferenceHandler : public WeatherHandler {
  public:
   smithy::Outcome<GetCityOutput> GetCity(const GetCityInput& input) override {
     if (input.cityId != "seattle") {
@@ -69,6 +70,12 @@ class ReferenceHandler final : public WeatherHandler {
   smithy::Outcome<GetCurrentTimeOutput> GetCurrentTime(const GetCurrentTimeInput& input) override {
     (void)input;
     return GetCurrentTimeOutput{.time = smithy::Timestamp::FromEpochMilliseconds(1398796238500)};
+  }
+
+  smithy::Outcome<GetReportOutput> GetReport(const GetReportInput& input) override {
+    // Echo the decoded path so tests can assert label-decoding fidelity.
+    return GetReportOutput{.path = input.reportPath,
+                           .sizeBytes = static_cast<std::int64_t>(input.reportPath.size())};
   }
 };
 
@@ -292,6 +299,157 @@ TEST_F(GeneratedServerEndToEndTest, TraceContextAndOperationFlowThroughObservabi
   ASSERT_EQ(served.size(), 2u);
   EXPECT_EQ(served[1].status, 404);
   EXPECT_TRUE(served[1].operation.empty());
+}
+
+// Greedy labels ({reportPath+}) keep their embedded slashes and decode
+// percent-encoded characters segment by segment.
+TEST_F(GeneratedServerEndToEndTest, GreedyLabelKeepsSlashesAndDecodes) {
+  auto loopback = std::make_shared<smithy::http::Loopback>();
+  ASSERT_TRUE(loopback->Start(server_->Handler()).ok());
+  smithy::ClientConfig config;
+  config.http_client = loopback;
+  auto client = example::weather::WeatherClient::Create(std::move(config));
+  ASSERT_TRUE(client.ok());
+
+  for (const std::string path : {
+           std::string("2026/q3/summary.pdf"),       // plain multi-segment
+           std::string("a b/c%d/e?f"),               // space, percent, question mark
+           std::string("weird&seg=ment/#frag/two"),  // ampersand, equals, hash
+           std::string("caf\xc3\xa9/na\xc3\xafve"),  // UTF-8 segments
+       }) {
+    const auto report = client->GetReport(example::weather::GetReportInput{.reportPath = path});
+    ASSERT_TRUE(report.ok()) << "path: " << path << ": " << report.error().message();
+    EXPECT_EQ(report->path, path);
+    EXPECT_EQ(report->sizeBytes, static_cast<std::int64_t>(path.size()));
+  }
+}
+
+// Hostile strings in a plain @httpLabel. CityId is @pattern-constrained to
+// "^[A-Za-z0-9 ]+$", so this pins two behaviors: values inside the charset
+// (including tricky spacing) round-trip exactly — the handler's error message
+// echoes the decoded id, proving encode -> route -> decode fidelity — and
+// URI-hostile values outside it are rejected by generated validation with a
+// clean 400 ValidationException, never a crash, mis-route, or mangled echo.
+TEST_F(GeneratedServerEndToEndTest, HostileLabelValuesSurviveTheRoundTrip) {
+  auto loopback = std::make_shared<smithy::http::Loopback>();
+  ASSERT_TRUE(loopback->Start(server_->Handler()).ok());
+  smithy::ClientConfig config;
+  config.http_client = loopback;
+  auto client = example::weather::WeatherClient::Create(std::move(config));
+  ASSERT_TRUE(client.ok());
+
+  for (const std::string city : {
+           std::string("abc def"),    // %20 in the label segment
+           std::string("a  b"),       // consecutive spaces survive
+           std::string(" leading"),   // leading space
+           std::string("trailing "),  // trailing space
+           std::string("UPPER lower 0123456789"),
+       }) {
+    const auto outcome = client->GetCity(example::weather::GetCityInput{.cityId = city});
+    ASSERT_FALSE(outcome.ok()) << "city: " << city;
+    EXPECT_EQ(outcome.error().code(), "NoSuchResource") << city;
+    EXPECT_EQ(outcome.error().message(), "no city: " + city);
+  }
+
+  for (const std::string city : {
+           std::string("san jos\xc3\xa9"),  // UTF-8 outside the pattern
+           std::string("x?y#z&w=v"),        // every URI delimiter
+           std::string("100%25 legit"),     // literal percent-escape text
+           std::string("+plus+signs+"),     // '+' must not decode to space
+           std::string("dot./..dot"),       // dot segments must not normalize
+       }) {
+    const auto outcome = client->GetCity(example::weather::GetCityInput{.cityId = city});
+    ASSERT_FALSE(outcome.ok()) << "city: " << city;
+    EXPECT_EQ(outcome.error().code(), "ValidationException")
+        << city << ": " << outcome.error().message();
+  }
+}
+
+// A pagination token full of URI-hostile characters must survive the
+// output-body -> input-query round trip the paginator drives.
+TEST_F(GeneratedServerEndToEndTest, PaginatorRoundTripsHostileTokens) {
+  static const std::string kNastyToken = "a b&c=d?e+f/g%h#i";
+  class PagingHandler final : public ReferenceHandler {
+   public:
+    smithy::Outcome<ListCitiesOutput> ListCities(const ListCitiesInput& input) override {
+      ListCitiesOutput out;
+      if (!input.nextToken.has_value()) {
+        out.items.push_back(CitySummary{.cityId = "page1", .name = "Page One"});
+        out.nextToken = kNastyToken;
+        return out;
+      }
+      // The token must arrive exactly as issued, through the query string.
+      if (*input.nextToken != kNastyToken) {
+        return smithy::Error::Modeled("NoSuchResource", "token corrupted: " + *input.nextToken);
+      }
+      out.items.push_back(CitySummary{.cityId = "page2", .name = "Page Two"});
+      return out;
+    }
+  };
+
+  WeatherServer server(std::make_shared<PagingHandler>());
+  auto loopback = std::make_shared<smithy::http::Loopback>();
+  ASSERT_TRUE(loopback->Start(server.Handler()).ok());
+  smithy::ClientConfig config;
+  config.http_client = loopback;
+  auto client = example::weather::WeatherClient::Create(std::move(config));
+  ASSERT_TRUE(client.ok());
+
+  auto paginator = client->PaginateListCities(example::weather::ListCitiesInput{});
+  const auto first = paginator.Next();
+  ASSERT_TRUE(first.ok()) << first.error().message();
+  ASSERT_TRUE(first->has_value());
+  EXPECT_EQ((*first)->items[0].cityId, "page1");
+
+  const auto second = paginator.Next();
+  ASSERT_TRUE(second.ok()) << second.error().message();
+  ASSERT_TRUE(second->has_value()) << "pagination ended early";
+  EXPECT_EQ((*second)->items[0].cityId, "page2");
+
+  const auto done = paginator.Next();
+  ASSERT_TRUE(done.ok());
+  EXPECT_FALSE(done->has_value());
+}
+
+// Everything at once: transient transport failures under retry, bearer auth
+// from config, trace propagation and attempt observation via interceptors,
+// auth + observation middleware on the server. Client-side hooks see every
+// attempt; the server sees exactly one authorized request.
+TEST_F(GeneratedServerEndToEndTest, FullStackLayeringSurvivesRetries) {
+  std::vector<smithy::server::RequestObservation> served;
+  auto handler = smithy::server::Chain(
+      {smithy::server::RequireBearerAuth(
+           [](const std::string& token) { return token == "stack-token"; }),
+       smithy::server::Observe(
+           [&](const smithy::server::RequestObservation& o) { served.push_back(o); })},
+      server_->Handler());
+  auto loopback = std::make_shared<smithy::http::Loopback>();
+  ASSERT_TRUE(loopback->Start(handler).ok());
+
+  std::vector<smithy::AttemptObservation> attempts;
+  smithy::ClientConfig config;
+  config.http_client = std::make_shared<FlakyTransport>(loopback);  // 2 failures first
+  config.retry.sleep = [](std::chrono::milliseconds) {};
+  config.bearer_token = [] { return std::string("stack-token"); };
+  config.interceptors.push_back(smithy::PropagateTraceContext());
+  config.interceptors.push_back(
+      smithy::ObserveAttempts([&](const smithy::AttemptObservation& a) { attempts.push_back(a); }));
+  auto client = example::weather::WeatherClient::Create(std::move(config));
+  ASSERT_TRUE(client.ok());
+
+  const auto city = client->GetCity(example::weather::GetCityInput{.cityId = "seattle"});
+  ASSERT_TRUE(city.ok()) << city.error().message();
+
+  ASSERT_EQ(attempts.size(), 3u);
+  EXPECT_EQ(attempts[0].status, -1);
+  EXPECT_EQ(attempts[1].status, -1);
+  EXPECT_EQ(attempts[2].status, 200);
+  EXPECT_EQ(attempts[2].attempt, 3);
+
+  // Only the successful attempt reached the server, authorized and traced.
+  ASSERT_EQ(served.size(), 1u);
+  EXPECT_EQ(served[0].operation, "GetCity");
+  EXPECT_TRUE(smithy::http::ParseTraceparent(served[0].trace_parent).has_value());
 }
 
 TEST_F(GeneratedServerEndToEndTest, DeleteCityIs204WithNoBody) {

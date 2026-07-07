@@ -30,6 +30,10 @@ class WeatherClient {
     smithy::Outcome<GetCityOutput> GetCity(const GetCityInput& input) const;
     smithy::Outcome<GetCurrentTimeOutput> GetCurrentTime(const GetCurrentTimeInput& input = {}) const;
     smithy::Outcome<GetForecastOutput> GetForecast(const GetForecastInput& input) const;
+    /// Fetches a rendered report by its slash-separated path. The greedy label
+    /// keeps embedded slashes: GET /reports/2026/q3/summary routes here with
+    /// reportPath = "2026/q3/summary".
+    smithy::Outcome<GetReportOutput> GetReport(const GetReportInput& input) const;
     smithy::Outcome<ListCitiesOutput> ListCities(const ListCitiesInput& input) const;
     /// Pages ListCities until the service stops returning a next token (@paginated).
     ListCitiesPaginator PaginateListCities(ListCitiesInput input) const;

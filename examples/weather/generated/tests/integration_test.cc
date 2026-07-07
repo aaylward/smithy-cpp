@@ -150,6 +150,19 @@ GetCurrentTimeOutput RandomGetCurrentTimeOutput(Rng& rng) {
   return v;
 }
 
+GetReportInput RandomGetReportInput(Rng& rng) {
+  GetReportInput v{};
+  v.reportPath = rng.Text(1, 9);
+  return v;
+}
+
+GetReportOutput RandomGetReportOutput(Rng& rng) {
+  GetReportOutput v{};
+  v.path = rng.Text(1, 9);
+  v.sizeBytes = static_cast<std::int64_t>(rng.Int(-4611686018427387904LL, 4611686018427387903LL));
+  return v;
+}
+
 class ScriptedHandler final : public WeatherHandler {
   public:
     smithy::Outcome<DeleteCityOutput> DeleteCity(const DeleteCityInput& input) override {
@@ -184,6 +197,14 @@ class ScriptedHandler final : public WeatherHandler {
     std::optional<GetForecastInput> lastGetForecast;
     GetForecastOutput nextGetForecastOutput{};
     std::optional<smithy::Error> nextGetForecastError;
+    smithy::Outcome<GetReportOutput> GetReport(const GetReportInput& input) override {
+      lastGetReport = input;
+      if (nextGetReportError.has_value()) return *nextGetReportError;
+      return nextGetReportOutput;
+    }
+    std::optional<GetReportInput> lastGetReport;
+    GetReportOutput nextGetReportOutput{};
+    std::optional<smithy::Error> nextGetReportError;
     smithy::Outcome<ListCitiesOutput> ListCities(const ListCitiesInput& input) override {
       lastListCities = input;
       if (nextListCitiesError.has_value()) return *nextListCitiesError;
@@ -326,6 +347,32 @@ TEST_P(WeatherIntegrationTest, GetForecastMaximalRoundTrips) {
   ASSERT_TRUE(outcome.ok()) << outcome.error().message();
   ASSERT_TRUE(handler_->lastGetForecast.has_value());
   EXPECT_EQ(*handler_->lastGetForecast, input);
+  EXPECT_EQ(*outcome, output);
+}
+
+TEST_P(WeatherIntegrationTest, GetReportRandomRoundTrips) {
+  Rng rng{std::mt19937{20260707U}, /*fill_all=*/false};
+  for (int iteration = 0; iteration < 8; ++iteration) {
+    const GetReportInput input = RandomGetReportInput(rng);
+    GetReportOutput output = RandomGetReportOutput(rng);
+    handler_->nextGetReportOutput = output;
+    const auto outcome = client_->GetReport(input);
+    ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+    ASSERT_TRUE(handler_->lastGetReport.has_value());
+    EXPECT_EQ(*handler_->lastGetReport, input);
+    EXPECT_EQ(*outcome, output);
+  }
+}
+
+TEST_P(WeatherIntegrationTest, GetReportMaximalRoundTrips) {
+  Rng rng{std::mt19937{7U}, /*fill_all=*/true};
+  const GetReportInput input = RandomGetReportInput(rng);
+  GetReportOutput output = RandomGetReportOutput(rng);
+  handler_->nextGetReportOutput = output;
+  const auto outcome = client_->GetReport(input);
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  ASSERT_TRUE(handler_->lastGetReport.has_value());
+  EXPECT_EQ(*handler_->lastGetReport, input);
   EXPECT_EQ(*outcome, output);
 }
 
@@ -474,6 +521,32 @@ TEST(WeatherIntegrationUnknownMembers, GetForecastToleratesUnknownResponseMember
   GetForecastOutput output = RandomGetForecastOutput(rng);
   handler->nextGetForecastOutput = output;
   const auto outcome = client.GetForecast(input);
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  EXPECT_EQ(*outcome, output);
+}
+
+TEST(WeatherIntegrationUnknownMembers, GetReportToleratesUnknownResponseMembers) {
+  auto handler = std::make_shared<ScriptedHandler>();
+  WeatherServer server(handler);
+  auto loopback = std::make_shared<smithy::http::Loopback>();
+  ASSERT_TRUE(loopback->Start(server.Handler()).ok());
+  auto inject = [](smithy::http::HttpResponse& response) {
+    auto doc = smithy::json::Decode(response.body);
+    if (!doc.ok() || !doc->is_map()) return;
+    auto map = doc->as_map();
+    map.insert_or_assign("smithy_cpp_unknown_member", smithy::Document(42));
+    response.body = smithy::json::Encode(smithy::Document(std::move(map)));
+  };
+  auto transport = std::make_shared<smithy::testing::MutatingTransport>(loopback, inject);
+  smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
+  config.http_client = transport;
+  auto client = *WeatherClient::Create(std::move(config));
+  Rng rng{std::mt19937{99U}, /*fill_all=*/true};
+  const GetReportInput input = RandomGetReportInput(rng);
+  GetReportOutput output = RandomGetReportOutput(rng);
+  handler->nextGetReportOutput = output;
+  const auto outcome = client.GetReport(input);
   ASSERT_TRUE(outcome.ok()) << outcome.error().message();
   EXPECT_EQ(*outcome, output);
 }

@@ -353,4 +353,53 @@ smithy::Outcome<GetCurrentTimeOutput> DeserializeGetCurrentTimeOutput(const smit
   return out;
 }
 
+smithy::Document SerializeGetReportInput(const GetReportInput& value) {
+  smithy::DocumentMap map;
+  map.emplace("reportPath", smithy::Document(value.reportPath));
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<GetReportInput> DeserializeGetReportInput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("GetReportInput: expected a map on the wire");
+  GetReportInput out;
+  {
+    const smithy::Document* member = doc.Find("reportPath");
+    if (member == nullptr || member->is_null()) {
+      return smithy::Error::Serialization("GetReportInput: missing required member: reportPath");
+    }
+    if (!member->is_string()) return smithy::Error::Serialization("GetReportInput.reportPath: unexpected type on the wire");
+    out.reportPath = member->as_string();
+  }
+  return out;
+}
+
+smithy::Document SerializeGetReportOutput(const GetReportOutput& value) {
+  smithy::DocumentMap map;
+  map.emplace("path", smithy::Document(value.path));
+  map.emplace("sizeBytes", smithy::Document(static_cast<std::int64_t>(value.sizeBytes)));
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<GetReportOutput> DeserializeGetReportOutput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("GetReportOutput: expected a map on the wire");
+  GetReportOutput out;
+  {
+    const smithy::Document* member = doc.Find("path");
+    if (member == nullptr || member->is_null()) {
+      return smithy::Error::Serialization("GetReportOutput: missing required member: path");
+    }
+    if (!member->is_string()) return smithy::Error::Serialization("GetReportOutput.path: unexpected type on the wire");
+    out.path = member->as_string();
+  }
+  {
+    const smithy::Document* member = doc.Find("sizeBytes");
+    if (member == nullptr || member->is_null()) {
+      return smithy::Error::Serialization("GetReportOutput: missing required member: sizeBytes");
+    }
+    if (!member->is_int()) return smithy::Error::Serialization("GetReportOutput.sizeBytes: unexpected type on the wire");
+    out.sizeBytes = static_cast<std::int64_t>(member->as_int());
+  }
+  return out;
+}
+
 }  // namespace example::weather

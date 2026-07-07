@@ -196,6 +196,46 @@ the response last, and can short-circuit before the router runs. `Observe` is
 the built-in structured-logging/metrics hook; its callback runs on the
 transport's request thread, so keep it cheap or hand off.
 
+## Observability
+
+The runtime's observability story is deliberately SDK-free: enriched hooks
+on both sides plus W3C Trace Context helpers, so any backend — including
+OpenTelemetry — plugs in without the core taking a telemetry dependency.
+
+**Server:** `Observe` (above) reports, per request: `method`, `target`,
+`operation` (the Smithy operation that handled it, stamped by the generated
+router; empty for 404/405 dispatch failures), `status`, `duration`, and
+`trace_parent` — the incoming W3C `traceparent` header, verbatim, for log
+correlation.
+
+**Client:** two ready-made interceptors in
+`smithy/client/observability.h`:
+
+```cpp
+// Metrics/logging: one callback per HTTP attempt (retries visible).
+config.interceptors.push_back(smithy::ObserveAttempts(
+    [](const smithy::AttemptObservation& a) {
+      // a.method, a.target, a.attempt, a.status (-1 = transport error),
+      // a.error_message
+    }));
+
+// Distributed tracing: sets a W3C traceparent header on every attempt that
+// lacks one. Pass a callback returning your application's active trace
+// context to join an existing trace; omit it to start fresh roots.
+config.interceptors.push_back(smithy::PropagateTraceContext());
+```
+
+`smithy/http/trace_context.h` has the underlying helpers —
+`ParseTraceparent`, `FormatTraceparent`, `GenerateTraceContext`,
+`GenerateSpanId` — for building richer integrations (e.g. a server
+middleware that opens a span from `RequestObservation::trace_parent`).
+
+**OpenTelemetry:** not bundled, by design — opentelemetry-cpp's dependency
+tree (protobuf, gRPC for OTLP) would violate the runtime's dep-light rule.
+The hooks above map 1:1 onto OTel spans and metrics; an optional
+`//runtime:otel` adapter is planned post-0.1.0 once the hook shapes have
+survived production use (see PLAN.md).
+
 ## Server hardening
 
 The production server transport (`BeastServerTransport`, ADR-0006) enforces

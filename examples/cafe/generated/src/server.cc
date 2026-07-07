@@ -140,7 +140,7 @@ CafeServer::CafeServer(std::shared_ptr<CafeHandler> handler)
     response.headers.Set("content-type", "application/cbor");
     response.body = smithy::cbor::Encode(SerializeGetOrderOutput(*outcome)).ToString();
     return response;
-  });
+  }, "GetOrder");
   (void)router_->Add("POST", "/service/Cafe/operation/OrderCoffee", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
@@ -171,7 +171,7 @@ CafeServer::CafeServer(std::shared_ptr<CafeHandler> handler)
     response.headers.Set("content-type", "application/cbor");
     response.body = smithy::cbor::Encode(SerializeOrderCoffeeOutput(*outcome)).ToString();
     return response;
-  });
+  }, "OrderCoffee");
 }
 
 smithy::http::RequestHandler CafeServer::Handler() const {

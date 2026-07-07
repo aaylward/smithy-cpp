@@ -296,7 +296,7 @@ WeatherServer::WeatherServer(std::shared_ptr<WeatherHandler> handler)
     auto outcome = handler->DeleteCity(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeDeleteCityResponse(*outcome);
-  });
+  }, "DeleteCity");
   (void)router_->Add("GET", "/cities/{cityId}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -321,7 +321,7 @@ WeatherServer::WeatherServer(std::shared_ptr<WeatherHandler> handler)
     auto outcome = handler->GetCity(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeGetCityResponse(*outcome);
-  });
+  }, "GetCity");
   (void)router_->Add("GET", "/current-time", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -344,7 +344,7 @@ WeatherServer::WeatherServer(std::shared_ptr<WeatherHandler> handler)
     auto outcome = handler->GetCurrentTime(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeGetCurrentTimeResponse(*outcome);
-  });
+  }, "GetCurrentTime");
   (void)router_->Add("GET", "/cities/{cityId}/forecast", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -369,7 +369,7 @@ WeatherServer::WeatherServer(std::shared_ptr<WeatherHandler> handler)
     auto outcome = handler->GetForecast(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeGetForecastResponse(*outcome);
-  });
+  }, "GetForecast");
   (void)router_->Add("GET", "/cities", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -392,7 +392,7 @@ WeatherServer::WeatherServer(std::shared_ptr<WeatherHandler> handler)
     auto outcome = handler->ListCities(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeListCitiesResponse(*outcome);
-  });
+  }, "ListCities");
 }
 
 smithy::http::RequestHandler WeatherServer::Handler() const {

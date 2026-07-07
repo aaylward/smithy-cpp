@@ -1984,7 +1984,7 @@ RestJsonValidationServer::RestJsonValidationServer(std::shared_ptr<RestJsonValid
     auto outcome = handler->MalformedEnum(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedEnumResponse(*outcome);
-  });
+  }, "MalformedEnum");
   (void)router_->Add("POST", "/MalformedLength", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -2004,7 +2004,7 @@ RestJsonValidationServer::RestJsonValidationServer(std::shared_ptr<RestJsonValid
     auto outcome = handler->MalformedLength(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedLengthResponse(*outcome);
-  });
+  }, "MalformedLength");
   (void)router_->Add("POST", "/MalformedLengthOverride", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -2024,7 +2024,7 @@ RestJsonValidationServer::RestJsonValidationServer(std::shared_ptr<RestJsonValid
     auto outcome = handler->MalformedLengthOverride(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedLengthOverrideResponse(*outcome);
-  });
+  }, "MalformedLengthOverride");
   (void)router_->Add("POST", "/MalformedLengthQueryString", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -2044,7 +2044,7 @@ RestJsonValidationServer::RestJsonValidationServer(std::shared_ptr<RestJsonValid
     auto outcome = handler->MalformedLengthQueryString(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedLengthQueryStringResponse(*outcome);
-  });
+  }, "MalformedLengthQueryString");
   (void)router_->Add("POST", "/MalformedPattern", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -2064,7 +2064,7 @@ RestJsonValidationServer::RestJsonValidationServer(std::shared_ptr<RestJsonValid
     auto outcome = handler->MalformedPattern(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedPatternResponse(*outcome);
-  });
+  }, "MalformedPattern");
   (void)router_->Add("POST", "/MalformedPatternOverride", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -2084,7 +2084,7 @@ RestJsonValidationServer::RestJsonValidationServer(std::shared_ptr<RestJsonValid
     auto outcome = handler->MalformedPatternOverride(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedPatternOverrideResponse(*outcome);
-  });
+  }, "MalformedPatternOverride");
   (void)router_->Add("POST", "/MalformedRange", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -2104,7 +2104,7 @@ RestJsonValidationServer::RestJsonValidationServer(std::shared_ptr<RestJsonValid
     auto outcome = handler->MalformedRange(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedRangeResponse(*outcome);
-  });
+  }, "MalformedRange");
   (void)router_->Add("POST", "/MalformedRangeOverride", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -2124,7 +2124,7 @@ RestJsonValidationServer::RestJsonValidationServer(std::shared_ptr<RestJsonValid
     auto outcome = handler->MalformedRangeOverride(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedRangeOverrideResponse(*outcome);
-  });
+  }, "MalformedRangeOverride");
   (void)router_->Add("POST", "/MalformedRequired", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -2142,7 +2142,7 @@ RestJsonValidationServer::RestJsonValidationServer(std::shared_ptr<RestJsonValid
     auto outcome = handler->MalformedRequired(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedRequiredResponse(*outcome);
-  });
+  }, "MalformedRequired");
   (void)router_->Add("POST", "/MalformedUniqueItems", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -2162,7 +2162,7 @@ RestJsonValidationServer::RestJsonValidationServer(std::shared_ptr<RestJsonValid
     auto outcome = handler->MalformedUniqueItems(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedUniqueItemsResponse(*outcome);
-  });
+  }, "MalformedUniqueItems");
   (void)router_->Add("POST", "/SensitiveValidation", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -2182,7 +2182,7 @@ RestJsonValidationServer::RestJsonValidationServer(std::shared_ptr<RestJsonValid
     auto outcome = handler->SensitiveValidation(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeSensitiveValidationResponse(*outcome);
-  });
+  }, "SensitiveValidation");
 }
 
 smithy::http::RequestHandler RestJsonValidationServer::Handler() const {

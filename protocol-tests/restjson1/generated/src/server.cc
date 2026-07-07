@@ -4634,7 +4634,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->AllQueryStringTypes(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeAllQueryStringTypesResponse(*outcome);
-  });
+  }, "AllQueryStringTypes");
   (void)router_->Add("GET", "/ConstantAndVariableQueryString", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -4652,7 +4652,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->ConstantAndVariableQueryString(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeConstantAndVariableQueryStringResponse(*outcome);
-  });
+  }, "ConstantAndVariableQueryString");
   (void)router_->Add("GET", "/ConstantQueryString/{hello}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -4670,7 +4670,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->ConstantQueryString(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeConstantQueryStringResponse(*outcome);
-  });
+  }, "ConstantQueryString");
   (void)router_->Add("POST", "/ContentTypeParameters", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -4688,7 +4688,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->ContentTypeParameters(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeContentTypeParametersResponse(*outcome);
-  });
+  }, "ContentTypeParameters");
   (void)router_->Add("POST", "/DatetimeOffsets", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -4711,7 +4711,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->DatetimeOffsets(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeDatetimeOffsetsResponse(*outcome);
-  });
+  }, "DatetimeOffsets");
   (void)router_->Add("PUT", "/DocumentType", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -4734,7 +4734,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->DocumentType(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeDocumentTypeResponse(*outcome);
-  });
+  }, "DocumentType");
   (void)router_->Add("PUT", "/DocumentTypeAsMapValue", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -4757,7 +4757,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->DocumentTypeAsMapValue(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeDocumentTypeAsMapValueResponse(*outcome);
-  });
+  }, "DocumentTypeAsMapValue");
   (void)router_->Add("PUT", "/DocumentTypeAsPayload", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -4780,7 +4780,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->DocumentTypeAsPayload(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeDocumentTypeAsPayloadResponse(*outcome);
-  });
+  }, "DocumentTypeAsPayload");
   (void)router_->Add("POST", "/EmptyInputAndEmptyOutput", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -4798,7 +4798,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->EmptyInputAndEmptyOutput(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeEmptyInputAndEmptyOutputResponse(*outcome);
-  });
+  }, "EmptyInputAndEmptyOutput");
   (void)router_->Add("POST", "/EndpointOperation", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -4816,7 +4816,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->EndpointOperation(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeEndpointOperationResponse(*outcome);
-  });
+  }, "EndpointOperation");
   (void)router_->Add("POST", "/EndpointWithHostLabelOperation", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -4834,7 +4834,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->EndpointWithHostLabelOperation(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeEndpointWithHostLabelOperationResponse(*outcome);
-  });
+  }, "EndpointWithHostLabelOperation");
   (void)router_->Add("POST", "/FractionalSeconds", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -4857,7 +4857,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->FractionalSeconds(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeFractionalSecondsResponse(*outcome);
-  });
+  }, "FractionalSeconds");
   (void)router_->Add("PUT", "/GreetingWithErrors", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -4875,7 +4875,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->GreetingWithErrors(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeGreetingWithErrorsResponse(*outcome);
-  });
+  }, "GreetingWithErrors");
   (void)router_->Add("GET", "/HostWithPathOperation", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -4893,7 +4893,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->HostWithPathOperation(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeHostWithPathOperationResponse(*outcome);
-  });
+  }, "HostWithPathOperation");
   (void)router_->Add("POST", "/HttpChecksumRequired", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -4916,7 +4916,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->HttpChecksumRequired(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeHttpChecksumRequiredResponse(*outcome);
-  });
+  }, "HttpChecksumRequired");
   (void)router_->Add("POST", "/EnumPayload", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -4941,7 +4941,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->HttpEnumPayload(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeHttpEnumPayloadResponse(*outcome);
-  });
+  }, "HttpEnumPayload");
   (void)router_->Add("POST", "/HttpPayloadTraits", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -4954,7 +4954,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->HttpPayloadTraits(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeHttpPayloadTraitsResponse(*outcome);
-  });
+  }, "HttpPayloadTraits");
   (void)router_->Add("POST", "/HttpPayloadTraitsWithMediaType", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -4977,7 +4977,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->HttpPayloadTraitsWithMediaType(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeHttpPayloadTraitsWithMediaTypeResponse(*outcome);
-  });
+  }, "HttpPayloadTraitsWithMediaType");
   (void)router_->Add("PUT", "/HttpPayloadWithStructure", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5000,7 +5000,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->HttpPayloadWithStructure(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeHttpPayloadWithStructureResponse(*outcome);
-  });
+  }, "HttpPayloadWithStructure");
   (void)router_->Add("PUT", "/HttpPayloadWithUnion", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5023,7 +5023,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->HttpPayloadWithUnion(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeHttpPayloadWithUnionResponse(*outcome);
-  });
+  }, "HttpPayloadWithUnion");
   (void)router_->Add("GET", "/HttpPrefixHeaders", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5041,7 +5041,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->HttpPrefixHeaders(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeHttpPrefixHeadersResponse(*outcome);
-  });
+  }, "HttpPrefixHeaders");
   (void)router_->Add("GET", "/HttpPrefixHeadersResponse", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5059,7 +5059,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->HttpPrefixHeadersInResponse(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeHttpPrefixHeadersInResponseResponse(*outcome);
-  });
+  }, "HttpPrefixHeadersInResponse");
   (void)router_->Add("GET", "/FloatHttpLabels/{float}/{double}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5077,7 +5077,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->HttpRequestWithFloatLabels(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeHttpRequestWithFloatLabelsResponse(*outcome);
-  });
+  }, "HttpRequestWithFloatLabels");
   (void)router_->Add("GET", "/HttpRequestWithGreedyLabelInPath/foo/{foo}/baz/{baz+}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5095,7 +5095,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->HttpRequestWithGreedyLabelInPath(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeHttpRequestWithGreedyLabelInPathResponse(*outcome);
-  });
+  }, "HttpRequestWithGreedyLabelInPath");
   (void)router_->Add("GET", "/HttpRequestWithLabels/{string}/{short}/{integer}/{long}/{float}/{double}/{boolean}/{timestamp}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5113,7 +5113,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->HttpRequestWithLabels(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeHttpRequestWithLabelsResponse(*outcome);
-  });
+  }, "HttpRequestWithLabels");
   (void)router_->Add("GET", "/HttpRequestWithLabelsAndTimestampFormat/{memberEpochSeconds}/{memberHttpDate}/{memberDateTime}/{defaultFormat}/{targetEpochSeconds}/{targetHttpDate}/{targetDateTime}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5131,7 +5131,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->HttpRequestWithLabelsAndTimestampFormat(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeHttpRequestWithLabelsAndTimestampFormatResponse(*outcome);
-  });
+  }, "HttpRequestWithLabelsAndTimestampFormat");
   (void)router_->Add("GET", "/ReDosLiteral/{str}/(a+)+", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5149,7 +5149,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->HttpRequestWithRegexLiteral(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeHttpRequestWithRegexLiteralResponse(*outcome);
-  });
+  }, "HttpRequestWithRegexLiteral");
   (void)router_->Add("PUT", "/HttpResponseCode", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5167,7 +5167,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->HttpResponseCode(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeHttpResponseCodeResponse(*outcome);
-  });
+  }, "HttpResponseCode");
   (void)router_->Add("POST", "/StringPayload", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5190,7 +5190,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->HttpStringPayload(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeHttpStringPayloadResponse(*outcome);
-  });
+  }, "HttpStringPayload");
   (void)router_->Add("GET", "/IgnoreQueryParamsInResponse", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5213,7 +5213,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->IgnoreQueryParamsInResponse(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeIgnoreQueryParamsInResponseResponse(*outcome);
-  });
+  }, "IgnoreQueryParamsInResponse");
   (void)router_->Add("POST", "/InputAndOutputWithHeaders", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5233,7 +5233,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->InputAndOutputWithHeaders(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeInputAndOutputWithHeadersResponse(*outcome);
-  });
+  }, "InputAndOutputWithHeaders");
   (void)router_->Add("POST", "/JsonBlobs", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5256,7 +5256,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->JsonBlobs(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeJsonBlobsResponse(*outcome);
-  });
+  }, "JsonBlobs");
   (void)router_->Add("PUT", "/JsonEnums", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5281,7 +5281,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->JsonEnums(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeJsonEnumsResponse(*outcome);
-  });
+  }, "JsonEnums");
   (void)router_->Add("PUT", "/JsonIntEnums", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5306,7 +5306,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->JsonIntEnums(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeJsonIntEnumsResponse(*outcome);
-  });
+  }, "JsonIntEnums");
   (void)router_->Add("PUT", "/JsonLists", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5331,7 +5331,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->JsonLists(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeJsonListsResponse(*outcome);
-  });
+  }, "JsonLists");
   (void)router_->Add("POST", "/JsonMaps", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5356,7 +5356,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->JsonMaps(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeJsonMapsResponse(*outcome);
-  });
+  }, "JsonMaps");
   (void)router_->Add("POST", "/JsonTimestamps", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5379,7 +5379,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->JsonTimestamps(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeJsonTimestampsResponse(*outcome);
-  });
+  }, "JsonTimestamps");
   (void)router_->Add("PUT", "/JsonUnions", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5404,7 +5404,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->JsonUnions(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeJsonUnionsResponse(*outcome);
-  });
+  }, "JsonUnions");
   (void)router_->Add("POST", "/MalformedAcceptWithBody", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5427,7 +5427,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedAcceptWithBody(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedAcceptWithBodyResponse(*outcome);
-  });
+  }, "MalformedAcceptWithBody");
   (void)router_->Add("POST", "/MalformedAcceptWithGenericString", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5450,7 +5450,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedAcceptWithGenericString(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedAcceptWithGenericStringResponse(*outcome);
-  });
+  }, "MalformedAcceptWithGenericString");
   (void)router_->Add("POST", "/MalformedAcceptWithPayload", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5473,7 +5473,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedAcceptWithPayload(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedAcceptWithPayloadResponse(*outcome);
-  });
+  }, "MalformedAcceptWithPayload");
   (void)router_->Add("POST", "/MalformedBlob", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5491,7 +5491,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedBlob(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedBlobResponse(*outcome);
-  });
+  }, "MalformedBlob");
   (void)router_->Add("POST", "/MalformedBoolean/{booleanInPath}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5509,7 +5509,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedBoolean(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedBooleanResponse(*outcome);
-  });
+  }, "MalformedBoolean");
   (void)router_->Add("POST", "/MalformedByte/{byteInPath}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5527,7 +5527,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedByte(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedByteResponse(*outcome);
-  });
+  }, "MalformedByte");
   (void)router_->Add("POST", "/MalformedContentTypeWithBody", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5545,7 +5545,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedContentTypeWithBody(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedContentTypeWithBodyResponse(*outcome);
-  });
+  }, "MalformedContentTypeWithBody");
   (void)router_->Add("POST", "/MalformedContentTypeWithGenericString", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5563,7 +5563,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedContentTypeWithGenericString(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedContentTypeWithGenericStringResponse(*outcome);
-  });
+  }, "MalformedContentTypeWithGenericString");
   (void)router_->Add("POST", "/MalformedContentTypeWithoutBody", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5581,7 +5581,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedContentTypeWithoutBody(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedContentTypeWithoutBodyResponse(*outcome);
-  });
+  }, "MalformedContentTypeWithoutBody");
   (void)router_->Add("POST", "/MalformedContentTypeWithoutBodyEmptyInput", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5599,7 +5599,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedContentTypeWithoutBodyEmptyInput(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedContentTypeWithoutBodyEmptyInputResponse(*outcome);
-  });
+  }, "MalformedContentTypeWithoutBodyEmptyInput");
   (void)router_->Add("POST", "/MalformedContentTypeWithPayload", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5617,7 +5617,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedContentTypeWithPayload(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedContentTypeWithPayloadResponse(*outcome);
-  });
+  }, "MalformedContentTypeWithPayload");
   (void)router_->Add("POST", "/MalformedDouble/{doubleInPath}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5635,7 +5635,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedDouble(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedDoubleResponse(*outcome);
-  });
+  }, "MalformedDouble");
   (void)router_->Add("POST", "/MalformedFloat/{floatInPath}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5653,7 +5653,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedFloat(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedFloatResponse(*outcome);
-  });
+  }, "MalformedFloat");
   (void)router_->Add("POST", "/MalformedInteger/{integerInPath}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5671,7 +5671,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedInteger(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedIntegerResponse(*outcome);
-  });
+  }, "MalformedInteger");
   (void)router_->Add("POST", "/MalformedList", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5689,7 +5689,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedList(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedListResponse(*outcome);
-  });
+  }, "MalformedList");
   (void)router_->Add("POST", "/MalformedLong/{longInPath}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5707,7 +5707,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedLong(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedLongResponse(*outcome);
-  });
+  }, "MalformedLong");
   (void)router_->Add("POST", "/MalformedMap", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5725,7 +5725,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedMap(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedMapResponse(*outcome);
-  });
+  }, "MalformedMap");
   (void)router_->Add("POST", "/MalformedRequestBody", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5743,7 +5743,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedRequestBody(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedRequestBodyResponse(*outcome);
-  });
+  }, "MalformedRequestBody");
   (void)router_->Add("POST", "/MalformedShort/{shortInPath}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5761,7 +5761,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedShort(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedShortResponse(*outcome);
-  });
+  }, "MalformedShort");
   (void)router_->Add("POST", "/MalformedString", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5779,7 +5779,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedString(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedStringResponse(*outcome);
-  });
+  }, "MalformedString");
   (void)router_->Add("POST", "/MalformedTimestampBodyDateTime", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5797,7 +5797,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedTimestampBodyDateTime(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedTimestampBodyDateTimeResponse(*outcome);
-  });
+  }, "MalformedTimestampBodyDateTime");
   (void)router_->Add("POST", "/MalformedTimestampBodyDefault", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5815,7 +5815,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedTimestampBodyDefault(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedTimestampBodyDefaultResponse(*outcome);
-  });
+  }, "MalformedTimestampBodyDefault");
   (void)router_->Add("POST", "/MalformedTimestampBodyHttpDate", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5833,7 +5833,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedTimestampBodyHttpDate(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedTimestampBodyHttpDateResponse(*outcome);
-  });
+  }, "MalformedTimestampBodyHttpDate");
   (void)router_->Add("POST", "/MalformedTimestampHeaderDateTime", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5851,7 +5851,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedTimestampHeaderDateTime(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedTimestampHeaderDateTimeResponse(*outcome);
-  });
+  }, "MalformedTimestampHeaderDateTime");
   (void)router_->Add("POST", "/MalformedTimestampHeaderDefault", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5869,7 +5869,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedTimestampHeaderDefault(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedTimestampHeaderDefaultResponse(*outcome);
-  });
+  }, "MalformedTimestampHeaderDefault");
   (void)router_->Add("POST", "/MalformedTimestampHeaderEpoch", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5887,7 +5887,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedTimestampHeaderEpoch(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedTimestampHeaderEpochResponse(*outcome);
-  });
+  }, "MalformedTimestampHeaderEpoch");
   (void)router_->Add("POST", "/MalformedTimestampPathDefault/{timestamp}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5905,7 +5905,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedTimestampPathDefault(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedTimestampPathDefaultResponse(*outcome);
-  });
+  }, "MalformedTimestampPathDefault");
   (void)router_->Add("POST", "/MalformedTimestampPathEpoch/{timestamp}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5923,7 +5923,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedTimestampPathEpoch(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedTimestampPathEpochResponse(*outcome);
-  });
+  }, "MalformedTimestampPathEpoch");
   (void)router_->Add("POST", "/MalformedTimestampPathHttpDate/{timestamp}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5941,7 +5941,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedTimestampPathHttpDate(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedTimestampPathHttpDateResponse(*outcome);
-  });
+  }, "MalformedTimestampPathHttpDate");
   (void)router_->Add("POST", "/MalformedTimestampQueryDefault", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5959,7 +5959,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedTimestampQueryDefault(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedTimestampQueryDefaultResponse(*outcome);
-  });
+  }, "MalformedTimestampQueryDefault");
   (void)router_->Add("POST", "/MalformedTimestampQueryEpoch", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5977,7 +5977,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedTimestampQueryEpoch(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedTimestampQueryEpochResponse(*outcome);
-  });
+  }, "MalformedTimestampQueryEpoch");
   (void)router_->Add("POST", "/MalformedTimestampQueryHttpDate", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -5995,7 +5995,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedTimestampQueryHttpDate(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedTimestampQueryHttpDateResponse(*outcome);
-  });
+  }, "MalformedTimestampQueryHttpDate");
   (void)router_->Add("POST", "/MalformedUnion", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -6013,7 +6013,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MalformedUnion(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMalformedUnionResponse(*outcome);
-  });
+  }, "MalformedUnion");
   (void)router_->Add("GET", "/MediaTypeHeader", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -6031,7 +6031,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->MediaTypeHeader(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeMediaTypeHeaderResponse(*outcome);
-  });
+  }, "MediaTypeHeader");
   (void)router_->Add("POST", "/NoInputAndNoOutput", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -6049,7 +6049,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->NoInputAndNoOutput(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeNoInputAndNoOutputResponse(*outcome);
-  });
+  }, "NoInputAndNoOutput");
   (void)router_->Add("POST", "/NoInputAndOutputOutput", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -6067,7 +6067,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->NoInputAndOutput(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeNoInputAndOutputResponse(*outcome);
-  });
+  }, "NoInputAndOutput");
   (void)router_->Add("GET", "/NullAndEmptyHeadersClient", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -6085,7 +6085,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->NullAndEmptyHeadersClient(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeNullAndEmptyHeadersClientResponse(*outcome);
-  });
+  }, "NullAndEmptyHeadersClient");
   (void)router_->Add("GET", "/NullAndEmptyHeadersServer", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -6103,7 +6103,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->NullAndEmptyHeadersServer(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeNullAndEmptyHeadersServerResponse(*outcome);
-  });
+  }, "NullAndEmptyHeadersServer");
   (void)router_->Add("GET", "/OmitsNullSerializesEmptyString", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -6121,7 +6121,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->OmitsNullSerializesEmptyString(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeOmitsNullSerializesEmptyStringResponse(*outcome);
-  });
+  }, "OmitsNullSerializesEmptyString");
   (void)router_->Add("POST", "/OmitsSerializingEmptyLists", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -6141,7 +6141,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->OmitsSerializingEmptyLists(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeOmitsSerializingEmptyListsResponse(*outcome);
-  });
+  }, "OmitsSerializingEmptyLists");
   (void)router_->Add("POST", "/OperationWithDefaults", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -6166,7 +6166,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->OperationWithDefaults(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeOperationWithDefaultsResponse(*outcome);
-  });
+  }, "OperationWithDefaults");
   (void)router_->Add("POST", "/OperationWithNestedStructure", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -6189,7 +6189,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->OperationWithNestedStructure(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeOperationWithNestedStructureResponse(*outcome);
-  });
+  }, "OperationWithNestedStructure");
   (void)router_->Add("POST", "/PostPlayerAction", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -6212,7 +6212,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->PostPlayerAction(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializePostPlayerActionResponse(*outcome);
-  });
+  }, "PostPlayerAction");
   (void)router_->Add("POST", "/PostUnionWithJsonName", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -6235,7 +6235,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->PostUnionWithJsonName(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializePostUnionWithJsonNameResponse(*outcome);
-  });
+  }, "PostUnionWithJsonName");
   (void)router_->Add("POST", "/requestcompression/putcontentwithencoding", [handler](const smithy::http::HttpRequest& raw_request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     smithy::http::HttpRequest request = raw_request;
     // @requestCompression(gzip): decode before parsing.
@@ -6262,7 +6262,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->PutWithContentEncoding(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializePutWithContentEncodingResponse(*outcome);
-  });
+  }, "PutWithContentEncoding");
   (void)router_->Add("POST", "/QueryIdempotencyTokenAutoFill", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -6280,7 +6280,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->QueryIdempotencyTokenAutoFill(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeQueryIdempotencyTokenAutoFillResponse(*outcome);
-  });
+  }, "QueryIdempotencyTokenAutoFill");
   (void)router_->Add("POST", "/StringListMap", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -6298,7 +6298,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->QueryParamsAsStringListMap(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeQueryParamsAsStringListMapResponse(*outcome);
-  });
+  }, "QueryParamsAsStringListMap");
   (void)router_->Add("POST", "/Precedence", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -6316,7 +6316,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->QueryPrecedence(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeQueryPrecedenceResponse(*outcome);
-  });
+  }, "QueryPrecedence");
   (void)router_->Add("GET", "/responseCodeHttpFallback", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -6334,7 +6334,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->ResponseCodeHttpFallback(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeResponseCodeHttpFallbackResponse(*outcome);
-  });
+  }, "ResponseCodeHttpFallback");
   (void)router_->Add("GET", "/responseCodeRequired", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -6352,7 +6352,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->ResponseCodeRequired(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeResponseCodeRequiredResponse(*outcome);
-  });
+  }, "ResponseCodeRequired");
   (void)router_->Add("PUT", "/SimpleScalarProperties", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -6375,7 +6375,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->SimpleScalarProperties(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeSimpleScalarPropertiesResponse(*outcome);
-  });
+  }, "SimpleScalarProperties");
   (void)router_->Add("PUT", "/SparseJsonLists", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -6398,7 +6398,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->SparseJsonLists(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeSparseJsonListsResponse(*outcome);
-  });
+  }, "SparseJsonLists");
   (void)router_->Add("POST", "/SparseJsonMaps", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -6423,7 +6423,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->SparseJsonMaps(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeSparseJsonMapsResponse(*outcome);
-  });
+  }, "SparseJsonMaps");
   (void)router_->Add("POST", "/body", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -6446,7 +6446,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->TestBodyStructure(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeTestBodyStructureResponse(*outcome);
-  });
+  }, "TestBodyStructure");
   (void)router_->Add("GET", "/no_input_no_payload", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -6464,7 +6464,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->TestGetNoInputNoPayload(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeTestGetNoInputNoPayloadResponse(*outcome);
-  });
+  }, "TestGetNoInputNoPayload");
   (void)router_->Add("GET", "/no_payload", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -6482,7 +6482,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->TestGetNoPayload(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeTestGetNoPayloadResponse(*outcome);
-  });
+  }, "TestGetNoPayload");
   (void)router_->Add("POST", "/blob_payload", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -6495,7 +6495,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->TestPayloadBlob(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeTestPayloadBlobResponse(*outcome);
-  });
+  }, "TestPayloadBlob");
   (void)router_->Add("POST", "/payload", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -6518,7 +6518,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->TestPayloadStructure(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeTestPayloadStructureResponse(*outcome);
-  });
+  }, "TestPayloadStructure");
   (void)router_->Add("POST", "/no_input_no_payload", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -6536,7 +6536,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->TestPostNoInputNoPayload(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeTestPostNoInputNoPayloadResponse(*outcome);
-  });
+  }, "TestPostNoInputNoPayload");
   (void)router_->Add("POST", "/no_payload", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -6554,7 +6554,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->TestPostNoPayload(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeTestPostNoPayloadResponse(*outcome);
-  });
+  }, "TestPostNoPayload");
   (void)router_->Add("POST", "/TimestampFormatHeaders", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -6572,7 +6572,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->TimestampFormatHeaders(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeTimestampFormatHeadersResponse(*outcome);
-  });
+  }, "TimestampFormatHeaders");
   (void)router_->Add("POST", "/UnitInputAndOutput", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -6590,7 +6590,7 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     auto outcome = handler->UnitInputAndOutput(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeUnitInputAndOutputResponse(*outcome);
-  });
+  }, "UnitInputAndOutput");
 }
 
 smithy::http::RequestHandler RestJsonServer::Handler() const {

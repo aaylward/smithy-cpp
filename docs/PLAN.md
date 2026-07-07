@@ -538,6 +538,13 @@ the project) completes the tutorial without help; BCR + Maven Central packaging 
   providers, server-side authenticator interface (vendor-specific schemes such as SigV4 are out
   of scope, per §2).
 - **Pagination**: generated paginator iterators from `@paginated`.
+- **Observability**: SDK-free hooks enriched for real backends — server observations carry the
+  matched operation name (router-stamped) and the incoming `traceparent` for log correlation;
+  a client attempt-observation interceptor; W3C Trace Context helpers
+  (parse/format/generate) plus a `PropagateTraceContext` client interceptor. An optional
+  `//runtime:otel` adapter mapping these hooks onto opentelemetry-cpp spans/metrics is
+  **post-0.1.0** (its dependency tree — protobuf, gRPC for OTLP — stays out of the dep-light
+  core; stabilize the hook shapes in production first).
 - **Fuzzing**: libFuzzer harnesses for JSON deserialization, URI parsing, and the server's
   request parsing (fed by the malformed-request corpus); OSS-Fuzz application once stable.
 - **Performance**: benchmark suite (Google Benchmark) for serde and request throughput; publish

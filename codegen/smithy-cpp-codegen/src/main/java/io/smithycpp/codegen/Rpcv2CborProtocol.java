@@ -159,7 +159,7 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
         "response.body = smithy::cbor::Encode(Serialize$L(*outcome)).ToString();",
         SerdeCodeGen.serdeFunctionSuffix(context, output));
     w.write("return response;");
-    w.closeBlock("});");
+    w.closeBlock("}, $S);", operation.getId().getName());
   }
 
   @Override

@@ -14,8 +14,10 @@
 #include "example/weather/server.h"
 #include "examples/weather/handwritten/weather_client.h"
 #include "smithy/client/interceptor.h"
+#include "smithy/client/observability.h"
 #include "smithy/http/loopback.h"
 #include "smithy/http/message.h"
+#include "smithy/http/trace_context.h"
 #include "smithy/server/middleware.h"
 
 namespace example::weather {
@@ -245,6 +247,51 @@ TEST_F(GeneratedServerEndToEndTest, PaginatorWalksAllPages) {
   const auto still_done = paginator.Next();
   ASSERT_TRUE(still_done.ok());
   EXPECT_FALSE(still_done->has_value());
+}
+
+// Observability end to end (Phase 7c): the client propagates a W3C trace
+// context and observes its attempts; the server's Observe middleware reports
+// the matched operation and the incoming traceparent for correlation.
+TEST_F(GeneratedServerEndToEndTest, TraceContextAndOperationFlowThroughObservability) {
+  std::vector<smithy::server::RequestObservation> served;
+  auto handler = smithy::server::Chain(
+      {smithy::server::Observe(
+          [&](const smithy::server::RequestObservation& o) { served.push_back(o); })},
+      server_->Handler());
+  auto loopback = std::make_shared<smithy::http::Loopback>();
+  ASSERT_TRUE(loopback->Start(handler).ok());
+
+  std::vector<smithy::AttemptObservation> attempts;
+  smithy::ClientConfig config;
+  config.http_client = loopback;
+  config.interceptors.push_back(smithy::PropagateTraceContext());
+  config.interceptors.push_back(
+      smithy::ObserveAttempts([&](const smithy::AttemptObservation& a) { attempts.push_back(a); }));
+  auto client = example::weather::WeatherClient::Create(std::move(config));
+  ASSERT_TRUE(client.ok());
+
+  const auto city = client->GetCity(example::weather::GetCityInput{.cityId = "seattle"});
+  ASSERT_TRUE(city.ok()) << city.error().message();
+
+  ASSERT_EQ(served.size(), 1u);
+  EXPECT_EQ(served[0].operation, "GetCity");
+  const auto trace = smithy::http::ParseTraceparent(served[0].trace_parent);
+  ASSERT_TRUE(trace.has_value()) << served[0].trace_parent;
+  EXPECT_TRUE(trace->sampled);
+
+  ASSERT_EQ(attempts.size(), 1u);
+  EXPECT_EQ(attempts[0].attempt, 1);
+  EXPECT_EQ(attempts[0].status, 200);
+  EXPECT_EQ(attempts[0].method, "GET");
+
+  // Dispatch failures report an empty operation.
+  smithy::http::HttpRequest unrouted;
+  unrouted.method = "GET";
+  unrouted.target = "/no/such/route";
+  (void)handler(unrouted);
+  ASSERT_EQ(served.size(), 2u);
+  EXPECT_EQ(served[1].status, 404);
+  EXPECT_TRUE(served[1].operation.empty());
 }
 
 TEST_F(GeneratedServerEndToEndTest, DeleteCityIs204WithNoBody) {

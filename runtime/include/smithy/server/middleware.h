@@ -28,6 +28,13 @@ http::RequestHandler Chain(std::vector<Middleware> middleware, http::RequestHand
 struct RequestObservation {
   std::string method;
   std::string target;
+  // The Smithy operation that handled the request (from the generated
+  // router's HttpResponse::operation annotation); empty for 404/405/400
+  // dispatch failures.
+  std::string operation;
+  // The request's W3C traceparent header, verbatim, for log correlation;
+  // empty when absent. See smithy/http/trace_context.h to parse it.
+  std::string trace_parent;
   int status = 0;
   std::chrono::milliseconds duration{0};
 };

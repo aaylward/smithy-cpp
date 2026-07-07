@@ -397,7 +397,7 @@ RoundTripRestServer::RoundTripRestServer(std::shared_ptr<RoundTripRestHandler> h
     auto outcome = handler->DescribeSink(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeDescribeSinkResponse(*outcome);
-  });
+  }, "DescribeSink");
   (void)router_->Add("PUT", "/sinks/{sinkId}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -422,7 +422,7 @@ RoundTripRestServer::RoundTripRestServer(std::shared_ptr<RoundTripRestHandler> h
     auto outcome = handler->PutSink(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializePutSinkResponse(*outcome);
-  });
+  }, "PutSink");
   (void)router_->Add("POST", "/sinks/{sinkId}/attachment", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
@@ -442,7 +442,7 @@ RoundTripRestServer::RoundTripRestServer(std::shared_ptr<RoundTripRestHandler> h
     auto outcome = handler->UploadAttachment(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeUploadAttachmentResponse(*outcome);
-  });
+  }, "UploadAttachment");
 }
 
 smithy::http::RequestHandler RoundTripRestServer::Handler() const {

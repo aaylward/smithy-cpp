@@ -132,10 +132,11 @@ TEST(WeatherSmokeTest, ModeledErrorsMapAcrossTheWire) {
       smithy::Outcome<GetCityOutput> GetCity(const GetCityInput& input) override {
         (void)input;
         smithy::Error error = smithy::Error::Modeled("NoSuchResource", "smoke");
-            error.set_detail([] {
+            auto detail = [] {
           NoSuchResource v{};
           return v;
-        }());
+        }();
+        error.set_detail(std::move(detail));
         return error;
       }
   };

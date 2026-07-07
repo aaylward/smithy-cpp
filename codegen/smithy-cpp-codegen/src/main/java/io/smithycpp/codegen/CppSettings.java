@@ -21,13 +21,19 @@ public final class CppSettings {
   private final String namespace;
   private final String runtimeTarget;
   private final String testsPackage;
+  private final boolean malformedTests;
 
   private CppSettings(
-      ShapeId service, String namespace, String runtimeTarget, String testsPackage) {
+      ShapeId service,
+      String namespace,
+      String runtimeTarget,
+      String testsPackage,
+      boolean malformedTests) {
     this.service = service;
     this.namespace = namespace;
     this.runtimeTarget = runtimeTarget;
     this.testsPackage = testsPackage;
+    this.malformedTests = malformedTests;
   }
 
   public static CppSettings fromNode(ObjectNode node) {
@@ -36,11 +42,12 @@ public final class CppSettings {
     String runtimeTarget =
         node.getStringMemberOrDefault("runtimeTarget", "@smithy_cpp//runtime:core");
     String testsPackage = node.getStringMemberOrDefault("testsPackage", null);
+    boolean malformedTests = node.getBooleanMemberOrDefault("malformedTests", false);
     if (!namespace.matches("[A-Za-z_][A-Za-z0-9_]*(::[A-Za-z_][A-Za-z0-9_]*)*")) {
       throw new IllegalArgumentException(
           "cpp-codegen: 'namespace' must be a C++ namespace like a::b, got: " + namespace);
     }
-    return new CppSettings(service, namespace, runtimeTarget, testsPackage);
+    return new CppSettings(service, namespace, runtimeTarget, testsPackage, malformedTests);
   }
 
   public ShapeId service() {
@@ -94,6 +101,15 @@ public final class CppSettings {
     return testsPackage;
   }
 
+  /**
+   * Whether to generate server suites from {@code smithy.test#httpMalformedRequestTests}. Off by
+   * default: most such suites exercise parser strictness the generator doesn't enforce yet, so it's
+   * enabled per-module (the constraint-validation suite) rather than globally.
+   */
+  public boolean malformedTests() {
+    return malformedTests;
+  }
+
   @Override
   public boolean equals(Object other) {
     if (!(other instanceof CppSettings that)) {
@@ -102,11 +118,12 @@ public final class CppSettings {
     return service.equals(that.service)
         && namespace.equals(that.namespace)
         && runtimeTarget.equals(that.runtimeTarget)
-        && Objects.equals(testsPackage, that.testsPackage);
+        && Objects.equals(testsPackage, that.testsPackage)
+        && malformedTests == that.malformedTests;
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(service, namespace, runtimeTarget, testsPackage);
+    return Objects.hash(service, namespace, runtimeTarget, testsPackage, malformedTests);
   }
 }

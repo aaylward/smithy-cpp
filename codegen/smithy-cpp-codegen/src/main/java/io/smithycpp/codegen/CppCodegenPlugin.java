@@ -36,6 +36,9 @@ public final class CppCodegenPlugin implements SmithyBuildPlugin {
     runner.settings(settings);
     runner.service(settings.service());
     runner.performDefaultCodegenTransforms();
+    // Legacy string shapes carrying @enum become real enum shapes, so every
+    // enum downstream (types, serde, validation) has one representation.
+    runner.changeStringEnumsToEnumShapes(true);
     runner.createDedicatedInputsAndOutputs();
     runner.run();
   }

@@ -52,6 +52,7 @@ fun registerProtocolTestTask(
     cppNamespace: String,
     outputPath: String,
     omitOperations: List<String>,
+    malformedTests: Boolean = false,
 ) = tasks.register<JavaExec>(taskName) {
     group = "smithy-cpp"
     description = "Regenerates $outputPath from the official protocol test suite for $service"
@@ -63,7 +64,8 @@ fun registerProtocolTestTask(
         "--runtime-target", "//runtime:core",
         "--output", File(repoRoot, outputPath).absolutePath,
         "--tests-package", "//" + outputPath,
-    ) + omitOperations.flatMap { listOf("--omit-operation", it) }
+    ) + omitOperations.flatMap { listOf("--omit-operation", it) } +
+        (if (malformedTests) listOf("--malformed-tests", "true") else emptyList())
     doFirst {
         project.delete(File(repoRoot, outputPath))
     }
@@ -115,10 +117,30 @@ val generateRpcv2CborProtocolTests = registerProtocolTestTask(
     ),
 )
 
+// The constraint-validation suite: httpMalformedRequestTests only (no
+// httpRequestTests/httpResponseTests), so malformed generation is enabled for
+// this module. The main suites' malformed tests (parser strictness) are a
+// Phase 4d follow-up.
+val generateRestJson1ValidationProtocolTests = registerProtocolTestTask(
+    "generateRestJson1ValidationProtocolTests",
+    "aws.protocoltests.restjson.validation#RestJsonValidation",
+    "smithy::protocoltests::restjsonvalidation",
+    "protocol-tests/restjson1-validation/generated",
+    listOf(
+        // Recursive shapes need boxed-recursion support (PLAN Phase 2 note).
+        "aws.protocoltests.restjson.validation#RecursiveStructures",
+    ),
+    malformedTests = true,
+)
+
 tasks.register("generateProtocolTests") {
     group = "smithy-cpp"
     description = "Regenerates the checked-in protocol conformance suites under protocol-tests/"
-    dependsOn(generateRestJson1ProtocolTests, generateRpcv2CborProtocolTests)
+    dependsOn(
+        generateRestJson1ProtocolTests,
+        generateRpcv2CborProtocolTests,
+        generateRestJson1ValidationProtocolTests,
+    )
 }
 
 tasks.register("generateFixtures") {

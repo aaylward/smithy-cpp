@@ -177,21 +177,22 @@ final class NodeLiteralGenerator {
 
   /**
    * The smallest valid C++ value of a shape: default-constructed, except where defaults do not
-   * satisfy serde (required unions need a member, documents must be non-null). Used by the
-   * generated service smoke tests for inputs and stub-handler outputs.
+   * satisfy serde or constraint validation (required unions need a member, documents must be
+   * non-null, enums need a modeled value, @length/@range minimums must hold). Used by the generated
+   * service smoke tests for inputs and stub-handler outputs.
    */
   String minimalExpression(Shape shape) {
+    return minimalExpression(shape, null);
+  }
+
+  /** As above; {@code member} (nullable) supplies member-applied constraint trait overrides. */
+  private String minimalExpression(Shape shape, MemberShape member) {
     return switch (shape.getType()) {
       case BOOLEAN -> "false";
-      case BYTE, SHORT, INTEGER, INT_ENUM ->
-          shape.getType() == software.amazon.smithy.model.shapes.ShapeType.INT_ENUM
-              ? "static_cast<" + typeName(shape) + ">(0)"
-              : "0";
-      case LONG -> "0LL";
-      case FLOAT -> "0.0F";
-      case DOUBLE -> "0.0";
-      case STRING -> "\"\"";
-      case ENUM -> typeName(shape) + "::FromString(\"\")";
+      case BYTE, SHORT, INTEGER, LONG, FLOAT, DOUBLE, INT_ENUM ->
+          minimalNumberExpression(shape, member);
+      case STRING -> minimalStringExpression(shape, member);
+      case ENUM -> minimalEnumExpression(shape);
       case BLOB -> "smithy::Blob()";
       case TIMESTAMP -> "smithy::Timestamp::FromEpochMilliseconds(0)";
       case DOCUMENT -> "smithy::Document(smithy::DocumentMap{})";
@@ -202,13 +203,80 @@ final class NodeLiteralGenerator {
     };
   }
 
+  /** Effective constraint trait: member-applied overrides the target shape's. */
+  private <T extends software.amazon.smithy.model.traits.Trait> java.util.Optional<T> effective(
+      Shape shape, MemberShape member, Class<T> traitClass) {
+    if (member != null && member.hasTrait(traitClass)) {
+      return member.getTrait(traitClass);
+    }
+    return shape.getTrait(traitClass);
+  }
+
+  private String minimalNumberExpression(Shape shape, MemberShape member) {
+    java.math.BigDecimal value =
+        effective(shape, member, software.amazon.smithy.model.traits.RangeTrait.class)
+            .map(
+                range ->
+                    range
+                        .getMin()
+                        .filter(min -> min.signum() > 0)
+                        .or(() -> range.getMax().filter(max -> max.signum() < 0))
+                        .orElse(java.math.BigDecimal.ZERO))
+            .orElse(java.math.BigDecimal.ZERO);
+    String plain = value.stripTrailingZeros().toPlainString();
+    return switch (shape.getType()) {
+      case INT_ENUM -> "static_cast<" + typeName(shape) + ">(" + plain + ")";
+      case LONG -> plain + "LL";
+      case FLOAT -> (plain.contains(".") ? plain : plain + ".0") + "F";
+      case DOUBLE -> plain.contains(".") ? plain : plain + ".0";
+      default -> plain;
+    };
+  }
+
+  private String minimalStringExpression(Shape shape, MemberShape member) {
+    long min =
+        effective(shape, member, software.amazon.smithy.model.traits.LengthTrait.class)
+            .flatMap(software.amazon.smithy.model.traits.LengthTrait::getMin)
+            .orElse(0L);
+    if (min <= 0) {
+      return "\"\"";
+    }
+    // Best effort against a @pattern: pick the first candidate fill character
+    // the (Java-checked) regex accepts; constraint validation runs server-side.
+    java.util.Optional<String> pattern =
+        effective(shape, member, software.amazon.smithy.model.traits.PatternTrait.class)
+            .map(software.amazon.smithy.model.traits.PatternTrait::getValue);
+    for (String fill : new String[] {"0", "a", "A"}) {
+      String candidate = fill.repeat((int) min);
+      boolean matches =
+          pattern
+              .map(
+                  p -> {
+                    try {
+                      return java.util.regex.Pattern.compile(p).matcher(candidate).find();
+                    } catch (java.util.regex.PatternSyntaxException e) {
+                      return true;
+                    }
+                  })
+              .orElse(true);
+      if (matches) {
+        return CppLiterals.stringLiteral(candidate);
+      }
+    }
+    return CppLiterals.stringLiteral("0".repeat((int) min));
+  }
+
+  private String minimalEnumExpression(Shape shape) {
+    String first = shape.asEnumShape().orElseThrow().getEnumValues().values().iterator().next();
+    return typeName(shape) + "::FromString(" + CppLiterals.stringLiteral(first) + ")";
+  }
+
   private String minimalStructureExpression(StructureShape shape) {
     if (shape.getId().toString().equals("smithy.api#Unit")) {
       return "smithy::Unit{}";
     }
     // Default construction is already minimal unless a required member's
-    // default is invalid on the wire (unions, documents, nested structures
-    // containing them).
+    // default is invalid on the wire or under constraint validation.
     StringBuilder out = new StringBuilder("[] {\n");
     out.append("  ").append(typeName(shape)).append(" v{};\n");
     for (MemberShape member : shape.members()) {
@@ -216,11 +284,11 @@ final class NodeLiteralGenerator {
         continue;
       }
       Shape memberTarget = target(member);
-      if (needsExplicitMinimal(memberTarget, new java.util.HashSet<>())) {
+      if (needsExplicitMinimal(memberTarget, member, new java.util.HashSet<>())) {
         out.append("  v.")
             .append(context.cppSymbols().toMemberName(member))
             .append(" = ")
-            .append(minimalExpression(memberTarget))
+            .append(minimalExpression(memberTarget, member))
             .append(";\n");
       }
     }
@@ -230,22 +298,50 @@ final class NodeLiteralGenerator {
   private String minimalUnionExpression(UnionShape shape) {
     MemberShape first = shape.members().iterator().next();
     String factory = CaseUtils.toPascalCase(context.cppSymbols().toMemberName(first));
-    return typeName(shape) + "::From" + factory + "(" + minimalExpression(target(first)) + ")";
+    return typeName(shape)
+        + "::From"
+        + factory
+        + "("
+        + minimalExpression(target(first), first)
+        + ")";
   }
 
-  /** True when a default-constructed value of this shape does not deserialize. */
+  /**
+   * True when a default-constructed value of this shape (in this member position, nullable) does
+   * not deserialize or does not pass constraint validation.
+   */
   private boolean needsExplicitMinimal(
-      Shape shape, java.util.Set<software.amazon.smithy.model.shapes.ShapeId> visiting) {
+      Shape shape,
+      MemberShape member,
+      java.util.Set<software.amazon.smithy.model.shapes.ShapeId> visiting) {
     if (!visiting.add(shape.getId())) {
       return false;
     }
-    return switch (shape.getType()) {
-      case UNION, DOCUMENT -> true;
-      case STRUCTURE ->
-          shape.members().stream()
-              .anyMatch(m -> m.isRequired() && needsExplicitMinimal(target(m), visiting));
-      default -> false;
-    };
+    boolean constrainedDefault =
+        switch (shape.getType()) {
+          case ENUM -> true;
+          case STRING ->
+              effective(shape, member, software.amazon.smithy.model.traits.LengthTrait.class)
+                      .flatMap(software.amazon.smithy.model.traits.LengthTrait::getMin)
+                      .orElse(0L)
+                  > 0;
+          case BYTE, SHORT, INTEGER, LONG, FLOAT, DOUBLE ->
+              effective(shape, member, software.amazon.smithy.model.traits.RangeTrait.class)
+                  .map(
+                      range ->
+                          range.getMin().map(min -> min.signum() > 0).orElse(false)
+                              || range.getMax().map(max -> max.signum() < 0).orElse(false))
+                  .orElse(false);
+          default -> false;
+        };
+    return constrainedDefault
+        || switch (shape.getType()) {
+          case UNION, DOCUMENT -> true;
+          case STRUCTURE ->
+              shape.members().stream()
+                  .anyMatch(m -> m.isRequired() && needsExplicitMinimal(target(m), m, visiting));
+          default -> false;
+        };
   }
 
   private String documentExpression(Node node) {

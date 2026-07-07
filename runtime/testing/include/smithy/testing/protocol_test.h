@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <regex>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -153,6 +154,25 @@ inline ::testing::AssertionResult JsonBodyEquals(const std::string& expected,
   if (!ProtocolDocumentEquals(*expected_doc, *actual_doc)) {
     return ::testing::AssertionFailure()
            << "JSON bodies differ.\nexpected: " << expected << "\nactual:   " << actual;
+  }
+  return ::testing::AssertionSuccess();
+}
+
+// httpMalformedRequestTests `messageRegex` assertion: the pattern must match the
+// "message" member of the (JSON) error body.
+inline ::testing::AssertionResult BodyMessageMatches(const std::string& pattern,
+                                                     const std::string& body) {
+  auto doc = smithy::json::Decode(body);
+  if (!doc.ok() || !doc->is_map()) {
+    return ::testing::AssertionFailure() << "body is not a JSON object: <<" << body << ">>";
+  }
+  const Document* message = doc->Find("message");
+  if (message == nullptr || !message->is_string()) {
+    return ::testing::AssertionFailure() << "body has no string \"message\": <<" << body << ">>";
+  }
+  if (!std::regex_search(message->as_string(), std::regex(pattern, std::regex::ECMAScript))) {
+    return ::testing::AssertionFailure() << "message does not match.\npattern: " << pattern
+                                         << "\nmessage: " << message->as_string();
   }
   return ::testing::AssertionSuccess();
 }

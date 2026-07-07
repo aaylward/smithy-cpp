@@ -21,7 +21,7 @@ import software.amazon.smithy.model.transform.ModelTransformer;
  * <pre>
  * CppCodegenRunner [--model M.smithy] --service NS#Svc --namespace a::b \
  *     --runtime-target //runtime:core --output DIR \
- *     [--tests-package //pkg] [--omit-operation NS#Op]...
+ *     [--tests-package //pkg] [--omit-operation NS#Op]... [--malformed-tests true]
  * </pre>
  *
  * <p>Models are discovered from the classpath (so the official protocol-test suites generate
@@ -40,6 +40,7 @@ public final class CppCodegenRunner {
     String runtimeTarget = "@smithy_cpp//runtime:core";
     String output = null;
     String testsPackage = null;
+    boolean malformedTests = false;
     List<String> omitOperations = new ArrayList<>();
     for (int i = 0; i + 1 < args.length; i += 2) {
       switch (args[i]) {
@@ -50,6 +51,7 @@ public final class CppCodegenRunner {
         case "--output" -> output = args[i + 1];
         case "--tests-package" -> testsPackage = args[i + 1];
         case "--omit-operation" -> omitOperations.add(args[i + 1]);
+        case "--malformed-tests" -> malformedTests = Boolean.parseBoolean(args[i + 1]);
         default -> throw new IllegalArgumentException("unknown argument: " + args[i]);
       }
     }
@@ -81,6 +83,9 @@ public final class CppCodegenRunner {
             .withMember("runtimeTarget", runtimeTarget);
     if (testsPackage != null) {
       settings.withMember("testsPackage", testsPackage);
+    }
+    if (malformedTests) {
+      settings.withMember("malformedTests", true);
     }
 
     PluginContext context =

@@ -21,6 +21,8 @@ namespace {
 GetOrderOutput MinimalGetOrderOutput() {
     return [] {
     GetOrderOutput v{};
+    v.orderId = "0";
+    v.coffeeType = CoffeeType::FromString("DRIP");
     v.status = OrderStatus::FromPending([] {
     PendingStatus v{};
     return v;
@@ -32,6 +34,7 @@ GetOrderOutput MinimalGetOrderOutput() {
 OrderCoffeeOutput MinimalOrderCoffeeOutput() {
     return [] {
     OrderCoffeeOutput v{};
+    v.orderId = "0";
     v.status = OrderStatus::FromPending([] {
     PendingStatus v{};
     return v;
@@ -68,6 +71,7 @@ TEST(CafeSmokeTest, GetOrderRoundTrips) {
   CafeClient client = MakeClient(std::make_shared<SmokeHandler>());
     const GetOrderInput input = [] {
     GetOrderInput v{};
+    v.orderId = "0";
     return v;
   }();
   const auto outcome = client.GetOrder(input);
@@ -79,6 +83,7 @@ TEST(CafeSmokeTest, OrderCoffeeRoundTrips) {
   CafeClient client = MakeClient(std::make_shared<SmokeHandler>());
     const OrderCoffeeInput input = [] {
     OrderCoffeeInput v{};
+    v.coffeeType = CoffeeType::FromString("DRIP");
     return v;
   }();
   const auto outcome = client.OrderCoffee(input);
@@ -92,10 +97,12 @@ TEST(CafeSmokeTest, ModeledErrorsMapAcrossTheWire) {
       smithy::Outcome<GetOrderOutput> GetOrder(const GetOrderInput& input) override {
         (void)input;
         smithy::Error error = smithy::Error::Modeled("OrderNotFound", "smoke");
-            error.set_detail([] {
+            auto detail = [] {
           OrderNotFound v{};
+          v.orderId = "0";
           return v;
-        }());
+        }();
+        error.set_detail(std::move(detail));
         return error;
       }
   };
@@ -103,6 +110,7 @@ TEST(CafeSmokeTest, ModeledErrorsMapAcrossTheWire) {
   CafeClient client = MakeClient(std::make_shared<FailingHandler>());
     const GetOrderInput input = [] {
     GetOrderInput v{};
+    v.orderId = "0";
     return v;
   }();
   const auto outcome = client.GetOrder(input);

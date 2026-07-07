@@ -221,8 +221,19 @@ final class SmokeTestGenerator {
         typeName(input(errorOp)));
     w.write("(void)input;");
     w.write("smithy::Error error = smithy::Error::Modeled($S, \"smoke\");", wireName);
-    w.writeWithNoFormatting(
-        "    error.set_detail(" + literals.minimalExpression(errorShape) + ");");
+    w.writeWithNoFormatting("    auto detail = " + literals.minimalExpression(errorShape) + ";");
+    // A modeled "message" member would otherwise serialize its minimal value and
+    // shadow the generic error message on the wire. (Case-sensitive: only the
+    // lowercase wire key feeds smithy::Error::message() on the client side.)
+    for (var member : errorShape.members()) {
+      if (!member.getMemberName().equals("message")) {
+        continue;
+      }
+      if (context.model().expectShape(member.getTarget()).isStringShape()) {
+        w.write("detail.$L = \"smoke\";", context.cppSymbols().toMemberName(member));
+      }
+    }
+    w.write("error.set_detail(std::move(detail));");
     w.write("return error;");
     w.closeBlock("}");
     w.dedent();

@@ -73,10 +73,25 @@ public final class DirectedCppCodegen
                               || op.hasTrait(
                                   software.amazon.smithy.protocoltests.traits.HttpResponseTestsTrait
                                       .class));
-          if (hasProtocolTests) {
-            new ProtocolTestGenerator(directive.context(), service, protocol, operations).run();
+          boolean hasMalformedTests =
+              directive.settings().malformedTests()
+                  && operations.stream()
+                      .anyMatch(
+                          op ->
+                              op.hasTrait(
+                                  software.amazon.smithy.protocoltests.traits
+                                      .HttpMalformedRequestTestsTrait.class));
+          if (hasProtocolTests || hasMalformedTests) {
+            new ProtocolTestGenerator(
+                    directive.context(),
+                    service,
+                    protocol,
+                    operations,
+                    hasProtocolTests,
+                    hasMalformedTests)
+                .run();
           }
-          TestsBuildFileGenerator.run(directive.context(), hasProtocolTests);
+          TestsBuildFileGenerator.run(directive.context(), hasProtocolTests, hasMalformedTests);
         }
       }
     }

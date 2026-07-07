@@ -5,7 +5,7 @@ final class TestsBuildFileGenerator {
 
   private TestsBuildFileGenerator() {}
 
-  static void run(CppContext context, boolean hasProtocolTests) {
+  static void run(CppContext context, boolean hasProtocolTests, boolean hasMalformedTests) {
     String module = context.settings().testsPackage();
     String runtime = context.settings().runtimePackage();
     StringBuilder out = new StringBuilder();
@@ -65,6 +65,24 @@ final class TestsBuildFileGenerator {
             """
                 .formatted(kind, kind, module, module, runtime));
       }
+    }
+    if (hasMalformedTests) {
+      out.append(
+          """
+
+          cc_test(
+              name = "server_malformed_tests",
+              size = "small",
+              srcs = ["server_malformed_tests.cc"],
+              deps = [
+                  "%s:client",
+                  "%s:server",
+                  "%s:protocol_test_support",
+                  "@googletest//:gtest_main",
+              ],
+          )
+          """
+              .formatted(module, module, runtime));
     }
     context.fileManifest().writeFile("tests/BUILD.bazel", out.toString());
   }

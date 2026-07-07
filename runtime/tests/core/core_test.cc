@@ -8,6 +8,7 @@
 #include "smithy/core/document.h"
 #include "smithy/core/error.h"
 #include "smithy/core/outcome.h"
+#include "smithy/core/text.h"
 
 namespace smithy {
 namespace {
@@ -65,6 +66,13 @@ TEST(ErrorTest, DetailCarriesTypedPayload) {
 
   // Equality is classification-only; detail never participates.
   EXPECT_EQ(error, Error::Modeled("OrderNotFound", "gone"));
+}
+
+TEST(TextTest, Utf8CodePointCount) {
+  EXPECT_EQ(Utf8CodePointCount(""), 0u);
+  EXPECT_EQ(Utf8CodePointCount("abc"), 3u);
+  EXPECT_EQ(Utf8CodePointCount("caf\xC3\xA9"), 4u);       // café
+  EXPECT_EQ(Utf8CodePointCount("\xF0\x9F\x98\xB9"), 1u);  // one emoji
 }
 
 TEST(BlobTest, RoundTripsThroughString) {

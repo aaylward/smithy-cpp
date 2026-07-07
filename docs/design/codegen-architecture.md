@@ -23,7 +23,8 @@ smithy-rs's `codegen-core` structure (PLAN §3.2a).
 | `BuildFileGenerator` | The generated module's `BUILD.bazel` (buildifier-clean, sorted deps) |
 | `ServerGenerator` | `server.h`/`src/server.cc`: `<Service>Handler` interface + `<Service>Server` over the runtime router (routing, request parsing, response serialization, error mapping) |
 | `SmokeTestGenerator` | `tests/smoke_test.cc`: generated client ↔ generated server over loopback, every operation + error mapping (user-facing, passes out of the box) |
-| `ProtocolTestGenerator` | GoogleTest conformance suites from `smithy.test#httpRequestTests`/`#httpResponseTests` (client cases, incl. error shapes), with the must-shrink exclusion list in `resources/.../protocol-test-exclusions.txt` |
+| `ValidationGenerator` | Server-side constraint validation: per-shape `Validate*` functions (`@required`, `@length`, `@range`, `@pattern`, `@uniqueItems`, enum membership) producing the suite-exact 400 `ValidationException` failures before the handler runs |
+| `ProtocolTestGenerator` | GoogleTest conformance suites from `smithy.test#httpRequestTests`/`#httpResponseTests`/`#httpMalformedRequestTests` (client and server cases, incl. error shapes), with the must-shrink exclusion list in `resources/.../protocol-test-exclusions.txt` |
 | `TestsBuildFileGenerator` | The module's `tests/BUILD.bazel` (smoke test + conformance suites when present) |
 | `NodeLiteralGenerator` / `CppLiterals` | Protocol-test `params` nodes → C++ literals constructing generated types |
 | `CppCodegenRunner` | CLI main used by the `generateFixtures` Gradle task (generation without smithy-build) |
@@ -53,14 +54,18 @@ in; Phases 3–5 extend it to clients, servers, and the integration harness.
 
 ## Official protocol conformance suites
 
-`gradle generateProtocolTests` regenerates `protocol-tests/{restjson1,rpcv2cbor}/generated` from
-the published `smithy-aws-protocol-tests` / `smithy-protocol-tests` models: a normal generated
-module (types/serde/client/server) plus GoogleTest suites derived from the
+`gradle generateProtocolTests` regenerates
+`protocol-tests/{restjson1,rpcv2cbor,restjson1-validation}/generated` from the published
+`smithy-aws-protocol-tests` / `smithy-protocol-tests` models: a normal generated module
+(types/serde/client/server) plus GoogleTest suites derived from the
 `httpRequestTests`/`httpResponseTests` traits: `tests/{request,response}_tests.cc` run the
 generated client against the wire (client cases), and
 `tests/server_{request,response}_tests.cc` feed wire requests into the generated server and
-check parsed inputs / serialized responses (server cases) — ~466 cases green in CI. Two
-must-shrink escape hatches, both with reasons in-repo:
+check parsed inputs / serialized responses (server cases). The `restjson1-validation` module
+generates `tests/server_malformed_tests.cc` from `httpMalformedRequestTests` (behind the
+`malformedTests` plugin setting / `--malformed-tests` runner flag): malformed wire requests
+must be rejected with the exact `ValidationException` response before the handler runs. ~590
+cases green in CI. Two must-shrink escape hatches, both with reasons in-repo:
 
 - **Pruned operations** (`build.gradle.kts` task args): operations using bindings the generator
   does not implement yet (`@httpPayload`, `@httpPrefixHeaders`, `@httpResponseCode`, recursion,

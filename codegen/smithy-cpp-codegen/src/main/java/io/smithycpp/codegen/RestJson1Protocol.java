@@ -17,6 +17,12 @@ import software.amazon.smithy.model.traits.HttpTrait;
 /** restJson1 client bindings: HTTP method/URI from @http, labels, query, headers, JSON bodies. */
 final class RestJson1Protocol implements ProtocolGenerator {
 
+  /** Set up by writeServerHelpers (always called before the routes are emitted). */
+  private ValidationGenerator validation;
+
+  /** Whether the service emits ValidationErrorResponse (constraints or top-level @required). */
+  private boolean emitsValidation;
+
   @Override
   public String name() {
     return "restJson1";
@@ -590,10 +596,40 @@ final class RestJson1Protocol implements ProtocolGenerator {
     w.write("");
     ProtocolSupport.writeServerErrorToResponse(
         w, context, service, operations, "JsonError", /* errortypeHeader= */ true);
+    validation = new ValidationGenerator(context, operations);
+    emitsValidation = validation.hasValidators() || anyTopLevelRequired(context, operations);
+    if (emitsValidation) {
+      ValidationGenerator.writeFailureHelper(w);
+      validation.writeValidators(w);
+      ValidationGenerator.writeValidationErrorResponse(
+          w, "JsonError", "", /* errortypeHeader= */ true);
+    }
     for (OperationShape operation : operations) {
       writeParseInputFunction(w, context, serde, operation);
       writeSerializeResponseFunction(w, context, serde, operation);
     }
+  }
+
+  /**
+   * Whether any operation has a required top-level body/query/header member: those absences are
+   * ValidationException failures ("Member must not be null"), not serialization errors. Absent
+   * labels never route here, and nested required members stay serde-strict.
+   */
+  private static boolean anyTopLevelRequired(CppContext context, List<OperationShape> operations) {
+    HttpBindingIndex index = HttpBindingIndex.of(context.model());
+    for (OperationShape operation : operations) {
+      for (HttpBinding binding : index.getRequestBindings(operation).values()) {
+        boolean location =
+            switch (binding.getLocation()) {
+              case DOCUMENT, QUERY, HEADER -> true;
+              default -> false;
+            };
+        if (location && binding.getMember().isRequired()) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   /** Emits Parse<Op>Input(request, context) -> Outcome<Input> (inverse of the client request). */
@@ -628,11 +664,13 @@ final class RestJson1Protocol implements ProtocolGenerator {
 
     w.openBlock(
         "smithy::Outcome<$L> Parse$LInput(const smithy::http::HttpRequest& request, "
-            + "const smithy::server::RequestContext& context) {",
+            + "const smithy::server::RequestContext& context, "
+            + "std::vector<smithy::server::ValidationFailure>* validation_failures) {",
         inputType,
         opName);
     w.write("(void)request;");
     w.write("(void)context;");
+    w.write("(void)validation_failures;");
     w.write("$L input{};", inputType);
     for (HttpBinding binding : labels.values()) {
       // @httpLabel members are always required, and route matching guarantees
@@ -653,14 +691,28 @@ final class RestJson1Protocol implements ProtocolGenerator {
     }
     for (HttpBinding binding : headers.values()) {
       writeHeaderReadBinding(w, context, serde, binding, "request.headers", "input.");
+      if (binding.getMember().isRequired()) {
+        writeRequiredAbsenceFailure(
+            w,
+            binding.getMember(),
+            "!request.headers.Get(\"" + binding.getLocationName() + "\").has_value()");
+      }
     }
     if (!queries.isEmpty() || queryParams != null) {
+      for (HttpBinding binding : queries.values()) {
+        if (binding.getMember().isRequired()) {
+          w.write("bool saw_$L = false;", context.cppSymbols().toMemberName(binding.getMember()));
+        }
+      }
       w.openBlock("for (const auto& [key, value] : context.query_params) {");
       for (HttpBinding binding : queries.values()) {
         MemberShape member = binding.getMember();
         Shape target = context.model().expectShape(member.getTarget());
         String field = "input." + context.cppSymbols().toMemberName(member);
         w.openBlock("if (key == $S) {", binding.getLocationName());
+        if (member.isRequired()) {
+          w.write("saw_$L = true;", context.cppSymbols().toMemberName(member));
+        }
         if (target.isListShape()) {
           MemberShape element = target.asListShape().orElseThrow().getMember();
           if (!member.isRequired()) {
@@ -691,6 +743,14 @@ final class RestJson1Protocol implements ProtocolGenerator {
         w.closeBlock("}");
       }
       w.closeBlock("}");
+      for (HttpBinding binding : queries.values()) {
+        if (binding.getMember().isRequired()) {
+          writeRequiredAbsenceFailure(
+              w,
+              binding.getMember(),
+              "!saw_" + context.cppSymbols().toMemberName(binding.getMember()));
+        }
+      }
       if (queryParams != null) {
         MemberShape member = queryParams.getMember();
         var map = context.model().expectShape(member.getTarget()).asMapShape().orElseThrow();
@@ -730,11 +790,15 @@ final class RestJson1Protocol implements ProtocolGenerator {
         w.openBlock("{");
         w.write("const smithy::Document* member = body_doc->Find($S);", wireName);
         if (member.isRequired()) {
+          w.openBlock("if (member == nullptr || member->is_null()) {");
           w.write(
-              "if (member == nullptr || member->is_null()) return "
-                  + "smithy::Error::Serialization($S);",
-              path + ": missing required member");
+              "AddValidationFailure(validation_failures, $S, $S);",
+              "/" + member.getMemberName(),
+              ValidationGenerator.memberMustNotBeNull("/" + member.getMemberName()));
+          w.closeBlock("} else {");
+          w.indent();
           serde.writeDeserializeInto(w, member, "member", field, path);
+          w.closeBlock("}");
         } else {
           w.openBlock("if (member != nullptr && !member->is_null()) {");
           var targetType =
@@ -750,6 +814,17 @@ final class RestJson1Protocol implements ProtocolGenerator {
     w.write("return input;");
     w.closeBlock("}");
     w.write("");
+  }
+
+  /** Records a "Member must not be null" failure when {@code absentCondition} holds. */
+  private void writeRequiredAbsenceFailure(
+      CppWriter w, MemberShape member, String absentCondition) {
+    String path = "/" + member.getMemberName();
+    w.write(
+        "if ($L) AddValidationFailure(validation_failures, $S, $S);",
+        absentCondition,
+        path,
+        ValidationGenerator.memberMustNotBeNull(path));
   }
 
   /**
@@ -913,8 +988,20 @@ final class RestJson1Protocol implements ProtocolGenerator {
               + "\"expected content-type: application/json\", {});");
       w.closeBlock("}");
     }
-    w.write("auto input = Parse$LInput(request, context);", opName);
+    w.write("std::vector<smithy::server::ValidationFailure> validation_failures;");
+    w.write("auto input = Parse$LInput(request, context, &validation_failures);", opName);
+    if (emitsValidation) {
+      w.write(
+          "if (!validation_failures.empty()) "
+              + "return ValidationErrorResponse(validation_failures);");
+    }
     w.write("if (!input) return ErrorToResponse(input.error());");
+    if (validation != null && validation.validates(operation)) {
+      w.write("$L(*input, \"\", &validation_failures);", validation.validatorNameFor(operation));
+      w.write(
+          "if (!validation_failures.empty()) "
+              + "return ValidationErrorResponse(validation_failures);");
+    }
     w.write("auto outcome = handler->$L(*input);", opName);
     w.write("if (!outcome) return ErrorToResponse(outcome.error());");
     w.write("return Serialize$LResponse(*outcome);", opName);

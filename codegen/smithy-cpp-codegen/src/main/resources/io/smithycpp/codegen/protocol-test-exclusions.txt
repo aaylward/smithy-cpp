@@ -54,3 +54,13 @@ aws.protocoltests.restjson#RestJson server-request SDKAppendedGzipAfterProvidedE
 
 # Absent query list params deserialize as unset members, not engaged empty lists.
 aws.protocoltests.restjson#RestJson server-request RestJsonOmitsEmptyListQueryValues absent query lists stay unset (nullopt), not engaged empty lists
+
+# std::regex is a backtracking engine, so the deliberately catastrophic
+# pattern ^([0-9]+)+$ hangs; ReDoS-safe @pattern matching needs a linear-time
+# regex engine (tracked in PLAN).
+aws.protocoltests.restjson.validation#RestJsonValidation server-malformed RestJsonMalformedPatternReDOSString std::regex backtracking cannot bound the suite's catastrophic pattern
+
+# Nested @required absences (inside collections/structures) surface as strict
+# deserialization errors without JSON-pointer paths; reporting them as fieldList
+# entries needs a validating deserializer (PLAN follow-up).
+aws.protocoltests.restjson.validation#RestJsonValidation server-malformed RestJsonMalformedUniqueItemsStructureMissingKeyList nested @required absences are strict serde errors, not fieldList entries, until a validating deserializer lands

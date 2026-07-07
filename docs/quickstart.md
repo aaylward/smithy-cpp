@@ -132,3 +132,10 @@ bazel run @smithy_cpp//codegen:generator -- \
 
 `--mode types|client|server|both` picks what to emit; `--emit-build-file false` suppresses the
 generated `BUILD.bazel` when you're writing your own.
+
+## Day 2: evolving the model
+
+Once the integration is running, the model keeps changing — new fields, new operations,
+tightened constraints. [model-evolution.md](model-evolution.md) covers that loop: how edits
+propagate through the build graph (or through regeneration for vendored output), how to review
+generated diffs, and how CI catches drift and unimplemented handler methods.

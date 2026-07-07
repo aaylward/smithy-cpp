@@ -512,6 +512,10 @@ without reading generator internals or touching Gradle.
   regenerate vendored CLI output safely; keep hand-written handlers and tests working across
   regenerations. Exercise the flow in CI (scripted evolve-and-rebuild against the consumer
   example).
+  ✅ Done — docs/model-evolution.md (in-graph and vendored loops, diff review, CI drift
+  detection, worked example, compatibility cheat sheet);
+  `examples/bazel-consumer/model-evolution-check.sh` scripts the evolve-and-rebuild loop and
+  runs in the consumer CI job.
 
 **Docs:** the docs site is the deliverable.
 

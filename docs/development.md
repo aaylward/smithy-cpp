@@ -59,6 +59,10 @@ cd codegen && gradle spotlessApply
   dependencies whose BUILD files predate Bazel 9's removal of the native C++ rules.
 - Fixture Smithy models live under `examples/<name>/model/`; they double as test fixtures for
   codegen and the client↔server integration harness (PLAN Phases 2–5).
+- Generated output under `examples/*/generated/` and `protocol-tests/*/generated/` is checked
+  in as goldens: regenerate with `cd codegen && gradle generateFixtures generateProtocolTests`
+  and commit model + output together — CI fails on drift. The full loop (including the
+  consumer-side story) is in [model-evolution.md](model-evolution.md).
 - Machine-specific Bazel flags go in `.bazelrc.user` (gitignored), e.g. a
   `--downloader_config` when working behind a proxy that blocks GitHub downloads.
 - The Boost-dependent targets (`//runtime:http_beast` and the tests that use it) fetch ~30

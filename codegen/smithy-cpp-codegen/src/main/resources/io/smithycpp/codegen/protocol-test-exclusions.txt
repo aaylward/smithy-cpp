@@ -31,3 +31,26 @@ aws.protocoltests.restjson#RestJson request SDKAppendedGzipAfterProvidedEncoding
 
 # The test asserts an all-zero UUID, which needs an injectable token source.
 aws.protocoltests.restjson#RestJson request RestJsonQueryIdempotencyTokenAutoFill deterministic idempotency tokens need an injectable source
+
+# Server-mode exclusions (Phase 4b).
+# @default population is not implemented yet (server side).
+aws.protocoltests.restjson#RestJson server-request RestJsonServerPopulatesDefaultsWhenMissingInRequestBody @default population is not implemented yet
+aws.protocoltests.restjson#RestJson server-request RestJsonServerPopulatesNestedDefaultsWhenMissingInRequestBody @default population is not implemented yet
+aws.protocoltests.restjson#RestJson server-response RestJsonServerPopulatesDefaultsInResponseWhenMissingInParams @default population is not implemented yet
+aws.protocoltests.restjson#RestJson server-response RestJsonServerPopulatesNestedDefaultValuesWhenMissingInInResponseParams @default population is not implemented yet
+smithy.protocoltests.rpcv2Cbor#RpcV2Protocol server-request RpcV2CborServerPopulatesDefaultsWhenMissingInRequestBody @default population is not implemented yet
+smithy.protocoltests.rpcv2Cbor#RpcV2Protocol server-response RpcV2CborServerPopulatesDefaultsInResponseWhenMissingInParams @default population is not implemented yet
+
+# Parsed-input comparison uses operator==, under which NaN != NaN.
+aws.protocoltests.restjson#RestJson server-request RestJsonSupportsNaNFloatInputs NaN input members compare unequal under operator==
+aws.protocoltests.restjson#RestJson server-request RestJsonSupportsNaNFloatLabels NaN input members compare unequal under operator==
+aws.protocoltests.restjson#RestJson server-request RestJsonSupportsNaNFloatHeaderInputs NaN input members compare unequal under operator==
+aws.protocoltests.restjson#RestJson server-request RestJsonSupportsNaNFloatQueryValues NaN input members compare unequal under operator==
+smithy.protocoltests.rpcv2Cbor#RpcV2Protocol server-request RpcV2CborSupportsNaNFloatInputs NaN input members compare unequal under operator==
+
+# @requestCompression (gzip) is not implemented yet.
+aws.protocoltests.restjson#RestJson server-request SDKAppliedContentEncoding_restJson1 @requestCompression is not implemented yet
+aws.protocoltests.restjson#RestJson server-request SDKAppendedGzipAfterProvidedEncoding_restJson1 @requestCompression is not implemented yet
+
+# Absent query list params deserialize as unset members, not engaged empty lists.
+aws.protocoltests.restjson#RestJson server-request RestJsonOmitsEmptyListQueryValues absent query lists stay unset (nullopt), not engaged empty lists

@@ -79,6 +79,21 @@ final class SmokeTestGenerator {
     return overrides;
   }
 
+  /** "v.Status = 201;" when the output binds @httpResponseCode, else null. */
+  private String responseCodeOverride(OperationShape operation) {
+    if (operation.getTrait(software.amazon.smithy.model.traits.HttpTrait.class).isEmpty()) {
+      return null;
+    }
+    var index = software.amazon.smithy.model.knowledge.HttpBindingIndex.of(context.model());
+    for (var binding : index.getResponseBindings(operation).values()) {
+      if (binding.getLocation()
+          == software.amazon.smithy.model.knowledge.HttpBinding.Location.RESPONSE_CODE) {
+        return "v." + context.cppSymbols().toMemberName(binding.getMember()) + " = 201;";
+      }
+    }
+    return null;
+  }
+
   private void writeSmokeInput(CppWriter w, OperationShape operation) {
     List<String> overrides = labelOverrides(operation);
     String qualifier = overrides.isEmpty() ? "const " : "";
@@ -120,7 +135,16 @@ final class SmokeTestGenerator {
           "$L Minimal$LOutput() {",
           typeName(out),
           CppReservedWords.escape(operation.getId().getName()));
-      w.writeWithNoFormatting("  return " + literals.minimalExpression(out) + ";");
+      String responseCodeOverride = responseCodeOverride(operation);
+      if (responseCodeOverride == null) {
+        w.writeWithNoFormatting("  return " + literals.minimalExpression(out) + ";");
+      } else {
+        w.writeWithNoFormatting(
+            "  " + typeName(out) + " v = " + literals.minimalExpression(out) + ";");
+        w.write("// The @httpResponseCode member drives the wire status; use a real 2xx.");
+        w.write("$L", responseCodeOverride);
+        w.write("return v;");
+      }
       w.closeBlock("}");
       w.write("");
     }

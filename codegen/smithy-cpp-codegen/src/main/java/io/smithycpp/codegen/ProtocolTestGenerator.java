@@ -63,6 +63,8 @@ final class ProtocolTestGenerator {
   void run() {
     writeRequestTests();
     writeResponseTests();
+    writeServerRequestTests();
+    writeServerResponseTests();
     if (!unusedExclusions.isEmpty()) {
       throw new CodegenException(
           "cpp-codegen: protocol-test-exclusions.txt has entries that matched no generated test"
@@ -415,6 +417,369 @@ final class ProtocolTestGenerator {
     return out.append('}').toString();
   }
 
+  // ---------------------------------------------------------------------
+  // Server-mode tests: feed wire requests to the generated server.
+  // ---------------------------------------------------------------------
+
+  private StructureShape inputOf(OperationShape operation) {
+    return ProtocolSupport.inputShape(context, operation);
+  }
+
+  private StructureShape outputOf(OperationShape operation) {
+    return ProtocolSupport.outputShape(context, operation);
+  }
+
+  private String serverType() {
+    return CppReservedWords.escape(service.getId().getName()) + "Server";
+  }
+
+  private String handlerType() {
+    return CppReservedWords.escape(service.getId().getName()) + "Handler";
+  }
+
+  private void writeServerCommonIncludes(CppWriter w) {
+    writeCommonIncludes(w);
+    w.addInclude("\"" + context.settings().includePrefix() + "/server.h\"");
+    w.addInclude("<optional>");
+  }
+
+  /** RecordingHandler: stores the last parsed input per operation, answers minimally. */
+  private void writeRecordingHandler(CppWriter w) {
+    for (OperationShape operation : operations) {
+      String opName = CppReservedWords.escape(operation.getId().getName());
+      w.openBlock(
+          "$L Minimal$LOutput() {",
+          context.cppSymbols().toSymbol(outputOf(operation)).getName(),
+          opName);
+      w.writeWithNoFormatting("  return " + literals.minimalExpression(outputOf(operation)) + ";");
+      w.closeBlock("}");
+      w.write("");
+    }
+    w.openBlock("class RecordingHandler : public $L {", handlerType());
+    w.write("public:").indent();
+    for (OperationShape operation : operations) {
+      String opName = CppReservedWords.escape(operation.getId().getName());
+      String inputType = context.cppSymbols().toSymbol(inputOf(operation)).getName();
+      w.openBlock(
+          "smithy::Outcome<$L> $L(const $L& input) override {",
+          context.cppSymbols().toSymbol(outputOf(operation)).getName(),
+          opName,
+          inputType);
+      w.write("last$L = input;", opName);
+      w.write("return Minimal$LOutput();", opName);
+      w.closeBlock("}");
+      w.write("std::optional<$L> last$L;", inputType, opName);
+    }
+    w.dedent();
+    w.closeBlock("};");
+    w.write("");
+  }
+
+  /** The wire request the test case describes. */
+  private String wireRequest(
+      String method,
+      String uri,
+      List<String> queryParams,
+      Map<String, String> headers,
+      Optional<String> body,
+      Optional<String> mediaType) {
+    StringBuilder t = new StringBuilder();
+    t.append("  smithy::http::HttpRequest request;\n");
+    t.append("  request.method = ").append(CppLiterals.stringLiteral(method)).append(";\n");
+    StringBuilder target = new StringBuilder(uri);
+    if (!queryParams.isEmpty()) {
+      target.append('?').append(String.join("&", queryParams));
+    }
+    t.append("  request.target = ")
+        .append(CppLiterals.stringLiteral(target.toString()))
+        .append(";\n");
+    for (Map.Entry<String, String> header : new TreeMap<>(headers).entrySet()) {
+      t.append("  request.headers.Set(")
+          .append(CppLiterals.stringLiteral(header.getKey()))
+          .append(", ")
+          .append(CppLiterals.stringLiteral(header.getValue()))
+          .append(");\n");
+    }
+    if (body.isPresent() && !body.get().isEmpty()) {
+      if (mediaType.orElse(protocol.contentType()).equals("application/cbor")) {
+        t.append("  request.body = smithy::testing::FromBase64(")
+            .append(CppLiterals.stringLiteral(body.get()))
+            .append(");\n");
+      } else {
+        t.append("  request.body = ").append(CppLiterals.stringLiteral(body.get())).append(";\n");
+      }
+    }
+    return t.toString();
+  }
+
+  private void writeServerRequestTests() {
+    context
+        .writerDelegator()
+        .useFileWriter(
+            "tests/server_request_tests.cc",
+            w -> {
+              List<String> tests = new ArrayList<>();
+              for (OperationShape operation : operations) {
+                Optional<HttpRequestTestsTrait> trait =
+                    operation.getTrait(HttpRequestTestsTrait.class);
+                if (trait.isEmpty()) {
+                  continue;
+                }
+                for (HttpRequestTestCase testCase : trait.get().getTestCasesFor(AppliesTo.SERVER)) {
+                  if (!isThisProtocol(testCase.getProtocol())
+                      || excluded("server-request", testCase.getId())) {
+                    continue;
+                  }
+                  tests.add(serverRequestTest(operation, testCase));
+                }
+              }
+              writeServerCommonIncludes(w);
+              w.write("// Generated from smithy.test#httpRequestTests (server cases): the wire");
+              w.write("// request is routed into the generated server and the parsed input is");
+              w.write("// compared against the expected params.");
+              writeExcludedComment(w);
+              w.write("namespace {");
+              w.write("");
+              writeRecordingHandler(w);
+              w.write("}  // namespace");
+              w.write("");
+              for (String test : tests) {
+                w.writeWithNoFormatting(test);
+                w.write("");
+              }
+            });
+  }
+
+  private String serverRequestTest(OperationShape operation, HttpRequestTestCase testCase) {
+    String opName = CppReservedWords.escape(operation.getId().getName());
+    StringBuilder t = new StringBuilder();
+    testCase
+        .getDocumentation()
+        .ifPresent(docs -> docs.lines().forEach(line -> t.append("// ").append(line).append('\n')));
+    t.append("TEST(")
+        .append(service.getId().getName())
+        .append("ServerRequestTest, ")
+        .append(testCase.getId())
+        .append(") {\n");
+    t.append("  auto handler = std::make_shared<RecordingHandler>();\n");
+    t.append("  ").append(serverType()).append(" server(handler);\n");
+    t.append(
+        wireRequest(
+            testCase.getMethod(),
+            testCase.getUri(),
+            testCase.getQueryParams(),
+            testCase.getHeaders(),
+            testCase.getBody(),
+            testCase.getBodyMediaType()));
+    t.append("  const smithy::http::HttpResponse response = server.Handler()(request);\n");
+    t.append("  ASSERT_TRUE(handler->last")
+        .append(opName)
+        .append(".has_value()) << response.status << \" \" << response.body;\n");
+    t.append("  const ")
+        .append(context.cppSymbols().toSymbol(inputOf(operation)).getName())
+        .append(" expected = ")
+        .append(literals.expression(inputOf(operation), testCase.getParams()))
+        .append(";\n");
+    t.append("  EXPECT_EQ(*handler->last").append(opName).append(", expected);\n");
+    return t.append("}").toString();
+  }
+
+  private void writeServerResponseTests() {
+    context
+        .writerDelegator()
+        .useFileWriter(
+            "tests/server_response_tests.cc",
+            w -> {
+              List<String> tests = new ArrayList<>();
+              java.util.Set<OperationShape> needsRequest = new java.util.LinkedHashSet<>();
+              for (OperationShape operation : operations) {
+                operation
+                    .getTrait(HttpResponseTestsTrait.class)
+                    .ifPresent(
+                        trait -> {
+                          for (HttpResponseTestCase testCase :
+                              trait.getTestCasesFor(AppliesTo.SERVER)) {
+                            if (!isThisProtocol(testCase.getProtocol())
+                                || excluded("server-response", testCase.getId())) {
+                              continue;
+                            }
+                            needsRequest.add(operation);
+                            tests.add(serverResponseTest(operation, testCase, null));
+                          }
+                        });
+              }
+              Map<String, OperationShape> firstDeclaringOp = new TreeMap<>();
+              Map<String, StructureShape> errorByName = new TreeMap<>();
+              for (OperationShape operation : operations) {
+                for (ShapeId errorId : operation.getErrors(service)) {
+                  StructureShape error =
+                      context.model().expectShape(errorId).asStructureShape().orElseThrow();
+                  String name = context.cppSymbols().toSymbol(error).getName();
+                  firstDeclaringOp.putIfAbsent(name, operation);
+                  errorByName.putIfAbsent(name, error);
+                }
+              }
+              for (Map.Entry<String, StructureShape> entry : errorByName.entrySet()) {
+                StructureShape error = entry.getValue();
+                OperationShape operation = firstDeclaringOp.get(entry.getKey());
+                Optional<HttpResponseTestsTrait> trait =
+                    error.getTrait(HttpResponseTestsTrait.class);
+                if (trait.isEmpty()) {
+                  continue;
+                }
+                for (HttpResponseTestCase testCase :
+                    trait.get().getTestCasesFor(AppliesTo.SERVER)) {
+                  if (!isThisProtocol(testCase.getProtocol())
+                      || excluded("server-error", testCase.getId())) {
+                    continue;
+                  }
+                  needsRequest.add(operation);
+                  tests.add(serverResponseTest(operation, testCase, error));
+                }
+              }
+              writeServerCommonIncludes(w);
+              w.write("// Generated from smithy.test#httpResponseTests (server cases): a stub");
+              w.write("// handler returns the expected params and the wire response the server");
+              w.write("// produced is compared against the test definition.");
+              writeExcludedComment(w);
+              w.write("namespace {");
+              w.write("");
+              writeRecordingHandler(w);
+              for (OperationShape operation : needsRequest) {
+                writeMinimalRequestHelper(w, operation);
+              }
+              w.write("}  // namespace");
+              w.write("");
+              for (String test : tests) {
+                w.writeWithNoFormatting(test);
+                w.write("");
+              }
+            });
+  }
+
+  /** A routable wire request for the operation, captured from the generated client. */
+  private void writeMinimalRequestHelper(CppWriter w, OperationShape operation) {
+    String opName = CppReservedWords.escape(operation.getId().getName());
+    w.openBlock("smithy::http::HttpRequest MinimalRequestFor$L() {", opName);
+    w.write("auto transport = std::make_shared<smithy::testing::CapturingTransport>();");
+    w.write("smithy::ClientConfig config;");
+    w.write("config.http_client = transport;");
+    w.write("auto client = *$L::Create(std::move(config));", clientType());
+    w.writeWithNoFormatting(
+        "  "
+            + context.cppSymbols().toSymbol(inputOf(operation)).getName()
+            + " input = "
+            + literals.minimalExpression(inputOf(operation))
+            + ";");
+    for (String override : serverLabelOverrides(operation)) {
+      w.write("$L", override);
+    }
+    w.write("(void)client.$L(input);", opName);
+    w.write("return transport->last_request;");
+    w.closeBlock("}");
+    w.write("");
+  }
+
+  /** Non-empty @httpLabel values so the minimal request routes (mirrors the smoke tests). */
+  private List<String> serverLabelOverrides(OperationShape operation) {
+    List<String> overrides = new ArrayList<>();
+    if (operation.getTrait(software.amazon.smithy.model.traits.HttpTrait.class).isEmpty()) {
+      return overrides;
+    }
+    var index = software.amazon.smithy.model.knowledge.HttpBindingIndex.of(context.model());
+    for (var binding : index.getRequestBindings(operation).values()) {
+      if (binding.getLocation()
+          != software.amazon.smithy.model.knowledge.HttpBinding.Location.LABEL) {
+        continue;
+      }
+      var target = context.model().expectShape(binding.getMember().getTarget());
+      String field = "input." + context.cppSymbols().toMemberName(binding.getMember());
+      switch (target.getType()) {
+        case STRING -> overrides.add(field + " = \"smoke\";");
+        case ENUM ->
+            overrides.add(
+                field
+                    + " = "
+                    + context.cppSymbols().toSymbol(target).getName()
+                    + "::FromString(\"smoke\");");
+        default -> {}
+      }
+    }
+    return overrides;
+  }
+
+  /** One server response test; {@code error} null for output cases. */
+  private String serverResponseTest(
+      OperationShape operation, HttpResponseTestCase testCase, StructureShape error) {
+    String opName = CppReservedWords.escape(operation.getId().getName());
+    String outputType = context.cppSymbols().toSymbol(outputOf(operation)).getName();
+    String inputType = context.cppSymbols().toSymbol(inputOf(operation)).getName();
+    StringBuilder t = new StringBuilder();
+    testCase
+        .getDocumentation()
+        .ifPresent(docs -> docs.lines().forEach(line -> t.append("// ").append(line).append('\n')));
+    t.append("TEST(")
+        .append(service.getId().getName())
+        .append(error == null ? "ServerResponseTest, " : "ServerErrorTest, ")
+        .append(testCase.getId())
+        .append(") {\n");
+    t.append("  class Handler final : public RecordingHandler {\n");
+    t.append("   public:\n");
+    t.append("    smithy::Outcome<")
+        .append(outputType)
+        .append("> ")
+        .append(opName)
+        .append("(const ")
+        .append(inputType)
+        .append("& input) override {\n");
+    t.append("      (void)input;\n");
+    if (error == null) {
+      t.append("      return ")
+          .append(literals.expression(outputOf(operation), testCase.getParams()))
+          .append(";\n");
+    } else {
+      t.append("      smithy::Error error = smithy::Error::Modeled(")
+          .append(CppLiterals.stringLiteral(error.getId().getName()))
+          .append(", \"\");\n");
+      t.append("      error.set_detail(")
+          .append(literals.expression(error, testCase.getParams()))
+          .append(");\n");
+      t.append("      return error;\n");
+    }
+    t.append("    }\n");
+    t.append("  };\n");
+    t.append("  ").append(serverType()).append(" server(std::make_shared<Handler>());\n");
+    t.append("  const smithy::http::HttpResponse response = server.Handler()(MinimalRequestFor")
+        .append(opName)
+        .append("());\n");
+    t.append("  EXPECT_EQ(response.status, ").append(testCase.getCode()).append(");\n");
+    for (Map.Entry<String, String> header : new TreeMap<>(testCase.getHeaders()).entrySet()) {
+      t.append("  EXPECT_EQ(response.headers.Get(")
+          .append(CppLiterals.stringLiteral(header.getKey()))
+          .append(").value_or(\"<missing>\"), ")
+          .append(CppLiterals.stringLiteral(header.getValue()))
+          .append(");\n");
+    }
+    String body = testCase.getBody().orElse(null);
+    if (body != null && !body.isEmpty()) {
+      String mediaType = testCase.getBodyMediaType().orElse("");
+      if (mediaType.equals("application/json") || mediaType.endsWith("+json")) {
+        t.append("  EXPECT_TRUE(smithy::testing::JsonBodyEquals(")
+            .append(CppLiterals.stringLiteral(body))
+            .append(", response.body));\n");
+      } else if (mediaType.equals("application/cbor")) {
+        t.append("  EXPECT_TRUE(smithy::testing::CborBodyEqualsBase64(")
+            .append(CppLiterals.stringLiteral(body))
+            .append(", response.body));\n");
+      } else {
+        t.append("  EXPECT_EQ(response.body, ")
+            .append(CppLiterals.stringLiteral(body))
+            .append(");\n");
+      }
+    }
+    return t.append("}").toString();
+  }
+
   /** Entries for {@code serviceId} from the shared exclusion resource. */
   private static Map<String, String> loadExclusions(ShapeId serviceId) {
     Map<String, String> exclusions = new LinkedHashMap<>();
@@ -432,7 +797,9 @@ final class ProtocolTestGenerator {
           continue;
         }
         String[] parts = line.split("\\s+", 4);
-        if (parts.length < 4 || !parts[1].matches("request|response|error|any")) {
+        if (parts.length < 4
+            || !parts[1].matches(
+                "request|response|error|server-request|server-response|server-error|any")) {
           throw new CodegenException(
               "cpp-codegen: bad exclusion line (want '<service> <request|response|error|any>"
                   + " <testId> <reason>'): "

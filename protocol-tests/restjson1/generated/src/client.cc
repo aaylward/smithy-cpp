@@ -584,6 +584,21 @@ smithy::Outcome<HttpRequestWithRegexLiteralOutput> RestJsonClient::HttpRequestWi
   return HttpRequestWithRegexLiteralOutput{};
 }
 
+smithy::Outcome<HttpResponseCodeOutput> RestJsonClient::HttpResponseCode(const HttpResponseCodeInput& input) const {
+  (void)input;
+  std::string target = path_prefix_;
+  target += "/HttpResponseCode";
+  smithy::http::HttpRequest request;
+  request.method = "PUT";
+  request.target = std::move(target);
+  auto response = Send(std::move(request));
+  if (!response) return std::move(response).error();
+  if (response->status < 200 || response->status > 299) return GenericError(ParseError(*response));
+  HttpResponseCodeOutput out{};
+  out.Status = static_cast<std::int32_t>(response->status);
+  return out;
+}
+
 smithy::Outcome<IgnoreQueryParamsInResponseOutput> RestJsonClient::IgnoreQueryParamsInResponse(const IgnoreQueryParamsInResponseInput& input) const {
   (void)input;
   std::string target = path_prefix_;
@@ -1959,6 +1974,21 @@ smithy::Outcome<ResponseCodeHttpFallbackOutput> RestJsonClient::ResponseCodeHttp
   if (!response) return std::move(response).error();
   if (response->status != 201) return GenericError(ParseError(*response));
   return ResponseCodeHttpFallbackOutput{};
+}
+
+smithy::Outcome<ResponseCodeRequiredOutput> RestJsonClient::ResponseCodeRequired(const ResponseCodeRequiredInput& input) const {
+  (void)input;
+  std::string target = path_prefix_;
+  target += "/responseCodeRequired";
+  smithy::http::HttpRequest request;
+  request.method = "GET";
+  request.target = std::move(target);
+  auto response = Send(std::move(request));
+  if (!response) return std::move(response).error();
+  if (response->status < 200 || response->status > 299) return GenericError(ParseError(*response));
+  ResponseCodeRequiredOutput out{};
+  out.responseCode = static_cast<std::int32_t>(response->status);
+  return out;
 }
 
 smithy::Outcome<SimpleScalarPropertiesOutput> RestJsonClient::SimpleScalarProperties(const SimpleScalarPropertiesInput& input) const {

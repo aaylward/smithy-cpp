@@ -278,6 +278,43 @@ TEST(RestJsonResponseTest, RestJsonGreetingWithErrorsNoPayload) {
   EXPECT_EQ(*outcome, expected);
 }
 
+// Binds the http response code to an output structure. Note that
+// even though all members are bound outside of the payload, an
+// empty JSON object is serialized in the response. However,
+// clients should be able to handle an empty JSON object or an
+// empty payload without failing to deserialize a response.
+TEST(RestJsonResponseTest, RestJsonHttpResponseCode) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 201;
+  fixture.transport->next_response.headers.Set("Content-Type", "application/json");
+  fixture.transport->next_response.body = "{}";
+  const auto outcome = fixture.client.HttpResponseCode(HttpResponseCodeInput{});
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  const HttpResponseCodeOutput expected = [] {
+  HttpResponseCodeOutput v{};
+  v.Status = 201;
+  return v;
+}();
+  EXPECT_EQ(*outcome, expected);
+}
+
+// This test ensures that clients gracefully handle cases where
+// the service responds with no payload rather than an empty JSON
+// object.
+TEST(RestJsonResponseTest, RestJsonHttpResponseCodeWithNoPayload) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 201;
+  fixture.transport->next_response.body = "";
+  const auto outcome = fixture.client.HttpResponseCode(HttpResponseCodeInput{});
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  const HttpResponseCodeOutput expected = [] {
+  HttpResponseCodeOutput v{};
+  v.Status = 201;
+  return v;
+}();
+  EXPECT_EQ(*outcome, expected);
+}
+
 // Query parameters must be ignored when serializing the output
 // of an operation. As of January 2021, server implementations
 // are expected to respond with a JSON object regardless of

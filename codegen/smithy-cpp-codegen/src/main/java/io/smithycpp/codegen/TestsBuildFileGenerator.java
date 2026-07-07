@@ -47,6 +47,24 @@ final class TestsBuildFileGenerator {
             """
                 .formatted(kind, kind, module, runtime));
       }
+      for (String kind : new String[] {"server_request", "server_response"}) {
+        out.append(
+            """
+
+            cc_test(
+                name = "%s_tests",
+                size = "small",
+                srcs = ["%s_tests.cc"],
+                deps = [
+                    "%s:client",
+                    "%s:server",
+                    "%s:protocol_test_support",
+                    "@googletest//:gtest_main",
+                ],
+            )
+            """
+                .formatted(kind, kind, module, module, runtime));
+      }
     }
     context.fileManifest().writeFile("tests/BUILD.bazel", out.toString());
   }

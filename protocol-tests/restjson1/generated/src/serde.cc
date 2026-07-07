@@ -2419,6 +2419,40 @@ smithy::Outcome<HttpRequestWithRegexLiteralOutput> DeserializeHttpRequestWithReg
   return out;
 }
 
+smithy::Document SerializeHttpResponseCodeInput(const HttpResponseCodeInput& value) {
+  smithy::DocumentMap map;
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<HttpResponseCodeInput> DeserializeHttpResponseCodeInput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("HttpResponseCodeInput: expected a map on the wire");
+  HttpResponseCodeInput out;
+  return out;
+}
+
+smithy::Document SerializeHttpResponseCodeOutput(const HttpResponseCodeOutput& value) {
+  smithy::DocumentMap map;
+  if (value.Status.has_value()) {
+    map.emplace("Status", smithy::Document(static_cast<std::int64_t>((*value.Status))));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<HttpResponseCodeOutput> DeserializeHttpResponseCodeOutput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("HttpResponseCodeOutput: expected a map on the wire");
+  HttpResponseCodeOutput out;
+  {
+    const smithy::Document* member = doc.Find("Status");
+    if (member != nullptr && !member->is_null()) {
+      std::int32_t parsed_member{};
+      if (!member->is_int()) return smithy::Error::Serialization("HttpResponseCodeOutput.Status: unexpected type on the wire");
+      parsed_member = static_cast<std::int32_t>(member->as_int());
+      out.Status = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
 smithy::Document SerializeIgnoreQueryParamsInResponseInput(const IgnoreQueryParamsInResponseInput& value) {
   smithy::DocumentMap map;
   return smithy::Document(std::move(map));
@@ -7039,6 +7073,37 @@ smithy::Document SerializeResponseCodeHttpFallbackOutput(const ResponseCodeHttpF
 smithy::Outcome<ResponseCodeHttpFallbackOutput> DeserializeResponseCodeHttpFallbackOutput(const smithy::Document& doc) {
   if (!doc.is_map()) return smithy::Error::Serialization("ResponseCodeHttpFallbackOutput: expected a map on the wire");
   ResponseCodeHttpFallbackOutput out;
+  return out;
+}
+
+smithy::Document SerializeResponseCodeRequiredInput(const ResponseCodeRequiredInput& value) {
+  smithy::DocumentMap map;
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<ResponseCodeRequiredInput> DeserializeResponseCodeRequiredInput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("ResponseCodeRequiredInput: expected a map on the wire");
+  ResponseCodeRequiredInput out;
+  return out;
+}
+
+smithy::Document SerializeResponseCodeRequiredOutput(const ResponseCodeRequiredOutput& value) {
+  smithy::DocumentMap map;
+  map.emplace("responseCode", smithy::Document(static_cast<std::int64_t>(value.responseCode)));
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<ResponseCodeRequiredOutput> DeserializeResponseCodeRequiredOutput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("ResponseCodeRequiredOutput: expected a map on the wire");
+  ResponseCodeRequiredOutput out;
+  {
+    const smithy::Document* member = doc.Find("responseCode");
+    if (member == nullptr || member->is_null()) {
+      return smithy::Error::Serialization("ResponseCodeRequiredOutput: missing required member: responseCode");
+    }
+    if (!member->is_int()) return smithy::Error::Serialization("ResponseCodeRequiredOutput.responseCode: unexpected type on the wire");
+    out.responseCode = static_cast<std::int32_t>(member->as_int());
+  }
   return out;
 }
 

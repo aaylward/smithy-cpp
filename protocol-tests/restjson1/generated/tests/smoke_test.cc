@@ -151,6 +151,16 @@ HttpRequestWithRegexLiteralOutput MinimalHttpRequestWithRegexLiteralOutput() {
   }();
 }
 
+HttpResponseCodeOutput MinimalHttpResponseCodeOutput() {
+    HttpResponseCodeOutput v = [] {
+    HttpResponseCodeOutput v{};
+    return v;
+  }();
+  // The @httpResponseCode member drives the wire status; use a real 2xx.
+  v.Status = 201;
+  return v;
+}
+
 IgnoreQueryParamsInResponseOutput MinimalIgnoreQueryParamsInResponseOutput() {
     return [] {
     IgnoreQueryParamsInResponseOutput v{};
@@ -531,6 +541,16 @@ ResponseCodeHttpFallbackOutput MinimalResponseCodeHttpFallbackOutput() {
   }();
 }
 
+ResponseCodeRequiredOutput MinimalResponseCodeRequiredOutput() {
+    ResponseCodeRequiredOutput v = [] {
+    ResponseCodeRequiredOutput v{};
+    return v;
+  }();
+  // The @httpResponseCode member drives the wire status; use a real 2xx.
+  v.responseCode = 201;
+  return v;
+}
+
 SimpleScalarPropertiesOutput MinimalSimpleScalarPropertiesOutput() {
     return [] {
     SimpleScalarPropertiesOutput v{};
@@ -678,6 +698,10 @@ class SmokeHandler : public RestJsonHandler {
     smithy::Outcome<HttpRequestWithRegexLiteralOutput> HttpRequestWithRegexLiteral(const HttpRequestWithRegexLiteralInput& input) override {
       (void)input;
       return MinimalHttpRequestWithRegexLiteralOutput();
+    }
+    smithy::Outcome<HttpResponseCodeOutput> HttpResponseCode(const HttpResponseCodeInput& input) override {
+      (void)input;
+      return MinimalHttpResponseCodeOutput();
     }
     smithy::Outcome<IgnoreQueryParamsInResponseOutput> IgnoreQueryParamsInResponse(const IgnoreQueryParamsInResponseInput& input) override {
       (void)input;
@@ -894,6 +918,10 @@ class SmokeHandler : public RestJsonHandler {
     smithy::Outcome<ResponseCodeHttpFallbackOutput> ResponseCodeHttpFallback(const ResponseCodeHttpFallbackInput& input) override {
       (void)input;
       return MinimalResponseCodeHttpFallbackOutput();
+    }
+    smithy::Outcome<ResponseCodeRequiredOutput> ResponseCodeRequired(const ResponseCodeRequiredInput& input) override {
+      (void)input;
+      return MinimalResponseCodeRequiredOutput();
     }
     smithy::Outcome<SimpleScalarPropertiesOutput> SimpleScalarProperties(const SimpleScalarPropertiesInput& input) override {
       (void)input;
@@ -1165,6 +1193,17 @@ TEST(RestJsonSmokeTest, HttpRequestWithRegexLiteralRoundTrips) {
   const auto outcome = client.HttpRequestWithRegexLiteral(input);
   ASSERT_TRUE(outcome.ok()) << outcome.error().message();
   EXPECT_EQ(*outcome, MinimalHttpRequestWithRegexLiteralOutput());
+}
+
+TEST(RestJsonSmokeTest, HttpResponseCodeRoundTrips) {
+  RestJsonClient client = MakeClient(std::make_shared<SmokeHandler>());
+    const HttpResponseCodeInput input = [] {
+    HttpResponseCodeInput v{};
+    return v;
+  }();
+  const auto outcome = client.HttpResponseCode(input);
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  EXPECT_EQ(*outcome, MinimalHttpResponseCodeOutput());
 }
 
 TEST(RestJsonSmokeTest, IgnoreQueryParamsInResponseRoundTrips) {
@@ -1759,6 +1798,17 @@ TEST(RestJsonSmokeTest, ResponseCodeHttpFallbackRoundTrips) {
   const auto outcome = client.ResponseCodeHttpFallback(input);
   ASSERT_TRUE(outcome.ok()) << outcome.error().message();
   EXPECT_EQ(*outcome, MinimalResponseCodeHttpFallbackOutput());
+}
+
+TEST(RestJsonSmokeTest, ResponseCodeRequiredRoundTrips) {
+  RestJsonClient client = MakeClient(std::make_shared<SmokeHandler>());
+    const ResponseCodeRequiredInput input = [] {
+    ResponseCodeRequiredInput v{};
+    return v;
+  }();
+  const auto outcome = client.ResponseCodeRequired(input);
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  EXPECT_EQ(*outcome, MinimalResponseCodeRequiredOutput());
 }
 
 TEST(RestJsonSmokeTest, SimpleScalarPropertiesRoundTrips) {

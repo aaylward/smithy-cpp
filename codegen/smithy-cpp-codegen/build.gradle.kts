@@ -101,9 +101,6 @@ val generateRestJson1ProtocolTests = registerProtocolTestTask(
         // @httpPrefixHeaders bindings are not implemented yet.
         "aws.protocoltests.restjson#HttpPrefixHeaders",
         "aws.protocoltests.restjson#HttpPrefixHeadersInResponse",
-        // @httpResponseCode bindings are not implemented yet.
-        "aws.protocoltests.restjson#HttpResponseCode",
-        "aws.protocoltests.restjson#ResponseCodeRequired",
     ),
 )
 

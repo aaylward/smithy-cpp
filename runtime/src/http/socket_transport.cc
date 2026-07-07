@@ -56,12 +56,25 @@ void SetTimeouts(SocketFd fd, int timeout_ms) {
   setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &value, sizeof(value));
   setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &value, sizeof(value));
 #endif
+#ifdef SO_NOSIGPIPE
+  // macOS/BSD have no MSG_NOSIGNAL; a peer that closes mid-send must surface
+  // as an EPIPE write error, never a process-killing SIGPIPE.
+  const int no_sigpipe = 1;
+  setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &no_sigpipe, sizeof(no_sigpipe));
+#endif
 }
 
 bool SendAll(SocketFd fd, std::string_view data) {
+#ifdef MSG_NOSIGNAL
+  // Linux: writes to a peer-closed socket fail with EPIPE instead of raising
+  // SIGPIPE (whose default action would kill the process).
+  constexpr int kSendFlags = MSG_NOSIGNAL;
+#else
+  constexpr int kSendFlags = 0;  // Windows has no SIGPIPE; macOS uses SO_NOSIGPIPE.
+#endif
   while (!data.empty()) {
     const int chunk = static_cast<int>(data.size() > 65536 ? 65536 : data.size());
-    const auto sent = send(fd, data.data(), chunk, 0);
+    const auto sent = send(fd, data.data(), chunk, kSendFlags);
     if (sent <= 0) return false;
     data.remove_prefix(static_cast<std::size_t>(sent));
   }

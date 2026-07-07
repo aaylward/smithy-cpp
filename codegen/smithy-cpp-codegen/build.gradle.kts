@@ -131,10 +131,6 @@ val generateSimpleRestJsonProtocolTests = registerProtocolTestTask(
     "alloy.test#PizzaAdminService",
     "smithy::protocoltests::simplerestjson",
     "protocol-tests/simplerestjson/generated",
-    omitOperations = listOf(
-        // @required response @httpHeader members not generated yet (Phase 4d note).
-        "alloy.test#AddMenuItem",
-    ),
     malformedTests = true,
 )
 
@@ -144,10 +140,6 @@ val generateRpcv2CborProtocolTests = registerProtocolTestTask(
     "smithy::protocoltests::rpcv2cbor",
     "protocol-tests/rpcv2cbor/generated",
     malformedTests = true,
-    omitOperations = listOf(
-        // Recursive shapes need boxed-recursion support (PLAN Phase 2 note).
-        "smithy.protocoltests.rpcv2Cbor#RecursiveShapes",
-    ),
 )
 
 // jsonRpc2 conformance: our authored suite (JSON-RPC 2.0 is an open standard

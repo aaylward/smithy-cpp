@@ -3,10 +3,6 @@
 # Every entry must match a test that would otherwise be generated — stale
 # entries fail generation — and the list must only shrink over time.
 
-# @default / @clientOptional value population is not implemented yet.
-smithy.protocoltests.rpcv2Cbor#RpcV2Protocol request RpcV2CborClientPopulatesDefaultValuesInInput @default population is not implemented yet
-smithy.protocoltests.rpcv2Cbor#RpcV2Protocol response RpcV2CborClientPopulatesDefaultsValuesWhenMissingInResponse @default population is not implemented yet
-
 # Generated output comparison uses operator==, under which NaN != NaN; the
 # client deserializes these payloads correctly but the assertion cannot pass.
 smithy.protocoltests.rpcv2Cbor#RpcV2Protocol response RpcV2CborSupportsNaNFloatOutputs NaN output members compare unequal under operator==
@@ -21,10 +17,6 @@ smithy.protocoltests.rpcv2Cbor#RpcV2Protocol response RpcV2CborFloat16MSBNaN NaN
 # The test asserts an all-zero UUID, which needs an injectable token source.
 
 # Server-mode exclusions (Phase 4b).
-# @default population is not implemented yet (server side).
-smithy.protocoltests.rpcv2Cbor#RpcV2Protocol server-request RpcV2CborServerPopulatesDefaultsWhenMissingInRequestBody @default population is not implemented yet
-smithy.protocoltests.rpcv2Cbor#RpcV2Protocol server-response RpcV2CborServerPopulatesDefaultsInResponseWhenMissingInParams @default population is not implemented yet
-
 # Parsed-input comparison uses operator==, under which NaN != NaN.
 smithy.protocoltests.rpcv2Cbor#RpcV2Protocol server-request RpcV2CborSupportsNaNFloatInputs NaN input members compare unequal under operator==
 
@@ -52,13 +44,6 @@ smithy.protocoltests.rpcv2Cbor#RpcV2Protocol server-request RpcV2CborSupportsNaN
 # to an empty-input operation and must succeed).
 
 # simpleRestJson (alloy) conformance exclusions.
-# Non-JSON @httpPayload bodies (string/blob text payloads): simpleRestJson
-# treats payloads as JSON — matches alloy's own disallowList for string payloads.
-alloy.test#PizzaAdminService any SimpleRestJsonSomeRequiredHttpPayloadWithDefault text @httpPayload bodies are not supported
-alloy.test#PizzaAdminService any SimpleRestJsonNoneRequiredHttpPayloadWithDefault text @httpPayload bodies are not supported
-alloy.test#PizzaAdminService any SimpleRestJsonSomeHttpPayloadWithDefault text @httpPayload bodies are not supported
-alloy.test#PizzaAdminService any SimpleRestJsonNoneHttpPayloadWithDefault text @httpPayload bodies are not supported
-alloy.test#PizzaAdminService any VersionOutput string @httpPayload body is not supported
 
 # alloy @discriminated / @untagged / open-union encodings are not implemented.
 alloy.test#PizzaAdminService any OpenUnionsUnknownTaggedUnionCase alloy open/discriminated unions are not implemented

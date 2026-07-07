@@ -134,7 +134,7 @@ class CppCodegenPluginTest {
   }
 
   @Test
-  void rejectsRecursiveShapes() {
+  void generatesRecursiveShapes() {
     Model model =
         Model.assembler()
             .addUnparsedModel(
@@ -147,9 +147,56 @@ class CppCodegenPluginTest {
                 operation Op { input := { tree: TreeNode } }
 
                 structure TreeNode {
+                    label: Wrapper
                     children: TreeNodes
                 }
+                structure Wrapper {
+                    node: TreeNode
+                }
                 list TreeNodes { member: TreeNode }
+                """)
+            .assemble()
+            .unwrap();
+    MockManifest manifest = new MockManifest();
+    PluginContext context =
+        PluginContext.builder()
+            .fileManifest(manifest)
+            .model(model)
+            .settings(
+                Node.objectNodeBuilder()
+                    .withMember("service", "test.rec#Svc")
+                    .withMember("namespace", "test::rec")
+                    .build())
+            .build();
+    new CppCodegenPlugin().execute(context);
+    String header = manifest.expectFileString("/include/test/rec/types.h");
+    // Structure-to-structure cycle edges box; list cycles ride std::vector's
+    // incomplete-element support behind a forward declaration.
+    assertTrue(header.contains("std::optional<smithy::Boxed<TreeNode>> node{};"), header);
+    assertTrue(header.contains("std::optional<std::vector<TreeNode>> children{};"), header);
+    assertTrue(header.contains("struct TreeNode;"), header);
+  }
+
+  @Test
+  void rejectsRecursionThroughUnionMembers() {
+    Model model =
+        Model.assembler()
+            .addUnparsedModel(
+                "recursive-union.smithy",
+                """
+                $version: "2.0"
+                namespace test.rec
+
+                service Svc { version: "1", operations: [Op] }
+                operation Op { input := { tree: TreeNode } }
+
+                structure TreeNode {
+                    value: TreeValue
+                }
+                union TreeValue {
+                    leaf: String
+                    node: TreeNode
+                }
                 """)
             .assemble()
             .unwrap();
@@ -165,7 +212,7 @@ class CppCodegenPluginTest {
             .build();
     CodegenException error =
         assertThrows(CodegenException.class, () -> new CppCodegenPlugin().execute(context));
-    assertTrue(error.getMessage().contains("recursive"));
-    assertTrue(error.getMessage().contains("TreeNode"));
+    assertTrue(error.getMessage().contains("union member"));
+    assertTrue(error.getMessage().contains("TreeValue"));
   }
 }

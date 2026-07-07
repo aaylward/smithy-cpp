@@ -23,6 +23,7 @@ cc_library(
     hdrs = [
         "include/smithy/core/base64.h",
         "include/smithy/core/blob.h",
+        "include/smithy/core/boxed.h",
         "include/smithy/core/document.h",
         "include/smithy/core/document_serde.h",
         "include/smithy/core/error.h",
@@ -351,6 +352,7 @@ cc_test(
     name = "core_test",
     size = "small",
     srcs = [
+        "tests/core/boxed_test.cc",
         "tests/core/core_test.cc",
         "tests/core/document_serde_test.cc",
         "tests/core/timestamp_differential_test.cc",

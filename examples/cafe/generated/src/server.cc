@@ -71,19 +71,23 @@ void AddValidationFailure(std::vector<smithy::server::ValidationFailure>* failur
 }
 
 void ValidateGetOrderInput(const GetOrderInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
-  const std::string member_path = path + "/orderId";
   {
-    const std::size_t member_length = smithy::Utf8CodePointCount(value.orderId);
-    if (member_length < 1ULL || member_length > 128ULL) {
-      AddValidationFailure(failures, member_path, "Value with length " + std::to_string(member_length) + " at '" + member_path + "' failed to satisfy constraint: Member must have length between 1 and 128, inclusive");
+    const std::string member_path = path + "/orderId";
+    {
+      const std::size_t member_length = smithy::Utf8CodePointCount(value.orderId);
+      if (member_length < 1ULL || member_length > 128ULL) {
+        AddValidationFailure(failures, member_path, "Value with length " + std::to_string(member_length) + " at '" + member_path + "' failed to satisfy constraint: Member must have length between 1 and 128, inclusive");
+      }
     }
   }
 }
 
 void ValidateOrderCoffeeInput(const OrderCoffeeInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
-  const std::string member_path = path + "/coffeeType";
-  if (value.coffeeType.value() == CoffeeType::Value::kUnknown) {
-    AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy enum value set: [DRIP, ESPRESSO, CORTADO, LATTE]");
+  {
+    const std::string member_path = path + "/coffeeType";
+    if (value.coffeeType.value() == CoffeeType::Value::kUnknown) {
+      AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy enum value set: [DRIP, ESPRESSO, CORTADO, LATTE]");
+    }
   }
 }
 

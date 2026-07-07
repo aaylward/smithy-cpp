@@ -112,6 +112,7 @@ smithy::Error MakeBookNotFoundError(const smithy::http::HttpResponse& response, 
 smithy::Error DeserializeGetBookError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "BookNotFound") return MakeBookNotFoundError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 404) return MakeBookNotFoundError(response, std::move(parsed));
   return GenericError(std::move(parsed));
 }
 

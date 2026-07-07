@@ -48,18 +48,32 @@ final class SerdeGenerator {
             .walkShapes(context.model().expectShape(context.settings().service()));
     List<Shape> ordered = new ArrayList<>();
     for (Shape shape : TopologicalIndex.of(context.model()).getOrderedShapes()) {
-      if (!closure.contains(shape) || shape.getId().toString().equals("smithy.api#Unit")) {
-        continue;
-      }
-      if (shape.isStructureShape()
-          || shape.isUnionShape()
-          || shape.isListShape()
-          || shape.isMapShape()) {
+      if (serdeShape(closure, shape)) {
         ordered.add(shape);
       }
     }
-    // Recursive-shape rejection guarantees the topological index covered everything.
+    // Shapes on recursion cycles are not topologically orderable; they come
+    // last, in stable id order. Serde functions are all declared in serde.h
+    // (mutual recursion is fine) and types.h forward-declares cycle members.
+    List<Shape> recursive = new ArrayList<>();
+    for (Shape shape : TopologicalIndex.of(context.model()).getRecursiveShapes()) {
+      if (serdeShape(closure, shape)) {
+        recursive.add(shape);
+      }
+    }
+    recursive.sort(java.util.Comparator.comparing(Shape::getId));
+    ordered.addAll(recursive);
     return ordered;
+  }
+
+  private static boolean serdeShape(Set<Shape> closure, Shape shape) {
+    if (!closure.contains(shape) || shape.getId().toString().equals("smithy.api#Unit")) {
+      return false;
+    }
+    return shape.isStructureShape()
+        || shape.isUnionShape()
+        || shape.isListShape()
+        || shape.isMapShape();
   }
 
   void run() {
@@ -122,7 +136,8 @@ final class SerdeGenerator {
     w.write("smithy::DocumentMap map;");
     for (MemberShape member : shape.members()) {
       String field = "value." + context.cppSymbols().toMemberName(member);
-      if (member.isRequired()) {
+      // Populated @default members are plain and always serialize their value.
+      if (MemberDefaults.plain(context.model(), member)) {
         w.write("map.emplace($S, $L);", wireName(member), serde.serializeExpression(member, field));
       } else {
         w.openBlock("if ($L.has_value()) {", field);
@@ -148,7 +163,13 @@ final class SerdeGenerator {
       String path = type + "." + member.getMemberName();
       w.openBlock("{");
       w.write("const smithy::Document* member = doc.Find($S);", name);
-      if (member.isRequired()) {
+      if (MemberDefaults.lenientRequired(context.model(), member)) {
+        // @required + @default (the evolution pattern): absence keeps the
+        // member's default initializer instead of failing.
+        w.openBlock("if (member != nullptr && !member->is_null()) {");
+        serde.writeDeserializeInto(w, member, "member", field, path);
+        w.closeBlock("}");
+      } else if (member.isRequired()) {
         w.openBlock("if (member == nullptr || member->is_null()) {");
         w.write(
             "return smithy::Error::Serialization($S);",
@@ -162,7 +183,17 @@ final class SerdeGenerator {
         w.write("$L parsed_member{};", targetType.getName());
         serde.writeDeserializeInto(w, member, "member", "parsed_member", path);
         w.write("$L = std::move(parsed_member);", field);
-        w.closeBlock("}");
+        if (MemberDefaults.fillOnParse(context.model(), member)) {
+          // @input members stay client-optional, but servers (the only
+          // consumers of input deserializers) fill the default when absent.
+          w.closeBlock("} else {");
+          w.indent();
+          w.write("$L = $L;", field, MemberDefaults.literal(context, member));
+          w.dedent();
+          w.write("}");
+        } else {
+          w.closeBlock("}");
+        }
       }
       w.closeBlock("}");
     }

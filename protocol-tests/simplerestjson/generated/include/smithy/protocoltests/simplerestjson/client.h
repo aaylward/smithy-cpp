@@ -21,6 +21,7 @@ class PizzaAdminServiceClient {
     /// Fails when the endpoint cannot be parsed and no transport is injected.
     static smithy::Outcome<PizzaAdminServiceClient> Create(smithy::ClientConfig config);
 
+    smithy::Outcome<AddMenuItemOutput> AddMenuItem(const AddMenuItemInput& input) const;
     smithy::Outcome<CustomCodeOutput> CustomCode(const CustomCodeInput& input) const;
     smithy::Outcome<GetEnumOutput> GetEnum(const GetEnumInput& input) const;
     smithy::Outcome<GetIntEnumOutput> GetIntEnum(const GetIntEnumInput& input) const;

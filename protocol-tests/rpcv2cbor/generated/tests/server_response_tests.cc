@@ -17,10 +17,6 @@ namespace smithy::protocoltests::rpcv2cbor {
 // Generated from smithy.test#httpResponseTests (server cases): a stub
 // handler returns the expected params and the wire response the server
 // produced is compared against the test definition.
-//
-// Excluded cases (protocol-test-exclusions.txt; the list must only shrink):
-//   RpcV2CborServerPopulatesDefaultsInResponseWhenMissingInParams (server-response) — @default population is not implemented yet
-
 namespace {
 
 EmptyInputOutputOutput MinimalEmptyInputOutputOutput() {
@@ -68,6 +64,13 @@ OperationWithDefaultsOutput MinimalOperationWithDefaultsOutput() {
 OptionalInputOutputOutput MinimalOptionalInputOutputOutput() {
     return [] {
     OptionalInputOutputOutput v{};
+    return v;
+  }();
+}
+
+RecursiveShapesOutput MinimalRecursiveShapesOutput() {
+    return [] {
+    RecursiveShapesOutput v{};
     return v;
   }();
 }
@@ -144,6 +147,11 @@ class RecordingHandler : public RpcV2ProtocolHandler {
       return MinimalOptionalInputOutputOutput();
     }
     std::optional<OptionalInputOutputInput> lastOptionalInputOutput;
+    smithy::Outcome<RecursiveShapesOutput> RecursiveShapes(const RecursiveShapesInput& input) override {
+      lastRecursiveShapes = input;
+      return MinimalRecursiveShapesOutput();
+    }
+    std::optional<RecursiveShapesInput> lastRecursiveShapes;
     smithy::Outcome<RpcV2CborDenseMapsOutput> RpcV2CborDenseMaps(const RpcV2CborDenseMapsInput& input) override {
       lastRpcV2CborDenseMaps = input;
       return MinimalRpcV2CborDenseMapsOutput();
@@ -199,6 +207,20 @@ smithy::http::HttpRequest MinimalRequestForNoInputOutput() {
   return transport->last_request;
 }
 
+smithy::http::HttpRequest MinimalRequestForOperationWithDefaults() {
+  auto transport = std::make_shared<smithy::testing::CapturingTransport>();
+  smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
+  config.http_client = transport;
+  auto client = *RpcV2ProtocolClient::Create(std::move(config));
+    OperationWithDefaultsInput input = [] {
+    OperationWithDefaultsInput v{};
+    return v;
+  }();
+  (void)client.OperationWithDefaults(input);
+  return transport->last_request;
+}
+
 smithy::http::HttpRequest MinimalRequestForOptionalInputOutput() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
@@ -210,6 +232,20 @@ smithy::http::HttpRequest MinimalRequestForOptionalInputOutput() {
     return v;
   }();
   (void)client.OptionalInputOutput(input);
+  return transport->last_request;
+}
+
+smithy::http::HttpRequest MinimalRequestForRecursiveShapes() {
+  auto transport = std::make_shared<smithy::testing::CapturingTransport>();
+  smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
+  config.http_client = transport;
+  auto client = *RpcV2ProtocolClient::Create(std::move(config));
+    RecursiveShapesInput input = [] {
+    RecursiveShapesInput v{};
+    return v;
+  }();
+  (void)client.RecursiveShapes(input);
   return transport->last_request;
 }
 
@@ -337,6 +373,26 @@ TEST(RpcV2ProtocolServerResponseTest, no_output) {
   EXPECT_EQ(response.headers.Get("smithy-protocol").value_or("<missing>"), "rpc-v2-cbor");
 }
 
+// Server populates default values in response when missing in params.
+TEST(RpcV2ProtocolServerResponseTest, RpcV2CborServerPopulatesDefaultsInResponseWhenMissingInParams) {
+  class Handler final : public RecordingHandler {
+   public:
+    smithy::Outcome<OperationWithDefaultsOutput> OperationWithDefaults(const OperationWithDefaultsInput& input) override {
+      (void)input;
+      return [] {
+  OperationWithDefaultsOutput v{};
+  return v;
+}();
+    }
+  };
+  RpcV2ProtocolServer server(std::make_shared<Handler>());
+  const smithy::http::HttpResponse response = server.Handler()(MinimalRequestForOperationWithDefaults());
+  EXPECT_EQ(response.status, 200);
+  EXPECT_EQ(response.headers.Get("Content-Type").value_or("<missing>"), "application/cbor");
+  EXPECT_EQ(response.headers.Get("smithy-protocol").value_or("<missing>"), "rpc-v2-cbor");
+  EXPECT_TRUE(smithy::testing::CborBodyEqualsBase64("v21kZWZhdWx0U3RyaW5nYmhpbmRlZmF1bHRCb29sZWFu9WtkZWZhdWx0TGlzdIBwZGVmYXVsdFRpbWVzdGFtcMH7AAAAAAAAAABrZGVmYXVsdEJsb2JDYWJja2RlZmF1bHRCeXRlAWxkZWZhdWx0U2hvcnQBbmRlZmF1bHRJbnRlZ2VyCmtkZWZhdWx0TG9uZxhkbGRlZmF1bHRGbG9hdPo/gAAAbWRlZmF1bHREb3VibGX7P/AAAAAAAABqZGVmYXVsdE1hcKBrZGVmYXVsdEVudW1jRk9PbmRlZmF1bHRJbnRFbnVtAWtlbXB0eVN0cmluZ2BsZmFsc2VCb29sZWFu9GllbXB0eUJsb2JAaHplcm9CeXRlAGl6ZXJvU2hvcnQAa3plcm9JbnRlZ2VyAGh6ZXJvTG9uZwBpemVyb0Zsb2F0+gAAAABqemVyb0RvdWJsZfsAAAAAAAAAAP8=", response.body));
+}
+
 // When output is empty we write CBOR equivalent of {}
 TEST(RpcV2ProtocolServerResponseTest, optional_output) {
   class Handler final : public RecordingHandler {
@@ -355,6 +411,46 @@ TEST(RpcV2ProtocolServerResponseTest, optional_output) {
   EXPECT_EQ(response.headers.Get("Content-Type").value_or("<missing>"), "application/cbor");
   EXPECT_EQ(response.headers.Get("smithy-protocol").value_or("<missing>"), "rpc-v2-cbor");
   EXPECT_TRUE(smithy::testing::CborBodyEqualsBase64("v/8=", response.body));
+}
+
+// Serializes recursive structures
+TEST(RpcV2ProtocolServerResponseTest, RpcV2CborRecursiveShapes) {
+  class Handler final : public RecordingHandler {
+   public:
+    smithy::Outcome<RecursiveShapesOutput> RecursiveShapes(const RecursiveShapesInput& input) override {
+      (void)input;
+      return [] {
+  RecursiveShapesOutput v{};
+  v.nested = [] {
+  RecursiveShapesInputOutputNested1 v{};
+  v.foo = "Foo1";
+  v.nested = [] {
+  RecursiveShapesInputOutputNested2 v{};
+  v.bar = "Bar1";
+  v.recursiveMember = [] {
+  RecursiveShapesInputOutputNested1 v{};
+  v.foo = "Foo2";
+  v.nested = [] {
+  RecursiveShapesInputOutputNested2 v{};
+  v.bar = "Bar2";
+  return v;
+}();
+  return v;
+}();
+  return v;
+}();
+  return v;
+}();
+  return v;
+}();
+    }
+  };
+  RpcV2ProtocolServer server(std::make_shared<Handler>());
+  const smithy::http::HttpResponse response = server.Handler()(MinimalRequestForRecursiveShapes());
+  EXPECT_EQ(response.status, 200);
+  EXPECT_EQ(response.headers.Get("Content-Type").value_or("<missing>"), "application/cbor");
+  EXPECT_EQ(response.headers.Get("smithy-protocol").value_or("<missing>"), "rpc-v2-cbor");
+  EXPECT_TRUE(smithy::testing::CborBodyEqualsBase64("v2ZuZXN0ZWS/Y2Zvb2RGb28xZm5lc3RlZL9jYmFyZEJhcjFvcmVjdXJzaXZlTWVtYmVyv2Nmb29kRm9vMmZuZXN0ZWS/Y2JhcmRCYXIy//////8=", response.body));
 }
 
 // Deserializes maps

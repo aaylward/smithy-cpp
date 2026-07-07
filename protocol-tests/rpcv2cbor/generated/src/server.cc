@@ -81,9 +81,9 @@ void AddValidationFailure(std::vector<smithy::server::ValidationFailure>* failur
 }
 
 void ValidateDefaults(const Defaults& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
-  if (value.defaultEnum.has_value()) {
+  {
     const std::string member_path = path + "/defaultEnum";
-    if ((*value.defaultEnum).value() == TestEnum::Value::kUnknown) {
+    if (value.defaultEnum.value() == TestEnum::Value::kUnknown) {
       AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy enum value set: [FOO, BAR, BAZ]");
     }
   }
@@ -399,6 +399,34 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
     response.body = smithy::cbor::Encode(SerializeOptionalInputOutputOutput(*outcome)).ToString();
     return response;
   }, "OptionalInputOutput");
+  (void)router_->Add("POST", "/service/RpcV2Protocol/operation/RecursiveShapes", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
+    if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
+      return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
+    }
+    // Content-Type validation per the rpcv2Cbor spec: a present header must
+    // carry application/cbor (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/cbor") {
+      return CborError(415, "UnsupportedMediaTypeException", "expected content-type: application/cbor", {});
+    }
+    RecursiveShapesInput input{};
+    // An absent body deserializes like an empty CBOR map.
+    smithy::Document body_doc{smithy::DocumentMap{}};
+    if (!request.body.empty()) {
+      auto decoded = smithy::cbor::Decode(smithy::Blob::FromString(request.body));
+      if (!decoded) return CborError(400, "SerializationException", decoded.error().message(), {});
+      body_doc = *std::move(decoded);
+    }
+    auto parsed = DeserializeRecursiveShapesInput(body_doc);
+    if (!parsed) return CborError(400, "SerializationException", parsed.error().message(), {});
+    input = *std::move(parsed);
+    auto outcome = handler->RecursiveShapes(input);
+    if (!outcome) return ErrorToResponse(outcome.error());
+    smithy::http::HttpResponse response;
+    response.headers.Set("smithy-protocol", "rpc-v2-cbor");
+    response.headers.Set("content-type", "application/cbor");
+    response.body = smithy::cbor::Encode(SerializeRecursiveShapesOutput(*outcome)).ToString();
+    return response;
+  }, "RecursiveShapes");
   (void)router_->Add("POST", "/service/RpcV2Protocol/operation/RpcV2CborDenseMaps", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});

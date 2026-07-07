@@ -114,11 +114,11 @@ smithy::Error MakeSinkQuotaExceededError(const smithy::http::HttpResponse& respo
   const bool retryable = parsed.status >= 500;
   smithy::Error error = smithy::Error::Modeled("SinkQuotaExceeded", std::move(parsed.message), retryable);
   if (!parsed.doc.is_map()) parsed.doc = smithy::Document(smithy::DocumentMap{});
+  if (const auto header_value = response.headers.Get("x-retry-after-seconds"); header_value.has_value()) {
+    if (auto parsed_num = ParseInt64Text(*header_value, -2147483648LL, 2147483647LL)) parsed.doc.as_map().insert_or_assign("retryAfterSeconds", smithy::Document(*parsed_num));
+  }
   auto detail = DeserializeSinkQuotaExceeded(parsed.doc);
   if (detail.ok()) {
-    if (const auto header_value = response.headers.Get("x-retry-after-seconds"); header_value.has_value()) {
-      if (auto parsed_num = ParseInt64Text(*header_value, -2147483648LL, 2147483647LL)) detail->retryAfterSeconds = static_cast<std::int32_t>(*parsed_num);
-    }
     error.set_detail(*std::move(detail));
   }
   return error;
@@ -127,6 +127,7 @@ smithy::Error MakeSinkQuotaExceededError(const smithy::http::HttpResponse& respo
 smithy::Error DeserializeDescribeSinkError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "SinkNotFound") return MakeSinkNotFoundError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 404) return MakeSinkNotFoundError(response, std::move(parsed));
   return GenericError(std::move(parsed));
 }
 
@@ -134,12 +135,15 @@ smithy::Error DeserializePutSinkError(const smithy::http::HttpResponse& response
   ParsedError parsed = ParseError(response);
   if (parsed.code == "SinkNotFound") return MakeSinkNotFoundError(response, std::move(parsed));
   if (parsed.code == "SinkQuotaExceeded") return MakeSinkQuotaExceededError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 404) return MakeSinkNotFoundError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 503) return MakeSinkQuotaExceededError(response, std::move(parsed));
   return GenericError(std::move(parsed));
 }
 
 smithy::Error DeserializeUploadAttachmentError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "SinkNotFound") return MakeSinkNotFoundError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 404) return MakeSinkNotFoundError(response, std::move(parsed));
   return GenericError(std::move(parsed));
 }
 

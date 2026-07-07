@@ -145,6 +145,21 @@ smithy::Error MakeNotFoundErrorError(const smithy::http::HttpResponse& response,
   return error;
 }
 
+smithy::Error MakePriceErrorError(const smithy::http::HttpResponse& response, ParsedError parsed) {
+  (void)response;
+  const bool retryable = parsed.status >= 500;
+  smithy::Error error = smithy::Error::Modeled("PriceError", std::move(parsed.message), retryable);
+  if (!parsed.doc.is_map()) parsed.doc = smithy::Document(smithy::DocumentMap{});
+  if (const auto header_value = response.headers.Get("X-CODE"); header_value.has_value()) {
+    if (auto parsed_num = ParseInt64Text(*header_value, -2147483648LL, 2147483647LL)) parsed.doc.as_map().insert_or_assign("code", smithy::Document(*parsed_num));
+  }
+  auto detail = DeserializePriceError(parsed.doc);
+  if (detail.ok()) {
+    error.set_detail(*std::move(detail));
+  }
+  return error;
+}
+
 smithy::Error MakeUnknownServerErrorError(const smithy::http::HttpResponse& response, ParsedError parsed) {
   (void)response;
   const bool retryable = parsed.status >= 500;
@@ -157,11 +172,25 @@ smithy::Error MakeUnknownServerErrorError(const smithy::http::HttpResponse& resp
   return error;
 }
 
+smithy::Error DeserializeAddMenuItemError(const smithy::http::HttpResponse& response) {
+  ParsedError parsed = ParseError(response);
+  if (parsed.code == "GenericClientError") return MakeGenericClientErrorError(response, std::move(parsed));
+  if (parsed.code == "GenericServerError") return MakeGenericServerErrorError(response, std::move(parsed));
+  if (parsed.code == "PriceError") return MakePriceErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 400) return MakePriceErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 418) return MakeGenericClientErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 502) return MakeGenericServerErrorError(response, std::move(parsed));
+  return GenericError(std::move(parsed));
+}
+
 smithy::Error DeserializeCustomCodeError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "GenericClientError") return MakeGenericClientErrorError(response, std::move(parsed));
   if (parsed.code == "GenericServerError") return MakeGenericServerErrorError(response, std::move(parsed));
   if (parsed.code == "UnknownServerError") return MakeUnknownServerErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 418) return MakeGenericClientErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 500) return MakeUnknownServerErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 502) return MakeGenericServerErrorError(response, std::move(parsed));
   return GenericError(std::move(parsed));
 }
 
@@ -170,6 +199,9 @@ smithy::Error DeserializeGetEnumError(const smithy::http::HttpResponse& response
   if (parsed.code == "GenericClientError") return MakeGenericClientErrorError(response, std::move(parsed));
   if (parsed.code == "GenericServerError") return MakeGenericServerErrorError(response, std::move(parsed));
   if (parsed.code == "UnknownServerError") return MakeUnknownServerErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 418) return MakeGenericClientErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 500) return MakeUnknownServerErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 502) return MakeGenericServerErrorError(response, std::move(parsed));
   return GenericError(std::move(parsed));
 }
 
@@ -178,6 +210,9 @@ smithy::Error DeserializeGetIntEnumError(const smithy::http::HttpResponse& respo
   if (parsed.code == "GenericClientError") return MakeGenericClientErrorError(response, std::move(parsed));
   if (parsed.code == "GenericServerError") return MakeGenericServerErrorError(response, std::move(parsed));
   if (parsed.code == "UnknownServerError") return MakeUnknownServerErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 418) return MakeGenericClientErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 500) return MakeUnknownServerErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 502) return MakeGenericServerErrorError(response, std::move(parsed));
   return GenericError(std::move(parsed));
 }
 
@@ -187,6 +222,10 @@ smithy::Error DeserializeGetMenuError(const smithy::http::HttpResponse& response
   if (parsed.code == "GenericClientError") return MakeGenericClientErrorError(response, std::move(parsed));
   if (parsed.code == "GenericServerError") return MakeGenericServerErrorError(response, std::move(parsed));
   if (parsed.code == "NotFoundError") return MakeNotFoundErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 400) return MakeFallbackErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 404) return MakeNotFoundErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 418) return MakeGenericClientErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 502) return MakeGenericServerErrorError(response, std::move(parsed));
   return GenericError(std::move(parsed));
 }
 
@@ -194,6 +233,8 @@ smithy::Error DeserializeHeaderEndpointError(const smithy::http::HttpResponse& r
   ParsedError parsed = ParseError(response);
   if (parsed.code == "GenericClientError") return MakeGenericClientErrorError(response, std::move(parsed));
   if (parsed.code == "GenericServerError") return MakeGenericServerErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 418) return MakeGenericClientErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 502) return MakeGenericServerErrorError(response, std::move(parsed));
   return GenericError(std::move(parsed));
 }
 
@@ -202,6 +243,9 @@ smithy::Error DeserializeHealthError(const smithy::http::HttpResponse& response)
   if (parsed.code == "GenericClientError") return MakeGenericClientErrorError(response, std::move(parsed));
   if (parsed.code == "GenericServerError") return MakeGenericServerErrorError(response, std::move(parsed));
   if (parsed.code == "UnknownServerError") return MakeUnknownServerErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 418) return MakeGenericClientErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 500) return MakeUnknownServerErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 502) return MakeGenericServerErrorError(response, std::move(parsed));
   return GenericError(std::move(parsed));
 }
 
@@ -209,6 +253,8 @@ smithy::Error DeserializeHttpPayloadRequiredWithDefaultError(const smithy::http:
   ParsedError parsed = ParseError(response);
   if (parsed.code == "GenericClientError") return MakeGenericClientErrorError(response, std::move(parsed));
   if (parsed.code == "GenericServerError") return MakeGenericServerErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 418) return MakeGenericClientErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 502) return MakeGenericServerErrorError(response, std::move(parsed));
   return GenericError(std::move(parsed));
 }
 
@@ -216,6 +262,8 @@ smithy::Error DeserializeHttpPayloadWithDefaultError(const smithy::http::HttpRes
   ParsedError parsed = ParseError(response);
   if (parsed.code == "GenericClientError") return MakeGenericClientErrorError(response, std::move(parsed));
   if (parsed.code == "GenericServerError") return MakeGenericServerErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 418) return MakeGenericClientErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 502) return MakeGenericServerErrorError(response, std::move(parsed));
   return GenericError(std::move(parsed));
 }
 
@@ -223,6 +271,8 @@ smithy::Error DeserializeOpenUnionsError(const smithy::http::HttpResponse& respo
   ParsedError parsed = ParseError(response);
   if (parsed.code == "GenericClientError") return MakeGenericClientErrorError(response, std::move(parsed));
   if (parsed.code == "GenericServerError") return MakeGenericServerErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 418) return MakeGenericClientErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 502) return MakeGenericServerErrorError(response, std::move(parsed));
   return GenericError(std::move(parsed));
 }
 
@@ -230,6 +280,8 @@ smithy::Error DeserializeRoundTripError(const smithy::http::HttpResponse& respon
   ParsedError parsed = ParseError(response);
   if (parsed.code == "GenericClientError") return MakeGenericClientErrorError(response, std::move(parsed));
   if (parsed.code == "GenericServerError") return MakeGenericServerErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 418) return MakeGenericClientErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 502) return MakeGenericServerErrorError(response, std::move(parsed));
   return GenericError(std::move(parsed));
 }
 
@@ -237,6 +289,8 @@ smithy::Error DeserializeVersionError(const smithy::http::HttpResponse& response
   ParsedError parsed = ParseError(response);
   if (parsed.code == "GenericClientError") return MakeGenericClientErrorError(response, std::move(parsed));
   if (parsed.code == "GenericServerError") return MakeGenericServerErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 418) return MakeGenericClientErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 502) return MakeGenericServerErrorError(response, std::move(parsed));
   return GenericError(std::move(parsed));
 }
 
@@ -272,6 +326,38 @@ smithy::Outcome<smithy::http::HttpResponse> PizzaAdminServiceClient::Send(smithy
     request.headers.Set("content-length", std::to_string(request.body.size()));
   }
   return smithy::SendWithRetries(*transport_, request, config_.retry, config_.interceptors);
+}
+
+smithy::Outcome<AddMenuItemOutput> PizzaAdminServiceClient::AddMenuItem(const AddMenuItemInput& input) const {
+  std::string target = path_prefix_;
+  target += "/restaurant";
+  target += "/";
+  target += smithy::http::EncodePathSegment(input.restaurant);
+  target += "/menu";
+  target += "/item";
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = std::move(target);
+  request.body = smithy::json::Encode(SerializeMenuItem(input.menuItem));
+  if (!request.headers.Get("content-type").has_value()) request.headers.Set("content-type", "application/json");
+  request.headers.Set("accept", "application/json");
+  auto response = Send(std::move(request));
+  if (!response) return std::move(response).error();
+  if (response->status != 201) return DeserializeAddMenuItemError(*response);
+  AddMenuItemOutput out{};
+  if (!response->body.empty()) {
+    auto payload_doc = smithy::json::Decode(response->body);
+    if (!payload_doc) return std::move(payload_doc).error();
+    if (!payload_doc->is_string()) return smithy::Error::Serialization("expected a JSON string payload");
+    out.itemId = payload_doc->as_string();
+  }
+  if (const auto header_value = response->headers.Get("X-ADDED-AT"); header_value.has_value()) {
+    auto parsed_ts = smithy::Timestamp::Parse((*header_value), smithy::TimestampFormat::kEpochSeconds);
+    if (!parsed_ts) return std::move(parsed_ts).error();
+    out.added = *std::move(parsed_ts);
+  }
+  if (!response->headers.Get("X-ADDED-AT").has_value()) return smithy::Error::Serialization("missing required header: X-ADDED-AT");
+  return out;
 }
 
 smithy::Outcome<CustomCodeOutput> PizzaAdminServiceClient::CustomCode(const CustomCodeInput& input) const {
@@ -412,15 +498,18 @@ smithy::Outcome<HttpPayloadRequiredWithDefaultOutput> PizzaAdminServiceClient::H
   smithy::http::HttpRequest request;
   request.method = "PUT";
   request.target = std::move(target);
-  request.body = input.body;
-  if (!request.headers.Get("content-type").has_value()) request.headers.Set("content-type", "text/plain");
-  request.headers.Set("accept", "text/plain");
+  request.body = smithy::json::Encode(smithy::Document(input.body));
+  if (!request.headers.Get("content-type").has_value()) request.headers.Set("content-type", "application/json");
+  request.headers.Set("accept", "application/json");
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
   if (response->status != 200) return DeserializeHttpPayloadRequiredWithDefaultError(*response);
   HttpPayloadRequiredWithDefaultOutput out{};
   if (!response->body.empty()) {
-    out.body = response->body;
+    auto payload_doc = smithy::json::Decode(response->body);
+    if (!payload_doc) return std::move(payload_doc).error();
+    if (!payload_doc->is_string()) return smithy::Error::Serialization("expected a JSON string payload");
+    out.body = payload_doc->as_string();
   }
   return out;
 }
@@ -432,16 +521,19 @@ smithy::Outcome<HttpPayloadWithDefaultOutput> PizzaAdminServiceClient::HttpPaylo
   request.method = "PUT";
   request.target = std::move(target);
   if (input.body.has_value()) {
-    request.body = (*input.body);
-    if (!request.headers.Get("content-type").has_value()) request.headers.Set("content-type", "text/plain");
+    request.body = smithy::json::Encode(smithy::Document((*input.body)));
+    if (!request.headers.Get("content-type").has_value()) request.headers.Set("content-type", "application/json");
   }
-  request.headers.Set("accept", "text/plain");
+  request.headers.Set("accept", "application/json");
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
   if (response->status != 200) return DeserializeHttpPayloadWithDefaultError(*response);
   HttpPayloadWithDefaultOutput out{};
   if (!response->body.empty()) {
-    out.body = response->body;
+    auto payload_doc = smithy::json::Decode(response->body);
+    if (!payload_doc) return std::move(payload_doc).error();
+    if (!payload_doc->is_string()) return smithy::Error::Serialization("expected a JSON string payload");
+    out.body = payload_doc->as_string();
   }
   return out;
 }
@@ -516,13 +608,16 @@ smithy::Outcome<VersionOutput> PizzaAdminServiceClient::Version(const VersionInp
   smithy::http::HttpRequest request;
   request.method = "GET";
   request.target = std::move(target);
-  request.headers.Set("accept", "text/plain");
+  request.headers.Set("accept", "application/json");
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
   if (response->status != 200) return DeserializeVersionError(*response);
   VersionOutput out{};
   if (!response->body.empty()) {
-    out.version = response->body;
+    auto payload_doc = smithy::json::Decode(response->body);
+    if (!payload_doc) return std::move(payload_doc).error();
+    if (!payload_doc->is_string()) return smithy::Error::Serialization("expected a JSON string payload");
+    out.version = payload_doc->as_string();
   }
   return out;
 }

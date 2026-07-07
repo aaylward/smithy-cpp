@@ -210,6 +210,24 @@ final class ValidationGenerator {
     w.addInclude("<string>");
     w.addInclude("<vector>");
     SerdeGenerator ordering = new SerdeGenerator(context, false);
+    // Constrained shapes on recursion cycles validate mutually; declare those
+    // validators up front so definition order doesn't matter.
+    RecursionIndex recursion = context.cppSymbols().recursion();
+    boolean declared = false;
+    for (Shape shape : ordering.serdeShapes()) {
+      if (!constrained.contains(shape.getId()) || !recursion.inCycle(shape.getId())) {
+        continue;
+      }
+      w.write(
+          "void $L(const $L& value, const std::string& path, "
+              + "std::vector<smithy::server::ValidationFailure>* failures);",
+          validatorName(shape),
+          context.cppSymbols().toSymbol(shape).getName());
+      declared = true;
+    }
+    if (declared) {
+      w.write("");
+    }
     for (Shape shape : ordering.serdeShapes()) {
       if (!constrained.contains(shape.getId())) {
         continue;
@@ -288,14 +306,16 @@ final class ValidationGenerator {
       w.openBlock("if (value.is_$L()) {", name);
       field = "value.as_" + name + "()";
       guarded = true;
-    } else if (!member.isRequired()) {
+    } else if (!MemberDefaults.plain(context.model(), member)) {
       String rawField = "value." + context.cppSymbols().toMemberName(member);
       w.openBlock("if ($L.has_value()) {", rawField);
       field = "(*" + rawField + ")";
       guarded = true;
     } else {
+      // Own scope: consecutive required members each declare member_path.
+      w.openBlock("{");
       field = "value." + context.cppSymbols().toMemberName(member);
-      guarded = false;
+      guarded = true;
     }
     String pathExpr = "path + \"/" + member.getMemberName() + "\"";
     w.write("const std::string member_path = $L;", pathExpr);

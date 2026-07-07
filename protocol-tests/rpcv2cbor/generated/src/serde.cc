@@ -233,75 +233,29 @@ smithy::Outcome<std::map<std::string, std::string>> DeserializeTestStringMap(con
 
 smithy::Document SerializeDefaults(const Defaults& value) {
   smithy::DocumentMap map;
-  if (value.defaultString.has_value()) {
-    map.emplace("defaultString", smithy::Document((*value.defaultString)));
-  }
-  if (value.defaultBoolean.has_value()) {
-    map.emplace("defaultBoolean", smithy::Document((*value.defaultBoolean)));
-  }
-  if (value.defaultList.has_value()) {
-    map.emplace("defaultList", SerializeTestStringList((*value.defaultList)));
-  }
-  if (value.defaultTimestamp.has_value()) {
-    map.emplace("defaultTimestamp", smithy::Document::FromTimestamp((*value.defaultTimestamp), smithy::TimestampFormat::kEpochSeconds));
-  }
-  if (value.defaultBlob.has_value()) {
-    map.emplace("defaultBlob", smithy::Document((*value.defaultBlob)));
-  }
-  if (value.defaultByte.has_value()) {
-    map.emplace("defaultByte", smithy::Document(static_cast<std::int64_t>((*value.defaultByte))));
-  }
-  if (value.defaultShort.has_value()) {
-    map.emplace("defaultShort", smithy::Document(static_cast<std::int64_t>((*value.defaultShort))));
-  }
-  if (value.defaultInteger.has_value()) {
-    map.emplace("defaultInteger", smithy::Document(static_cast<std::int64_t>((*value.defaultInteger))));
-  }
-  if (value.defaultLong.has_value()) {
-    map.emplace("defaultLong", smithy::Document(static_cast<std::int64_t>((*value.defaultLong))));
-  }
-  if (value.defaultFloat.has_value()) {
-    map.emplace("defaultFloat", smithy::Document(static_cast<double>((*value.defaultFloat))));
-  }
-  if (value.defaultDouble.has_value()) {
-    map.emplace("defaultDouble", smithy::Document(static_cast<double>((*value.defaultDouble))));
-  }
-  if (value.defaultMap.has_value()) {
-    map.emplace("defaultMap", SerializeTestStringMap((*value.defaultMap)));
-  }
-  if (value.defaultEnum.has_value()) {
-    map.emplace("defaultEnum", smithy::Document(std::string((*value.defaultEnum).ToString())));
-  }
-  if (value.defaultIntEnum.has_value()) {
-    map.emplace("defaultIntEnum", smithy::Document(static_cast<std::int64_t>((*value.defaultIntEnum))));
-  }
-  if (value.emptyString.has_value()) {
-    map.emplace("emptyString", smithy::Document((*value.emptyString)));
-  }
-  if (value.falseBoolean.has_value()) {
-    map.emplace("falseBoolean", smithy::Document((*value.falseBoolean)));
-  }
-  if (value.emptyBlob.has_value()) {
-    map.emplace("emptyBlob", smithy::Document((*value.emptyBlob)));
-  }
-  if (value.zeroByte.has_value()) {
-    map.emplace("zeroByte", smithy::Document(static_cast<std::int64_t>((*value.zeroByte))));
-  }
-  if (value.zeroShort.has_value()) {
-    map.emplace("zeroShort", smithy::Document(static_cast<std::int64_t>((*value.zeroShort))));
-  }
-  if (value.zeroInteger.has_value()) {
-    map.emplace("zeroInteger", smithy::Document(static_cast<std::int64_t>((*value.zeroInteger))));
-  }
-  if (value.zeroLong.has_value()) {
-    map.emplace("zeroLong", smithy::Document(static_cast<std::int64_t>((*value.zeroLong))));
-  }
-  if (value.zeroFloat.has_value()) {
-    map.emplace("zeroFloat", smithy::Document(static_cast<double>((*value.zeroFloat))));
-  }
-  if (value.zeroDouble.has_value()) {
-    map.emplace("zeroDouble", smithy::Document(static_cast<double>((*value.zeroDouble))));
-  }
+  map.emplace("defaultString", smithy::Document(value.defaultString));
+  map.emplace("defaultBoolean", smithy::Document(value.defaultBoolean));
+  map.emplace("defaultList", SerializeTestStringList(value.defaultList));
+  map.emplace("defaultTimestamp", smithy::Document::FromTimestamp(value.defaultTimestamp, smithy::TimestampFormat::kEpochSeconds));
+  map.emplace("defaultBlob", smithy::Document(value.defaultBlob));
+  map.emplace("defaultByte", smithy::Document(static_cast<std::int64_t>(value.defaultByte)));
+  map.emplace("defaultShort", smithy::Document(static_cast<std::int64_t>(value.defaultShort)));
+  map.emplace("defaultInteger", smithy::Document(static_cast<std::int64_t>(value.defaultInteger)));
+  map.emplace("defaultLong", smithy::Document(static_cast<std::int64_t>(value.defaultLong)));
+  map.emplace("defaultFloat", smithy::Document(static_cast<double>(value.defaultFloat)));
+  map.emplace("defaultDouble", smithy::Document(static_cast<double>(value.defaultDouble)));
+  map.emplace("defaultMap", SerializeTestStringMap(value.defaultMap));
+  map.emplace("defaultEnum", smithy::Document(std::string(value.defaultEnum.ToString())));
+  map.emplace("defaultIntEnum", smithy::Document(static_cast<std::int64_t>(value.defaultIntEnum)));
+  map.emplace("emptyString", smithy::Document(value.emptyString));
+  map.emplace("falseBoolean", smithy::Document(value.falseBoolean));
+  map.emplace("emptyBlob", smithy::Document(value.emptyBlob));
+  map.emplace("zeroByte", smithy::Document(static_cast<std::int64_t>(value.zeroByte)));
+  map.emplace("zeroShort", smithy::Document(static_cast<std::int64_t>(value.zeroShort)));
+  map.emplace("zeroInteger", smithy::Document(static_cast<std::int64_t>(value.zeroInteger)));
+  map.emplace("zeroLong", smithy::Document(static_cast<std::int64_t>(value.zeroLong)));
+  map.emplace("zeroFloat", smithy::Document(static_cast<double>(value.zeroFloat)));
+  map.emplace("zeroDouble", smithy::Document(static_cast<double>(value.zeroDouble)));
   return smithy::Document(std::move(map));
 }
 
@@ -946,6 +900,8 @@ smithy::Outcome<OperationWithDefaultsInput> DeserializeOperationWithDefaultsInpu
       if (!member->is_string()) return smithy::Error::Serialization("OperationWithDefaultsInput.topLevelDefault: unexpected type on the wire");
       parsed_member = member->as_string();
       out.topLevelDefault = std::move(parsed_member);
+    } else {
+      out.topLevelDefault = "hi";
     }
   }
   {
@@ -956,6 +912,8 @@ smithy::Outcome<OperationWithDefaultsInput> DeserializeOperationWithDefaultsInpu
       if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("OperationWithDefaultsInput.otherTopLevelDefault: value out of range");
       parsed_member = static_cast<std::int32_t>(member->as_int());
       out.otherTopLevelDefault = std::move(parsed_member);
+    } else {
+      out.otherTopLevelDefault = 0;
     }
   }
   return out;
@@ -963,75 +921,29 @@ smithy::Outcome<OperationWithDefaultsInput> DeserializeOperationWithDefaultsInpu
 
 smithy::Document SerializeOperationWithDefaultsOutput(const OperationWithDefaultsOutput& value) {
   smithy::DocumentMap map;
-  if (value.defaultString.has_value()) {
-    map.emplace("defaultString", smithy::Document((*value.defaultString)));
-  }
-  if (value.defaultBoolean.has_value()) {
-    map.emplace("defaultBoolean", smithy::Document((*value.defaultBoolean)));
-  }
-  if (value.defaultList.has_value()) {
-    map.emplace("defaultList", SerializeTestStringList((*value.defaultList)));
-  }
-  if (value.defaultTimestamp.has_value()) {
-    map.emplace("defaultTimestamp", smithy::Document::FromTimestamp((*value.defaultTimestamp), smithy::TimestampFormat::kEpochSeconds));
-  }
-  if (value.defaultBlob.has_value()) {
-    map.emplace("defaultBlob", smithy::Document((*value.defaultBlob)));
-  }
-  if (value.defaultByte.has_value()) {
-    map.emplace("defaultByte", smithy::Document(static_cast<std::int64_t>((*value.defaultByte))));
-  }
-  if (value.defaultShort.has_value()) {
-    map.emplace("defaultShort", smithy::Document(static_cast<std::int64_t>((*value.defaultShort))));
-  }
-  if (value.defaultInteger.has_value()) {
-    map.emplace("defaultInteger", smithy::Document(static_cast<std::int64_t>((*value.defaultInteger))));
-  }
-  if (value.defaultLong.has_value()) {
-    map.emplace("defaultLong", smithy::Document(static_cast<std::int64_t>((*value.defaultLong))));
-  }
-  if (value.defaultFloat.has_value()) {
-    map.emplace("defaultFloat", smithy::Document(static_cast<double>((*value.defaultFloat))));
-  }
-  if (value.defaultDouble.has_value()) {
-    map.emplace("defaultDouble", smithy::Document(static_cast<double>((*value.defaultDouble))));
-  }
-  if (value.defaultMap.has_value()) {
-    map.emplace("defaultMap", SerializeTestStringMap((*value.defaultMap)));
-  }
-  if (value.defaultEnum.has_value()) {
-    map.emplace("defaultEnum", smithy::Document(std::string((*value.defaultEnum).ToString())));
-  }
-  if (value.defaultIntEnum.has_value()) {
-    map.emplace("defaultIntEnum", smithy::Document(static_cast<std::int64_t>((*value.defaultIntEnum))));
-  }
-  if (value.emptyString.has_value()) {
-    map.emplace("emptyString", smithy::Document((*value.emptyString)));
-  }
-  if (value.falseBoolean.has_value()) {
-    map.emplace("falseBoolean", smithy::Document((*value.falseBoolean)));
-  }
-  if (value.emptyBlob.has_value()) {
-    map.emplace("emptyBlob", smithy::Document((*value.emptyBlob)));
-  }
-  if (value.zeroByte.has_value()) {
-    map.emplace("zeroByte", smithy::Document(static_cast<std::int64_t>((*value.zeroByte))));
-  }
-  if (value.zeroShort.has_value()) {
-    map.emplace("zeroShort", smithy::Document(static_cast<std::int64_t>((*value.zeroShort))));
-  }
-  if (value.zeroInteger.has_value()) {
-    map.emplace("zeroInteger", smithy::Document(static_cast<std::int64_t>((*value.zeroInteger))));
-  }
-  if (value.zeroLong.has_value()) {
-    map.emplace("zeroLong", smithy::Document(static_cast<std::int64_t>((*value.zeroLong))));
-  }
-  if (value.zeroFloat.has_value()) {
-    map.emplace("zeroFloat", smithy::Document(static_cast<double>((*value.zeroFloat))));
-  }
-  if (value.zeroDouble.has_value()) {
-    map.emplace("zeroDouble", smithy::Document(static_cast<double>((*value.zeroDouble))));
-  }
+  map.emplace("defaultString", smithy::Document(value.defaultString));
+  map.emplace("defaultBoolean", smithy::Document(value.defaultBoolean));
+  map.emplace("defaultList", SerializeTestStringList(value.defaultList));
+  map.emplace("defaultTimestamp", smithy::Document::FromTimestamp(value.defaultTimestamp, smithy::TimestampFormat::kEpochSeconds));
+  map.emplace("defaultBlob", smithy::Document(value.defaultBlob));
+  map.emplace("defaultByte", smithy::Document(static_cast<std::int64_t>(value.defaultByte)));
+  map.emplace("defaultShort", smithy::Document(static_cast<std::int64_t>(value.defaultShort)));
+  map.emplace("defaultInteger", smithy::Document(static_cast<std::int64_t>(value.defaultInteger)));
+  map.emplace("defaultLong", smithy::Document(static_cast<std::int64_t>(value.defaultLong)));
+  map.emplace("defaultFloat", smithy::Document(static_cast<double>(value.defaultFloat)));
+  map.emplace("defaultDouble", smithy::Document(static_cast<double>(value.defaultDouble)));
+  map.emplace("defaultMap", SerializeTestStringMap(value.defaultMap));
+  map.emplace("defaultEnum", smithy::Document(std::string(value.defaultEnum.ToString())));
+  map.emplace("defaultIntEnum", smithy::Document(static_cast<std::int64_t>(value.defaultIntEnum)));
+  map.emplace("emptyString", smithy::Document(value.emptyString));
+  map.emplace("falseBoolean", smithy::Document(value.falseBoolean));
+  map.emplace("emptyBlob", smithy::Document(value.emptyBlob));
+  map.emplace("zeroByte", smithy::Document(static_cast<std::int64_t>(value.zeroByte)));
+  map.emplace("zeroShort", smithy::Document(static_cast<std::int64_t>(value.zeroShort)));
+  map.emplace("zeroInteger", smithy::Document(static_cast<std::int64_t>(value.zeroInteger)));
+  map.emplace("zeroLong", smithy::Document(static_cast<std::int64_t>(value.zeroLong)));
+  map.emplace("zeroFloat", smithy::Document(static_cast<double>(value.zeroFloat)));
+  map.emplace("zeroDouble", smithy::Document(static_cast<double>(value.zeroDouble)));
   return smithy::Document(std::move(map));
 }
 
@@ -2803,6 +2715,134 @@ smithy::Outcome<SparseNullsOperationOutput> DeserializeSparseNullsOperationOutpu
         parsed_member = std::move(*parsed);
       }
       out.sparseStringMap = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeRecursiveShapesInput(const RecursiveShapesInput& value) {
+  smithy::DocumentMap map;
+  if (value.nested.has_value()) {
+    map.emplace("nested", SerializeRecursiveShapesInputOutputNested1((*value.nested)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<RecursiveShapesInput> DeserializeRecursiveShapesInput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("RecursiveShapesInput: expected a map on the wire");
+  RecursiveShapesInput out;
+  {
+    const smithy::Document* member = doc.Find("nested");
+    if (member != nullptr && !member->is_null()) {
+      RecursiveShapesInputOutputNested1 parsed_member{};
+      {
+        auto parsed = DeserializeRecursiveShapesInputOutputNested1(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.nested = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeRecursiveShapesInputOutputNested1(const RecursiveShapesInputOutputNested1& value) {
+  smithy::DocumentMap map;
+  if (value.foo.has_value()) {
+    map.emplace("foo", smithy::Document((*value.foo)));
+  }
+  if (value.nested.has_value()) {
+    map.emplace("nested", SerializeRecursiveShapesInputOutputNested2(*((*value.nested))));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<RecursiveShapesInputOutputNested1> DeserializeRecursiveShapesInputOutputNested1(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("RecursiveShapesInputOutputNested1: expected a map on the wire");
+  RecursiveShapesInputOutputNested1 out;
+  {
+    const smithy::Document* member = doc.Find("foo");
+    if (member != nullptr && !member->is_null()) {
+      std::string parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("RecursiveShapesInputOutputNested1.foo: unexpected type on the wire");
+      parsed_member = member->as_string();
+      out.foo = std::move(parsed_member);
+    }
+  }
+  {
+    const smithy::Document* member = doc.Find("nested");
+    if (member != nullptr && !member->is_null()) {
+      RecursiveShapesInputOutputNested2 parsed_member{};
+      {
+        auto parsed = DeserializeRecursiveShapesInputOutputNested2(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.nested = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeRecursiveShapesInputOutputNested2(const RecursiveShapesInputOutputNested2& value) {
+  smithy::DocumentMap map;
+  if (value.bar.has_value()) {
+    map.emplace("bar", smithy::Document((*value.bar)));
+  }
+  if (value.recursiveMember.has_value()) {
+    map.emplace("recursiveMember", SerializeRecursiveShapesInputOutputNested1(*((*value.recursiveMember))));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<RecursiveShapesInputOutputNested2> DeserializeRecursiveShapesInputOutputNested2(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("RecursiveShapesInputOutputNested2: expected a map on the wire");
+  RecursiveShapesInputOutputNested2 out;
+  {
+    const smithy::Document* member = doc.Find("bar");
+    if (member != nullptr && !member->is_null()) {
+      std::string parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("RecursiveShapesInputOutputNested2.bar: unexpected type on the wire");
+      parsed_member = member->as_string();
+      out.bar = std::move(parsed_member);
+    }
+  }
+  {
+    const smithy::Document* member = doc.Find("recursiveMember");
+    if (member != nullptr && !member->is_null()) {
+      RecursiveShapesInputOutputNested1 parsed_member{};
+      {
+        auto parsed = DeserializeRecursiveShapesInputOutputNested1(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.recursiveMember = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeRecursiveShapesOutput(const RecursiveShapesOutput& value) {
+  smithy::DocumentMap map;
+  if (value.nested.has_value()) {
+    map.emplace("nested", SerializeRecursiveShapesInputOutputNested1((*value.nested)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<RecursiveShapesOutput> DeserializeRecursiveShapesOutput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("RecursiveShapesOutput: expected a map on the wire");
+  RecursiveShapesOutput out;
+  {
+    const smithy::Document* member = doc.Find("nested");
+    if (member != nullptr && !member->is_null()) {
+      RecursiveShapesInputOutputNested1 parsed_member{};
+      {
+        auto parsed = DeserializeRecursiveShapesInputOutputNested1(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.nested = std::move(parsed_member);
     }
   }
   return out;

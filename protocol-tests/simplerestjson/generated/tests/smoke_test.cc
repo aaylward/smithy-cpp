@@ -18,6 +18,13 @@ namespace smithy::protocoltests::simplerestjson {
 
 namespace {
 
+AddMenuItemOutput MinimalAddMenuItemOutput() {
+    return [] {
+    AddMenuItemOutput v{};
+    return v;
+  }();
+}
+
 CustomCodeOutput MinimalCustomCodeOutput() {
     CustomCodeOutput v = [] {
     CustomCodeOutput v{};
@@ -101,6 +108,10 @@ VersionOutput MinimalVersionOutput() {
 
 class SmokeHandler : public PizzaAdminServiceHandler {
   public:
+    smithy::Outcome<AddMenuItemOutput> AddMenuItem(const AddMenuItemInput& input) override {
+      (void)input;
+      return MinimalAddMenuItemOutput();
+    }
     smithy::Outcome<CustomCodeOutput> CustomCode(const CustomCodeInput& input) override {
       (void)input;
       return MinimalCustomCodeOutput();
@@ -159,6 +170,28 @@ PizzaAdminServiceClient MakeClient(std::shared_ptr<PizzaAdminServiceHandler> han
 }
 
 }  // namespace
+
+TEST(PizzaAdminServiceSmokeTest, AddMenuItemRoundTrips) {
+  PizzaAdminServiceClient client = MakeClient(std::make_shared<SmokeHandler>());
+    AddMenuItemInput input = [] {
+    AddMenuItemInput v{};
+    v.menuItem = [] {
+    MenuItem v{};
+    v.food = Food::FromPizza([] {
+    Pizza v{};
+    v.base = PizzaBase::FromString("C");
+    return v;
+  }());
+    return v;
+  }();
+    return v;
+  }();
+  // @httpLabel members must be non-empty to route.
+  input.restaurant = "smoke";
+  const auto outcome = client.AddMenuItem(input);
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  EXPECT_EQ(*outcome, MinimalAddMenuItemOutput());
+}
 
 TEST(PizzaAdminServiceSmokeTest, CustomCodeRoundTrips) {
   PizzaAdminServiceClient client = MakeClient(std::make_shared<SmokeHandler>());
@@ -290,7 +323,7 @@ TEST(PizzaAdminServiceSmokeTest, VersionRoundTrips) {
 TEST(PizzaAdminServiceSmokeTest, ModeledErrorsMapAcrossTheWire) {
   class FailingHandler final : public SmokeHandler {
     public:
-      smithy::Outcome<CustomCodeOutput> CustomCode(const CustomCodeInput& input) override {
+      smithy::Outcome<AddMenuItemOutput> AddMenuItem(const AddMenuItemInput& input) override {
         (void)input;
         smithy::Error error = smithy::Error::Modeled("GenericServerError", "smoke");
             auto detail = [] {
@@ -304,11 +337,22 @@ TEST(PizzaAdminServiceSmokeTest, ModeledErrorsMapAcrossTheWire) {
   };
 
   PizzaAdminServiceClient client = MakeClient(std::make_shared<FailingHandler>());
-    const CustomCodeInput input = [] {
-    CustomCodeInput v{};
+    AddMenuItemInput input = [] {
+    AddMenuItemInput v{};
+    v.menuItem = [] {
+    MenuItem v{};
+    v.food = Food::FromPizza([] {
+    Pizza v{};
+    v.base = PizzaBase::FromString("C");
+    return v;
+  }());
     return v;
   }();
-  const auto outcome = client.CustomCode(input);
+    return v;
+  }();
+  // @httpLabel members must be non-empty to route.
+  input.restaurant = "smoke";
+  const auto outcome = client.AddMenuItem(input);
   ASSERT_FALSE(outcome.ok());
   EXPECT_EQ(outcome.error().kind(), smithy::ErrorKind::kModeled);
   EXPECT_EQ(outcome.error().code(), "GenericServerError");

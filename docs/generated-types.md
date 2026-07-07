@@ -22,14 +22,18 @@ compatibility contract: changes to it are breaking for consumers of generated co
 | `intEnum` | `enum class X : std::int32_t` | |
 | `smithy.api#Unit` | `smithy::Unit` | Never declared; maps to the runtime type |
 | `bigInteger` / `bigDecimal` | — | Rejected with a clear error (planned) |
-| recursive structures/unions | — | Rejected with a clear error (boxed recursion planned) |
+| recursive structures | `smithy::Boxed<T>` member indirection | Deep copy/equality; list cycles ride `std::vector` directly. Cycles through union members or map values are still rejected with a clear error |
 
 ## Conventions
 
 - **Names**: shape names are used as-is (PascalCase by Smithy convention); member names are used
   as-is (camelCase). C++ keywords get a trailing underscore (`namespace` → `namespace_`).
 - **Optionality**: `@required` members map to the plain type; everything else is
-  `std::optional<T>`.
+  `std::optional<T>` — except members with a non-null `@default` (and no `@clientOptional`),
+  which are plain members initialized to the default, always serialized, and left at the
+  default when absent from the wire. Members of `@input` structures stay client-optional per
+  the spec (clients skip unset members; servers fill the default while parsing), and
+  `@required` + `@default` reads absence as the default instead of failing.
 - **Docs**: `@documentation` becomes `///` comments.
 - **Files**: per module, `include/<namespace path>/types.h`, `serde.h` + `src/serde.cc`,
   `client.h` + `src/client.cc`, and a generated `BUILD.bazel` exposing `cc_library ":types"`

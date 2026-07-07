@@ -20,17 +20,19 @@ namespace smithy::protocoltests::simplerestjson {
 //
 // Excluded cases (protocol-test-exclusions.txt; the list must only shrink):
 //   GetEnumOutput (server-response) — under investigation (task #63): enum output server-side 400
-//   SimpleRestJsonSomeRequiredHttpPayloadWithDefault (server-response) — text @httpPayload bodies are not supported
-//   SimpleRestJsonNoneRequiredHttpPayloadWithDefault (server-response) — text @httpPayload bodies are not supported
-//   SimpleRestJsonSomeHttpPayloadWithDefault (server-response) — text @httpPayload bodies are not supported
-//   SimpleRestJsonNoneHttpPayloadWithDefault (server-response) — text @httpPayload bodies are not supported
 //   OpenUnionsUnknownTaggedUnionCase (server-response) — alloy open/discriminated unions are not implemented
 //   OpenUnionsKnownDiscriminatedUnionCase (server-response) — alloy open/discriminated unions are not implemented
 //   OpenUnionsUnknownDiscriminatedUnionCase (server-response) — alloy open/discriminated unions are not implemented
 //   RoundTripDataResponse (server-response) — under investigation (task #63): mixed label/query/body echo
-//   VersionOutput (server-response) — string @httpPayload body is not supported
 
 namespace {
+
+AddMenuItemOutput MinimalAddMenuItemOutput() {
+    return [] {
+    AddMenuItemOutput v{};
+    return v;
+  }();
+}
 
 CustomCodeOutput MinimalCustomCodeOutput() {
     return [] {
@@ -112,6 +114,11 @@ VersionOutput MinimalVersionOutput() {
 
 class RecordingHandler : public PizzaAdminServiceHandler {
   public:
+    smithy::Outcome<AddMenuItemOutput> AddMenuItem(const AddMenuItemInput& input) override {
+      lastAddMenuItem = input;
+      return MinimalAddMenuItemOutput();
+    }
+    std::optional<AddMenuItemInput> lastAddMenuItem;
     smithy::Outcome<CustomCodeOutput> CustomCode(const CustomCodeInput& input) override {
       lastCustomCode = input;
       return MinimalCustomCodeOutput();
@@ -168,6 +175,30 @@ class RecordingHandler : public PizzaAdminServiceHandler {
     }
     std::optional<VersionInput> lastVersion;
 };
+
+smithy::http::HttpRequest MinimalRequestForAddMenuItem() {
+  auto transport = std::make_shared<smithy::testing::CapturingTransport>();
+  smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
+  config.http_client = transport;
+  auto client = *PizzaAdminServiceClient::Create(std::move(config));
+    AddMenuItemInput input = [] {
+    AddMenuItemInput v{};
+    v.menuItem = [] {
+    MenuItem v{};
+    v.food = Food::FromPizza([] {
+    Pizza v{};
+    v.base = PizzaBase::FromString("C");
+    return v;
+  }());
+    return v;
+  }();
+    return v;
+  }();
+  input.restaurant = "smoke";
+  (void)client.AddMenuItem(input);
+  return transport->last_request;
+}
 
 smithy::http::HttpRequest MinimalRequestForCustomCode() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
@@ -226,6 +257,34 @@ smithy::http::HttpRequest MinimalRequestForHeaderEndpoint() {
   return transport->last_request;
 }
 
+smithy::http::HttpRequest MinimalRequestForHttpPayloadRequiredWithDefault() {
+  auto transport = std::make_shared<smithy::testing::CapturingTransport>();
+  smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
+  config.http_client = transport;
+  auto client = *PizzaAdminServiceClient::Create(std::move(config));
+    HttpPayloadRequiredWithDefaultInput input = [] {
+    HttpPayloadRequiredWithDefaultInput v{};
+    return v;
+  }();
+  (void)client.HttpPayloadRequiredWithDefault(input);
+  return transport->last_request;
+}
+
+smithy::http::HttpRequest MinimalRequestForHttpPayloadWithDefault() {
+  auto transport = std::make_shared<smithy::testing::CapturingTransport>();
+  smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
+  config.http_client = transport;
+  auto client = *PizzaAdminServiceClient::Create(std::move(config));
+    HttpPayloadWithDefaultInput input = [] {
+    HttpPayloadWithDefaultInput v{};
+    return v;
+  }();
+  (void)client.HttpPayloadWithDefault(input);
+  return transport->last_request;
+}
+
 smithy::http::HttpRequest MinimalRequestForOpenUnions() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
@@ -241,7 +300,43 @@ smithy::http::HttpRequest MinimalRequestForOpenUnions() {
   return transport->last_request;
 }
 
+smithy::http::HttpRequest MinimalRequestForVersion() {
+  auto transport = std::make_shared<smithy::testing::CapturingTransport>();
+  smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
+  config.http_client = transport;
+  auto client = *PizzaAdminServiceClient::Create(std::move(config));
+    VersionInput input = [] {
+    VersionInput v{};
+    return v;
+  }();
+  (void)client.Version(input);
+  return transport->last_request;
+}
+
 }  // namespace
+
+// add menu item response tests
+TEST(PizzaAdminServiceServerResponseTest, AddMenuItemResult) {
+  class Handler final : public RecordingHandler {
+   public:
+    smithy::Outcome<AddMenuItemOutput> AddMenuItem(const AddMenuItemInput& input) override {
+      (void)input;
+      return [] {
+  AddMenuItemOutput v{};
+  v.itemId = "1";
+  v.added = smithy::Timestamp::FromEpochMilliseconds(1576540098000LL);
+  return v;
+}();
+    }
+  };
+  PizzaAdminServiceServer server(std::make_shared<Handler>());
+  const smithy::http::HttpResponse response = server.Handler()(MinimalRequestForAddMenuItem());
+  EXPECT_EQ(response.status, 201);
+  EXPECT_EQ(response.headers.Get("Content-Type").value_or("<missing>"), "application/json");
+  EXPECT_EQ(response.headers.Get("X-ADDED-AT").value_or("<missing>"), "1576540098");
+  EXPECT_TRUE(smithy::testing::JsonBodyEquals("\"1\"", response.body));
+}
 
 // respect the httpResponseCode trait
 TEST(PizzaAdminServiceServerResponseTest, CustomCodeOutput) {
@@ -334,6 +429,82 @@ TEST(PizzaAdminServiceServerResponseTest, headerEndpointResponse) {
   EXPECT_EQ(response.headers.Get("x-lowercase-header").value_or("<missing>"), "lowercase_value");
 }
 
+// Pass JSON string value as is if payload provided
+TEST(PizzaAdminServiceServerResponseTest, SimpleRestJsonSomeRequiredHttpPayloadWithDefault) {
+  class Handler final : public RecordingHandler {
+   public:
+    smithy::Outcome<HttpPayloadRequiredWithDefaultOutput> HttpPayloadRequiredWithDefault(const HttpPayloadRequiredWithDefaultInput& input) override {
+      (void)input;
+      return [] {
+  HttpPayloadRequiredWithDefaultOutput v{};
+  v.body = "custom value";
+  return v;
+}();
+    }
+  };
+  PizzaAdminServiceServer server(std::make_shared<Handler>());
+  const smithy::http::HttpResponse response = server.Handler()(MinimalRequestForHttpPayloadRequiredWithDefault());
+  EXPECT_EQ(response.status, 200);
+  EXPECT_EQ(response.headers.Get("Content-Type").value_or("<missing>"), "application/json");
+  EXPECT_TRUE(smithy::testing::JsonBodyEquals("\"custom value\"", response.body));
+}
+
+// Use default value when there is no payload
+TEST(PizzaAdminServiceServerResponseTest, SimpleRestJsonNoneRequiredHttpPayloadWithDefault) {
+  class Handler final : public RecordingHandler {
+   public:
+    smithy::Outcome<HttpPayloadRequiredWithDefaultOutput> HttpPayloadRequiredWithDefault(const HttpPayloadRequiredWithDefaultInput& input) override {
+      (void)input;
+      return [] {
+  HttpPayloadRequiredWithDefaultOutput v{};
+  v.body = "default value";
+  return v;
+}();
+    }
+  };
+  PizzaAdminServiceServer server(std::make_shared<Handler>());
+  const smithy::http::HttpResponse response = server.Handler()(MinimalRequestForHttpPayloadRequiredWithDefault());
+  EXPECT_EQ(response.status, 200);
+}
+
+// Pass JSON string value as is if payload provided
+TEST(PizzaAdminServiceServerResponseTest, SimpleRestJsonSomeHttpPayloadWithDefault) {
+  class Handler final : public RecordingHandler {
+   public:
+    smithy::Outcome<HttpPayloadWithDefaultOutput> HttpPayloadWithDefault(const HttpPayloadWithDefaultInput& input) override {
+      (void)input;
+      return [] {
+  HttpPayloadWithDefaultOutput v{};
+  v.body = "custom value";
+  return v;
+}();
+    }
+  };
+  PizzaAdminServiceServer server(std::make_shared<Handler>());
+  const smithy::http::HttpResponse response = server.Handler()(MinimalRequestForHttpPayloadWithDefault());
+  EXPECT_EQ(response.status, 200);
+  EXPECT_EQ(response.headers.Get("Content-Type").value_or("<missing>"), "application/json");
+  EXPECT_TRUE(smithy::testing::JsonBodyEquals("\"custom value\"", response.body));
+}
+
+// Use default value when there is no payload
+TEST(PizzaAdminServiceServerResponseTest, SimpleRestJsonNoneHttpPayloadWithDefault) {
+  class Handler final : public RecordingHandler {
+   public:
+    smithy::Outcome<HttpPayloadWithDefaultOutput> HttpPayloadWithDefault(const HttpPayloadWithDefaultInput& input) override {
+      (void)input;
+      return [] {
+  HttpPayloadWithDefaultOutput v{};
+  v.body = "default value";
+  return v;
+}();
+    }
+  };
+  PizzaAdminServiceServer server(std::make_shared<Handler>());
+  const smithy::http::HttpResponse response = server.Handler()(MinimalRequestForHttpPayloadWithDefault());
+  EXPECT_EQ(response.status, 200);
+}
+
 // Return a known tagged union value in an open union
 TEST(PizzaAdminServiceServerResponseTest, OpenUnionsKnownTaggedUnionCase) {
   class Handler final : public RecordingHandler {
@@ -352,6 +523,24 @@ TEST(PizzaAdminServiceServerResponseTest, OpenUnionsKnownTaggedUnionCase) {
   EXPECT_EQ(response.status, 200);
   EXPECT_EQ(response.headers.Get("Content-Type").value_or("<missing>"), "application/json");
   EXPECT_TRUE(smithy::testing::JsonBodyEquals("{\"tagged\": {\"str\": \"string value\"}}", response.body));
+}
+
+TEST(PizzaAdminServiceServerResponseTest, VersionOutput) {
+  class Handler final : public RecordingHandler {
+   public:
+    smithy::Outcome<VersionOutput> Version(const VersionInput& input) override {
+      (void)input;
+      return [] {
+  VersionOutput v{};
+  v.version = "1.0";
+  return v;
+}();
+    }
+  };
+  PizzaAdminServiceServer server(std::make_shared<Handler>());
+  const smithy::http::HttpResponse response = server.Handler()(MinimalRequestForVersion());
+  EXPECT_EQ(response.status, 200);
+  EXPECT_EQ(response.body, "\"1.0\"");
 }
 
 TEST(PizzaAdminServiceServerErrorTest, NotFoundError) {
@@ -374,6 +563,30 @@ TEST(PizzaAdminServiceServerErrorTest, NotFoundError) {
   EXPECT_EQ(response.headers.Get("Content-Type").value_or("<missing>"), "application/json");
   EXPECT_EQ(response.headers.Get("X-Error-Type").value_or("<missing>"), "NotFoundError");
   EXPECT_TRUE(smithy::testing::JsonBodyEquals("{\"name\":\"unknown\"}\n", response.body));
+}
+
+// the payload produced on price error
+TEST(PizzaAdminServiceServerErrorTest, PriceErrorTest) {
+  class Handler final : public RecordingHandler {
+   public:
+    smithy::Outcome<AddMenuItemOutput> AddMenuItem(const AddMenuItemInput& input) override {
+      (void)input;
+      smithy::Error error = smithy::Error::Modeled("PriceError", "");
+      error.set_detail([] {
+  PriceError v{};
+  v.message = "Price must be greater than 0";
+  v.code = 400;
+  return v;
+}());
+      return error;
+    }
+  };
+  PizzaAdminServiceServer server(std::make_shared<Handler>());
+  const smithy::http::HttpResponse response = server.Handler()(MinimalRequestForAddMenuItem());
+  EXPECT_EQ(response.status, 400);
+  EXPECT_EQ(response.headers.Get("Content-Type").value_or("<missing>"), "application/json");
+  EXPECT_EQ(response.headers.Get("X-CODE").value_or("<missing>"), "400");
+  EXPECT_TRUE(smithy::testing::JsonBodyEquals("{\"message\":\"Price must be greater than 0\"}", response.body));
 }
 
 }  // namespace smithy::protocoltests::simplerestjson

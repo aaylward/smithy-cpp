@@ -157,6 +157,11 @@ smithy::Outcome<RoundTripRestClient> RoundTripRestClient::Create(smithy::ClientC
     if (!endpoint) return std::move(endpoint).error();
     prefix = endpoint->path_prefix;
     if (transport == nullptr) {
+      // The built-in socket transport is plaintext-only; https needs a
+      // TLS-capable transport (e.g. smithy::http::BeastHttpClient).
+      if (endpoint->tls()) {
+        return smithy::Error::Validation("RoundTripRestClient: https endpoints need a TLS-capable transport (set config.http_client, e.g. smithy::http::BeastHttpClient::FromEndpoint)");
+      }
       transport = std::make_shared<smithy::http::SocketHttpClient>(endpoint->host, endpoint->port, config.request_timeout_ms);
     }
   }

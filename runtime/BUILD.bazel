@@ -169,6 +169,7 @@ cc_library(
         ":http",
         "@boost.asio",
         "@boost.beast",
+        "@boringssl//:ssl",
     ],
 )
 
@@ -179,6 +180,20 @@ cc_test(
     copts = COPTS,
     tags = ["requires-network"],
     deps = [
+        ":http",
+        ":http_beast",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "beast_client_test",
+    size = "small",
+    srcs = ["tests/http/beast_client_test.cc"],
+    copts = COPTS,
+    tags = ["requires-network"],
+    deps = [
+        ":core",
         ":http",
         ":http_beast",
         "@googletest//:gtest_main",

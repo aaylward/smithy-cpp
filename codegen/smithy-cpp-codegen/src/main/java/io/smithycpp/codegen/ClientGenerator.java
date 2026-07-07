@@ -229,6 +229,15 @@ final class ClientGenerator {
     w.write("if (!endpoint) return std::move(endpoint).error();");
     w.write("prefix = endpoint->path_prefix;");
     w.openBlock("if (transport == nullptr) {");
+    w.write("// The built-in socket transport is plaintext-only; https needs a");
+    w.write("// TLS-capable transport (e.g. smithy::http::BeastHttpClient).");
+    w.openBlock("if (endpoint->tls()) {");
+    w.write(
+        "return smithy::Error::Validation($S);",
+        name
+            + ": https endpoints need a TLS-capable transport"
+            + " (set config.http_client, e.g. smithy::http::BeastHttpClient::FromEndpoint)");
+    w.closeBlock("}");
     w.write(
         "transport = std::make_shared<smithy::http::SocketHttpClient>(endpoint->host, "
             + "endpoint->port, config.request_timeout_ms);");

@@ -55,12 +55,16 @@ struct RequestTarget {
 };
 Outcome<RequestTarget> ParseRequestTarget(std::string_view target);
 
-// Minimal endpoint parser for "http://host[:port][/prefix]".
+// Minimal endpoint parser for "http(s)://host[:port][/prefix]". https
+// endpoints need a TLS-capable transport (BeastHttpClient); the built-in
+// socket transport is plaintext-only.
 struct Endpoint {
-  std::string scheme;  // "http" (https arrives with TLS-capable transports)
+  std::string scheme;  // "http" or "https"
   std::string host;
-  int port = 80;
+  int port = 80;            // https defaults to 443
   std::string path_prefix;  // no trailing '/', possibly empty
+
+  bool tls() const { return scheme == "https"; }
 };
 Outcome<Endpoint> ParseEndpoint(std::string_view url);
 

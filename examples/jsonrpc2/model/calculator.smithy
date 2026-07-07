@@ -34,7 +34,7 @@ operation Add {
 }
 
 /// Divides dividend by divisor; dividing by zero is a modeled error.
-@readonly
+@idempotent
 operation Divide {
     input := {
         @required
@@ -42,6 +42,10 @@ operation Divide {
 
         @required
         divisor: Double
+
+        /// Auto-filled with a UUIDv4 by the client when unset.
+        @idempotencyToken
+        requestToken: String
     }
 
     output := {

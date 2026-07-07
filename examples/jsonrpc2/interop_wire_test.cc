@@ -128,5 +128,28 @@ TEST(JsonRpc2InteropTest, GeneratedClientTalksToAHandRolledPeer) {
   EXPECT_EQ(divided.error().detail<DivisionByZero>()->message, "nope");
 }
 
+// @idempotencyToken members auto-fill over jsonRpc2 like any other protocol:
+// an unset token reaches the peer as a UUID inside params, and an explicit
+// one passes through untouched.
+TEST(JsonRpc2InteropTest, IdempotencyTokenAutoFills) {
+  auto peer = std::make_shared<HandRolledPeer>();
+  smithy::ClientConfig config;
+  config.http_client = peer;
+  auto client = CalculatorClient::Create(std::move(config));
+  ASSERT_TRUE(client.ok()) << client.error().message();
+
+  (void)client->Divide(DivideInput{.dividend = 4, .divisor = 2});
+  const smithy::Document* params = peer->last_envelope.Find("params");
+  ASSERT_NE(params, nullptr);
+  const smithy::Document* token = params->Find("requestToken");
+  ASSERT_NE(token, nullptr) << "unset @idempotencyToken must be auto-filled";
+  EXPECT_EQ(token->as_string().size(), 36u);  // UUIDv4 text form
+
+  (void)client->Divide(DivideInput{.dividend = 4, .divisor = 2, .requestToken = "caller-chosen"});
+  params = peer->last_envelope.Find("params");
+  ASSERT_NE(params, nullptr);
+  EXPECT_EQ(params->Find("requestToken")->as_string(), "caller-chosen");
+}
+
 }  // namespace
 }  // namespace example::calculator

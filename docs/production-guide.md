@@ -236,11 +236,36 @@ The hooks above map 1:1 onto OTel spans and metrics; an optional
 `//runtime:otel` adapter is planned post-0.1.0 once the hook shapes have
 survived production use (see PLAN.md).
 
+## Production client transport
+
+`SocketHttpClient` (the `config.endpoint` default) is plaintext,
+connection-per-request — fine for tests and simple internal deployments.
+Production clients should inject `BeastHttpClient` (ADR-0007): keep-alive
+connection pooling, per-request timeouts, and TLS with certificate and
+hostname verification on by default.
+
+```cpp
+auto transport = smithy::http::BeastHttpClient::FromEndpoint("https://api.example.com");
+if (!transport) { /* bad URL */ }
+smithy::ClientConfig config;
+config.endpoint = "https://api.example.com";  // identity + path prefix
+config.http_client = *transport;              // the wire
+auto client = MyServiceClient::Create(std::move(config));
+```
+
+Private CAs pass through `BeastHttpClient::Options::ca_pem`; a
+`verify_peer = false` escape hatch exists for local experiments and must
+never reach production. `//runtime:http_beast` is self-contained — it
+carries the asio SSL implementation and the BoringSSL dependency itself, so
+no extra build flags are needed.
+
 ## Server hardening
 
 The production server transport (`BeastServerTransport`, ADR-0006) enforces
 per-connection timeouts (`request_timeout_seconds`), body- and header-size
-limits (`max_body_bytes`, `max_header_bytes`), and drains on `Stop()`: new
+limits (`max_body_bytes`, `max_header_bytes`), terminates TLS when
+`tls_certificate_chain_pem` + `tls_private_key_pem` are set (ADR-0007), and
+drains on `Stop()`: new
 connections and keep-alive reads cease immediately, while requests already
 read off the wire get up to `drain_timeout_seconds` (default 10) to finish
 writing their responses before the thread pool is torn down. See

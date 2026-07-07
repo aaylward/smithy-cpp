@@ -147,7 +147,12 @@ TEST(UriTest, ParsesEndpoints) {
   EXPECT_EQ(full->port, 8080);
   EXPECT_EQ(full->path_prefix, "/api/v1");
 
-  EXPECT_FALSE(ParseEndpoint("https://secure.example.com").ok());
+  const auto secure = ParseEndpoint("https://secure.example.com");
+  ASSERT_TRUE(secure.ok());
+  EXPECT_EQ(secure->scheme, "https");
+  EXPECT_EQ(secure->port, 443);
+  EXPECT_TRUE(secure->tls());
+  EXPECT_FALSE(ParseEndpoint("ftp://example.com").ok());
   EXPECT_FALSE(ParseEndpoint("http://").ok());
   EXPECT_FALSE(ParseEndpoint("http://host:0").ok());
   EXPECT_FALSE(ParseEndpoint("http://host:notaport").ok());

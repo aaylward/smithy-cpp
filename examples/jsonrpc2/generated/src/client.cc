@@ -88,6 +88,11 @@ smithy::Outcome<CalculatorClient> CalculatorClient::Create(smithy::ClientConfig 
     if (!endpoint) return std::move(endpoint).error();
     prefix = endpoint->path_prefix;
     if (transport == nullptr) {
+      // The built-in socket transport is plaintext-only; https needs a
+      // TLS-capable transport (e.g. smithy::http::BeastHttpClient).
+      if (endpoint->tls()) {
+        return smithy::Error::Validation("CalculatorClient: https endpoints need a TLS-capable transport (set config.http_client, e.g. smithy::http::BeastHttpClient::FromEndpoint)");
+      }
       transport = std::make_shared<smithy::http::SocketHttpClient>(endpoint->host, endpoint->port, config.request_timeout_ms);
     }
   }
@@ -136,6 +141,8 @@ smithy::Outcome<AddOutput> CalculatorClient::Add(const AddInput& input) const {
 }
 
 smithy::Outcome<DivideOutput> CalculatorClient::Divide(const DivideInput& input) const {
+  DivideInput prepared = input;
+  if (!prepared.requestToken.has_value()) prepared.requestToken = smithy::GenerateUuidV4();
   smithy::http::HttpRequest request;
   request.method = "POST";
   request.target = path_prefix_ + "/";
@@ -144,7 +151,7 @@ smithy::Outcome<DivideOutput> CalculatorClient::Divide(const DivideInput& input)
   envelope.emplace("jsonrpc", smithy::Document("2.0"));
   envelope.emplace("method", smithy::Document("Divide"));
   envelope.emplace("id", smithy::Document(1));
-  envelope.emplace("params", SerializeDivideInput(input));
+  envelope.emplace("params", SerializeDivideInput(prepared));
   request.body = smithy::json::Encode(smithy::Document(std::move(envelope)));
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();

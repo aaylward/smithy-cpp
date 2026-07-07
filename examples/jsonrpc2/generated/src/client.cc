@@ -136,6 +136,8 @@ smithy::Outcome<AddOutput> CalculatorClient::Add(const AddInput& input) const {
 }
 
 smithy::Outcome<DivideOutput> CalculatorClient::Divide(const DivideInput& input) const {
+  DivideInput prepared = input;
+  if (!prepared.requestToken.has_value()) prepared.requestToken = smithy::GenerateUuidV4();
   smithy::http::HttpRequest request;
   request.method = "POST";
   request.target = path_prefix_ + "/";
@@ -144,7 +146,7 @@ smithy::Outcome<DivideOutput> CalculatorClient::Divide(const DivideInput& input)
   envelope.emplace("jsonrpc", smithy::Document("2.0"));
   envelope.emplace("method", smithy::Document("Divide"));
   envelope.emplace("id", smithy::Document(1));
-  envelope.emplace("params", SerializeDivideInput(input));
+  envelope.emplace("params", SerializeDivideInput(prepared));
   request.body = smithy::json::Encode(smithy::Document(std::move(envelope)));
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();

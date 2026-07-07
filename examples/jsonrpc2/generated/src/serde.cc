@@ -70,6 +70,9 @@ smithy::Document SerializeDivideInput(const DivideInput& value) {
   smithy::DocumentMap map;
   map.emplace("dividend", smithy::Document(static_cast<double>(value.dividend)));
   map.emplace("divisor", smithy::Document(static_cast<double>(value.divisor)));
+  if (value.requestToken.has_value()) {
+    map.emplace("requestToken", smithy::Document((*value.requestToken)));
+  }
   return smithy::Document(std::move(map));
 }
 
@@ -96,6 +99,15 @@ smithy::Outcome<DivideInput> DeserializeDivideInput(const smithy::Document& doc)
       auto parsed = smithy::DoubleFromDocument(*member);
       if (!parsed) return smithy::Error::Serialization("DivideInput.divisor: expected a number");
       out.divisor = static_cast<double>(*parsed);
+    }
+  }
+  {
+    const smithy::Document* member = doc.Find("requestToken");
+    if (member != nullptr && !member->is_null()) {
+      std::string parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("DivideInput.requestToken: unexpected type on the wire");
+      parsed_member = member->as_string();
+      out.requestToken = std::move(parsed_member);
     }
   }
   return out;

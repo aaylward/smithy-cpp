@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <optional>
 #include <string>
 
 namespace example::calculator {
@@ -24,6 +25,7 @@ struct AddOutput {
 struct DivideInput {
   double dividend{};
   double divisor{};
+  std::optional<std::string> requestToken{};
 
   friend bool operator==(const DivideInput&, const DivideInput&) = default;
 };

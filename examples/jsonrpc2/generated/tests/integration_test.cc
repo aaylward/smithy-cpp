@@ -77,6 +77,7 @@ DivideInput RandomDivideInput(Rng& rng) {
   DivideInput v{};
   v.dividend = static_cast<double>(rng.Int(-8000000LL, 8000000LL)) / static_cast<double>(8);
   v.divisor = static_cast<double>(rng.Int(-8000000LL, 8000000LL)) / static_cast<double>(8);
+  v.requestToken = rng.Text(1, 9);
   return v;
 }
 

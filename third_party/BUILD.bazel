@@ -1,0 +1,2 @@
+# Registry-module patches referenced from MODULE.bazel.
+exports_files(glob(["*.patch"]))

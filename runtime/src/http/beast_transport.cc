@@ -180,12 +180,12 @@ Outcome<Unit> BeastServerTransport::Start(RequestHandler handler) {
         "beast: TLS termination needs both tls_certificate_chain_pem and tls_private_key_pem");
   }
   if (has_cert) {
-    state->ssl.emplace(asio::ssl::context::tls_server);
+    asio::ssl::context& ssl_context = state->ssl.emplace(asio::ssl::context::tls_server);
     boost::system::error_code ssl_ec;
-    (void)state->ssl->use_certificate_chain(asio::buffer(options_.tls_certificate_chain_pem),
+    (void)ssl_context.use_certificate_chain(asio::buffer(options_.tls_certificate_chain_pem),
                                             ssl_ec);
     if (!ssl_ec) {
-      (void)state->ssl->use_private_key(asio::buffer(options_.tls_private_key_pem),
+      (void)ssl_context.use_private_key(asio::buffer(options_.tls_private_key_pem),
                                         asio::ssl::context::pem, ssl_ec);
     }
     if (ssl_ec) {
@@ -293,10 +293,11 @@ struct ClientConnection {
   ClientConnection() : io(1) {}
 
   asio::io_context io;
-  std::optional<beast::tcp_stream> plain;
-  std::optional<asio::ssl::stream<beast::tcp_stream>> tls;
+  // Exactly one of these is set, chosen when the connection is dialed.
+  std::unique_ptr<beast::tcp_stream> plain;
+  std::unique_ptr<asio::ssl::stream<beast::tcp_stream>> tls;
 
-  beast::tcp_stream& lowest() { return tls.has_value() ? beast::get_lowest_layer(*tls) : *plain; }
+  beast::tcp_stream& lowest() { return tls != nullptr ? beast::get_lowest_layer(*tls) : *plain; }
 
   // Runs the handlers queued so far to completion, then rearms for reuse.
   void Run() {
@@ -312,28 +313,28 @@ struct BeastHttpClient::State {
     if (!opts.tls) {
       return;
     }
-    ssl.emplace(asio::ssl::context::tls_client);
-    ssl->set_options(asio::ssl::context::default_workarounds | asio::ssl::context::no_sslv2 |
-                     asio::ssl::context::no_sslv3);
+    asio::ssl::context& ssl_context = ssl.emplace(asio::ssl::context::tls_client);
+    ssl_context.set_options(asio::ssl::context::default_workarounds | asio::ssl::context::no_sslv2 |
+                            asio::ssl::context::no_sslv3);
     boost::system::error_code ec;
     if (!opts.verify_peer) {
-      ssl->set_verify_mode(asio::ssl::verify_none, ec);
+      (void)ssl_context.set_verify_mode(asio::ssl::verify_none, ec);
       return;
     }
-    ssl->set_verify_mode(asio::ssl::verify_peer, ec);
+    (void)ssl_context.set_verify_mode(asio::ssl::verify_peer, ec);
     if (ec) {
       setup_error = "beast client: cannot enable TLS verification: " + ec.message();
       return;
     }
     if (!opts.ca_pem.empty()) {
-      ssl->add_certificate_authority(asio::buffer(opts.ca_pem), ec);
+      (void)ssl_context.add_certificate_authority(asio::buffer(opts.ca_pem), ec);
       if (ec) {
         setup_error = "beast client: invalid ca_pem: " + ec.message();
       }
     } else {
       // Best effort: platforms without system OpenSSL paths simply fail
       // verification at handshake time.
-      (void)ssl->set_default_verify_paths(ec);
+      (void)ssl_context.set_default_verify_paths(ec);
     }
   }
 
@@ -374,22 +375,27 @@ struct BeastHttpClient::State {
                               resolve_ec.message());
     }
     if (opts.tls) {
-      connection->tls.emplace(connection->io, *ssl);
+      if (!ssl.has_value()) {
+        return Error::Validation("beast client: TLS context was not configured");
+      }
+      asio::ssl::context& ssl_context = *ssl;
+      connection->tls =
+          std::make_unique<asio::ssl::stream<beast::tcp_stream>>(connection->io, ssl_context);
       // SNI: virtual-hosted servers need the name before the handshake.
       if (SSL_set_tlsext_host_name(connection->tls->native_handle(), opts.host.c_str()) != 1) {
         return Error::Transport("beast client: cannot set SNI host name");
       }
       if (opts.verify_peer) {
         boost::system::error_code verify_ec;
-        connection->tls->set_verify_callback(asio::ssl::host_name_verification(opts.host),
-                                             verify_ec);
+        (void)connection->tls->set_verify_callback(asio::ssl::host_name_verification(opts.host),
+                                                   verify_ec);
         if (verify_ec) {
           return Error::Transport("beast client: cannot enable hostname verification: " +
                                   verify_ec.message());
         }
       }
     } else {
-      connection->plain.emplace(connection->io);
+      connection->plain = std::make_unique<beast::tcp_stream>(connection->io);
     }
 
     connection->lowest().expires_after(Timeout());
@@ -442,13 +448,13 @@ struct BeastHttpClient::State {
   // `keep_alive` reports whether the response permits reusing the connection.
   Outcome<HttpResponse> RoundTrip(ClientConnection& connection,
                                   const bhttp::request<bhttp::string_body>& wire, bool* stale,
-                                  bool* keep_alive) {
+                                  bool* keep_alive) const {
     *stale = false;
     *keep_alive = false;
     connection.lowest().expires_after(Timeout());
     beast::error_code write_ec;
     auto write_handler = [&write_ec](beast::error_code ec, std::size_t) { write_ec = ec; };
-    if (connection.tls.has_value()) {
+    if (connection.tls != nullptr) {
       bhttp::async_write(*connection.tls, wire, write_handler);
     } else {
       bhttp::async_write(*connection.plain, wire, write_handler);
@@ -466,17 +472,18 @@ struct BeastHttpClient::State {
     connection.lowest().expires_after(Timeout());
     beast::error_code read_ec;
     auto read_handler = [&read_ec](beast::error_code ec, std::size_t) { read_ec = ec; };
-    if (connection.tls.has_value()) {
+    if (connection.tls != nullptr) {
       bhttp::async_read(*connection.tls, buffer, parser, read_handler);
     } else {
       bhttp::async_read(*connection.plain, buffer, parser, read_handler);
     }
     connection.Run();
     if (read_ec) {
-      // EOF before any response bytes: the reused connection went away
-      // between requests (retryable on a fresh connection). Anything else
-      // (timeout, mid-response reset) is a real failure.
-      *stale = read_ec == bhttp::error::end_of_stream && buffer.size() == 0;
+      // A failure before any response bytes means the reused connection went
+      // away between requests (clean EOF on Linux, ECONNRESET on macOS) —
+      // retryable on a fresh connection. Timeouts and mid-response failures
+      // are real; a redial would only repeat them.
+      *stale = !parser.got_some() && read_ec != beast::error::timeout;
       return Error::Transport("beast client: read failed: " + read_ec.message());
     }
 

@@ -12,7 +12,8 @@ crates (PLAN §3.2a).
 | `//runtime:cbor` | `smithy::cbor` | `Document` ⇄ deterministic CBOR (RFC 8949; tag-1 timestamps; tolerant decoder) — ADR-0005 |
 | `//runtime:http` | `smithy::http` | `Headers` (case-insensitive), URI percent-encoding per the Smithy HTTP binding rules, `HttpRequest`/`HttpResponse`, `HttpClient`/`HttpServerTransport` interfaces, `Loopback` in-memory transport, built-in `SocketHttpClient`/`SocketHttpServer` (test/reference only — ADR-0006) |
 | `//runtime:http_beast` | `smithy::http` | `BeastServerTransport` (ADR-0006): the production server transport on BCR modular Boost.Beast/asio — concurrent connections on a thread pool, keep-alive, per-connection timeouts, body-size limits, graceful shutdown. Separate target so Boost stays out of dep-light builds |
-| `//runtime:client` | `smithy` | `ClientConfig` (endpoint, timeout, user-agent, transport injection) |
+| `//runtime:client` | `smithy` | `ClientConfig` (endpoint, timeout, user-agent, transport injection, `RetryPolicy`, request-compression threshold), `SendWithRetries` (full-jitter exponential backoff over transport errors and 429/5xx — see docs/production-guide.md) |
+| `//runtime:compression` | `smithy` | `GzipCompress`/`GzipDecompress` (zlib; decompression-bomb guard, trailing-garbage rejection) backing `@requestCompression` |
 | `//runtime:server` | `smithy::server` | `Router` (literal > label > greedy precedence, 404/405/400), `RequestContext`, `MakeErrorResponse`, `ValidationFailure` |
 
 ## Design rules

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <charconv>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <limits>
@@ -10,6 +11,7 @@
 #include <string_view>
 #include <utility>
 
+#include "smithy/compression/gzip.h"
 #include "smithy/core/base64.h"
 #include "smithy/core/blob.h"
 #include "smithy/core/document_serde.h"
@@ -175,7 +177,7 @@ smithy::Outcome<smithy::http::HttpResponse> RestJsonClient::Send(smithy::http::H
   if (!request.body.empty()) {
     request.headers.Set("content-length", std::to_string(request.body.size()));
   }
-  return transport_->Send(request);
+  return smithy::SendWithRetries(*transport_, request, config_.retry);
 }
 
 smithy::Outcome<AllQueryStringTypesOutput> RestJsonClient::AllQueryStringTypes(const AllQueryStringTypesInput& input) const {
@@ -2237,6 +2239,14 @@ smithy::Outcome<PutWithContentEncodingOutput> RestJsonClient::PutWithContentEnco
   }
   request.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   request.headers.Set("content-type", "application/json");
+  // @requestCompression(gzip): applied last, appended to Content-Encoding.
+  if (request.body.size() >= static_cast<std::size_t>(config_.request_min_compression_size_bytes)) {
+    auto compressed = smithy::GzipCompress(request.body);
+    if (!compressed) return std::move(compressed).error();
+    request.body = *std::move(compressed);
+    const auto existing_encoding = request.headers.Get("content-encoding");
+    request.headers.Set("content-encoding", existing_encoding.has_value() && !existing_encoding->empty() ? *existing_encoding + ", gzip" : "gzip");
+  }
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
   if (response->status != 200) return GenericError(ParseError(*response));

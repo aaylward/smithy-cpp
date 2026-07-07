@@ -182,6 +182,7 @@ class CafeIntegrationTest : public ::testing::TestWithParam<TransportKind> {
       handler_ = std::make_shared<ScriptedHandler>();
       server_ = std::make_unique<CafeServer>(handler_);
       smithy::ClientConfig config;
+      config.retry.max_attempts = 1;  // wire-exact tests: no retries
       if (GetParam() == TransportKind::kLoopback) {
         auto loopback = std::make_shared<smithy::http::Loopback>();
         ASSERT_TRUE(loopback->Start(server_->Handler()).ok());
@@ -300,6 +301,7 @@ TEST(CafeIntegrationUnknownMembers, GetOrderToleratesUnknownResponseMembers) {
   };
   auto transport = std::make_shared<smithy::testing::MutatingTransport>(loopback, inject);
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *CafeClient::Create(std::move(config));
   Rng rng{std::mt19937{99U}, /*fill_all=*/true};
@@ -325,6 +327,7 @@ TEST(CafeIntegrationUnknownMembers, OrderCoffeeToleratesUnknownResponseMembers) 
   };
   auto transport = std::make_shared<smithy::testing::MutatingTransport>(loopback, inject);
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *CafeClient::Create(std::move(config));
   Rng rng{std::mt19937{99U}, /*fill_all=*/true};

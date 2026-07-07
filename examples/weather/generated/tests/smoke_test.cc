@@ -82,6 +82,7 @@ WeatherClient MakeClient(std::shared_ptr<WeatherHandler> handler) {
   auto loopback = std::make_shared<smithy::http::Loopback>();
   (void)loopback->Start(server.Handler());
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = loopback;
   // Create cannot fail when a transport is injected.
   return *WeatherClient::Create(std::move(config));

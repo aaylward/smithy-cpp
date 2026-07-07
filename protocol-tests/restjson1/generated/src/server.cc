@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+#include "smithy/compression/gzip.h"
 #include "smithy/core/base64.h"
 #include "smithy/core/blob.h"
 #include "smithy/core/document.h"
@@ -6235,7 +6236,16 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializePostUnionWithJsonNameResponse(*outcome);
   });
-  (void)router_->Add("POST", "/requestcompression/putcontentwithencoding", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+  (void)router_->Add("POST", "/requestcompression/putcontentwithencoding", [handler](const smithy::http::HttpRequest& raw_request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    smithy::http::HttpRequest request = raw_request;
+    // @requestCompression(gzip): decode before parsing.
+    if (const auto request_encoding = request.headers.Get("content-encoding"); request_encoding.has_value() && (*request_encoding == "gzip" || request_encoding->ends_with(", gzip"))) {
+      auto decompressed = smithy::GzipDecompress(request.body);
+      if (!decompressed) {
+        return JsonError(400, "", "invalid gzip request body", {});
+      }
+      request.body = *std::move(decompressed);
+    }
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
     // content-type is tolerated, and blob payloads without @mediaType accept

@@ -25,9 +25,6 @@ aws.protocoltests.restjson#RestJson any RestJsonInputAndOutputWithQuotedStringHe
 # @httpChecksumRequired (Content-MD5) is not implemented yet.
 aws.protocoltests.restjson#RestJson request RestJsonHttpChecksumRequired @httpChecksumRequired is not implemented yet
 
-# @requestCompression (gzip) is not implemented yet.
-aws.protocoltests.restjson#RestJson request SDKAppliedContentEncoding_restJson1 @requestCompression is not implemented yet
-aws.protocoltests.restjson#RestJson request SDKAppendedGzipAfterProvidedEncoding_restJson1 @requestCompression is not implemented yet
 
 # The test asserts an all-zero UUID, which needs an injectable token source.
 aws.protocoltests.restjson#RestJson request RestJsonQueryIdempotencyTokenAutoFill deterministic idempotency tokens need an injectable source
@@ -48,9 +45,11 @@ aws.protocoltests.restjson#RestJson server-request RestJsonSupportsNaNFloatHeade
 aws.protocoltests.restjson#RestJson server-request RestJsonSupportsNaNFloatQueryValues NaN input members compare unequal under operator==
 smithy.protocoltests.rpcv2Cbor#RpcV2Protocol server-request RpcV2CborSupportsNaNFloatInputs NaN input members compare unequal under operator==
 
-# @requestCompression (gzip) is not implemented yet.
-aws.protocoltests.restjson#RestJson server-request SDKAppliedContentEncoding_restJson1 @requestCompression is not implemented yet
-aws.protocoltests.restjson#RestJson server-request SDKAppendedGzipAfterProvidedEncoding_restJson1 @requestCompression is not implemented yet
+# These cases define no wire body (client-only semantics: they assert the
+# Content-Encoding header the client sends), so a server cannot parse the
+# expected params from them.
+aws.protocoltests.restjson#RestJson server-request SDKAppliedContentEncoding_restJson1 the case has no wire body for the server to parse
+aws.protocoltests.restjson#RestJson server-request SDKAppendedGzipAfterProvidedEncoding_restJson1 the case has no wire body for the server to parse
 
 # Absent query list params deserialize as unset members, not engaged empty lists.
 aws.protocoltests.restjson#RestJson server-request RestJsonOmitsEmptyListQueryValues absent query lists stay unset (nullopt), not engaged empty lists

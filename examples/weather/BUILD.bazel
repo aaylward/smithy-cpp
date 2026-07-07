@@ -53,7 +53,9 @@ cc_test(
     srcs = ["generated_server_e2e_test.cc"],
     deps = [
         ":weather_handwritten",
+        "//examples/weather/generated:client",
         "//examples/weather/generated:server",
+        "//runtime:client",
         "//runtime:http",
         "@googletest//:gtest_main",
     ],

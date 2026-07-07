@@ -85,11 +85,13 @@ timestamps, single-member unions, `SerializationException`/`UnsupportedMediaType
 responses — `@httpResponseCode`, 204 No Content bodies suppressed, Content-Type (415) and
 Accept (406) enforcement (blob payloads without `@mediaType` accept anything), and
 all-query-params `@httpQueryParams` maps. Ambiguous route tables fail at generation time.
+Routes for `@requestCompression` operations transparently gunzip request bodies arriving with
+`Content-Encoding: gzip` (decompression is size-capped against bombs; malformed gzip is a 400
+serialization error) — see [production-guide.md](production-guide.md).
 
 ## Not yet generated (Phase 5+)
 
 Nested `@required` absences as `fieldList` entries and a server-strict serde variant (clients
 must skip null dense-map values and accept UTC-offset timestamps in responses; servers share
 that serde today), ReDoS-safe `@pattern` matching (`std::regex` backtracks, so the suite's
-deliberately catastrophic pattern is excluded), `@streaming` payloads (Phase 8), and
-`@requestCompression`.
+deliberately catastrophic pattern is excluded), and `@streaming` payloads (Phase 8).

@@ -283,6 +283,7 @@ final class RestJson1Protocol implements ProtocolGenerator {
       w.write(
           "request.headers.Set(\"accept\", $S);", payloadContentType(context, operation, false));
     }
+    ProtocolSupport.writeRequestCompression(w, operation);
     w.write("auto response = Send(std::move(request));");
     w.write("if (!response) return std::move(response).error();");
     if (responseCode != null) {
@@ -1313,11 +1314,21 @@ final class RestJson1Protocol implements ProtocolGenerator {
                 b ->
                     b.getLocation() == HttpBinding.Location.DOCUMENT
                         || b.getLocation() == HttpBinding.Location.PAYLOAD);
+    boolean compressed =
+        operation
+            .getTrait(software.amazon.smithy.model.traits.RequestCompressionTrait.class)
+            .map(t -> t.getEncodings().contains("gzip"))
+            .orElse(false);
     w.openBlock(
-        "(void)router_->Add($S, $S, [handler](const smithy::http::HttpRequest& request, "
+        "(void)router_->Add($S, $S, [handler](const smithy::http::HttpRequest& $L, "
             + "const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {",
         http.getMethod(),
-        pattern.toString());
+        pattern.toString(),
+        compressed ? "raw_request" : "request");
+    if (compressed) {
+      w.write("smithy::http::HttpRequest request = raw_request;");
+      ProtocolSupport.writeRequestDecompression(w, operation, "JsonError", "");
+    }
     StructureShape inputShape = ProtocolSupport.inputShape(context, operation);
     boolean noModeledInput =
         inputShape.getId().toString().equals("smithy.api#Unit")

@@ -248,6 +248,7 @@ class RoundTripRestIntegrationTest : public ::testing::TestWithParam<TransportKi
       handler_ = std::make_shared<ScriptedHandler>();
       server_ = std::make_unique<RoundTripRestServer>(handler_);
       smithy::ClientConfig config;
+      config.retry.max_attempts = 1;  // wire-exact tests: no retries
       if (GetParam() == TransportKind::kLoopback) {
         auto loopback = std::make_shared<smithy::http::Loopback>();
         ASSERT_TRUE(loopback->Start(server_->Handler()).ok());
@@ -422,6 +423,7 @@ TEST(RoundTripRestIntegrationUnknownMembers, DescribeSinkToleratesUnknownRespons
   };
   auto transport = std::make_shared<smithy::testing::MutatingTransport>(loopback, inject);
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RoundTripRestClient::Create(std::move(config));
   Rng rng{std::mt19937{99U}, /*fill_all=*/true};
@@ -447,6 +449,7 @@ TEST(RoundTripRestIntegrationUnknownMembers, PutSinkToleratesUnknownResponseMemb
   };
   auto transport = std::make_shared<smithy::testing::MutatingTransport>(loopback, inject);
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RoundTripRestClient::Create(std::move(config));
   Rng rng{std::mt19937{99U}, /*fill_all=*/true};

@@ -182,6 +182,7 @@ final class IntegrationTestGenerator {
     w.write("handler_ = std::make_shared<ScriptedHandler>();");
     w.write("server_ = std::make_unique<$LServer>(handler_);", name);
     w.write("smithy::ClientConfig config;");
+    w.write("config.retry.max_attempts = 1;  // wire-exact tests: no retries");
     w.openBlock("if (GetParam() == TransportKind::kLoopback) {");
     w.write("auto loopback = std::make_shared<smithy::http::Loopback>();");
     w.write("ASSERT_TRUE(loopback->Start(server_->Handler()).ok());");
@@ -305,6 +306,7 @@ final class IntegrationTestGenerator {
         "auto transport = std::make_shared<smithy::testing::MutatingTransport>(loopback, "
             + "inject);");
     w.write("smithy::ClientConfig config;");
+    w.write("config.retry.max_attempts = 1;  // wire-exact tests: no retries");
     w.write("config.http_client = transport;");
     w.write("auto client = *$LClient::Create(std::move(config));", name);
     w.write("Rng rng{std::mt19937{99U}, /*fill_all=*/true};");

@@ -4,8 +4,10 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <memory>
 
+#include "example/weather/client.h"
 #include "example/weather/server.h"
 #include "examples/weather/handwritten/weather_client.h"
 #include "smithy/http/loopback.h"
@@ -86,6 +88,37 @@ TEST_F(GeneratedServerEndToEndTest, GetCityRoundTrips) {
   EXPECT_EQ(city->name, "Seattle");
   EXPECT_FLOAT_EQ(city->coordinates.latitude, 47.6062F);
   EXPECT_FLOAT_EQ(city->coordinates.longitude, -122.3321F);
+}
+
+// A transport that fails transiently proves the generated client's retry
+// path end to end (Phase 7): the third attempt reaches the server.
+class FlakyTransport final : public smithy::http::HttpClient {
+ public:
+  explicit FlakyTransport(std::shared_ptr<smithy::http::HttpClient> inner)
+      : inner_(std::move(inner)) {}
+
+  smithy::Outcome<smithy::http::HttpResponse> Send(
+      const smithy::http::HttpRequest& request) override {
+    if (++calls_ <= 2) return smithy::Error::Transport("transient outage");
+    return inner_->Send(request);
+  }
+
+ private:
+  std::shared_ptr<smithy::http::HttpClient> inner_;
+  int calls_ = 0;
+};
+
+TEST_F(GeneratedServerEndToEndTest, GeneratedClientRetriesTransientFailures) {
+  auto loopback = std::make_shared<smithy::http::Loopback>();
+  ASSERT_TRUE(loopback->Start(server_->Handler()).ok());
+  smithy::ClientConfig config;
+  config.http_client = std::make_shared<FlakyTransport>(loopback);
+  config.retry.sleep = [](std::chrono::milliseconds) {};  // instant for tests
+  auto client = example::weather::WeatherClient::Create(std::move(config));
+  ASSERT_TRUE(client.ok());
+  const auto city = client->GetCity(example::weather::GetCityInput{.cityId = "seattle"});
+  ASSERT_TRUE(city.ok()) << city.error().message();
+  EXPECT_EQ(city->name, "Seattle");
 }
 
 TEST_F(GeneratedServerEndToEndTest, DeleteCityIs204WithNoBody) {

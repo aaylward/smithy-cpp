@@ -91,12 +91,23 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
     String inputType = context.cppSymbols().toSymbol(input).getName();
     String opName = CppReservedWords.escape(operation.getId().getName());
 
+    boolean compressed =
+        operation
+            .getTrait(software.amazon.smithy.model.traits.RequestCompressionTrait.class)
+            .map(t -> t.getEncodings().contains("gzip"))
+            .orElse(false);
     w.openBlock(
         "(void)router_->Add(\"POST\", \"/service/$L/operation/$L\", "
-            + "[handler](const smithy::http::HttpRequest& request, "
+            + "[handler](const smithy::http::HttpRequest& $L, "
             + "const smithy::server::RequestContext&) -> smithy::http::HttpResponse {",
         service.getId().getName(),
-        operation.getId().getName());
+        operation.getId().getName(),
+        compressed ? "raw_request" : "request");
+    if (compressed) {
+      w.write("smithy::http::HttpRequest request = raw_request;");
+      ProtocolSupport.writeRequestDecompression(
+          w, operation, "CborError", "SerializationException");
+    }
     w.openBlock(
         "if (request.headers.Get(\"smithy-protocol\").value_or(\"\") != \"rpc-v2-cbor\") {");
     w.write(
@@ -185,6 +196,7 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
           in);
     }
 
+    ProtocolSupport.writeRequestCompression(w, operation);
     w.write("auto response = Send(std::move(request));");
     w.write("if (!response) return std::move(response).error();");
     w.write(

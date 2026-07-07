@@ -23,6 +23,7 @@ _GENERATOR = Label("//codegen:generator")
 _RUNTIME_DEPS = [
     Label("//runtime:cbor"),
     Label("//runtime:client"),
+    Label("//runtime:compression"),
     Label("//runtime:core"),
     Label("//runtime:http"),
     Label("//runtime:json"),

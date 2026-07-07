@@ -10,7 +10,11 @@ final class BuildFileGenerator {
   private BuildFileGenerator() {}
 
   static void run(
-      CppContext context, ProtocolGenerator protocol, boolean hasClient, boolean hasSerde) {
+      CppContext context,
+      ProtocolGenerator protocol,
+      boolean hasClient,
+      boolean hasSerde,
+      boolean hasServer) {
     CppSettings settings = context.settings();
     StringBuilder out = new StringBuilder();
     out.append(
@@ -71,7 +75,8 @@ final class BuildFileGenerator {
           """
               .formatted(settings.clientHeaderFile()));
       appendDeps(out, deps);
-
+    }
+    if (hasServer) {
       List<String> serverDeps = new ArrayList<>();
       serverDeps.add("\":serde\"");
       serverDeps.add("\":types\"");

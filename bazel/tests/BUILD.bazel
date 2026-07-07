@@ -1,0 +1,27 @@
+load("//bazel:defs.bzl", "smithy_cpp_client_library", "smithy_cpp_server_library", "smithy_cpp_types_library")
+load(":defs_test.bzl", "defs_test_suite")
+
+# Rule instances the analysis tests inspect; building them is also an in-tree
+# compile test of rule-generated code.
+smithy_cpp_client_library(
+    name = "greeter_client",
+    srcs = ["greeter.smithy"],
+    namespace = "smithy::cpp::ruletest",
+    service = "smithy.cpp.ruletest#Greeter",
+)
+
+smithy_cpp_server_library(
+    name = "greeter_server",
+    srcs = ["greeter.smithy"],
+    namespace = "smithy::cpp::ruletest",
+    service = "smithy.cpp.ruletest#Greeter",
+)
+
+smithy_cpp_types_library(
+    name = "greeter_types",
+    srcs = ["greeter.smithy"],
+    namespace = "smithy::cpp::ruletest",
+    service = "smithy.cpp.ruletest#Greeter",
+)
+
+defs_test_suite(name = "defs_tests")

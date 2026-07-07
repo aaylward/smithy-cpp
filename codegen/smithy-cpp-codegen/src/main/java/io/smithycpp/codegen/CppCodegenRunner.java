@@ -19,7 +19,7 @@ import software.amazon.smithy.model.transform.ModelTransformer;
  * Gradle tasks (and anyone who wants generation without smithy-build):
  *
  * <pre>
- * CppCodegenRunner [--model M.smithy] --service NS#Svc --namespace a::b \
+ * CppCodegenRunner [--model M.smithy]... --service NS#Svc --namespace a::b \
  *     --runtime-target //runtime:core --output DIR \
  *     [--tests-package //pkg] [--omit-operation NS#Op]... [--malformed-tests true]
  * </pre>
@@ -42,6 +42,8 @@ public final class CppCodegenRunner {
     String testsPackage = null;
     boolean malformedTests = false;
     boolean integrationTests = false;
+    String mode = null;
+    Boolean emitBuildFile = null;
     List<String> omitOperations = new ArrayList<>();
     for (int i = 0; i + 1 < args.length; i += 2) {
       switch (args[i]) {
@@ -54,6 +56,8 @@ public final class CppCodegenRunner {
         case "--omit-operation" -> omitOperations.add(args[i + 1]);
         case "--malformed-tests" -> malformedTests = Boolean.parseBoolean(args[i + 1]);
         case "--integration-tests" -> integrationTests = Boolean.parseBoolean(args[i + 1]);
+        case "--mode" -> mode = args[i + 1];
+        case "--emit-build-file" -> emitBuildFile = Boolean.parseBoolean(args[i + 1]);
         default -> throw new IllegalArgumentException("unknown argument: " + args[i]);
       }
     }
@@ -91,6 +95,12 @@ public final class CppCodegenRunner {
     }
     if (integrationTests) {
       settings.withMember("integrationTests", true);
+    }
+    if (mode != null) {
+      settings.withMember("mode", mode);
+    }
+    if (emitBuildFile != null) {
+      settings.withMember("emitBuildFile", emitBuildFile);
     }
 
     PluginContext context =

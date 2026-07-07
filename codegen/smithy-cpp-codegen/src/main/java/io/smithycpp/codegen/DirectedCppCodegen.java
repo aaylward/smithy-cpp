@@ -47,21 +47,30 @@ public final class DirectedCppCodegen
 
     SerdeGenerator serdeGenerator =
         new SerdeGenerator(directive.context(), protocol != null && protocol.usesJsonName());
-    boolean hasSerde = !serdeGenerator.serdeShapes().isEmpty();
+    boolean hasSerde =
+        !directive.settings().mode().equals("types") && !serdeGenerator.serdeShapes().isEmpty();
     if (hasSerde) {
       serdeGenerator.run();
     }
 
     boolean hasClient = false;
-    if (protocol != null) {
+    boolean hasServer = false;
+    if (protocol != null && !directive.settings().mode().equals("types")) {
       ClientGenerator clientGenerator = new ClientGenerator(directive.context(), service, protocol);
       java.util.List<software.amazon.smithy.model.shapes.OperationShape> operations =
           clientGenerator.operations();
       if (!operations.isEmpty()) {
-        clientGenerator.run();
-        hasClient = true;
-        new ServerGenerator(directive.context(), service, protocol, operations).run();
-        if (directive.settings().testsPackage() != null) {
+        if (directive.settings().generateClient()) {
+          clientGenerator.run();
+          hasClient = true;
+        }
+        if (directive.settings().generateServer()) {
+          new ServerGenerator(directive.context(), service, protocol, operations).run();
+          hasServer = true;
+        }
+        // The generated test suites drive the client against the server, so
+        // they only exist for mode=both (the fixture/protocol-test pipelines).
+        if (directive.settings().testsPackage() != null && hasClient && hasServer) {
           new SmokeTestGenerator(directive.context(), service, operations).run();
           boolean hasProtocolTests =
               operations.stream()
@@ -100,7 +109,9 @@ public final class DirectedCppCodegen
         }
       }
     }
-    BuildFileGenerator.run(directive.context(), protocol, hasClient, hasSerde);
+    if (directive.settings().emitBuildFile()) {
+      BuildFileGenerator.run(directive.context(), protocol, hasClient, hasSerde, hasServer);
+    }
   }
 
   /** Null when the service declares no supported protocol (types+serde still generate). */

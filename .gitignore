@@ -1,5 +1,5 @@
 # Bazel
-bazel-*
+/bazel-*
 /.bazelrc.user
 
 # Gradle / JVM

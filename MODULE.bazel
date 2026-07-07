@@ -6,7 +6,38 @@ module(
 
 bazel_dep(name = "platforms", version = "1.0.0")
 bazel_dep(name = "rules_cc", version = "0.2.17")
-bazel_dep(name = "googletest", version = "1.17.0.bcr.1")
+bazel_dep(name = "googletest", version = "1.17.0.bcr.2")
 bazel_dep(name = "boost.asio", version = "1.87.0.bcr.1")
 bazel_dep(name = "boost.beast", version = "1.87.0")
-bazel_dep(name = "nlohmann_json", version = "3.12.0")
+bazel_dep(name = "nlohmann_json", version = "3.12.0.bcr.1")
+
+# boost.container 1.87's registry overlay calls native.cc_test without a
+# load(), the one stale file in the boost 1.87 graph (audited); patch it
+# rather than moving to boost 1.90, which drags in boringssl toolchains.
+single_version_override(
+    module_name = "boost.container",
+    patch_strip = 1,
+    patches = ["//third_party:boost_container_cc_test_load.patch"],
+)
+
+bazel_dep(name = "rules_testing", version = "0.6.0", dev_dependency = True)
+
+# The code generator runs inside the build graph as a hermetic Java action
+# (bazel/defs.bzl); rules_jvm_external pins its Smithy dependencies.
+bazel_dep(name = "rules_java", version = "8.16.1")
+bazel_dep(name = "rules_jvm_external", version = "6.7")
+
+maven = use_extension("@rules_jvm_external//:extensions.bzl", "maven")
+maven.install(
+    name = "smithy_cpp_codegen_maven",
+    artifacts = [
+        "software.amazon.smithy:smithy-aws-traits:1.53.0",
+        "software.amazon.smithy:smithy-build:1.53.0",
+        "software.amazon.smithy:smithy-codegen-core:1.53.0",
+        "software.amazon.smithy:smithy-protocol-test-traits:1.53.0",
+        "software.amazon.smithy:smithy-protocol-traits:1.53.0",
+    ],
+    lock_file = "//:maven_install.json",
+    repositories = ["https://repo1.maven.org/maven2"],
+)
+use_repo(maven, "smithy_cpp_codegen_maven")

@@ -1,0 +1,18 @@
+# Out-of-tree consumer of smithy_cpp: the quick-start acceptance test.
+# CI builds this module standalone (cd examples/bazel-consumer && bazel test //...).
+module(
+    name = "smithy_cpp_consumer",
+    version = "0.0.0",
+)
+
+bazel_dep(name = "smithy_cpp", version = "0.0.0")
+
+# Until smithy_cpp is published to the Bazel Central Registry (deferred until
+# the project is production-validated), consume it by path or git override.
+local_path_override(
+    module_name = "smithy_cpp",
+    path = "../..",
+)
+
+bazel_dep(name = "googletest", version = "1.17.0.bcr.2")
+bazel_dep(name = "rules_cc", version = "0.2.17")

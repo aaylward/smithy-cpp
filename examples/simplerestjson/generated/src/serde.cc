@@ -39,9 +39,7 @@ smithy::Outcome<AddBookInput> DeserializeAddBookInput(const smithy::Document& do
 
 smithy::Document SerializeAddBookOutput(const AddBookOutput& value) {
   smithy::DocumentMap map;
-  if (value.status.has_value()) {
-    map.emplace("status", smithy::Document(static_cast<std::int64_t>((*value.status))));
-  }
+  map.emplace("status", smithy::Document(static_cast<std::int64_t>(value.status)));
   map.emplace("isbn", smithy::Document(value.isbn));
   return smithy::Document(std::move(map));
 }
@@ -51,13 +49,12 @@ smithy::Outcome<AddBookOutput> DeserializeAddBookOutput(const smithy::Document& 
   AddBookOutput out;
   {
     const smithy::Document* member = doc.Find("status");
-    if (member != nullptr && !member->is_null()) {
-      std::int32_t parsed_member{};
-      if (!member->is_int()) return smithy::Error::Serialization("AddBookOutput.status: unexpected type on the wire");
-      if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("AddBookOutput.status: value out of range");
-      parsed_member = static_cast<std::int32_t>(member->as_int());
-      out.status = std::move(parsed_member);
+    if (member == nullptr || member->is_null()) {
+      return smithy::Error::Serialization("AddBookOutput: missing required member: status");
     }
+    if (!member->is_int()) return smithy::Error::Serialization("AddBookOutput.status: unexpected type on the wire");
+    if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("AddBookOutput.status: value out of range");
+    out.status = static_cast<std::int32_t>(member->as_int());
   }
   {
     const smithy::Document* member = doc.Find("isbn");

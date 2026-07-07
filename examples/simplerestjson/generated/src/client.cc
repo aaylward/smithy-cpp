@@ -170,11 +170,15 @@ smithy::Outcome<AddBookOutput> BookstoreClient::AddBook(const AddBookInput& inpu
   if (!response) return std::move(response).error();
   if (response->status < 200 || response->status > 299) return GenericError(ParseError(*response));
   AddBookOutput out{};
-  auto body_doc = smithy::json::Decode(response->body);
+  auto body_doc = smithy::json::Decode(response->body.empty() ? "{}" : response->body);
   if (!body_doc) return std::move(body_doc).error();
-  auto parsed = DeserializeAddBookOutput(*body_doc);
-  if (!parsed) return std::move(parsed).error();
-  out = *std::move(parsed);
+  if (!body_doc->is_map()) return smithy::Error::Serialization("AddBook: expected a JSON object body");
+  {
+    const smithy::Document* member = body_doc->Find("isbn");
+    if (member == nullptr || member->is_null()) return smithy::Error::Serialization("missing required member: isbn");
+    if (!member->is_string()) return smithy::Error::Serialization("AddBookOutput.isbn: unexpected type on the wire");
+    out.isbn = member->as_string();
+  }
   out.status = static_cast<std::int32_t>(response->status);
   return out;
 }

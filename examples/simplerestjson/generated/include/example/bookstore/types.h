@@ -17,7 +17,7 @@ struct AddBookInput {
 
 
 struct AddBookOutput {
-  std::optional<std::int32_t> status{};
+  std::int32_t status{};
   std::string isbn{};
 
   friend bool operator==(const AddBookOutput&, const AddBookOutput&) = default;

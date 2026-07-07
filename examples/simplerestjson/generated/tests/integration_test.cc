@@ -69,7 +69,7 @@ AddBookInput RandomAddBookInput(Rng& rng) {
 
 AddBookOutput RandomAddBookOutput(Rng& rng) {
   AddBookOutput v{};
-  if (rng.Coin()) v.status = static_cast<std::int32_t>(rng.Int(-2147483648LL, 2147483647LL));
+  v.status = static_cast<std::int32_t>(rng.Int(-2147483648LL, 2147483647LL));
   v.isbn = rng.Text(1, 9);
   return v;
 }

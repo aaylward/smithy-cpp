@@ -38,7 +38,9 @@ TEST(TimestampDifferentialTest, DateTimeMatchesGmtimeOverRandomEpochs) {
     if (!GmTime(seconds, &reference)) {
       continue;  // libc range limits are not what we're testing
     }
-    char expected[32];
+    // Sized for gcc's -Wformat-truncation worst case (full int widths), not
+    // the real bounded output (the epoch range keeps years at four digits).
+    char expected[80];
     std::snprintf(expected, sizeof(expected), "%04d-%02d-%02dT%02d:%02d:%02dZ",
                   reference.tm_year + 1900, reference.tm_mon + 1, reference.tm_mday,
                   reference.tm_hour, reference.tm_min, reference.tm_sec);

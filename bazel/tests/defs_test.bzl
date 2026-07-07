@@ -32,6 +32,15 @@ def _client_outputs_impl(env, target):
         "false",
     ])
 
+    # Multi-file models: every srcs entry becomes its own --model flag (the
+    # base model plus the `apply` protocol overlay assemble into one model).
+    action.argv().contains_at_least([
+        "--model",
+        "bazel/tests/greeter.smithy",
+        "--model",
+        "bazel/tests/greeter_restjson1.smithy",
+    ])
+
 def _server_outputs_impl(env, target):
     env.expect.that_collection(_files(target)).contains_exactly(_prefixed(
         "greeter_server_smithy_gen",

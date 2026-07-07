@@ -5,6 +5,18 @@
 namespace smithy {
 namespace {
 
+TEST(TimestampParseTest, EpochSecondsIsStrict) {
+  using smithy::Timestamp;
+  using smithy::TimestampFormat;
+  EXPECT_TRUE(Timestamp::Parse("1515531081", TimestampFormat::kEpochSeconds).ok());
+  EXPECT_TRUE(Timestamp::Parse("1515531081.123", TimestampFormat::kEpochSeconds).ok());
+  EXPECT_TRUE(Timestamp::Parse("-5", TimestampFormat::kEpochSeconds).ok());
+  for (const char* bad :
+       {"0x42", "1e3", "Infinity", "NaN", "true", "1515531081ABC", "1.", ".5", "-", "1.2.3", ""}) {
+    EXPECT_FALSE(Timestamp::Parse(bad, TimestampFormat::kEpochSeconds).ok()) << bad;
+  }
+}
+
 TEST(TimestampTest, FormatsDateTime) {
   // 1985-04-12T23:20:50.520Z, the Smithy spec's canonical example.
   const auto ts = Timestamp::FromEpochMilliseconds(482196050520);

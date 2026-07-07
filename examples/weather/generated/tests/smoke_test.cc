@@ -18,6 +18,13 @@ namespace example::weather {
 
 namespace {
 
+DeleteCityOutput MinimalDeleteCityOutput() {
+    return [] {
+    DeleteCityOutput v{};
+    return v;
+  }();
+}
+
 GetCityOutput MinimalGetCityOutput() {
     return [] {
     GetCityOutput v{};
@@ -48,6 +55,10 @@ ListCitiesOutput MinimalListCitiesOutput() {
 
 class SmokeHandler : public WeatherHandler {
   public:
+    smithy::Outcome<DeleteCityOutput> DeleteCity(const DeleteCityInput& input) override {
+      (void)input;
+      return MinimalDeleteCityOutput();
+    }
     smithy::Outcome<GetCityOutput> GetCity(const GetCityInput& input) override {
       (void)input;
       return MinimalGetCityOutput();
@@ -77,6 +88,19 @@ WeatherClient MakeClient(std::shared_ptr<WeatherHandler> handler) {
 }
 
 }  // namespace
+
+TEST(WeatherSmokeTest, DeleteCityRoundTrips) {
+  WeatherClient client = MakeClient(std::make_shared<SmokeHandler>());
+    DeleteCityInput input = [] {
+    DeleteCityInput v{};
+    return v;
+  }();
+  // @httpLabel members must be non-empty to route.
+  input.cityId = "smoke";
+  const auto outcome = client.DeleteCity(input);
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  EXPECT_EQ(*outcome, MinimalDeleteCityOutput());
+}
 
 TEST(WeatherSmokeTest, GetCityRoundTrips) {
   WeatherClient client = MakeClient(std::make_shared<SmokeHandler>());
@@ -129,7 +153,7 @@ TEST(WeatherSmokeTest, ListCitiesRoundTrips) {
 TEST(WeatherSmokeTest, ModeledErrorsMapAcrossTheWire) {
   class FailingHandler final : public SmokeHandler {
     public:
-      smithy::Outcome<GetCityOutput> GetCity(const GetCityInput& input) override {
+      smithy::Outcome<DeleteCityOutput> DeleteCity(const DeleteCityInput& input) override {
         (void)input;
         smithy::Error error = smithy::Error::Modeled("NoSuchResource", "smoke");
             auto detail = [] {
@@ -142,13 +166,13 @@ TEST(WeatherSmokeTest, ModeledErrorsMapAcrossTheWire) {
   };
 
   WeatherClient client = MakeClient(std::make_shared<FailingHandler>());
-    GetCityInput input = [] {
-    GetCityInput v{};
+    DeleteCityInput input = [] {
+    DeleteCityInput v{};
     return v;
   }();
   // @httpLabel members must be non-empty to route.
   input.cityId = "smoke";
-  const auto outcome = client.GetCity(input);
+  const auto outcome = client.DeleteCity(input);
   ASSERT_FALSE(outcome.ok());
   EXPECT_EQ(outcome.error().kind(), smithy::ErrorKind::kModeled);
   EXPECT_EQ(outcome.error().code(), "NoSuchResource");

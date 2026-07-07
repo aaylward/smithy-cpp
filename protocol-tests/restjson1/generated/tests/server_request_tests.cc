@@ -81,6 +81,13 @@ DocumentTypeAsMapValueOutput MinimalDocumentTypeAsMapValueOutput() {
   }();
 }
 
+DocumentTypeAsPayloadOutput MinimalDocumentTypeAsPayloadOutput() {
+    return [] {
+    DocumentTypeAsPayloadOutput v{};
+    return v;
+  }();
+}
+
 EmptyInputAndEmptyOutputOutput MinimalEmptyInputAndEmptyOutputOutput() {
     return [] {
     EmptyInputAndEmptyOutputOutput v{};
@@ -130,6 +137,55 @@ HttpChecksumRequiredOutput MinimalHttpChecksumRequiredOutput() {
   }();
 }
 
+HttpEnumPayloadOutput MinimalHttpEnumPayloadOutput() {
+    return [] {
+    HttpEnumPayloadOutput v{};
+    return v;
+  }();
+}
+
+HttpPayloadTraitsOutput MinimalHttpPayloadTraitsOutput() {
+    return [] {
+    HttpPayloadTraitsOutput v{};
+    return v;
+  }();
+}
+
+HttpPayloadTraitsWithMediaTypeOutput MinimalHttpPayloadTraitsWithMediaTypeOutput() {
+    return [] {
+    HttpPayloadTraitsWithMediaTypeOutput v{};
+    return v;
+  }();
+}
+
+HttpPayloadWithStructureOutput MinimalHttpPayloadWithStructureOutput() {
+    return [] {
+    HttpPayloadWithStructureOutput v{};
+    return v;
+  }();
+}
+
+HttpPayloadWithUnionOutput MinimalHttpPayloadWithUnionOutput() {
+    return [] {
+    HttpPayloadWithUnionOutput v{};
+    return v;
+  }();
+}
+
+HttpPrefixHeadersOutput MinimalHttpPrefixHeadersOutput() {
+    return [] {
+    HttpPrefixHeadersOutput v{};
+    return v;
+  }();
+}
+
+HttpPrefixHeadersInResponseOutput MinimalHttpPrefixHeadersInResponseOutput() {
+    return [] {
+    HttpPrefixHeadersInResponseOutput v{};
+    return v;
+  }();
+}
+
 HttpRequestWithFloatLabelsOutput MinimalHttpRequestWithFloatLabelsOutput() {
     return [] {
     HttpRequestWithFloatLabelsOutput v{};
@@ -168,6 +224,13 @@ HttpRequestWithRegexLiteralOutput MinimalHttpRequestWithRegexLiteralOutput() {
 HttpResponseCodeOutput MinimalHttpResponseCodeOutput() {
     return [] {
     HttpResponseCodeOutput v{};
+    return v;
+  }();
+}
+
+HttpStringPayloadOutput MinimalHttpStringPayloadOutput() {
+    return [] {
+    HttpStringPayloadOutput v{};
     return v;
   }();
 }
@@ -242,6 +305,20 @@ MalformedAcceptWithBodyOutput MinimalMalformedAcceptWithBodyOutput() {
   }();
 }
 
+MalformedAcceptWithGenericStringOutput MinimalMalformedAcceptWithGenericStringOutput() {
+    return [] {
+    MalformedAcceptWithGenericStringOutput v{};
+    return v;
+  }();
+}
+
+MalformedAcceptWithPayloadOutput MinimalMalformedAcceptWithPayloadOutput() {
+    return [] {
+    MalformedAcceptWithPayloadOutput v{};
+    return v;
+  }();
+}
+
 MalformedBlobOutput MinimalMalformedBlobOutput() {
     return [] {
     MalformedBlobOutput v{};
@@ -270,6 +347,13 @@ MalformedContentTypeWithBodyOutput MinimalMalformedContentTypeWithBodyOutput() {
   }();
 }
 
+MalformedContentTypeWithGenericStringOutput MinimalMalformedContentTypeWithGenericStringOutput() {
+    return [] {
+    MalformedContentTypeWithGenericStringOutput v{};
+    return v;
+  }();
+}
+
 MalformedContentTypeWithoutBodyOutput MinimalMalformedContentTypeWithoutBodyOutput() {
     return [] {
     MalformedContentTypeWithoutBodyOutput v{};
@@ -280,6 +364,13 @@ MalformedContentTypeWithoutBodyOutput MinimalMalformedContentTypeWithoutBodyOutp
 MalformedContentTypeWithoutBodyEmptyInputOutput MinimalMalformedContentTypeWithoutBodyEmptyInputOutput() {
     return [] {
     MalformedContentTypeWithoutBodyEmptyInputOutput v{};
+    return v;
+  }();
+}
+
+MalformedContentTypeWithPayloadOutput MinimalMalformedContentTypeWithPayloadOutput() {
+    return [] {
+    MalformedContentTypeWithPayloadOutput v{};
     return v;
   }();
 }
@@ -601,6 +692,20 @@ TestGetNoPayloadOutput MinimalTestGetNoPayloadOutput() {
   }();
 }
 
+TestPayloadBlobOutput MinimalTestPayloadBlobOutput() {
+    return [] {
+    TestPayloadBlobOutput v{};
+    return v;
+  }();
+}
+
+TestPayloadStructureOutput MinimalTestPayloadStructureOutput() {
+    return [] {
+    TestPayloadStructureOutput v{};
+    return v;
+  }();
+}
+
 TestPostNoInputNoPayloadOutput MinimalTestPostNoInputNoPayloadOutput() {
     return [] {
     TestPostNoInputNoPayloadOutput v{};
@@ -666,6 +771,11 @@ class RecordingHandler : public RestJsonHandler {
       return MinimalDocumentTypeAsMapValueOutput();
     }
     std::optional<DocumentTypeAsMapValueInput> lastDocumentTypeAsMapValue;
+    smithy::Outcome<DocumentTypeAsPayloadOutput> DocumentTypeAsPayload(const DocumentTypeAsPayloadInput& input) override {
+      lastDocumentTypeAsPayload = input;
+      return MinimalDocumentTypeAsPayloadOutput();
+    }
+    std::optional<DocumentTypeAsPayloadInput> lastDocumentTypeAsPayload;
     smithy::Outcome<EmptyInputAndEmptyOutputOutput> EmptyInputAndEmptyOutput(const EmptyInputAndEmptyOutputInput& input) override {
       lastEmptyInputAndEmptyOutput = input;
       return MinimalEmptyInputAndEmptyOutputOutput();
@@ -701,6 +811,41 @@ class RecordingHandler : public RestJsonHandler {
       return MinimalHttpChecksumRequiredOutput();
     }
     std::optional<HttpChecksumRequiredInput> lastHttpChecksumRequired;
+    smithy::Outcome<HttpEnumPayloadOutput> HttpEnumPayload(const HttpEnumPayloadInput& input) override {
+      lastHttpEnumPayload = input;
+      return MinimalHttpEnumPayloadOutput();
+    }
+    std::optional<HttpEnumPayloadInput> lastHttpEnumPayload;
+    smithy::Outcome<HttpPayloadTraitsOutput> HttpPayloadTraits(const HttpPayloadTraitsInput& input) override {
+      lastHttpPayloadTraits = input;
+      return MinimalHttpPayloadTraitsOutput();
+    }
+    std::optional<HttpPayloadTraitsInput> lastHttpPayloadTraits;
+    smithy::Outcome<HttpPayloadTraitsWithMediaTypeOutput> HttpPayloadTraitsWithMediaType(const HttpPayloadTraitsWithMediaTypeInput& input) override {
+      lastHttpPayloadTraitsWithMediaType = input;
+      return MinimalHttpPayloadTraitsWithMediaTypeOutput();
+    }
+    std::optional<HttpPayloadTraitsWithMediaTypeInput> lastHttpPayloadTraitsWithMediaType;
+    smithy::Outcome<HttpPayloadWithStructureOutput> HttpPayloadWithStructure(const HttpPayloadWithStructureInput& input) override {
+      lastHttpPayloadWithStructure = input;
+      return MinimalHttpPayloadWithStructureOutput();
+    }
+    std::optional<HttpPayloadWithStructureInput> lastHttpPayloadWithStructure;
+    smithy::Outcome<HttpPayloadWithUnionOutput> HttpPayloadWithUnion(const HttpPayloadWithUnionInput& input) override {
+      lastHttpPayloadWithUnion = input;
+      return MinimalHttpPayloadWithUnionOutput();
+    }
+    std::optional<HttpPayloadWithUnionInput> lastHttpPayloadWithUnion;
+    smithy::Outcome<HttpPrefixHeadersOutput> HttpPrefixHeaders(const HttpPrefixHeadersInput& input) override {
+      lastHttpPrefixHeaders = input;
+      return MinimalHttpPrefixHeadersOutput();
+    }
+    std::optional<HttpPrefixHeadersInput> lastHttpPrefixHeaders;
+    smithy::Outcome<HttpPrefixHeadersInResponseOutput> HttpPrefixHeadersInResponse(const HttpPrefixHeadersInResponseInput& input) override {
+      lastHttpPrefixHeadersInResponse = input;
+      return MinimalHttpPrefixHeadersInResponseOutput();
+    }
+    std::optional<HttpPrefixHeadersInResponseInput> lastHttpPrefixHeadersInResponse;
     smithy::Outcome<HttpRequestWithFloatLabelsOutput> HttpRequestWithFloatLabels(const HttpRequestWithFloatLabelsInput& input) override {
       lastHttpRequestWithFloatLabels = input;
       return MinimalHttpRequestWithFloatLabelsOutput();
@@ -731,6 +876,11 @@ class RecordingHandler : public RestJsonHandler {
       return MinimalHttpResponseCodeOutput();
     }
     std::optional<HttpResponseCodeInput> lastHttpResponseCode;
+    smithy::Outcome<HttpStringPayloadOutput> HttpStringPayload(const HttpStringPayloadInput& input) override {
+      lastHttpStringPayload = input;
+      return MinimalHttpStringPayloadOutput();
+    }
+    std::optional<HttpStringPayloadInput> lastHttpStringPayload;
     smithy::Outcome<IgnoreQueryParamsInResponseOutput> IgnoreQueryParamsInResponse(const IgnoreQueryParamsInResponseInput& input) override {
       lastIgnoreQueryParamsInResponse = input;
       return MinimalIgnoreQueryParamsInResponseOutput();
@@ -781,6 +931,16 @@ class RecordingHandler : public RestJsonHandler {
       return MinimalMalformedAcceptWithBodyOutput();
     }
     std::optional<MalformedAcceptWithBodyInput> lastMalformedAcceptWithBody;
+    smithy::Outcome<MalformedAcceptWithGenericStringOutput> MalformedAcceptWithGenericString(const MalformedAcceptWithGenericStringInput& input) override {
+      lastMalformedAcceptWithGenericString = input;
+      return MinimalMalformedAcceptWithGenericStringOutput();
+    }
+    std::optional<MalformedAcceptWithGenericStringInput> lastMalformedAcceptWithGenericString;
+    smithy::Outcome<MalformedAcceptWithPayloadOutput> MalformedAcceptWithPayload(const MalformedAcceptWithPayloadInput& input) override {
+      lastMalformedAcceptWithPayload = input;
+      return MinimalMalformedAcceptWithPayloadOutput();
+    }
+    std::optional<MalformedAcceptWithPayloadInput> lastMalformedAcceptWithPayload;
     smithy::Outcome<MalformedBlobOutput> MalformedBlob(const MalformedBlobInput& input) override {
       lastMalformedBlob = input;
       return MinimalMalformedBlobOutput();
@@ -801,6 +961,11 @@ class RecordingHandler : public RestJsonHandler {
       return MinimalMalformedContentTypeWithBodyOutput();
     }
     std::optional<MalformedContentTypeWithBodyInput> lastMalformedContentTypeWithBody;
+    smithy::Outcome<MalformedContentTypeWithGenericStringOutput> MalformedContentTypeWithGenericString(const MalformedContentTypeWithGenericStringInput& input) override {
+      lastMalformedContentTypeWithGenericString = input;
+      return MinimalMalformedContentTypeWithGenericStringOutput();
+    }
+    std::optional<MalformedContentTypeWithGenericStringInput> lastMalformedContentTypeWithGenericString;
     smithy::Outcome<MalformedContentTypeWithoutBodyOutput> MalformedContentTypeWithoutBody(const MalformedContentTypeWithoutBodyInput& input) override {
       lastMalformedContentTypeWithoutBody = input;
       return MinimalMalformedContentTypeWithoutBodyOutput();
@@ -811,6 +976,11 @@ class RecordingHandler : public RestJsonHandler {
       return MinimalMalformedContentTypeWithoutBodyEmptyInputOutput();
     }
     std::optional<MalformedContentTypeWithoutBodyEmptyInputInput> lastMalformedContentTypeWithoutBodyEmptyInput;
+    smithy::Outcome<MalformedContentTypeWithPayloadOutput> MalformedContentTypeWithPayload(const MalformedContentTypeWithPayloadInput& input) override {
+      lastMalformedContentTypeWithPayload = input;
+      return MinimalMalformedContentTypeWithPayloadOutput();
+    }
+    std::optional<MalformedContentTypeWithPayloadInput> lastMalformedContentTypeWithPayload;
     smithy::Outcome<MalformedDoubleOutput> MalformedDouble(const MalformedDoubleInput& input) override {
       lastMalformedDouble = input;
       return MinimalMalformedDoubleOutput();
@@ -1036,6 +1206,16 @@ class RecordingHandler : public RestJsonHandler {
       return MinimalTestGetNoPayloadOutput();
     }
     std::optional<TestGetNoPayloadInput> lastTestGetNoPayload;
+    smithy::Outcome<TestPayloadBlobOutput> TestPayloadBlob(const TestPayloadBlobInput& input) override {
+      lastTestPayloadBlob = input;
+      return MinimalTestPayloadBlobOutput();
+    }
+    std::optional<TestPayloadBlobInput> lastTestPayloadBlob;
+    smithy::Outcome<TestPayloadStructureOutput> TestPayloadStructure(const TestPayloadStructureInput& input) override {
+      lastTestPayloadStructure = input;
+      return MinimalTestPayloadStructureOutput();
+    }
+    std::optional<TestPayloadStructureInput> lastTestPayloadStructure;
     smithy::Outcome<TestPostNoInputNoPayloadOutput> TestPostNoInputNoPayload(const TestPostNoInputNoPayloadInput& input) override {
       lastTestPostNoInputNoPayload = input;
       return MinimalTestPostNoInputNoPayloadOutput();
@@ -1419,6 +1599,48 @@ TEST(RestJsonServerRequestTest, DocumentTypeAsMapValueInput) {
   EXPECT_EQ(*handler->lastDocumentTypeAsMapValue, expected);
 }
 
+// Serializes a document as the target of the httpPayload trait.
+TEST(RestJsonServerRequestTest, DocumentTypeAsPayloadInput) {
+  auto handler = std::make_shared<RecordingHandler>();
+  RestJsonServer server(handler);
+  smithy::http::HttpRequest request;
+  request.method = "PUT";
+  request.target = "/DocumentTypeAsPayload";
+  request.headers.Set("Content-Type", "application/json");
+  request.body = "{\n    \"foo\": \"bar\"\n}";
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  ASSERT_TRUE(handler->lastDocumentTypeAsPayload.has_value()) << response.status << " " << response.body;
+  const DocumentTypeAsPayloadInput expected = [] {
+  DocumentTypeAsPayloadInput v{};
+  v.documentValue = [] {
+  smithy::DocumentMap map;
+  map.emplace("foo", smithy::Document(std::string("bar")));
+  return smithy::Document(std::move(map));
+}();
+  return v;
+}();
+  EXPECT_EQ(*handler->lastDocumentTypeAsPayload, expected);
+}
+
+// Serializes a document as the target of the httpPayload trait using a string.
+TEST(RestJsonServerRequestTest, DocumentTypeAsPayloadInputString) {
+  auto handler = std::make_shared<RecordingHandler>();
+  RestJsonServer server(handler);
+  smithy::http::HttpRequest request;
+  request.method = "PUT";
+  request.target = "/DocumentTypeAsPayload";
+  request.headers.Set("Content-Type", "application/json");
+  request.body = "\"hello\"";
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  ASSERT_TRUE(handler->lastDocumentTypeAsPayload.has_value()) << response.status << " " << response.body;
+  const DocumentTypeAsPayloadInput expected = [] {
+  DocumentTypeAsPayloadInput v{};
+  v.documentValue = smithy::Document(std::string("hello"));
+  return v;
+}();
+  EXPECT_EQ(*handler->lastDocumentTypeAsPayload, expected);
+}
+
 // Clients should not serialize a JSON payload when no parameters
 // are given that are sent in the body. A service will tolerate
 // clients that omit a payload or that send a JSON object.
@@ -1511,6 +1733,229 @@ TEST(RestJsonServerRequestTest, RestJsonHttpChecksumRequired) {
   return v;
 }();
   EXPECT_EQ(*handler->lastHttpChecksumRequired, expected);
+}
+
+TEST(RestJsonServerRequestTest, RestJsonEnumPayloadRequest) {
+  auto handler = std::make_shared<RecordingHandler>();
+  RestJsonServer server(handler);
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = "/EnumPayload";
+  request.headers.Set("Content-Type", "text/plain");
+  request.body = "enumvalue";
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  ASSERT_TRUE(handler->lastHttpEnumPayload.has_value()) << response.status << " " << response.body;
+  const HttpEnumPayloadInput expected = [] {
+  HttpEnumPayloadInput v{};
+  v.payload = StringEnum::FromString("enumvalue");
+  return v;
+}();
+  EXPECT_EQ(*handler->lastHttpEnumPayload, expected);
+}
+
+// Serializes a blob in the HTTP payload
+TEST(RestJsonServerRequestTest, RestJsonHttpPayloadTraitsWithBlob) {
+  auto handler = std::make_shared<RecordingHandler>();
+  RestJsonServer server(handler);
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = "/HttpPayloadTraits";
+  request.headers.Set("Content-Type", "application/octet-stream");
+  request.headers.Set("X-Foo", "Foo");
+  request.body = "blobby blob blob";
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  ASSERT_TRUE(handler->lastHttpPayloadTraits.has_value()) << response.status << " " << response.body;
+  const HttpPayloadTraitsInput expected = [] {
+  HttpPayloadTraitsInput v{};
+  v.foo = "Foo";
+  v.blob = smithy::Blob::FromString("blobby blob blob");
+  return v;
+}();
+  EXPECT_EQ(*handler->lastHttpPayloadTraits, expected);
+}
+
+// Serializes an empty blob in the HTTP payload
+TEST(RestJsonServerRequestTest, RestJsonHttpPayloadTraitsWithNoBlobBody) {
+  auto handler = std::make_shared<RecordingHandler>();
+  RestJsonServer server(handler);
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = "/HttpPayloadTraits";
+  request.headers.Set("X-Foo", "Foo");
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  ASSERT_TRUE(handler->lastHttpPayloadTraits.has_value()) << response.status << " " << response.body;
+  const HttpPayloadTraitsInput expected = [] {
+  HttpPayloadTraitsInput v{};
+  v.foo = "Foo";
+  return v;
+}();
+  EXPECT_EQ(*handler->lastHttpPayloadTraits, expected);
+}
+
+// Servers must accept any content type for blob inputs
+// without the media type trait.
+TEST(RestJsonServerRequestTest, RestJsonHttpPayloadTraitsWithBlobAcceptsAllContentTypes) {
+  auto handler = std::make_shared<RecordingHandler>();
+  RestJsonServer server(handler);
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = "/HttpPayloadTraits";
+  request.headers.Set("Content-Type", "image/jpeg");
+  request.headers.Set("X-Foo", "Foo");
+  request.body = "This is definitely a jpeg";
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  ASSERT_TRUE(handler->lastHttpPayloadTraits.has_value()) << response.status << " " << response.body;
+  const HttpPayloadTraitsInput expected = [] {
+  HttpPayloadTraitsInput v{};
+  v.foo = "Foo";
+  v.blob = smithy::Blob::FromString("This is definitely a jpeg");
+  return v;
+}();
+  EXPECT_EQ(*handler->lastHttpPayloadTraits, expected);
+}
+
+// Servers must accept no content type for blob inputs
+// without the media type trait.
+TEST(RestJsonServerRequestTest, RestJsonHttpPayloadTraitsWithBlobAcceptsNoContentType) {
+  auto handler = std::make_shared<RecordingHandler>();
+  RestJsonServer server(handler);
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = "/HttpPayloadTraits";
+  request.headers.Set("X-Foo", "Foo");
+  request.body = "This is definitely a jpeg";
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  ASSERT_TRUE(handler->lastHttpPayloadTraits.has_value()) << response.status << " " << response.body;
+  const HttpPayloadTraitsInput expected = [] {
+  HttpPayloadTraitsInput v{};
+  v.foo = "Foo";
+  v.blob = smithy::Blob::FromString("This is definitely a jpeg");
+  return v;
+}();
+  EXPECT_EQ(*handler->lastHttpPayloadTraits, expected);
+}
+
+// Servers must accept any accept header for blob inputs
+// without the media type trait.
+TEST(RestJsonServerRequestTest, RestJsonHttpPayloadTraitsWithBlobAcceptsAllAccepts) {
+  auto handler = std::make_shared<RecordingHandler>();
+  RestJsonServer server(handler);
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = "/HttpPayloadTraits";
+  request.headers.Set("Accept", "image/jpeg");
+  request.headers.Set("X-Foo", "Foo");
+  request.body = "This is definitely a jpeg";
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  ASSERT_TRUE(handler->lastHttpPayloadTraits.has_value()) << response.status << " " << response.body;
+  const HttpPayloadTraitsInput expected = [] {
+  HttpPayloadTraitsInput v{};
+  v.foo = "Foo";
+  v.blob = smithy::Blob::FromString("This is definitely a jpeg");
+  return v;
+}();
+  EXPECT_EQ(*handler->lastHttpPayloadTraits, expected);
+}
+
+// Serializes a blob in the HTTP payload with a content-type
+TEST(RestJsonServerRequestTest, RestJsonHttpPayloadTraitsWithMediaTypeWithBlob) {
+  auto handler = std::make_shared<RecordingHandler>();
+  RestJsonServer server(handler);
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = "/HttpPayloadTraitsWithMediaType";
+  request.headers.Set("Content-Type", "text/plain");
+  request.headers.Set("X-Foo", "Foo");
+  request.body = "blobby blob blob";
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  ASSERT_TRUE(handler->lastHttpPayloadTraitsWithMediaType.has_value()) << response.status << " " << response.body;
+  const HttpPayloadTraitsWithMediaTypeInput expected = [] {
+  HttpPayloadTraitsWithMediaTypeInput v{};
+  v.foo = "Foo";
+  v.blob = smithy::Blob::FromString("blobby blob blob");
+  return v;
+}();
+  EXPECT_EQ(*handler->lastHttpPayloadTraitsWithMediaType, expected);
+}
+
+// Serializes a structure in the payload
+TEST(RestJsonServerRequestTest, RestJsonHttpPayloadWithStructure) {
+  auto handler = std::make_shared<RecordingHandler>();
+  RestJsonServer server(handler);
+  smithy::http::HttpRequest request;
+  request.method = "PUT";
+  request.target = "/HttpPayloadWithStructure";
+  request.headers.Set("Content-Type", "application/json");
+  request.body = "{\n    \"greeting\": \"hello\",\n    \"name\": \"Phreddy\"\n}";
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  ASSERT_TRUE(handler->lastHttpPayloadWithStructure.has_value()) << response.status << " " << response.body;
+  const HttpPayloadWithStructureInput expected = [] {
+  HttpPayloadWithStructureInput v{};
+  v.nested = [] {
+  NestedPayload v{};
+  v.greeting = "hello";
+  v.name = "Phreddy";
+  return v;
+}();
+  return v;
+}();
+  EXPECT_EQ(*handler->lastHttpPayloadWithStructure, expected);
+}
+
+// Serializes a union in the payload.
+TEST(RestJsonServerRequestTest, RestJsonHttpPayloadWithUnion) {
+  auto handler = std::make_shared<RecordingHandler>();
+  RestJsonServer server(handler);
+  smithy::http::HttpRequest request;
+  request.method = "PUT";
+  request.target = "/HttpPayloadWithUnion";
+  request.headers.Set("Content-Type", "application/json");
+  request.body = "{\n    \"greeting\": \"hello\"\n}";
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  ASSERT_TRUE(handler->lastHttpPayloadWithUnion.has_value()) << response.status << " " << response.body;
+  const HttpPayloadWithUnionInput expected = [] {
+  HttpPayloadWithUnionInput v{};
+  v.nested = UnionPayload::FromGreeting("hello");
+  return v;
+}();
+  EXPECT_EQ(*handler->lastHttpPayloadWithUnion, expected);
+}
+
+// No payload is sent if the union has no value.
+TEST(RestJsonServerRequestTest, RestJsonHttpPayloadWithUnsetUnion) {
+  auto handler = std::make_shared<RecordingHandler>();
+  RestJsonServer server(handler);
+  smithy::http::HttpRequest request;
+  request.method = "PUT";
+  request.target = "/HttpPayloadWithUnion";
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  ASSERT_TRUE(handler->lastHttpPayloadWithUnion.has_value()) << response.status << " " << response.body;
+  const HttpPayloadWithUnionInput expected = [] {
+  HttpPayloadWithUnionInput v{};
+  return v;
+}();
+  EXPECT_EQ(*handler->lastHttpPayloadWithUnion, expected);
+}
+
+// Adds headers by prefix
+TEST(RestJsonServerRequestTest, RestJsonHttpPrefixHeadersArePresent) {
+  auto handler = std::make_shared<RecordingHandler>();
+  RestJsonServer server(handler);
+  smithy::http::HttpRequest request;
+  request.method = "GET";
+  request.target = "/HttpPrefixHeaders";
+  request.headers.Set("x-foo", "Foo");
+  request.headers.Set("x-foo-abc", "Abc value");
+  request.headers.Set("x-foo-def", "Def value");
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  ASSERT_TRUE(handler->lastHttpPrefixHeaders.has_value()) << response.status << " " << response.body;
+  const HttpPrefixHeadersInput expected = [] {
+  HttpPrefixHeadersInput v{};
+  v.foo = "Foo";
+  v.fooMap = std::map<std::string, std::string>{{"abc", "Abc value"}, {"def", "Def value"}};
+  return v;
+}();
+  EXPECT_EQ(*handler->lastHttpPrefixHeaders, expected);
 }
 
 // Supports handling Infinity float label values.
@@ -1653,6 +2098,24 @@ TEST(RestJsonServerRequestTest, RestJsonToleratesRegexCharsInSegments) {
   return v;
 }();
   EXPECT_EQ(*handler->lastHttpRequestWithRegexLiteral, expected);
+}
+
+TEST(RestJsonServerRequestTest, RestJsonStringPayloadRequest) {
+  auto handler = std::make_shared<RecordingHandler>();
+  RestJsonServer server(handler);
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = "/StringPayload";
+  request.headers.Set("Content-Type", "text/plain");
+  request.body = "rawstring";
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  ASSERT_TRUE(handler->lastHttpStringPayload.has_value()) << response.status << " " << response.body;
+  const HttpStringPayloadInput expected = [] {
+  HttpStringPayloadInput v{};
+  v.payload = "rawstring";
+  return v;
+}();
+  EXPECT_EQ(*handler->lastHttpStringPayload, expected);
 }
 
 // Tests requests with string header bindings
@@ -2886,6 +3349,103 @@ TEST(RestJsonServerRequestTest, RestJsonHttpGetWithHeaderMemberNoModeledBody) {
   return v;
 }();
   EXPECT_EQ(*handler->lastTestGetNoPayload, expected);
+}
+
+// Serializes a payload targeting an empty blob
+TEST(RestJsonServerRequestTest, RestJsonHttpWithEmptyBlobPayload) {
+  auto handler = std::make_shared<RecordingHandler>();
+  RestJsonServer server(handler);
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = "/blob_payload";
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  ASSERT_TRUE(handler->lastTestPayloadBlob.has_value()) << response.status << " " << response.body;
+  const TestPayloadBlobInput expected = [] {
+  TestPayloadBlobInput v{};
+  return v;
+}();
+  EXPECT_EQ(*handler->lastTestPayloadBlob, expected);
+}
+
+// Serializes a payload targeting a blob
+TEST(RestJsonServerRequestTest, RestJsonTestPayloadBlob) {
+  auto handler = std::make_shared<RecordingHandler>();
+  RestJsonServer server(handler);
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = "/blob_payload";
+  request.headers.Set("Content-Type", "image/jpg");
+  request.body = "1234";
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  ASSERT_TRUE(handler->lastTestPayloadBlob.has_value()) << response.status << " " << response.body;
+  const TestPayloadBlobInput expected = [] {
+  TestPayloadBlobInput v{};
+  v.contentType = "image/jpg";
+  v.data = smithy::Blob::FromString("1234");
+  return v;
+}();
+  EXPECT_EQ(*handler->lastTestPayloadBlob, expected);
+}
+
+// Serializes a payload targeting an empty structure
+TEST(RestJsonServerRequestTest, RestJsonHttpWithEmptyStructurePayload) {
+  auto handler = std::make_shared<RecordingHandler>();
+  RestJsonServer server(handler);
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = "/payload";
+  request.headers.Set("Content-Type", "application/json");
+  request.body = "{}";
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  ASSERT_TRUE(handler->lastTestPayloadStructure.has_value()) << response.status << " " << response.body;
+  const TestPayloadStructureInput expected = [] {
+  TestPayloadStructureInput v{};
+  return v;
+}();
+  EXPECT_EQ(*handler->lastTestPayloadStructure, expected);
+}
+
+// Serializes a payload targeting a structure
+TEST(RestJsonServerRequestTest, RestJsonTestPayloadStructure) {
+  auto handler = std::make_shared<RecordingHandler>();
+  RestJsonServer server(handler);
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = "/payload";
+  request.headers.Set("Content-Type", "application/json");
+  request.body = "{\"data\": 25\n}";
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  ASSERT_TRUE(handler->lastTestPayloadStructure.has_value()) << response.status << " " << response.body;
+  const TestPayloadStructureInput expected = [] {
+  TestPayloadStructureInput v{};
+  v.payloadConfig = [] {
+  PayloadConfig v{};
+  v.data = 25;
+  return v;
+}();
+  return v;
+}();
+  EXPECT_EQ(*handler->lastTestPayloadStructure, expected);
+}
+
+// Serializes an request with header members but no payload
+TEST(RestJsonServerRequestTest, RestJsonHttpWithHeadersButNoPayload) {
+  auto handler = std::make_shared<RecordingHandler>();
+  RestJsonServer server(handler);
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = "/payload";
+  request.headers.Set("Content-Type", "application/json");
+  request.headers.Set("X-Amz-Test-Id", "t-12345");
+  request.body = "{}";
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  ASSERT_TRUE(handler->lastTestPayloadStructure.has_value()) << response.status << " " << response.body;
+  const TestPayloadStructureInput expected = [] {
+  TestPayloadStructureInput v{};
+  v.testId = "t-12345";
+  return v;
+}();
+  EXPECT_EQ(*handler->lastTestPayloadStructure, expected);
 }
 
 // Serializes a POST request for an operation with no input, and therefore no modeled body

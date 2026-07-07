@@ -37,6 +37,8 @@ class RestJsonHandler {
     virtual smithy::Outcome<DocumentTypeOutput> DocumentType(const DocumentTypeInput& input) = 0;
     /// This example serializes documents as the value of maps.
     virtual smithy::Outcome<DocumentTypeAsMapValueOutput> DocumentTypeAsMapValue(const DocumentTypeAsMapValueInput& input) = 0;
+    /// This example serializes a document as the entire HTTP payload.
+    virtual smithy::Outcome<DocumentTypeAsPayloadOutput> DocumentTypeAsPayload(const DocumentTypeAsPayloadInput& input) = 0;
     /// The example tests how requests and responses are serialized when there's
     /// no request or response payload because the operation has an empty input
     /// and empty output structure that reuses the same shape. While this should
@@ -59,6 +61,26 @@ class RestJsonHandler {
     virtual smithy::Outcome<HostWithPathOperationOutput> HostWithPathOperation(const HostWithPathOperationInput& input) = 0;
     /// This example tests httpChecksumRequired trait
     virtual smithy::Outcome<HttpChecksumRequiredOutput> HttpChecksumRequired(const HttpChecksumRequiredInput& input) = 0;
+    virtual smithy::Outcome<HttpEnumPayloadOutput> HttpEnumPayload(const HttpEnumPayloadInput& input) = 0;
+    /// This example serializes a blob shape in the payload.
+    ///
+    /// In this example, no JSON document is synthesized because the payload is
+    /// not a structure or a union type.
+    virtual smithy::Outcome<HttpPayloadTraitsOutput> HttpPayloadTraits(const HttpPayloadTraitsInput& input) = 0;
+    /// This example uses a `@mediaType` trait on the payload to force a custom
+    /// content-type to be serialized.
+    virtual smithy::Outcome<HttpPayloadTraitsWithMediaTypeOutput> HttpPayloadTraitsWithMediaType(const HttpPayloadTraitsWithMediaTypeInput& input) = 0;
+    /// This example serializes a structure in the payload.
+    ///
+    /// Note that serializing a structure changes the wrapper element name
+    /// to match the targeted structure.
+    virtual smithy::Outcome<HttpPayloadWithStructureOutput> HttpPayloadWithStructure(const HttpPayloadWithStructureInput& input) = 0;
+    /// This example serializes a union in the payload.
+    virtual smithy::Outcome<HttpPayloadWithUnionOutput> HttpPayloadWithUnion(const HttpPayloadWithUnionInput& input) = 0;
+    /// This examples adds headers to the input of a request and response by prefix.
+    virtual smithy::Outcome<HttpPrefixHeadersOutput> HttpPrefixHeaders(const HttpPrefixHeadersInput& input) = 0;
+    /// Clients that perform this test extract all headers from the response.
+    virtual smithy::Outcome<HttpPrefixHeadersInResponseOutput> HttpPrefixHeadersInResponse(const HttpPrefixHeadersInResponseInput& input) = 0;
     virtual smithy::Outcome<HttpRequestWithFloatLabelsOutput> HttpRequestWithFloatLabels(const HttpRequestWithFloatLabelsInput& input) = 0;
     virtual smithy::Outcome<HttpRequestWithGreedyLabelInPathOutput> HttpRequestWithGreedyLabelInPath(const HttpRequestWithGreedyLabelInPathInput& input) = 0;
     /// The example tests how requests are serialized when there's no input
@@ -69,6 +91,7 @@ class RestJsonHandler {
     virtual smithy::Outcome<HttpRequestWithLabelsAndTimestampFormatOutput> HttpRequestWithLabelsAndTimestampFormat(const HttpRequestWithLabelsAndTimestampFormatInput& input) = 0;
     virtual smithy::Outcome<HttpRequestWithRegexLiteralOutput> HttpRequestWithRegexLiteral(const HttpRequestWithRegexLiteralInput& input) = 0;
     virtual smithy::Outcome<HttpResponseCodeOutput> HttpResponseCode(const HttpResponseCodeInput& input) = 0;
+    virtual smithy::Outcome<HttpStringPayloadOutput> HttpStringPayload(const HttpStringPayloadInput& input) = 0;
     /// This example ensures that query string bound request parameters are
     /// serialized in the body of responses if the structure is used in both
     /// the request and response.
@@ -99,12 +122,16 @@ class RestJsonHandler {
     /// This operation uses unions for inputs and outputs.
     virtual smithy::Outcome<JsonUnionsOutput> JsonUnions(const JsonUnionsInput& input) = 0;
     virtual smithy::Outcome<MalformedAcceptWithBodyOutput> MalformedAcceptWithBody(const MalformedAcceptWithBodyInput& input) = 0;
+    virtual smithy::Outcome<MalformedAcceptWithGenericStringOutput> MalformedAcceptWithGenericString(const MalformedAcceptWithGenericStringInput& input) = 0;
+    virtual smithy::Outcome<MalformedAcceptWithPayloadOutput> MalformedAcceptWithPayload(const MalformedAcceptWithPayloadInput& input) = 0;
     virtual smithy::Outcome<MalformedBlobOutput> MalformedBlob(const MalformedBlobInput& input) = 0;
     virtual smithy::Outcome<MalformedBooleanOutput> MalformedBoolean(const MalformedBooleanInput& input) = 0;
     virtual smithy::Outcome<MalformedByteOutput> MalformedByte(const MalformedByteInput& input) = 0;
     virtual smithy::Outcome<MalformedContentTypeWithBodyOutput> MalformedContentTypeWithBody(const MalformedContentTypeWithBodyInput& input) = 0;
+    virtual smithy::Outcome<MalformedContentTypeWithGenericStringOutput> MalformedContentTypeWithGenericString(const MalformedContentTypeWithGenericStringInput& input) = 0;
     virtual smithy::Outcome<MalformedContentTypeWithoutBodyOutput> MalformedContentTypeWithoutBody(const MalformedContentTypeWithoutBodyInput& input) = 0;
     virtual smithy::Outcome<MalformedContentTypeWithoutBodyEmptyInputOutput> MalformedContentTypeWithoutBodyEmptyInput(const MalformedContentTypeWithoutBodyEmptyInputInput& input) = 0;
+    virtual smithy::Outcome<MalformedContentTypeWithPayloadOutput> MalformedContentTypeWithPayload(const MalformedContentTypeWithPayloadInput& input) = 0;
     virtual smithy::Outcome<MalformedDoubleOutput> MalformedDouble(const MalformedDoubleInput& input) = 0;
     virtual smithy::Outcome<MalformedFloatOutput> MalformedFloat(const MalformedFloatInput& input) = 0;
     virtual smithy::Outcome<MalformedIntegerOutput> MalformedInteger(const MalformedIntegerInput& input) = 0;
@@ -186,6 +213,21 @@ class RestJsonHandler {
     /// cannot produce an HTTP body.
     ///
     virtual smithy::Outcome<TestGetNoPayloadOutput> TestGetNoPayload(const TestGetNoPayloadInput& input) = 0;
+    /// This example operation serializes a payload targeting a blob.
+    ///
+    /// The Blob shape is not structured content and we cannot
+    /// make assumptions about what data will be sent. This test ensures
+    /// only a generic "Content-Type: application/octet-stream" header
+    /// is used, and that we are not treating an empty body as an
+    /// empty JSON document.
+    ///
+    virtual smithy::Outcome<TestPayloadBlobOutput> TestPayloadBlob(const TestPayloadBlobInput& input) = 0;
+    /// This example operation serializes a payload targeting a structure.
+    ///
+    /// This enforces the same requirements as TestBodyStructure
+    /// but with the body specified by the @httpPayload trait.
+    ///
+    virtual smithy::Outcome<TestPayloadStructureOutput> TestPayloadStructure(const TestPayloadStructureInput& input) = 0;
     /// This example POST operation has no input and serializes a request without a HTTP body.
     ///
     /// These tests are to ensure we do not attach a body or related headers

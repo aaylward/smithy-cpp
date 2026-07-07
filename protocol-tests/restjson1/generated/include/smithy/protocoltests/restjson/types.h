@@ -315,6 +315,20 @@ struct DocumentTypeAsMapValueOutput {
 };
 
 
+struct DocumentTypeAsPayloadInput {
+  std::optional<smithy::Document> documentValue{};
+
+  friend bool operator==(const DocumentTypeAsPayloadInput&, const DocumentTypeAsPayloadInput&) = default;
+};
+
+
+struct DocumentTypeAsPayloadOutput {
+  std::optional<smithy::Document> documentValue{};
+
+  friend bool operator==(const DocumentTypeAsPayloadOutput&, const DocumentTypeAsPayloadOutput&) = default;
+};
+
+
 struct EmptyInputAndEmptyOutputInput {
   friend bool operator==(const EmptyInputAndEmptyOutputInput&, const EmptyInputAndEmptyOutputInput&) = default;
 };
@@ -410,6 +424,175 @@ struct HttpChecksumRequiredOutput {
 };
 
 
+class StringEnum {
+  public:
+    enum class Value {
+      kV,
+      kUnknown,
+    };
+
+    StringEnum() = default;
+    StringEnum(Value value) : value_(value) {}  // NOLINT(*-explicit-*)
+
+    /// Unknown wire values are preserved and reported as Value::kUnknown.
+    static StringEnum FromString(std::string_view text) {
+      if (text == "enumvalue") return StringEnum(Value::kV);
+      StringEnum result;
+      result.unknown_ = std::string(text);
+      return result;
+    }
+
+    Value value() const { return value_; }
+
+    /// The wire text, including the original text of unknown values.
+    std::string_view ToString() const {
+      switch (value_) {
+        case Value::kV: return "enumvalue";
+        case Value::kUnknown: return unknown_;
+      }
+      return unknown_;
+    }
+
+    friend bool operator==(const StringEnum&, const StringEnum&) = default;
+
+  private:
+    Value value_ = Value::kUnknown;
+    std::string unknown_;
+};
+
+
+struct HttpEnumPayloadInput {
+  std::optional<StringEnum> payload{};
+
+  friend bool operator==(const HttpEnumPayloadInput&, const HttpEnumPayloadInput&) = default;
+};
+
+
+struct HttpEnumPayloadOutput {
+  std::optional<StringEnum> payload{};
+
+  friend bool operator==(const HttpEnumPayloadOutput&, const HttpEnumPayloadOutput&) = default;
+};
+
+
+struct HttpPayloadTraitsInput {
+  std::optional<std::string> foo{};
+  std::optional<smithy::Blob> blob{};
+
+  friend bool operator==(const HttpPayloadTraitsInput&, const HttpPayloadTraitsInput&) = default;
+};
+
+
+struct HttpPayloadTraitsOutput {
+  std::optional<std::string> foo{};
+  std::optional<smithy::Blob> blob{};
+
+  friend bool operator==(const HttpPayloadTraitsOutput&, const HttpPayloadTraitsOutput&) = default;
+};
+
+
+struct HttpPayloadTraitsWithMediaTypeInput {
+  std::optional<std::string> foo{};
+  std::optional<smithy::Blob> blob{};
+
+  friend bool operator==(const HttpPayloadTraitsWithMediaTypeInput&, const HttpPayloadTraitsWithMediaTypeInput&) = default;
+};
+
+
+struct HttpPayloadTraitsWithMediaTypeOutput {
+  std::optional<std::string> foo{};
+  std::optional<smithy::Blob> blob{};
+
+  friend bool operator==(const HttpPayloadTraitsWithMediaTypeOutput&, const HttpPayloadTraitsWithMediaTypeOutput&) = default;
+};
+
+
+struct NestedPayload {
+  std::optional<std::string> greeting{};
+  std::optional<std::string> name{};
+
+  friend bool operator==(const NestedPayload&, const NestedPayload&) = default;
+};
+
+
+struct HttpPayloadWithStructureInput {
+  std::optional<NestedPayload> nested{};
+
+  friend bool operator==(const HttpPayloadWithStructureInput&, const HttpPayloadWithStructureInput&) = default;
+};
+
+
+struct HttpPayloadWithStructureOutput {
+  std::optional<NestedPayload> nested{};
+
+  friend bool operator==(const HttpPayloadWithStructureOutput&, const HttpPayloadWithStructureOutput&) = default;
+};
+
+
+class UnionPayload {
+  public:
+    UnionPayload() = default;
+
+    static UnionPayload FromGreeting(std::string value) {
+      UnionPayload result;
+      result.value_.emplace<1>(std::move(value));
+      return result;
+    }
+    bool is_greeting() const { return value_.index() == 1; }
+    const std::string& as_greeting() const { return std::get<1>(value_); }
+
+    /// True until one of the From* factories has been used.
+    bool empty() const { return value_.index() == 0; }
+
+    friend bool operator==(const UnionPayload&, const UnionPayload&) = default;
+
+  private:
+    std::variant<std::monostate, std::string> value_;
+};
+
+
+struct HttpPayloadWithUnionInput {
+  std::optional<UnionPayload> nested{};
+
+  friend bool operator==(const HttpPayloadWithUnionInput&, const HttpPayloadWithUnionInput&) = default;
+};
+
+
+struct HttpPayloadWithUnionOutput {
+  std::optional<UnionPayload> nested{};
+
+  friend bool operator==(const HttpPayloadWithUnionOutput&, const HttpPayloadWithUnionOutput&) = default;
+};
+
+
+struct HttpPrefixHeadersInput {
+  std::optional<std::string> foo{};
+  std::optional<std::map<std::string, std::string>> fooMap{};
+
+  friend bool operator==(const HttpPrefixHeadersInput&, const HttpPrefixHeadersInput&) = default;
+};
+
+
+struct HttpPrefixHeadersOutput {
+  std::optional<std::string> foo{};
+  std::optional<std::map<std::string, std::string>> fooMap{};
+
+  friend bool operator==(const HttpPrefixHeadersOutput&, const HttpPrefixHeadersOutput&) = default;
+};
+
+
+struct HttpPrefixHeadersInResponseInput {
+  friend bool operator==(const HttpPrefixHeadersInResponseInput&, const HttpPrefixHeadersInResponseInput&) = default;
+};
+
+
+struct HttpPrefixHeadersInResponseOutput {
+  std::optional<std::map<std::string, std::string>> prefixHeaders{};
+
+  friend bool operator==(const HttpPrefixHeadersInResponseOutput&, const HttpPrefixHeadersInResponseOutput&) = default;
+};
+
+
 struct HttpRequestWithFloatLabelsInput {
   float float_{};
   double double_{};
@@ -494,6 +677,20 @@ struct HttpResponseCodeOutput {
   std::optional<std::int32_t> Status{};
 
   friend bool operator==(const HttpResponseCodeOutput&, const HttpResponseCodeOutput&) = default;
+};
+
+
+struct HttpStringPayloadInput {
+  std::optional<std::string> payload{};
+
+  friend bool operator==(const HttpStringPayloadInput&, const HttpStringPayloadInput&) = default;
+};
+
+
+struct HttpStringPayloadOutput {
+  std::optional<std::string> payload{};
+
+  friend bool operator==(const HttpStringPayloadOutput&, const HttpStringPayloadOutput&) = default;
 };
 
 
@@ -835,6 +1032,30 @@ struct MalformedAcceptWithBodyOutput {
 };
 
 
+struct MalformedAcceptWithGenericStringInput {
+  friend bool operator==(const MalformedAcceptWithGenericStringInput&, const MalformedAcceptWithGenericStringInput&) = default;
+};
+
+
+struct MalformedAcceptWithGenericStringOutput {
+  std::optional<std::string> payload{};
+
+  friend bool operator==(const MalformedAcceptWithGenericStringOutput&, const MalformedAcceptWithGenericStringOutput&) = default;
+};
+
+
+struct MalformedAcceptWithPayloadInput {
+  friend bool operator==(const MalformedAcceptWithPayloadInput&, const MalformedAcceptWithPayloadInput&) = default;
+};
+
+
+struct MalformedAcceptWithPayloadOutput {
+  std::optional<smithy::Blob> payload{};
+
+  friend bool operator==(const MalformedAcceptWithPayloadOutput&, const MalformedAcceptWithPayloadOutput&) = default;
+};
+
+
 struct MalformedBlobInput {
   std::optional<smithy::Blob> blob{};
 
@@ -889,6 +1110,18 @@ struct MalformedContentTypeWithBodyOutput {
 };
 
 
+struct MalformedContentTypeWithGenericStringInput {
+  std::optional<std::string> payload{};
+
+  friend bool operator==(const MalformedContentTypeWithGenericStringInput&, const MalformedContentTypeWithGenericStringInput&) = default;
+};
+
+
+struct MalformedContentTypeWithGenericStringOutput {
+  friend bool operator==(const MalformedContentTypeWithGenericStringOutput&, const MalformedContentTypeWithGenericStringOutput&) = default;
+};
+
+
 struct MalformedContentTypeWithoutBodyInput {
   friend bool operator==(const MalformedContentTypeWithoutBodyInput&, const MalformedContentTypeWithoutBodyInput&) = default;
 };
@@ -908,6 +1141,18 @@ struct MalformedContentTypeWithoutBodyEmptyInputInput {
 
 struct MalformedContentTypeWithoutBodyEmptyInputOutput {
   friend bool operator==(const MalformedContentTypeWithoutBodyEmptyInputOutput&, const MalformedContentTypeWithoutBodyEmptyInputOutput&) = default;
+};
+
+
+struct MalformedContentTypeWithPayloadInput {
+  std::optional<smithy::Blob> payload{};
+
+  friend bool operator==(const MalformedContentTypeWithPayloadInput&, const MalformedContentTypeWithPayloadInput&) = default;
+};
+
+
+struct MalformedContentTypeWithPayloadOutput {
+  friend bool operator==(const MalformedContentTypeWithPayloadOutput&, const MalformedContentTypeWithPayloadOutput&) = default;
 };
 
 
@@ -1391,6 +1636,13 @@ struct OperationWithNestedStructureOutput {
 };
 
 
+struct PayloadConfig {
+  std::optional<std::int32_t> data{};
+
+  friend bool operator==(const PayloadConfig&, const PayloadConfig&) = default;
+};
+
+
 class PlayerAction {
   public:
     PlayerAction() = default;
@@ -1668,6 +1920,38 @@ struct TestGetNoPayloadOutput {
   std::optional<std::string> testId{};
 
   friend bool operator==(const TestGetNoPayloadOutput&, const TestGetNoPayloadOutput&) = default;
+};
+
+
+struct TestPayloadBlobInput {
+  std::optional<std::string> contentType{};
+  std::optional<smithy::Blob> data{};
+
+  friend bool operator==(const TestPayloadBlobInput&, const TestPayloadBlobInput&) = default;
+};
+
+
+struct TestPayloadBlobOutput {
+  std::optional<std::string> contentType{};
+  std::optional<smithy::Blob> data{};
+
+  friend bool operator==(const TestPayloadBlobOutput&, const TestPayloadBlobOutput&) = default;
+};
+
+
+struct TestPayloadStructureInput {
+  std::optional<std::string> testId{};
+  std::optional<PayloadConfig> payloadConfig{};
+
+  friend bool operator==(const TestPayloadStructureInput&, const TestPayloadStructureInput&) = default;
+};
+
+
+struct TestPayloadStructureOutput {
+  std::optional<std::string> testId{};
+  std::optional<PayloadConfig> payloadConfig{};
+
+  friend bool operator==(const TestPayloadStructureOutput&, const TestPayloadStructureOutput&) = default;
 };
 
 

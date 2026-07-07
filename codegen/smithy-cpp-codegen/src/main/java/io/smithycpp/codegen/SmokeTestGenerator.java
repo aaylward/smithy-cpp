@@ -79,6 +79,21 @@ final class SmokeTestGenerator {
     return overrides;
   }
 
+  /** True when the output binds an empty-prefix @httpPrefixHeaders member (matches all). */
+  private boolean capturesAllResponseHeaders(OperationShape operation) {
+    if (operation.getTrait(software.amazon.smithy.model.traits.HttpTrait.class).isEmpty()) {
+      return false;
+    }
+    var index = software.amazon.smithy.model.knowledge.HttpBindingIndex.of(context.model());
+    return index.getResponseBindings(operation).values().stream()
+        .anyMatch(
+            b ->
+                b.getLocation()
+                        == software.amazon.smithy.model.knowledge.HttpBinding.Location
+                            .PREFIX_HEADERS
+                    && b.getLocationName().isEmpty());
+  }
+
   /** "v.Status = 201;" when the output binds @httpResponseCode, else null. */
   private String responseCodeOverride(OperationShape operation) {
     if (operation.getTrait(software.amazon.smithy.model.traits.HttpTrait.class).isEmpty()) {
@@ -183,7 +198,12 @@ final class SmokeTestGenerator {
       writeSmokeInput(w, operation);
       w.write("const auto outcome = client.$L(input);", opName);
       w.write("ASSERT_TRUE(outcome.ok()) << outcome.error().message();");
-      w.write("EXPECT_EQ(*outcome, Minimal$LOutput());", opName);
+      if (capturesAllResponseHeaders(operation)) {
+        w.write("// An empty-prefix @httpPrefixHeaders output member captures every");
+        w.write("// response header (content-type, ...), so exact equality cannot hold.");
+      } else {
+        w.write("EXPECT_EQ(*outcome, Minimal$LOutput());", opName);
+      }
       w.closeBlock("}");
       w.write("");
     }

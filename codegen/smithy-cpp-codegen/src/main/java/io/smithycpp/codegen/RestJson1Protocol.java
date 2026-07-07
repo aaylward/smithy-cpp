@@ -55,30 +55,46 @@ final class RestJson1Protocol implements ProtocolGenerator {
       // Outcome-parsing kinds (timestamps, media-type strings) and lists are
       // not patched into error details yet; the exclusion list documents any
       // affected conformance cases.
-      String expr =
-          switch (target.getType()) {
-            case STRING ->
-                target.hasTrait(software.amazon.smithy.model.traits.MediaTypeTrait.class)
-                    ? null
-                    : "*header_value";
-            case ENUM ->
-                context.cppSymbols().toSymbol(target).getName() + "::FromString(*header_value)";
-            case BYTE, SHORT, INTEGER, LONG, INT_ENUM ->
-                "static_cast<"
-                    + context.cppSymbols().toSymbol(target).getName()
-                    + ">(ParseHeaderInt64(*header_value))";
-            case FLOAT -> "static_cast<float>(ParseHeaderDouble(*header_value))";
-            case DOUBLE -> "ParseHeaderDouble(*header_value)";
-            case BOOLEAN -> "(*header_value == \"true\")";
-            default -> null;
-          };
-      if (expr == null) {
-        continue;
+      String memberName = context.cppSymbols().toMemberName(member);
+      String typeName = context.cppSymbols().toSymbol(target).getName();
+      switch (target.getType()) {
+        case STRING -> {
+          if (target.hasTrait(software.amazon.smithy.model.traits.MediaTypeTrait.class)) {
+            continue;
+          }
+        }
+        case ENUM, BYTE, SHORT, INTEGER, LONG, INT_ENUM, FLOAT, DOUBLE, BOOLEAN -> {}
+        default -> {
+          continue;
+        }
       }
       w.openBlock(
           "if (const auto header_value = response.headers.Get($S); header_value.has_value()) {",
           binding.getLocationName());
-      w.write("detail->$L = $L;", context.cppSymbols().toMemberName(member), expr);
+      switch (target.getType()) {
+        case STRING -> w.write("detail->$L = *header_value;", memberName);
+        case ENUM -> w.write("detail->$L = $L::FromString(*header_value);", memberName, typeName);
+        // Error-detail patching is best effort: malformed header values are
+        // skipped, never failures.
+        case BYTE, SHORT, INTEGER, LONG, INT_ENUM ->
+            w.write(
+                "if (auto parsed_num = ParseInt64Text(*header_value, $L)) "
+                    + "detail->$L = static_cast<$L>(*parsed_num);",
+                ProtocolSupport.int64Bounds(target.getType()),
+                memberName,
+                typeName);
+        case FLOAT ->
+            w.write(
+                "if (auto parsed_num = ParseDoubleText(*header_value)) "
+                    + "detail->$L = static_cast<float>(*parsed_num);",
+                memberName);
+        case DOUBLE ->
+            w.write(
+                "if (auto parsed_num = ParseDoubleText(*header_value)) detail->$L = *parsed_num;",
+                memberName);
+        case BOOLEAN -> w.write("detail->$L = (*header_value == \"true\");", memberName);
+        default -> throw new CodegenException("unreachable");
+      }
       w.closeBlock("}");
     }
   }
@@ -126,6 +142,8 @@ final class RestJson1Protocol implements ProtocolGenerator {
     Map<String, HttpBinding> headers = new TreeMap<>();
     List<HttpBinding> body = new java.util.ArrayList<>();
     HttpBinding queryParams = null;
+    HttpBinding payload = null;
+    HttpBinding prefixHeaders = null;
     for (HttpBinding binding : index.getRequestBindings(operation).values()) {
       switch (binding.getLocation()) {
         case LABEL -> labels.put(binding.getLocationName(), binding);
@@ -133,6 +151,8 @@ final class RestJson1Protocol implements ProtocolGenerator {
         case QUERY_PARAMS -> queryParams = binding;
         case HEADER -> headers.put(binding.getLocationName(), binding);
         case DOCUMENT -> body.add(binding);
+        case PAYLOAD -> payload = binding;
+        case PREFIX_HEADERS -> prefixHeaders = binding;
         default ->
             throw new CodegenException(
                 "cpp-codegen: restJson1 input binding "
@@ -145,10 +165,14 @@ final class RestJson1Protocol implements ProtocolGenerator {
     Map<String, HttpBinding> responseHeaders = new TreeMap<>();
     List<HttpBinding> responseBody = new java.util.ArrayList<>();
     HttpBinding responseCode = null;
+    HttpBinding responsePayload = null;
+    HttpBinding responsePrefixHeaders = null;
     for (HttpBinding binding : index.getResponseBindings(operation).values()) {
       switch (binding.getLocation()) {
         case DOCUMENT -> responseBody.add(binding);
         case RESPONSE_CODE -> responseCode = binding;
+        case PAYLOAD -> responsePayload = binding;
+        case PREFIX_HEADERS -> responsePrefixHeaders = binding;
         case HEADER -> {
           if (binding.getMember().isRequired()) {
             throw new CodegenException(
@@ -224,8 +248,13 @@ final class RestJson1Protocol implements ProtocolGenerator {
     for (HttpBinding binding : headers.values()) {
       writeHeaderBinding(w, context, serde, binding, in);
     }
+    if (prefixHeaders != null) {
+      writePrefixHeadersWrite(w, context, prefixHeaders, in, "request");
+    }
 
-    if (!body.isEmpty()) {
+    if (payload != null) {
+      writePayloadWrite(w, context, serde, operation, payload, in, "request", true);
+    } else if (!body.isEmpty()) {
       w.write("smithy::DocumentMap body_map;");
       for (HttpBinding binding : body) {
         MemberShape member = binding.getMember();
@@ -250,6 +279,10 @@ final class RestJson1Protocol implements ProtocolGenerator {
       w.write("request.headers.Set(\"content-type\", \"application/json\");");
     }
 
+    if (responsePayload != null) {
+      w.write(
+          "request.headers.Set(\"accept\", $S);", payloadContentType(context, operation, false));
+    }
     w.write("auto response = Send(std::move(request));");
     w.write("if (!response) return std::move(response).error();");
     if (responseCode != null) {
@@ -270,7 +303,10 @@ final class RestJson1Protocol implements ProtocolGenerator {
       return;
     }
     boolean allOptional = output.members().stream().noneMatch(MemberShape::isRequired);
-    if (responseHeaders.isEmpty() && responseCode == null) {
+    if (responseHeaders.isEmpty()
+        && responseCode == null
+        && responsePayload == null
+        && responsePrefixHeaders == null) {
       if (allOptional) {
         w.write("if (response->body.empty()) return $L{};", outType);
       }
@@ -298,8 +334,14 @@ final class RestJson1Protocol implements ProtocolGenerator {
         w.closeBlock("}");
       }
     }
+    if (responsePayload != null) {
+      writePayloadRead(w, context, serde, responsePayload, "response->body", "out.");
+    }
     for (HttpBinding binding : responseHeaders.values()) {
       writeResponseHeaderBinding(w, context, serde, binding);
+    }
+    if (responsePrefixHeaders != null) {
+      writePrefixHeadersRead(w, context, responsePrefixHeaders, "response->headers", "out.");
     }
     if (responseCode != null) {
       MemberShape codeMember = responseCode.getMember();
@@ -314,6 +356,214 @@ final class RestJson1Protocol implements ProtocolGenerator {
           type);
     }
     w.write("return out;");
+  }
+
+  /** Blob payloads without @mediaType accept any content type / accept header. */
+  private static boolean lenientPayload(
+      CppContext context, HttpBindingIndex index, OperationShape operation, boolean response) {
+    var bindings =
+        response ? index.getResponseBindings(operation) : index.getRequestBindings(operation);
+    return bindings.values().stream()
+        .anyMatch(
+            b -> {
+              if (b.getLocation() != HttpBinding.Location.PAYLOAD) {
+                return false;
+              }
+              Shape target = context.model().expectShape(b.getMember().getTarget());
+              return target.isBlobShape()
+                  && !target.hasTrait(software.amazon.smithy.model.traits.MediaTypeTrait.class)
+                  && !b.getMember()
+                      .hasTrait(software.amazon.smithy.model.traits.MediaTypeTrait.class);
+            });
+  }
+
+  /** Blob/string/enum payloads travel raw; structures, unions and documents as JSON. */
+  private static boolean rawPayload(Shape target) {
+    return switch (target.getType()) {
+      case BLOB, STRING, ENUM -> true;
+      case STRUCTURE, UNION, DOCUMENT -> false;
+      default ->
+          throw new CodegenException(
+              "cpp-codegen: @httpPayload target " + target.getId() + " is not supported");
+    };
+  }
+
+  /** The message's content type when an @httpPayload member is bound (media-type aware). */
+  private static String payloadContentType(
+      CppContext context, OperationShape operation, boolean isRequest) {
+    HttpBindingIndex index = HttpBindingIndex.of(context.model());
+    return isRequest
+        ? index.determineRequestContentType(operation, "application/json").orElse("")
+        : index.determineResponseContentType(operation, "application/json").orElse("");
+  }
+
+  /**
+   * Writes the @httpPayload member of {@code in} as {@code messageVar}.body (+content-type). Shared
+   * by the client request path and the server response path. Structure payloads always produce a
+   * JSON document (at minimum "{}"); other unset optional payloads leave the body empty with no
+   * content-type. A member-bound Content-Type header wins over the payload's.
+   */
+  private void writePayloadWrite(
+      CppWriter w,
+      CppContext context,
+      SerdeCodeGen serde,
+      OperationShape operation,
+      HttpBinding binding,
+      String in,
+      String messageVar,
+      boolean isRequest) {
+    MemberShape member = binding.getMember();
+    Shape target = context.model().expectShape(member.getTarget());
+    String field = in + "." + context.cppSymbols().toMemberName(member);
+    boolean optional = !member.isRequired();
+    String value = optional ? "(*" + field + ")" : field;
+    String contentType =
+        "if (!"
+            + messageVar
+            + ".headers.Get(\"content-type\").has_value()) "
+            + messageVar
+            + ".headers.Set(\"content-type\", "
+            + CppLiterals.stringLiteral(payloadContentType(context, operation, isRequest))
+            + ");";
+    boolean structure = target.getType() == software.amazon.smithy.model.shapes.ShapeType.STRUCTURE;
+    if (optional && !structure) {
+      w.openBlock("if ($L.has_value()) {", field);
+    }
+    if (optional && structure) {
+      w.openBlock("if ($L.has_value()) {", field);
+      w.write(
+          "$L.body = smithy::json::Encode($L);",
+          messageVar,
+          serde.serializeExpression(member, value));
+      w.closeBlock("} else {");
+      w.indent();
+      w.write("$L.body = \"{}\";", messageVar);
+      w.closeBlock("}");
+    } else {
+      switch (target.getType()) {
+        case BLOB -> w.write("$L.body = $L.ToString();", messageVar, value);
+        case STRING -> w.write("$L.body = $L;", messageVar, value);
+        case ENUM -> w.write("$L.body = std::string($L.ToString());", messageVar, value);
+        default ->
+            w.write(
+                "$L.body = smithy::json::Encode($L);",
+                messageVar,
+                serde.serializeExpression(member, value));
+      }
+    }
+    w.write("$L", contentType);
+    if (optional && !structure) {
+      w.closeBlock("}");
+    }
+    if (!isRequest) {
+      // The suite asserts Content-Length on payload responses (incl. "0" for
+      // an absent payload); document-body responses leave it to the transport.
+      w.write(
+          "$L.headers.Set(\"content-length\", std::to_string($L.body.size()));",
+          messageVar,
+          messageVar);
+    }
+  }
+
+  /**
+   * Reads a message body into the @httpPayload member at {@code targetPrefix}<member>. Shared by
+   * the client response path and the server request path; an empty body leaves the member unset.
+   * Runs inside an Outcome-returning function.
+   */
+  private void writePayloadRead(
+      CppWriter w,
+      CppContext context,
+      SerdeCodeGen serde,
+      HttpBinding binding,
+      String bodyExpr,
+      String targetPrefix) {
+    MemberShape member = binding.getMember();
+    Shape target = context.model().expectShape(member.getTarget());
+    String field = targetPrefix + context.cppSymbols().toMemberName(member);
+    String path = member.getMemberName();
+    w.openBlock("if (!$L.empty()) {", bodyExpr);
+    switch (target.getType()) {
+      case BLOB -> w.write("$L = smithy::Blob::FromString($L);", field, bodyExpr);
+      case STRING -> w.write("$L = $L;", field, bodyExpr);
+      case ENUM ->
+          w.write(
+              "$L = $L::FromString($L);",
+              field,
+              context.cppSymbols().toSymbol(target).getName(),
+              bodyExpr);
+      default -> {
+        w.write("auto payload_doc = smithy::json::Decode($L);", bodyExpr);
+        w.write("if (!payload_doc) return std::move(payload_doc).error();");
+        w.write("const smithy::Document* payload_ptr = &*payload_doc;");
+        boolean structure =
+            target.getType() == software.amazon.smithy.model.shapes.ShapeType.STRUCTURE;
+        if (member.isRequired()) {
+          serde.writeDeserializeInto(w, member, "payload_ptr", field, path);
+        } else {
+          if (structure) {
+            // The inverse of writing "{}" for an unset structure payload:
+            // an empty JSON object reads back as unset.
+            w.openBlock("if (!payload_ptr->is_map() || !payload_ptr->as_map().empty()) {");
+          }
+          var targetType = context.cppSymbols().toSymbol(target);
+          w.write("$L parsed_payload{};", targetType.getName());
+          serde.writeDeserializeInto(w, member, "payload_ptr", "parsed_payload", path);
+          w.write("$L = std::move(parsed_payload);", field);
+          if (structure) {
+            w.closeBlock("}");
+          }
+        }
+      }
+    }
+    w.closeBlock("}");
+  }
+
+  /** Writes an @httpPrefixHeaders map of {@code in} into {@code messageVar}.headers. */
+  private void writePrefixHeadersWrite(
+      CppWriter w, CppContext context, HttpBinding binding, String in, String messageVar) {
+    MemberShape member = binding.getMember();
+    String field = in + "." + context.cppSymbols().toMemberName(member);
+    String prefix = binding.getLocationName();
+    boolean optional = !member.isRequired();
+    String value = optional ? "(*" + field + ")" : field;
+    if (optional) {
+      w.openBlock("if ($L.has_value()) {", field);
+    }
+    w.openBlock("for (const auto& [map_key, map_value] : $L) {", value);
+    w.write("$L.headers.Set($S + map_key, map_value);", messageVar, prefix);
+    w.closeBlock("}");
+    if (optional) {
+      w.closeBlock("}");
+    }
+  }
+
+  /**
+   * Reads every header of {@code headersExpr} matching the binding's prefix (case-insensitively; an
+   * empty prefix matches all) into the map member at {@code targetPrefix}<member>. No matching
+   * headers leaves the member unset.
+   */
+  private void writePrefixHeadersRead(
+      CppWriter w,
+      CppContext context,
+      HttpBinding binding,
+      String headersExpr,
+      String targetPrefix) {
+    MemberShape member = binding.getMember();
+    String field = targetPrefix + context.cppSymbols().toMemberName(member);
+    String prefix = binding.getLocationName();
+    boolean optional = !member.isRequired();
+    w.openBlock("for (const auto& [header_name, header_value] : $L.entries()) {", headersExpr);
+    w.write("if (!smithy::http::HeaderNameStartsWith(header_name, $S)) continue;", prefix);
+    String container;
+    if (optional) {
+      w.write("if (!$L.has_value()) $L.emplace();", field, field);
+      container = "(*" + field + ")";
+    } else {
+      container = field;
+    }
+    w.write(
+        "$L.insert_or_assign(header_name.substr($L), header_value);", container, prefix.length());
+    w.closeBlock("}");
   }
 
   /** Patches one response @httpHeader member into {@code out} (member is always optional). */
@@ -414,17 +664,37 @@ final class RestJson1Protocol implements ProtocolGenerator {
               context.cppSymbols().toSymbol(target).getName(),
               valueExpr,
               close);
-      case BYTE, SHORT, INTEGER, LONG, INT_ENUM ->
-          w.write(
-              "$Lstatic_cast<$L>(ParseHeaderInt64($L))$L",
-              open,
-              context.cppSymbols().toSymbol(target).getName(),
-              valueExpr,
-              close);
-      case FLOAT ->
-          w.write("$Lstatic_cast<float>(ParseHeaderDouble($L))$L", open, valueExpr, close);
-      case DOUBLE -> w.write("$LParseHeaderDouble($L)$L", open, valueExpr, close);
-      case BOOLEAN -> w.write("$L($L == \"true\")$L", open, valueExpr, close);
+      case BYTE, SHORT, INTEGER, LONG, INT_ENUM -> {
+        w.write(
+            "auto parsed_num = ParseInt64Text($L, $L);",
+            valueExpr,
+            ProtocolSupport.int64Bounds(target.getType()));
+        w.write("if (!parsed_num) return std::move(parsed_num).error();");
+        w.write(
+            "$Lstatic_cast<$L>(*parsed_num)$L",
+            open,
+            context.cppSymbols().toSymbol(target).getName(),
+            close);
+      }
+      case FLOAT -> {
+        w.write("auto parsed_num = ParseDoubleText($L);", valueExpr);
+        w.write("if (!parsed_num) return std::move(parsed_num).error();");
+        w.write("$Lstatic_cast<float>(*parsed_num)$L", open, close);
+      }
+      case DOUBLE -> {
+        w.write("auto parsed_num = ParseDoubleText($L);", valueExpr);
+        w.write("if (!parsed_num) return std::move(parsed_num).error();");
+        w.write("$L*parsed_num$L", open, close);
+      }
+      case BOOLEAN -> {
+        w.write(
+            "if ($L != \"true\" && $L != \"false\") return "
+                + "smithy::Error::Serialization(\"expected a boolean, got: \" + $L);",
+            valueExpr,
+            valueExpr,
+            valueExpr);
+        w.write("$L($L == \"true\")$L", open, valueExpr, close);
+      }
       default ->
           throw new CodegenException(
               "cpp-codegen: response @httpHeader target "
@@ -645,6 +915,8 @@ final class RestJson1Protocol implements ProtocolGenerator {
     Map<String, HttpBinding> headers = new TreeMap<>();
     List<HttpBinding> body = new java.util.ArrayList<>();
     HttpBinding queryParams = null;
+    HttpBinding payload = null;
+    HttpBinding prefixHeaders = null;
     for (HttpBinding binding : index.getRequestBindings(operation).values()) {
       switch (binding.getLocation()) {
         case LABEL -> labels.put(binding.getLocationName(), binding);
@@ -652,6 +924,8 @@ final class RestJson1Protocol implements ProtocolGenerator {
         case QUERY_PARAMS -> queryParams = binding;
         case HEADER -> headers.put(binding.getLocationName(), binding);
         case DOCUMENT -> body.add(binding);
+        case PAYLOAD -> payload = binding;
+        case PREFIX_HEADERS -> prefixHeaders = binding;
         default ->
             throw new CodegenException(
                 "cpp-codegen: restJson1 server binding "
@@ -771,6 +1045,12 @@ final class RestJson1Protocol implements ProtocolGenerator {
         w.closeBlock("}");
       }
     }
+    if (prefixHeaders != null) {
+      writePrefixHeadersRead(w, context, prefixHeaders, "request.headers", "input.");
+    }
+    if (payload != null) {
+      writePayloadRead(w, context, serde, payload, "request.body", "input.");
+    }
     if (!body.isEmpty()) {
       w.write(
           "auto body_doc = smithy::json::Decode(request.body.empty() ? \"{}\" : request.body);");
@@ -845,10 +1125,18 @@ final class RestJson1Protocol implements ProtocolGenerator {
     String close = push ? ");" : ";";
     switch (target.getType()) {
       case TIMESTAMP -> {
-        w.write(
-            "auto parsed_ts = smithy::Timestamp::Parse($L, $L);",
-            valueExpr,
-            serde.timestampFormat(member, timestampDefault));
+        String format = serde.timestampFormat(member, timestampDefault);
+        if (format.equals("smithy::TimestampFormat::kDateTime")) {
+          // Servers reject RFC3339 UTC offsets in text positions (clients must
+          // accept them in responses, so Timestamp::Parse itself stays lenient).
+          w.write(
+              "if ($L.empty() || ($L.back() != 'Z' && $L.back() != 'z')) return "
+                  + "smithy::Error::Serialization(\"expected a Z-terminated date-time\");",
+              valueExpr,
+              valueExpr,
+              valueExpr);
+        }
+        w.write("auto parsed_ts = smithy::Timestamp::Parse($L, $L);", valueExpr, format);
         w.write("if (!parsed_ts) return std::move(parsed_ts).error();");
         w.write("$L*std::move(parsed_ts)$L", open, close);
       }
@@ -860,17 +1148,37 @@ final class RestJson1Protocol implements ProtocolGenerator {
               context.cppSymbols().toSymbol(target).getName(),
               valueExpr,
               close);
-      case BYTE, SHORT, INTEGER, LONG, INT_ENUM ->
-          w.write(
-              "$Lstatic_cast<$L>(ParseHeaderInt64($L))$L",
-              open,
-              context.cppSymbols().toSymbol(target).getName(),
-              valueExpr,
-              close);
-      case FLOAT ->
-          w.write("$Lstatic_cast<float>(ParseHeaderDouble($L))$L", open, valueExpr, close);
-      case DOUBLE -> w.write("$LParseHeaderDouble($L)$L", open, valueExpr, close);
-      case BOOLEAN -> w.write("$L($L == \"true\")$L", open, valueExpr, close);
+      case BYTE, SHORT, INTEGER, LONG, INT_ENUM -> {
+        w.write(
+            "auto parsed_num = ParseInt64Text($L, $L);",
+            valueExpr,
+            ProtocolSupport.int64Bounds(target.getType()));
+        w.write("if (!parsed_num) return std::move(parsed_num).error();");
+        w.write(
+            "$Lstatic_cast<$L>(*parsed_num)$L",
+            open,
+            context.cppSymbols().toSymbol(target).getName(),
+            close);
+      }
+      case FLOAT -> {
+        w.write("auto parsed_num = ParseDoubleText($L);", valueExpr);
+        w.write("if (!parsed_num) return std::move(parsed_num).error();");
+        w.write("$Lstatic_cast<float>(*parsed_num)$L", open, close);
+      }
+      case DOUBLE -> {
+        w.write("auto parsed_num = ParseDoubleText($L);", valueExpr);
+        w.write("if (!parsed_num) return std::move(parsed_num).error();");
+        w.write("$L*parsed_num$L", open, close);
+      }
+      case BOOLEAN -> {
+        w.write(
+            "if ($L != \"true\" && $L != \"false\") return "
+                + "smithy::Error::Serialization(\"expected a boolean, got: \" + $L);",
+            valueExpr,
+            valueExpr,
+            valueExpr);
+        w.write("$L($L == \"true\")$L", open, valueExpr, close);
+      }
       default ->
           throw new CodegenException(
               "cpp-codegen: label/query binding target " + target.getId() + " is not supported");
@@ -889,10 +1197,14 @@ final class RestJson1Protocol implements ProtocolGenerator {
     Map<String, HttpBinding> responseHeaders = new TreeMap<>();
     List<HttpBinding> responseBody = new java.util.ArrayList<>();
     HttpBinding responseCode = null;
+    HttpBinding responsePayload = null;
+    HttpBinding responsePrefixHeaders = null;
     for (HttpBinding binding : index.getResponseBindings(operation).values()) {
       switch (binding.getLocation()) {
         case DOCUMENT -> responseBody.add(binding);
         case RESPONSE_CODE -> responseCode = binding;
+        case PAYLOAD -> responsePayload = binding;
+        case PREFIX_HEADERS -> responsePrefixHeaders = binding;
         case HEADER -> responseHeaders.put(binding.getLocationName(), binding);
         default ->
             throw new CodegenException(
@@ -920,6 +1232,26 @@ final class RestJson1Protocol implements ProtocolGenerator {
     }
     for (HttpBinding binding : responseHeaders.values()) {
       writeHeaderWriteBinding(w, context, serde, binding, "output", "response.headers");
+    }
+    if (responsePrefixHeaders != null) {
+      writePrefixHeadersWrite(w, context, responsePrefixHeaders, "output", "response");
+    }
+    if (responsePayload != null) {
+      writePayloadWrite(w, context, serde, operation, responsePayload, "output", "response", false);
+      w.write("return response;");
+      w.closeBlock("}");
+      w.write("");
+      return;
+    }
+    if (responsePrefixHeaders != null && responsePayload == null) {
+      writePrefixHeadersWrite(w, context, responsePrefixHeaders, "output", "response");
+    }
+    if (http.getCode() == 204) {
+      // 204 No Content responses must not carry a body (or content-type).
+      w.write("return response;");
+      w.closeBlock("}");
+      w.write("");
+      return;
     }
     // restJson1 servers always produce a JSON body (at minimum "{}").
     w.write("smithy::DocumentMap body_map;");
@@ -968,24 +1300,82 @@ final class RestJson1Protocol implements ProtocolGenerator {
     if (pattern.length() == 0) {
       pattern.append('/');
     }
-    boolean hasBodyBindings =
-        HttpBindingIndex.of(context.model()).getRequestBindings(operation).values().stream()
-            .anyMatch(b -> b.getLocation() == HttpBinding.Location.DOCUMENT);
+    HttpBindingIndex bindingIndex = HttpBindingIndex.of(context.model());
+    boolean hasRequestContent =
+        bindingIndex.getRequestBindings(operation).values().stream()
+            .anyMatch(
+                b ->
+                    b.getLocation() == HttpBinding.Location.DOCUMENT
+                        || b.getLocation() == HttpBinding.Location.PAYLOAD);
+    boolean hasResponseContent =
+        bindingIndex.getResponseBindings(operation).values().stream()
+            .anyMatch(
+                b ->
+                    b.getLocation() == HttpBinding.Location.DOCUMENT
+                        || b.getLocation() == HttpBinding.Location.PAYLOAD);
     w.openBlock(
         "(void)router_->Add($S, $S, [handler](const smithy::http::HttpRequest& request, "
             + "const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {",
         http.getMethod(),
         pattern.toString());
-    if (hasBodyBindings) {
-      w.write("// Content-Type validation per the HTTP binding spec: a present header");
-      w.write("// must carry the protocol's media type (parameters ignored); 415 otherwise.");
+    StructureShape inputShape = ProtocolSupport.inputShape(context, operation);
+    boolean noModeledInput =
+        inputShape.getId().toString().equals("smithy.api#Unit")
+            || inputShape
+                .getTrait(software.amazon.smithy.model.traits.synthetic.OriginalShapeIdTrait.class)
+                .map(t -> t.getOriginalId().toString().equals("smithy.api#Unit"))
+                .orElse(false);
+    w.write("// Content-Type validation per the HTTP binding spec (415), then Accept (406);");
+    w.write("// the malformed-request suite pins the error-identity headers. A missing");
+    w.write("// content-type is tolerated, and blob payloads without @mediaType accept");
+    w.write("// any content type / accept.");
+    if (noModeledInput) {
+      w.openBlock("if (request.headers.Get(\"content-type\").has_value()) {");
+      w.write("auto error_response = JsonError(415, \"\", \"unsupported media type\", {});");
+      w.write(
+          "error_response.headers.Set(\"x-amzn-errortype\", \"UnsupportedMediaTypeException\");");
+      w.write("return error_response;");
+      w.closeBlock("}");
+    } else if (!lenientPayload(context, bindingIndex, operation, /* response= */ false)) {
+      String expected =
+          bindingIndex
+              .determineRequestContentType(operation, "application/json")
+              .orElse("application/json");
+      boolean hasRequestPayload =
+          bindingIndex.getRequestBindings(operation).values().stream()
+              .anyMatch(b -> b.getLocation() == HttpBinding.Location.PAYLOAD);
+      // Payload-bound requests additionally require a content-type once a body
+      // is present; document bodies tolerate a missing header (the server-mode
+      // httpRequestTests pin that leniency).
+      String condition =
+          hasRequestPayload
+              ? "content_type.has_value() ? smithy::http::MediaTypeOf(*content_type) != $S "
+                  + ": !request.body.empty()"
+              : "content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != $S";
       w.openBlock(
           "if (const auto content_type = request.headers.Get(\"content-type\"); "
-              + "content_type.has_value() && "
-              + "smithy::http::MediaTypeOf(*content_type) != \"application/json\") {");
+              + condition
+              + ") {",
+          expected);
+      w.write("auto error_response = JsonError(415, \"\", \"unsupported media type\", {});");
       w.write(
-          "return JsonError(415, \"UnsupportedMediaTypeException\", "
-              + "\"expected content-type: application/json\", {});");
+          "error_response.headers.Set(\"x-amzn-errortype\", \"UnsupportedMediaTypeException\");");
+      w.write("return error_response;");
+      w.closeBlock("}");
+    }
+    if (hasResponseContent
+        && !lenientPayload(context, bindingIndex, operation, /* response= */ true)) {
+      String responseContentType =
+          bindingIndex
+              .determineResponseContentType(operation, "application/json")
+              .orElse("application/json");
+      w.openBlock(
+          "if (const auto accept = request.headers.Get(\"accept\"); accept.has_value() && "
+              + "!smithy::http::AcceptMatches(*accept, $S)) {",
+          responseContentType);
+      w.write("auto error_response = JsonError(406, \"\", \"not acceptable\", {});");
+      w.write("error_response.headers.Set(\"x-amzn-errortype\", \"NotAcceptableException\");");
+      w.write("return error_response;");
       w.closeBlock("}");
     }
     w.write("std::vector<smithy::server::ValidationFailure> validation_failures;");

@@ -22,6 +22,7 @@ resource City {
     identifiers: { cityId: CityId }
     read: GetCity
     list: ListCities
+    delete: DeleteCity
     resources: [Forecast]
 }
 
@@ -48,6 +49,19 @@ operation GetCity {
 
         @required
         coordinates: CityCoordinates
+    }
+
+    errors: [NoSuchResource]
+}
+
+/// Deletes a city: a 204 No Content operation (the response has no body).
+@idempotent
+@http(method: "DELETE", uri: "/cities/{cityId}", code: 204)
+operation DeleteCity {
+    input := {
+        @required
+        @httpLabel
+        cityId: CityId
     }
 
     errors: [NoSuchResource]

@@ -69,7 +69,7 @@ smithy::http::HttpResponse ErrorToResponse(const smithy::Error& error) {
     }
     return CborError(400, error.code(), error.message(), {});
   }
-  if (error.kind() == smithy::ErrorKind::kValidation || error.kind() == smithy::ErrorKind::kSerialization) return CborError(400, "ValidationException", error.message(), {});
+  if (error.kind() == smithy::ErrorKind::kValidation || error.kind() == smithy::ErrorKind::kSerialization) return CborError(400, "SerializationException", error.message(), {});
   // Never leak internal detail on unexpected failures.
   return CborError(500, "InternalFailure", "internal failure", {});
 }

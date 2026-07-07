@@ -188,15 +188,31 @@ Outcome<Timestamp> ParseHttpDate(std::string_view text) {
 }
 
 Outcome<Timestamp> ParseEpochSeconds(std::string_view text) {
-  const std::string buffer(text);
-  const char* begin = buffer.c_str();
-  char* end = nullptr;
-  errno = 0;
-  const double seconds = std::strtod(begin, &end);
-  if (end != begin + buffer.size() || buffer.empty() || errno == ERANGE ||
-      !std::isfinite(seconds)) {
-    return Error::Serialization("timestamp: invalid epoch-seconds: " + buffer);
+  // Strict grammar: [-]digits[.digits] — no hex, exponents, or infinities
+  // (the malformed-request suites reject "0x42", "1e3", "Infinity", ...).
+  const auto invalid = [&] {
+    return Error::Serialization("timestamp: invalid epoch-seconds: " + std::string(text));
+  };
+  std::string_view rest = text;
+  if (!rest.empty() && rest.front() == '-') rest.remove_prefix(1);
+  if (rest.empty()) return invalid();
+  bool seen_dot = false;
+  bool digits_before_dot = false;
+  bool digits_after_dot = false;
+  for (const char c : rest) {
+    if (c >= '0' && c <= '9') {
+      (seen_dot ? digits_after_dot : digits_before_dot) = true;
+    } else if (c == '.' && !seen_dot) {
+      seen_dot = true;
+    } else {
+      return invalid();
+    }
   }
+  if (!digits_before_dot || (seen_dot && !digits_after_dot)) return invalid();
+  const std::string buffer(text);
+  errno = 0;
+  const double seconds = std::strtod(buffer.c_str(), nullptr);
+  if (errno == ERANGE || !std::isfinite(seconds)) return invalid();
   return Timestamp::FromEpochSeconds(seconds);
 }
 

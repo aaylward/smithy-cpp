@@ -166,6 +166,12 @@ smithy::Outcome<DocumentTypeAsMapValueInput> DeserializeDocumentTypeAsMapValueIn
 smithy::Document SerializeDocumentTypeAsMapValueOutput(const DocumentTypeAsMapValueOutput& value);
 smithy::Outcome<DocumentTypeAsMapValueOutput> DeserializeDocumentTypeAsMapValueOutput(const smithy::Document& doc);
 
+smithy::Document SerializeDocumentTypeAsPayloadInput(const DocumentTypeAsPayloadInput& value);
+smithy::Outcome<DocumentTypeAsPayloadInput> DeserializeDocumentTypeAsPayloadInput(const smithy::Document& doc);
+
+smithy::Document SerializeDocumentTypeAsPayloadOutput(const DocumentTypeAsPayloadOutput& value);
+smithy::Outcome<DocumentTypeAsPayloadOutput> DeserializeDocumentTypeAsPayloadOutput(const smithy::Document& doc);
+
 smithy::Document SerializeEmptyInputAndEmptyOutputInput(const EmptyInputAndEmptyOutputInput& value);
 smithy::Outcome<EmptyInputAndEmptyOutputInput> DeserializeEmptyInputAndEmptyOutputInput(const smithy::Document& doc);
 
@@ -214,6 +220,54 @@ smithy::Outcome<HttpChecksumRequiredInput> DeserializeHttpChecksumRequiredInput(
 smithy::Document SerializeHttpChecksumRequiredOutput(const HttpChecksumRequiredOutput& value);
 smithy::Outcome<HttpChecksumRequiredOutput> DeserializeHttpChecksumRequiredOutput(const smithy::Document& doc);
 
+smithy::Document SerializeHttpEnumPayloadInput(const HttpEnumPayloadInput& value);
+smithy::Outcome<HttpEnumPayloadInput> DeserializeHttpEnumPayloadInput(const smithy::Document& doc);
+
+smithy::Document SerializeHttpEnumPayloadOutput(const HttpEnumPayloadOutput& value);
+smithy::Outcome<HttpEnumPayloadOutput> DeserializeHttpEnumPayloadOutput(const smithy::Document& doc);
+
+smithy::Document SerializeHttpPayloadTraitsInput(const HttpPayloadTraitsInput& value);
+smithy::Outcome<HttpPayloadTraitsInput> DeserializeHttpPayloadTraitsInput(const smithy::Document& doc);
+
+smithy::Document SerializeHttpPayloadTraitsOutput(const HttpPayloadTraitsOutput& value);
+smithy::Outcome<HttpPayloadTraitsOutput> DeserializeHttpPayloadTraitsOutput(const smithy::Document& doc);
+
+smithy::Document SerializeHttpPayloadTraitsWithMediaTypeInput(const HttpPayloadTraitsWithMediaTypeInput& value);
+smithy::Outcome<HttpPayloadTraitsWithMediaTypeInput> DeserializeHttpPayloadTraitsWithMediaTypeInput(const smithy::Document& doc);
+
+smithy::Document SerializeHttpPayloadTraitsWithMediaTypeOutput(const HttpPayloadTraitsWithMediaTypeOutput& value);
+smithy::Outcome<HttpPayloadTraitsWithMediaTypeOutput> DeserializeHttpPayloadTraitsWithMediaTypeOutput(const smithy::Document& doc);
+
+smithy::Document SerializeNestedPayload(const NestedPayload& value);
+smithy::Outcome<NestedPayload> DeserializeNestedPayload(const smithy::Document& doc);
+
+smithy::Document SerializeHttpPayloadWithStructureInput(const HttpPayloadWithStructureInput& value);
+smithy::Outcome<HttpPayloadWithStructureInput> DeserializeHttpPayloadWithStructureInput(const smithy::Document& doc);
+
+smithy::Document SerializeHttpPayloadWithStructureOutput(const HttpPayloadWithStructureOutput& value);
+smithy::Outcome<HttpPayloadWithStructureOutput> DeserializeHttpPayloadWithStructureOutput(const smithy::Document& doc);
+
+smithy::Document SerializeUnionPayload(const UnionPayload& value);
+smithy::Outcome<UnionPayload> DeserializeUnionPayload(const smithy::Document& doc);
+
+smithy::Document SerializeHttpPayloadWithUnionInput(const HttpPayloadWithUnionInput& value);
+smithy::Outcome<HttpPayloadWithUnionInput> DeserializeHttpPayloadWithUnionInput(const smithy::Document& doc);
+
+smithy::Document SerializeHttpPayloadWithUnionOutput(const HttpPayloadWithUnionOutput& value);
+smithy::Outcome<HttpPayloadWithUnionOutput> DeserializeHttpPayloadWithUnionOutput(const smithy::Document& doc);
+
+smithy::Document SerializeHttpPrefixHeadersInput(const HttpPrefixHeadersInput& value);
+smithy::Outcome<HttpPrefixHeadersInput> DeserializeHttpPrefixHeadersInput(const smithy::Document& doc);
+
+smithy::Document SerializeHttpPrefixHeadersOutput(const HttpPrefixHeadersOutput& value);
+smithy::Outcome<HttpPrefixHeadersOutput> DeserializeHttpPrefixHeadersOutput(const smithy::Document& doc);
+
+smithy::Document SerializeHttpPrefixHeadersInResponseInput(const HttpPrefixHeadersInResponseInput& value);
+smithy::Outcome<HttpPrefixHeadersInResponseInput> DeserializeHttpPrefixHeadersInResponseInput(const smithy::Document& doc);
+
+smithy::Document SerializeHttpPrefixHeadersInResponseOutput(const HttpPrefixHeadersInResponseOutput& value);
+smithy::Outcome<HttpPrefixHeadersInResponseOutput> DeserializeHttpPrefixHeadersInResponseOutput(const smithy::Document& doc);
+
 smithy::Document SerializeHttpRequestWithFloatLabelsInput(const HttpRequestWithFloatLabelsInput& value);
 smithy::Outcome<HttpRequestWithFloatLabelsInput> DeserializeHttpRequestWithFloatLabelsInput(const smithy::Document& doc);
 
@@ -249,6 +303,12 @@ smithy::Outcome<HttpResponseCodeInput> DeserializeHttpResponseCodeInput(const sm
 
 smithy::Document SerializeHttpResponseCodeOutput(const HttpResponseCodeOutput& value);
 smithy::Outcome<HttpResponseCodeOutput> DeserializeHttpResponseCodeOutput(const smithy::Document& doc);
+
+smithy::Document SerializeHttpStringPayloadInput(const HttpStringPayloadInput& value);
+smithy::Outcome<HttpStringPayloadInput> DeserializeHttpStringPayloadInput(const smithy::Document& doc);
+
+smithy::Document SerializeHttpStringPayloadOutput(const HttpStringPayloadOutput& value);
+smithy::Outcome<HttpStringPayloadOutput> DeserializeHttpStringPayloadOutput(const smithy::Document& doc);
 
 smithy::Document SerializeIgnoreQueryParamsInResponseInput(const IgnoreQueryParamsInResponseInput& value);
 smithy::Outcome<IgnoreQueryParamsInResponseInput> DeserializeIgnoreQueryParamsInResponseInput(const smithy::Document& doc);
@@ -322,6 +382,18 @@ smithy::Outcome<MalformedAcceptWithBodyInput> DeserializeMalformedAcceptWithBody
 smithy::Document SerializeMalformedAcceptWithBodyOutput(const MalformedAcceptWithBodyOutput& value);
 smithy::Outcome<MalformedAcceptWithBodyOutput> DeserializeMalformedAcceptWithBodyOutput(const smithy::Document& doc);
 
+smithy::Document SerializeMalformedAcceptWithGenericStringInput(const MalformedAcceptWithGenericStringInput& value);
+smithy::Outcome<MalformedAcceptWithGenericStringInput> DeserializeMalformedAcceptWithGenericStringInput(const smithy::Document& doc);
+
+smithy::Document SerializeMalformedAcceptWithGenericStringOutput(const MalformedAcceptWithGenericStringOutput& value);
+smithy::Outcome<MalformedAcceptWithGenericStringOutput> DeserializeMalformedAcceptWithGenericStringOutput(const smithy::Document& doc);
+
+smithy::Document SerializeMalformedAcceptWithPayloadInput(const MalformedAcceptWithPayloadInput& value);
+smithy::Outcome<MalformedAcceptWithPayloadInput> DeserializeMalformedAcceptWithPayloadInput(const smithy::Document& doc);
+
+smithy::Document SerializeMalformedAcceptWithPayloadOutput(const MalformedAcceptWithPayloadOutput& value);
+smithy::Outcome<MalformedAcceptWithPayloadOutput> DeserializeMalformedAcceptWithPayloadOutput(const smithy::Document& doc);
+
 smithy::Document SerializeMalformedBlobInput(const MalformedBlobInput& value);
 smithy::Outcome<MalformedBlobInput> DeserializeMalformedBlobInput(const smithy::Document& doc);
 
@@ -346,6 +418,12 @@ smithy::Outcome<MalformedContentTypeWithBodyInput> DeserializeMalformedContentTy
 smithy::Document SerializeMalformedContentTypeWithBodyOutput(const MalformedContentTypeWithBodyOutput& value);
 smithy::Outcome<MalformedContentTypeWithBodyOutput> DeserializeMalformedContentTypeWithBodyOutput(const smithy::Document& doc);
 
+smithy::Document SerializeMalformedContentTypeWithGenericStringInput(const MalformedContentTypeWithGenericStringInput& value);
+smithy::Outcome<MalformedContentTypeWithGenericStringInput> DeserializeMalformedContentTypeWithGenericStringInput(const smithy::Document& doc);
+
+smithy::Document SerializeMalformedContentTypeWithGenericStringOutput(const MalformedContentTypeWithGenericStringOutput& value);
+smithy::Outcome<MalformedContentTypeWithGenericStringOutput> DeserializeMalformedContentTypeWithGenericStringOutput(const smithy::Document& doc);
+
 smithy::Document SerializeMalformedContentTypeWithoutBodyInput(const MalformedContentTypeWithoutBodyInput& value);
 smithy::Outcome<MalformedContentTypeWithoutBodyInput> DeserializeMalformedContentTypeWithoutBodyInput(const smithy::Document& doc);
 
@@ -357,6 +435,12 @@ smithy::Outcome<MalformedContentTypeWithoutBodyEmptyInputInput> DeserializeMalfo
 
 smithy::Document SerializeMalformedContentTypeWithoutBodyEmptyInputOutput(const MalformedContentTypeWithoutBodyEmptyInputOutput& value);
 smithy::Outcome<MalformedContentTypeWithoutBodyEmptyInputOutput> DeserializeMalformedContentTypeWithoutBodyEmptyInputOutput(const smithy::Document& doc);
+
+smithy::Document SerializeMalformedContentTypeWithPayloadInput(const MalformedContentTypeWithPayloadInput& value);
+smithy::Outcome<MalformedContentTypeWithPayloadInput> DeserializeMalformedContentTypeWithPayloadInput(const smithy::Document& doc);
+
+smithy::Document SerializeMalformedContentTypeWithPayloadOutput(const MalformedContentTypeWithPayloadOutput& value);
+smithy::Outcome<MalformedContentTypeWithPayloadOutput> DeserializeMalformedContentTypeWithPayloadOutput(const smithy::Document& doc);
 
 smithy::Document SerializeMalformedDoubleInput(const MalformedDoubleInput& value);
 smithy::Outcome<MalformedDoubleInput> DeserializeMalformedDoubleInput(const smithy::Document& doc);
@@ -556,6 +640,9 @@ smithy::Outcome<OperationWithNestedStructureInput> DeserializeOperationWithNeste
 smithy::Document SerializeOperationWithNestedStructureOutput(const OperationWithNestedStructureOutput& value);
 smithy::Outcome<OperationWithNestedStructureOutput> DeserializeOperationWithNestedStructureOutput(const smithy::Document& doc);
 
+smithy::Document SerializePayloadConfig(const PayloadConfig& value);
+smithy::Outcome<PayloadConfig> DeserializePayloadConfig(const smithy::Document& doc);
+
 smithy::Document SerializePlayerAction(const PlayerAction& value);
 smithy::Outcome<PlayerAction> DeserializePlayerAction(const smithy::Document& doc);
 
@@ -663,6 +750,18 @@ smithy::Outcome<TestGetNoPayloadInput> DeserializeTestGetNoPayloadInput(const sm
 
 smithy::Document SerializeTestGetNoPayloadOutput(const TestGetNoPayloadOutput& value);
 smithy::Outcome<TestGetNoPayloadOutput> DeserializeTestGetNoPayloadOutput(const smithy::Document& doc);
+
+smithy::Document SerializeTestPayloadBlobInput(const TestPayloadBlobInput& value);
+smithy::Outcome<TestPayloadBlobInput> DeserializeTestPayloadBlobInput(const smithy::Document& doc);
+
+smithy::Document SerializeTestPayloadBlobOutput(const TestPayloadBlobOutput& value);
+smithy::Outcome<TestPayloadBlobOutput> DeserializeTestPayloadBlobOutput(const smithy::Document& doc);
+
+smithy::Document SerializeTestPayloadStructureInput(const TestPayloadStructureInput& value);
+smithy::Outcome<TestPayloadStructureInput> DeserializeTestPayloadStructureInput(const smithy::Document& doc);
+
+smithy::Document SerializeTestPayloadStructureOutput(const TestPayloadStructureOutput& value);
+smithy::Outcome<TestPayloadStructureOutput> DeserializeTestPayloadStructureOutput(const smithy::Document& doc);
 
 smithy::Document SerializeTestPostNoInputNoPayloadInput(const TestPostNoInputNoPayloadInput& value);
 smithy::Outcome<TestPostNoInputNoPayloadInput> DeserializeTestPostNoInputNoPayloadInput(const smithy::Document& doc);

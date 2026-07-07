@@ -40,6 +40,8 @@ class RestJsonClient {
     smithy::Outcome<DocumentTypeOutput> DocumentType(const DocumentTypeInput& input) const;
     /// This example serializes documents as the value of maps.
     smithy::Outcome<DocumentTypeAsMapValueOutput> DocumentTypeAsMapValue(const DocumentTypeAsMapValueInput& input) const;
+    /// This example serializes a document as the entire HTTP payload.
+    smithy::Outcome<DocumentTypeAsPayloadOutput> DocumentTypeAsPayload(const DocumentTypeAsPayloadInput& input) const;
     /// The example tests how requests and responses are serialized when there's
     /// no request or response payload because the operation has an empty input
     /// and empty output structure that reuses the same shape. While this should
@@ -62,6 +64,26 @@ class RestJsonClient {
     smithy::Outcome<HostWithPathOperationOutput> HostWithPathOperation(const HostWithPathOperationInput& input = {}) const;
     /// This example tests httpChecksumRequired trait
     smithy::Outcome<HttpChecksumRequiredOutput> HttpChecksumRequired(const HttpChecksumRequiredInput& input) const;
+    smithy::Outcome<HttpEnumPayloadOutput> HttpEnumPayload(const HttpEnumPayloadInput& input) const;
+    /// This example serializes a blob shape in the payload.
+    ///
+    /// In this example, no JSON document is synthesized because the payload is
+    /// not a structure or a union type.
+    smithy::Outcome<HttpPayloadTraitsOutput> HttpPayloadTraits(const HttpPayloadTraitsInput& input) const;
+    /// This example uses a `@mediaType` trait on the payload to force a custom
+    /// content-type to be serialized.
+    smithy::Outcome<HttpPayloadTraitsWithMediaTypeOutput> HttpPayloadTraitsWithMediaType(const HttpPayloadTraitsWithMediaTypeInput& input) const;
+    /// This example serializes a structure in the payload.
+    ///
+    /// Note that serializing a structure changes the wrapper element name
+    /// to match the targeted structure.
+    smithy::Outcome<HttpPayloadWithStructureOutput> HttpPayloadWithStructure(const HttpPayloadWithStructureInput& input) const;
+    /// This example serializes a union in the payload.
+    smithy::Outcome<HttpPayloadWithUnionOutput> HttpPayloadWithUnion(const HttpPayloadWithUnionInput& input) const;
+    /// This examples adds headers to the input of a request and response by prefix.
+    smithy::Outcome<HttpPrefixHeadersOutput> HttpPrefixHeaders(const HttpPrefixHeadersInput& input) const;
+    /// Clients that perform this test extract all headers from the response.
+    smithy::Outcome<HttpPrefixHeadersInResponseOutput> HttpPrefixHeadersInResponse(const HttpPrefixHeadersInResponseInput& input = {}) const;
     smithy::Outcome<HttpRequestWithFloatLabelsOutput> HttpRequestWithFloatLabels(const HttpRequestWithFloatLabelsInput& input) const;
     smithy::Outcome<HttpRequestWithGreedyLabelInPathOutput> HttpRequestWithGreedyLabelInPath(const HttpRequestWithGreedyLabelInPathInput& input) const;
     /// The example tests how requests are serialized when there's no input
@@ -72,6 +94,7 @@ class RestJsonClient {
     smithy::Outcome<HttpRequestWithLabelsAndTimestampFormatOutput> HttpRequestWithLabelsAndTimestampFormat(const HttpRequestWithLabelsAndTimestampFormatInput& input) const;
     smithy::Outcome<HttpRequestWithRegexLiteralOutput> HttpRequestWithRegexLiteral(const HttpRequestWithRegexLiteralInput& input) const;
     smithy::Outcome<HttpResponseCodeOutput> HttpResponseCode(const HttpResponseCodeInput& input = {}) const;
+    smithy::Outcome<HttpStringPayloadOutput> HttpStringPayload(const HttpStringPayloadInput& input) const;
     /// This example ensures that query string bound request parameters are
     /// serialized in the body of responses if the structure is used in both
     /// the request and response.
@@ -102,12 +125,16 @@ class RestJsonClient {
     /// This operation uses unions for inputs and outputs.
     smithy::Outcome<JsonUnionsOutput> JsonUnions(const JsonUnionsInput& input) const;
     smithy::Outcome<MalformedAcceptWithBodyOutput> MalformedAcceptWithBody(const MalformedAcceptWithBodyInput& input = {}) const;
+    smithy::Outcome<MalformedAcceptWithGenericStringOutput> MalformedAcceptWithGenericString(const MalformedAcceptWithGenericStringInput& input = {}) const;
+    smithy::Outcome<MalformedAcceptWithPayloadOutput> MalformedAcceptWithPayload(const MalformedAcceptWithPayloadInput& input = {}) const;
     smithy::Outcome<MalformedBlobOutput> MalformedBlob(const MalformedBlobInput& input) const;
     smithy::Outcome<MalformedBooleanOutput> MalformedBoolean(const MalformedBooleanInput& input) const;
     smithy::Outcome<MalformedByteOutput> MalformedByte(const MalformedByteInput& input) const;
     smithy::Outcome<MalformedContentTypeWithBodyOutput> MalformedContentTypeWithBody(const MalformedContentTypeWithBodyInput& input) const;
+    smithy::Outcome<MalformedContentTypeWithGenericStringOutput> MalformedContentTypeWithGenericString(const MalformedContentTypeWithGenericStringInput& input) const;
     smithy::Outcome<MalformedContentTypeWithoutBodyOutput> MalformedContentTypeWithoutBody(const MalformedContentTypeWithoutBodyInput& input = {}) const;
     smithy::Outcome<MalformedContentTypeWithoutBodyEmptyInputOutput> MalformedContentTypeWithoutBodyEmptyInput(const MalformedContentTypeWithoutBodyEmptyInputInput& input) const;
+    smithy::Outcome<MalformedContentTypeWithPayloadOutput> MalformedContentTypeWithPayload(const MalformedContentTypeWithPayloadInput& input) const;
     smithy::Outcome<MalformedDoubleOutput> MalformedDouble(const MalformedDoubleInput& input) const;
     smithy::Outcome<MalformedFloatOutput> MalformedFloat(const MalformedFloatInput& input) const;
     smithy::Outcome<MalformedIntegerOutput> MalformedInteger(const MalformedIntegerInput& input) const;
@@ -189,6 +216,21 @@ class RestJsonClient {
     /// cannot produce an HTTP body.
     ///
     smithy::Outcome<TestGetNoPayloadOutput> TestGetNoPayload(const TestGetNoPayloadInput& input) const;
+    /// This example operation serializes a payload targeting a blob.
+    ///
+    /// The Blob shape is not structured content and we cannot
+    /// make assumptions about what data will be sent. This test ensures
+    /// only a generic "Content-Type: application/octet-stream" header
+    /// is used, and that we are not treating an empty body as an
+    /// empty JSON document.
+    ///
+    smithy::Outcome<TestPayloadBlobOutput> TestPayloadBlob(const TestPayloadBlobInput& input) const;
+    /// This example operation serializes a payload targeting a structure.
+    ///
+    /// This enforces the same requirements as TestBodyStructure
+    /// but with the body specified by the @httpPayload trait.
+    ///
+    smithy::Outcome<TestPayloadStructureOutput> TestPayloadStructure(const TestPayloadStructureInput& input) const;
     /// This example POST operation has no input and serializes a request without a HTTP body.
     ///
     /// These tests are to ensure we do not attach a body or related headers

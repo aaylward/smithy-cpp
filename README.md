@@ -19,7 +19,7 @@ See [`docs/PLAN.md`](docs/PLAN.md) for the full phased plan and
 | 1 | C++ runtime library (`smithy/core`, `json`, `cbor`, `http`, `client`, `server`) | ✅ Done ([docs/runtime.md](docs/runtime.md)) incl. Boost.Beast production server transport (ADR-0006) |
 | 2 | Codegen plugin + type generation | ✅ Done — types generated for both fixtures, golden+compile+behavior tested ([docs/design/codegen-architecture.md](docs/design/codegen-architecture.md)) |
 | 3 | Client generation (restJson1 + rpcv2Cbor) | ✅ Done — serde + clients for both protocols with typed errors ([docs/generated-types.md](docs/generated-types.md)); ~240 official protocol conformance cases green (documented exclusions) |
-| 4 | Server generation (restJson1 + rpcv2Cbor) | 🔨 In progress — handlers, routing, serde, error mapping, smoke tests, constraint validation (`ValidationException`), and 340+ server-mode conformance cases green incl. the official validation suite ([docs/server-guide.md](docs/server-guide.md)); `@httpPayload`/`@httpPrefixHeaders` bindings + parser-strictness malformed suites next (4d) |
+| 4 | Server generation (restJson1 + rpcv2Cbor) | ✅ Done — handlers, routing, serde, all HTTP bindings incl. `@httpPayload`/`@httpPrefixHeaders`, constraint validation, parser strictness, content negotiation; ~1,175 official conformance cases green ([docs/server-guide.md](docs/server-guide.md)) |
 | 5 | Generated-client ↔ generated-server integration harness | Not started |
 | 6 | Bazel rules, CLI, packaging (BCR + Maven Central), docs site | Not started |
 | 7 | Hardening, fuzzing, v0.1.0 | Not started |

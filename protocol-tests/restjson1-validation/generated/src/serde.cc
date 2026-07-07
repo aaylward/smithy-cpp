@@ -145,6 +145,7 @@ smithy::Outcome<std::vector<std::int32_t>> DeserializeIntegerSet(const smithy::D
     if (item->is_null()) return smithy::Error::Serialization("std::vector<std::int32_t>: null element in a dense list");
     std::int32_t parsed_item{};
     if (!item->is_int()) return smithy::Error::Serialization("std::vector<std::int32_t>[]: unexpected type on the wire");
+    if (item->as_int() < -2147483648LL || item->as_int() > 2147483647LL) return smithy::Error::Serialization("std::vector<std::int32_t>[]: value out of range");
     parsed_item = static_cast<std::int32_t>(item->as_int());
     out.push_back(std::move(parsed_item));
   }
@@ -211,6 +212,7 @@ smithy::Document SerializeEnumUnion(const EnumUnion& value) {
 
 smithy::Outcome<EnumUnion> DeserializeEnumUnion(const smithy::Document& doc) {
   if (!doc.is_map()) return smithy::Error::Serialization("EnumUnion: expected a map on the wire");
+  if (doc.as_map().size() - (doc.Find("__type") != nullptr ? 1 : 0) != 1) return smithy::Error::Serialization("EnumUnion: expected exactly one union member");
   if (const smithy::Document* member = doc.Find("first"); member != nullptr && !member->is_null()) {
     EnumString parsed_member{};
     if (!member->is_string()) return smithy::Error::Serialization("EnumUnion.first: unexpected type on the wire");
@@ -758,6 +760,7 @@ smithy::Document SerializePatternUnion(const PatternUnion& value) {
 
 smithy::Outcome<PatternUnion> DeserializePatternUnion(const smithy::Document& doc) {
   if (!doc.is_map()) return smithy::Error::Serialization("PatternUnion: expected a map on the wire");
+  if (doc.as_map().size() - (doc.Find("__type") != nullptr ? 1 : 0) != 1) return smithy::Error::Serialization("PatternUnion: expected exactly one union member");
   if (const smithy::Document* member = doc.Find("first"); member != nullptr && !member->is_null()) {
     std::string parsed_member{};
     if (!member->is_string()) return smithy::Error::Serialization("PatternUnion.first: unexpected type on the wire");
@@ -924,6 +927,7 @@ smithy::Document SerializePatternUnionOverride(const PatternUnionOverride& value
 
 smithy::Outcome<PatternUnionOverride> DeserializePatternUnionOverride(const smithy::Document& doc) {
   if (!doc.is_map()) return smithy::Error::Serialization("PatternUnionOverride: expected a map on the wire");
+  if (doc.as_map().size() - (doc.Find("__type") != nullptr ? 1 : 0) != 1) return smithy::Error::Serialization("PatternUnionOverride: expected exactly one union member");
   if (const smithy::Document* member = doc.Find("first"); member != nullptr && !member->is_null()) {
     std::string parsed_member{};
     if (!member->is_string()) return smithy::Error::Serialization("PatternUnionOverride.first: unexpected type on the wire");
@@ -1076,6 +1080,7 @@ smithy::Outcome<MalformedRangeInput> DeserializeMalformedRangeInput(const smithy
     if (member != nullptr && !member->is_null()) {
       std::int8_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("MalformedRangeInput.byte: unexpected type on the wire");
+      if (member->as_int() < -128 || member->as_int() > 127) return smithy::Error::Serialization("MalformedRangeInput.byte: value out of range");
       parsed_member = static_cast<std::int8_t>(member->as_int());
       out.byte = std::move(parsed_member);
     }
@@ -1085,6 +1090,7 @@ smithy::Outcome<MalformedRangeInput> DeserializeMalformedRangeInput(const smithy
     if (member != nullptr && !member->is_null()) {
       std::int8_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("MalformedRangeInput.minByte: unexpected type on the wire");
+      if (member->as_int() < -128 || member->as_int() > 127) return smithy::Error::Serialization("MalformedRangeInput.minByte: value out of range");
       parsed_member = static_cast<std::int8_t>(member->as_int());
       out.minByte = std::move(parsed_member);
     }
@@ -1094,6 +1100,7 @@ smithy::Outcome<MalformedRangeInput> DeserializeMalformedRangeInput(const smithy
     if (member != nullptr && !member->is_null()) {
       std::int8_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("MalformedRangeInput.maxByte: unexpected type on the wire");
+      if (member->as_int() < -128 || member->as_int() > 127) return smithy::Error::Serialization("MalformedRangeInput.maxByte: value out of range");
       parsed_member = static_cast<std::int8_t>(member->as_int());
       out.maxByte = std::move(parsed_member);
     }
@@ -1103,6 +1110,7 @@ smithy::Outcome<MalformedRangeInput> DeserializeMalformedRangeInput(const smithy
     if (member != nullptr && !member->is_null()) {
       std::int16_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("MalformedRangeInput.short: unexpected type on the wire");
+      if (member->as_int() < -32768 || member->as_int() > 32767) return smithy::Error::Serialization("MalformedRangeInput.short: value out of range");
       parsed_member = static_cast<std::int16_t>(member->as_int());
       out.short_ = std::move(parsed_member);
     }
@@ -1112,6 +1120,7 @@ smithy::Outcome<MalformedRangeInput> DeserializeMalformedRangeInput(const smithy
     if (member != nullptr && !member->is_null()) {
       std::int16_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("MalformedRangeInput.minShort: unexpected type on the wire");
+      if (member->as_int() < -32768 || member->as_int() > 32767) return smithy::Error::Serialization("MalformedRangeInput.minShort: value out of range");
       parsed_member = static_cast<std::int16_t>(member->as_int());
       out.minShort = std::move(parsed_member);
     }
@@ -1121,6 +1130,7 @@ smithy::Outcome<MalformedRangeInput> DeserializeMalformedRangeInput(const smithy
     if (member != nullptr && !member->is_null()) {
       std::int16_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("MalformedRangeInput.maxShort: unexpected type on the wire");
+      if (member->as_int() < -32768 || member->as_int() > 32767) return smithy::Error::Serialization("MalformedRangeInput.maxShort: value out of range");
       parsed_member = static_cast<std::int16_t>(member->as_int());
       out.maxShort = std::move(parsed_member);
     }
@@ -1130,6 +1140,7 @@ smithy::Outcome<MalformedRangeInput> DeserializeMalformedRangeInput(const smithy
     if (member != nullptr && !member->is_null()) {
       std::int32_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("MalformedRangeInput.integer: unexpected type on the wire");
+      if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("MalformedRangeInput.integer: value out of range");
       parsed_member = static_cast<std::int32_t>(member->as_int());
       out.integer = std::move(parsed_member);
     }
@@ -1139,6 +1150,7 @@ smithy::Outcome<MalformedRangeInput> DeserializeMalformedRangeInput(const smithy
     if (member != nullptr && !member->is_null()) {
       std::int32_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("MalformedRangeInput.minInteger: unexpected type on the wire");
+      if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("MalformedRangeInput.minInteger: value out of range");
       parsed_member = static_cast<std::int32_t>(member->as_int());
       out.minInteger = std::move(parsed_member);
     }
@@ -1148,6 +1160,7 @@ smithy::Outcome<MalformedRangeInput> DeserializeMalformedRangeInput(const smithy
     if (member != nullptr && !member->is_null()) {
       std::int32_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("MalformedRangeInput.maxInteger: unexpected type on the wire");
+      if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("MalformedRangeInput.maxInteger: value out of range");
       parsed_member = static_cast<std::int32_t>(member->as_int());
       out.maxInteger = std::move(parsed_member);
     }
@@ -1287,6 +1300,7 @@ smithy::Outcome<MalformedRangeOverrideInput> DeserializeMalformedRangeOverrideIn
     if (member != nullptr && !member->is_null()) {
       std::int8_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("MalformedRangeOverrideInput.byte: unexpected type on the wire");
+      if (member->as_int() < -128 || member->as_int() > 127) return smithy::Error::Serialization("MalformedRangeOverrideInput.byte: value out of range");
       parsed_member = static_cast<std::int8_t>(member->as_int());
       out.byte = std::move(parsed_member);
     }
@@ -1296,6 +1310,7 @@ smithy::Outcome<MalformedRangeOverrideInput> DeserializeMalformedRangeOverrideIn
     if (member != nullptr && !member->is_null()) {
       std::int8_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("MalformedRangeOverrideInput.minByte: unexpected type on the wire");
+      if (member->as_int() < -128 || member->as_int() > 127) return smithy::Error::Serialization("MalformedRangeOverrideInput.minByte: value out of range");
       parsed_member = static_cast<std::int8_t>(member->as_int());
       out.minByte = std::move(parsed_member);
     }
@@ -1305,6 +1320,7 @@ smithy::Outcome<MalformedRangeOverrideInput> DeserializeMalformedRangeOverrideIn
     if (member != nullptr && !member->is_null()) {
       std::int8_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("MalformedRangeOverrideInput.maxByte: unexpected type on the wire");
+      if (member->as_int() < -128 || member->as_int() > 127) return smithy::Error::Serialization("MalformedRangeOverrideInput.maxByte: value out of range");
       parsed_member = static_cast<std::int8_t>(member->as_int());
       out.maxByte = std::move(parsed_member);
     }
@@ -1314,6 +1330,7 @@ smithy::Outcome<MalformedRangeOverrideInput> DeserializeMalformedRangeOverrideIn
     if (member != nullptr && !member->is_null()) {
       std::int16_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("MalformedRangeOverrideInput.short: unexpected type on the wire");
+      if (member->as_int() < -32768 || member->as_int() > 32767) return smithy::Error::Serialization("MalformedRangeOverrideInput.short: value out of range");
       parsed_member = static_cast<std::int16_t>(member->as_int());
       out.short_ = std::move(parsed_member);
     }
@@ -1323,6 +1340,7 @@ smithy::Outcome<MalformedRangeOverrideInput> DeserializeMalformedRangeOverrideIn
     if (member != nullptr && !member->is_null()) {
       std::int16_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("MalformedRangeOverrideInput.minShort: unexpected type on the wire");
+      if (member->as_int() < -32768 || member->as_int() > 32767) return smithy::Error::Serialization("MalformedRangeOverrideInput.minShort: value out of range");
       parsed_member = static_cast<std::int16_t>(member->as_int());
       out.minShort = std::move(parsed_member);
     }
@@ -1332,6 +1350,7 @@ smithy::Outcome<MalformedRangeOverrideInput> DeserializeMalformedRangeOverrideIn
     if (member != nullptr && !member->is_null()) {
       std::int16_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("MalformedRangeOverrideInput.maxShort: unexpected type on the wire");
+      if (member->as_int() < -32768 || member->as_int() > 32767) return smithy::Error::Serialization("MalformedRangeOverrideInput.maxShort: value out of range");
       parsed_member = static_cast<std::int16_t>(member->as_int());
       out.maxShort = std::move(parsed_member);
     }
@@ -1341,6 +1360,7 @@ smithy::Outcome<MalformedRangeOverrideInput> DeserializeMalformedRangeOverrideIn
     if (member != nullptr && !member->is_null()) {
       std::int32_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("MalformedRangeOverrideInput.integer: unexpected type on the wire");
+      if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("MalformedRangeOverrideInput.integer: value out of range");
       parsed_member = static_cast<std::int32_t>(member->as_int());
       out.integer = std::move(parsed_member);
     }
@@ -1350,6 +1370,7 @@ smithy::Outcome<MalformedRangeOverrideInput> DeserializeMalformedRangeOverrideIn
     if (member != nullptr && !member->is_null()) {
       std::int32_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("MalformedRangeOverrideInput.minInteger: unexpected type on the wire");
+      if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("MalformedRangeOverrideInput.minInteger: value out of range");
       parsed_member = static_cast<std::int32_t>(member->as_int());
       out.minInteger = std::move(parsed_member);
     }
@@ -1359,6 +1380,7 @@ smithy::Outcome<MalformedRangeOverrideInput> DeserializeMalformedRangeOverrideIn
     if (member != nullptr && !member->is_null()) {
       std::int32_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("MalformedRangeOverrideInput.maxInteger: unexpected type on the wire");
+      if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("MalformedRangeOverrideInput.maxInteger: value out of range");
       parsed_member = static_cast<std::int32_t>(member->as_int());
       out.maxInteger = std::move(parsed_member);
     }
@@ -1558,6 +1580,7 @@ smithy::Outcome<std::vector<std::int8_t>> DeserializeByteSet(const smithy::Docum
     if (item->is_null()) return smithy::Error::Serialization("std::vector<std::int8_t>: null element in a dense list");
     std::int8_t parsed_item{};
     if (!item->is_int()) return smithy::Error::Serialization("std::vector<std::int8_t>[]: unexpected type on the wire");
+    if (item->as_int() < -128 || item->as_int() > 127) return smithy::Error::Serialization("std::vector<std::int8_t>[]: value out of range");
     parsed_item = static_cast<std::int8_t>(item->as_int());
     out.push_back(std::move(parsed_item));
   }
@@ -1687,6 +1710,7 @@ smithy::Outcome<std::vector<std::int16_t>> DeserializeShortSet(const smithy::Doc
     if (item->is_null()) return smithy::Error::Serialization("std::vector<std::int16_t>: null element in a dense list");
     std::int16_t parsed_item{};
     if (!item->is_int()) return smithy::Error::Serialization("std::vector<std::int16_t>[]: unexpected type on the wire");
+    if (item->as_int() < -32768 || item->as_int() > 32767) return smithy::Error::Serialization("std::vector<std::int16_t>[]: value out of range");
     parsed_item = static_cast<std::int16_t>(item->as_int());
     out.push_back(std::move(parsed_item));
   }
@@ -1807,6 +1831,7 @@ smithy::Document SerializeFooUnion(const FooUnion& value) {
 
 smithy::Outcome<FooUnion> DeserializeFooUnion(const smithy::Document& doc) {
   if (!doc.is_map()) return smithy::Error::Serialization("FooUnion: expected a map on the wire");
+  if (doc.as_map().size() - (doc.Find("__type") != nullptr ? 1 : 0) != 1) return smithy::Error::Serialization("FooUnion: expected exactly one union member");
   if (const smithy::Document* member = doc.Find("string"); member != nullptr && !member->is_null()) {
     std::string parsed_member{};
     if (!member->is_string()) return smithy::Error::Serialization("FooUnion.string: unexpected type on the wire");
@@ -1816,6 +1841,7 @@ smithy::Outcome<FooUnion> DeserializeFooUnion(const smithy::Document& doc) {
   if (const smithy::Document* member = doc.Find("integer"); member != nullptr && !member->is_null()) {
     std::int32_t parsed_member{};
     if (!member->is_int()) return smithy::Error::Serialization("FooUnion.integer: unexpected type on the wire");
+    if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("FooUnion.integer: value out of range");
     parsed_member = static_cast<std::int32_t>(member->as_int());
     return FooUnion::FromInteger(std::move(parsed_member));
   }

@@ -121,6 +121,7 @@ smithy::Outcome<std::vector<std::int32_t>> DeserializeIntegerList(const smithy::
     if (item->is_null()) return smithy::Error::Serialization("std::vector<std::int32_t>: null element in a dense list");
     std::int32_t parsed_item{};
     if (!item->is_int()) return smithy::Error::Serialization("std::vector<std::int32_t>[]: unexpected type on the wire");
+    if (item->as_int() < -2147483648LL || item->as_int() > 2147483647LL) return smithy::Error::Serialization("std::vector<std::int32_t>[]: value out of range");
     parsed_item = static_cast<std::int32_t>(item->as_int());
     out.push_back(std::move(parsed_item));
   }
@@ -451,6 +452,7 @@ smithy::Outcome<std::vector<std::int32_t>> DeserializeIntegerSet(const smithy::D
     if (item->is_null()) return smithy::Error::Serialization("std::vector<std::int32_t>: null element in a dense list");
     std::int32_t parsed_item{};
     if (!item->is_int()) return smithy::Error::Serialization("std::vector<std::int32_t>[]: unexpected type on the wire");
+    if (item->as_int() < -2147483648LL || item->as_int() > 2147483647LL) return smithy::Error::Serialization("std::vector<std::int32_t>[]: value out of range");
     parsed_item = static_cast<std::int32_t>(item->as_int());
     out.push_back(std::move(parsed_item));
   }
@@ -592,6 +594,7 @@ smithy::Outcome<AllQueryStringTypesInput> DeserializeAllQueryStringTypesInput(co
     if (member != nullptr && !member->is_null()) {
       std::int8_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("AllQueryStringTypesInput.queryByte: unexpected type on the wire");
+      if (member->as_int() < -128 || member->as_int() > 127) return smithy::Error::Serialization("AllQueryStringTypesInput.queryByte: value out of range");
       parsed_member = static_cast<std::int8_t>(member->as_int());
       out.queryByte = std::move(parsed_member);
     }
@@ -601,6 +604,7 @@ smithy::Outcome<AllQueryStringTypesInput> DeserializeAllQueryStringTypesInput(co
     if (member != nullptr && !member->is_null()) {
       std::int16_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("AllQueryStringTypesInput.queryShort: unexpected type on the wire");
+      if (member->as_int() < -32768 || member->as_int() > 32767) return smithy::Error::Serialization("AllQueryStringTypesInput.queryShort: value out of range");
       parsed_member = static_cast<std::int16_t>(member->as_int());
       out.queryShort = std::move(parsed_member);
     }
@@ -610,6 +614,7 @@ smithy::Outcome<AllQueryStringTypesInput> DeserializeAllQueryStringTypesInput(co
     if (member != nullptr && !member->is_null()) {
       std::int32_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("AllQueryStringTypesInput.queryInteger: unexpected type on the wire");
+      if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("AllQueryStringTypesInput.queryInteger: value out of range");
       parsed_member = static_cast<std::int32_t>(member->as_int());
       out.queryInteger = std::move(parsed_member);
     }
@@ -812,6 +817,7 @@ smithy::Outcome<ClientOptionalDefaults> DeserializeClientOptionalDefaults(const 
     if (member != nullptr && !member->is_null()) {
       std::int32_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("ClientOptionalDefaults.member: unexpected type on the wire");
+      if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("ClientOptionalDefaults.member: value out of range");
       parsed_member = static_cast<std::int32_t>(member->as_int());
       out.member = std::move(parsed_member);
     }
@@ -985,6 +991,7 @@ smithy::Outcome<ContentTypeParametersInput> DeserializeContentTypeParametersInpu
     if (member != nullptr && !member->is_null()) {
       std::int32_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("ContentTypeParametersInput.value: unexpected type on the wire");
+      if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("ContentTypeParametersInput.value: value out of range");
       parsed_member = static_cast<std::int32_t>(member->as_int());
       out.value = std::move(parsed_member);
     }
@@ -1278,6 +1285,7 @@ smithy::Outcome<Defaults> DeserializeDefaults(const smithy::Document& doc) {
     if (member != nullptr && !member->is_null()) {
       std::int8_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("Defaults.defaultByte: unexpected type on the wire");
+      if (member->as_int() < -128 || member->as_int() > 127) return smithy::Error::Serialization("Defaults.defaultByte: value out of range");
       parsed_member = static_cast<std::int8_t>(member->as_int());
       out.defaultByte = std::move(parsed_member);
     }
@@ -1287,6 +1295,7 @@ smithy::Outcome<Defaults> DeserializeDefaults(const smithy::Document& doc) {
     if (member != nullptr && !member->is_null()) {
       std::int16_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("Defaults.defaultShort: unexpected type on the wire");
+      if (member->as_int() < -32768 || member->as_int() > 32767) return smithy::Error::Serialization("Defaults.defaultShort: value out of range");
       parsed_member = static_cast<std::int16_t>(member->as_int());
       out.defaultShort = std::move(parsed_member);
     }
@@ -1296,6 +1305,7 @@ smithy::Outcome<Defaults> DeserializeDefaults(const smithy::Document& doc) {
     if (member != nullptr && !member->is_null()) {
       std::int32_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("Defaults.defaultInteger: unexpected type on the wire");
+      if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("Defaults.defaultInteger: value out of range");
       parsed_member = static_cast<std::int32_t>(member->as_int());
       out.defaultInteger = std::move(parsed_member);
     }
@@ -1398,6 +1408,7 @@ smithy::Outcome<Defaults> DeserializeDefaults(const smithy::Document& doc) {
     if (member != nullptr && !member->is_null()) {
       std::int8_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("Defaults.zeroByte: unexpected type on the wire");
+      if (member->as_int() < -128 || member->as_int() > 127) return smithy::Error::Serialization("Defaults.zeroByte: value out of range");
       parsed_member = static_cast<std::int8_t>(member->as_int());
       out.zeroByte = std::move(parsed_member);
     }
@@ -1407,6 +1418,7 @@ smithy::Outcome<Defaults> DeserializeDefaults(const smithy::Document& doc) {
     if (member != nullptr && !member->is_null()) {
       std::int16_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("Defaults.zeroShort: unexpected type on the wire");
+      if (member->as_int() < -32768 || member->as_int() > 32767) return smithy::Error::Serialization("Defaults.zeroShort: value out of range");
       parsed_member = static_cast<std::int16_t>(member->as_int());
       out.zeroShort = std::move(parsed_member);
     }
@@ -1416,6 +1428,7 @@ smithy::Outcome<Defaults> DeserializeDefaults(const smithy::Document& doc) {
     if (member != nullptr && !member->is_null()) {
       std::int32_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("Defaults.zeroInteger: unexpected type on the wire");
+      if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("Defaults.zeroInteger: value out of range");
       parsed_member = static_cast<std::int32_t>(member->as_int());
       out.zeroInteger = std::move(parsed_member);
     }
@@ -1496,6 +1509,7 @@ smithy::Outcome<std::map<std::string, std::int32_t>> DeserializeDenseNumberMap(c
     if (item->is_null()) continue;
     std::int32_t parsed_item{};
     if (!item->is_int()) return smithy::Error::Serialization("std::map<std::string, std::int32_t>{}: unexpected type on the wire");
+    if (item->as_int() < -2147483648LL || item->as_int() > 2147483647LL) return smithy::Error::Serialization("std::map<std::string, std::int32_t>{}: value out of range");
     parsed_item = static_cast<std::int32_t>(item->as_int());
     out.emplace(key, std::move(parsed_item));
   }
@@ -1845,6 +1859,50 @@ smithy::Outcome<DocumentTypeAsMapValueOutput> DeserializeDocumentTypeAsMapValueO
   return out;
 }
 
+smithy::Document SerializeDocumentTypeAsPayloadInput(const DocumentTypeAsPayloadInput& value) {
+  smithy::DocumentMap map;
+  if (value.documentValue.has_value()) {
+    map.emplace("documentValue", (*value.documentValue));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<DocumentTypeAsPayloadInput> DeserializeDocumentTypeAsPayloadInput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("DocumentTypeAsPayloadInput: expected a map on the wire");
+  DocumentTypeAsPayloadInput out;
+  {
+    const smithy::Document* member = doc.Find("documentValue");
+    if (member != nullptr && !member->is_null()) {
+      smithy::Document parsed_member{};
+      parsed_member = *member;
+      out.documentValue = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeDocumentTypeAsPayloadOutput(const DocumentTypeAsPayloadOutput& value) {
+  smithy::DocumentMap map;
+  if (value.documentValue.has_value()) {
+    map.emplace("documentValue", (*value.documentValue));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<DocumentTypeAsPayloadOutput> DeserializeDocumentTypeAsPayloadOutput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("DocumentTypeAsPayloadOutput: expected a map on the wire");
+  DocumentTypeAsPayloadOutput out;
+  {
+    const smithy::Document* member = doc.Find("documentValue");
+    if (member != nullptr && !member->is_null()) {
+      smithy::Document parsed_member{};
+      parsed_member = *member;
+      out.documentValue = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
 smithy::Document SerializeEmptyInputAndEmptyOutputInput(const EmptyInputAndEmptyOutputInput& value) {
   smithy::DocumentMap map;
   return smithy::Document(std::move(map));
@@ -2093,6 +2151,476 @@ smithy::Outcome<HttpChecksumRequiredOutput> DeserializeHttpChecksumRequiredOutpu
   return out;
 }
 
+smithy::Document SerializeHttpEnumPayloadInput(const HttpEnumPayloadInput& value) {
+  smithy::DocumentMap map;
+  if (value.payload.has_value()) {
+    map.emplace("payload", smithy::Document(std::string((*value.payload).ToString())));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<HttpEnumPayloadInput> DeserializeHttpEnumPayloadInput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("HttpEnumPayloadInput: expected a map on the wire");
+  HttpEnumPayloadInput out;
+  {
+    const smithy::Document* member = doc.Find("payload");
+    if (member != nullptr && !member->is_null()) {
+      StringEnum parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("HttpEnumPayloadInput.payload: unexpected type on the wire");
+      parsed_member = StringEnum::FromString(member->as_string());
+      out.payload = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeHttpEnumPayloadOutput(const HttpEnumPayloadOutput& value) {
+  smithy::DocumentMap map;
+  if (value.payload.has_value()) {
+    map.emplace("payload", smithy::Document(std::string((*value.payload).ToString())));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<HttpEnumPayloadOutput> DeserializeHttpEnumPayloadOutput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("HttpEnumPayloadOutput: expected a map on the wire");
+  HttpEnumPayloadOutput out;
+  {
+    const smithy::Document* member = doc.Find("payload");
+    if (member != nullptr && !member->is_null()) {
+      StringEnum parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("HttpEnumPayloadOutput.payload: unexpected type on the wire");
+      parsed_member = StringEnum::FromString(member->as_string());
+      out.payload = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeHttpPayloadTraitsInput(const HttpPayloadTraitsInput& value) {
+  smithy::DocumentMap map;
+  if (value.foo.has_value()) {
+    map.emplace("foo", smithy::Document((*value.foo)));
+  }
+  if (value.blob.has_value()) {
+    map.emplace("blob", smithy::Document((*value.blob)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<HttpPayloadTraitsInput> DeserializeHttpPayloadTraitsInput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("HttpPayloadTraitsInput: expected a map on the wire");
+  HttpPayloadTraitsInput out;
+  {
+    const smithy::Document* member = doc.Find("foo");
+    if (member != nullptr && !member->is_null()) {
+      std::string parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("HttpPayloadTraitsInput.foo: unexpected type on the wire");
+      parsed_member = member->as_string();
+      out.foo = std::move(parsed_member);
+    }
+  }
+  {
+    const smithy::Document* member = doc.Find("blob");
+    if (member != nullptr && !member->is_null()) {
+      smithy::Blob parsed_member{};
+      {
+        auto parsed = smithy::BlobFromDocument(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.blob = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeHttpPayloadTraitsOutput(const HttpPayloadTraitsOutput& value) {
+  smithy::DocumentMap map;
+  if (value.foo.has_value()) {
+    map.emplace("foo", smithy::Document((*value.foo)));
+  }
+  if (value.blob.has_value()) {
+    map.emplace("blob", smithy::Document((*value.blob)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<HttpPayloadTraitsOutput> DeserializeHttpPayloadTraitsOutput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("HttpPayloadTraitsOutput: expected a map on the wire");
+  HttpPayloadTraitsOutput out;
+  {
+    const smithy::Document* member = doc.Find("foo");
+    if (member != nullptr && !member->is_null()) {
+      std::string parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("HttpPayloadTraitsOutput.foo: unexpected type on the wire");
+      parsed_member = member->as_string();
+      out.foo = std::move(parsed_member);
+    }
+  }
+  {
+    const smithy::Document* member = doc.Find("blob");
+    if (member != nullptr && !member->is_null()) {
+      smithy::Blob parsed_member{};
+      {
+        auto parsed = smithy::BlobFromDocument(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.blob = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeHttpPayloadTraitsWithMediaTypeInput(const HttpPayloadTraitsWithMediaTypeInput& value) {
+  smithy::DocumentMap map;
+  if (value.foo.has_value()) {
+    map.emplace("foo", smithy::Document((*value.foo)));
+  }
+  if (value.blob.has_value()) {
+    map.emplace("blob", smithy::Document((*value.blob)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<HttpPayloadTraitsWithMediaTypeInput> DeserializeHttpPayloadTraitsWithMediaTypeInput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("HttpPayloadTraitsWithMediaTypeInput: expected a map on the wire");
+  HttpPayloadTraitsWithMediaTypeInput out;
+  {
+    const smithy::Document* member = doc.Find("foo");
+    if (member != nullptr && !member->is_null()) {
+      std::string parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("HttpPayloadTraitsWithMediaTypeInput.foo: unexpected type on the wire");
+      parsed_member = member->as_string();
+      out.foo = std::move(parsed_member);
+    }
+  }
+  {
+    const smithy::Document* member = doc.Find("blob");
+    if (member != nullptr && !member->is_null()) {
+      smithy::Blob parsed_member{};
+      {
+        auto parsed = smithy::BlobFromDocument(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.blob = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeHttpPayloadTraitsWithMediaTypeOutput(const HttpPayloadTraitsWithMediaTypeOutput& value) {
+  smithy::DocumentMap map;
+  if (value.foo.has_value()) {
+    map.emplace("foo", smithy::Document((*value.foo)));
+  }
+  if (value.blob.has_value()) {
+    map.emplace("blob", smithy::Document((*value.blob)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<HttpPayloadTraitsWithMediaTypeOutput> DeserializeHttpPayloadTraitsWithMediaTypeOutput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("HttpPayloadTraitsWithMediaTypeOutput: expected a map on the wire");
+  HttpPayloadTraitsWithMediaTypeOutput out;
+  {
+    const smithy::Document* member = doc.Find("foo");
+    if (member != nullptr && !member->is_null()) {
+      std::string parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("HttpPayloadTraitsWithMediaTypeOutput.foo: unexpected type on the wire");
+      parsed_member = member->as_string();
+      out.foo = std::move(parsed_member);
+    }
+  }
+  {
+    const smithy::Document* member = doc.Find("blob");
+    if (member != nullptr && !member->is_null()) {
+      smithy::Blob parsed_member{};
+      {
+        auto parsed = smithy::BlobFromDocument(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.blob = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeNestedPayload(const NestedPayload& value) {
+  smithy::DocumentMap map;
+  if (value.greeting.has_value()) {
+    map.emplace("greeting", smithy::Document((*value.greeting)));
+  }
+  if (value.name.has_value()) {
+    map.emplace("name", smithy::Document((*value.name)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<NestedPayload> DeserializeNestedPayload(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("NestedPayload: expected a map on the wire");
+  NestedPayload out;
+  {
+    const smithy::Document* member = doc.Find("greeting");
+    if (member != nullptr && !member->is_null()) {
+      std::string parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("NestedPayload.greeting: unexpected type on the wire");
+      parsed_member = member->as_string();
+      out.greeting = std::move(parsed_member);
+    }
+  }
+  {
+    const smithy::Document* member = doc.Find("name");
+    if (member != nullptr && !member->is_null()) {
+      std::string parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("NestedPayload.name: unexpected type on the wire");
+      parsed_member = member->as_string();
+      out.name = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeHttpPayloadWithStructureInput(const HttpPayloadWithStructureInput& value) {
+  smithy::DocumentMap map;
+  if (value.nested.has_value()) {
+    map.emplace("nested", SerializeNestedPayload((*value.nested)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<HttpPayloadWithStructureInput> DeserializeHttpPayloadWithStructureInput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("HttpPayloadWithStructureInput: expected a map on the wire");
+  HttpPayloadWithStructureInput out;
+  {
+    const smithy::Document* member = doc.Find("nested");
+    if (member != nullptr && !member->is_null()) {
+      NestedPayload parsed_member{};
+      {
+        auto parsed = DeserializeNestedPayload(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.nested = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeHttpPayloadWithStructureOutput(const HttpPayloadWithStructureOutput& value) {
+  smithy::DocumentMap map;
+  if (value.nested.has_value()) {
+    map.emplace("nested", SerializeNestedPayload((*value.nested)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<HttpPayloadWithStructureOutput> DeserializeHttpPayloadWithStructureOutput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("HttpPayloadWithStructureOutput: expected a map on the wire");
+  HttpPayloadWithStructureOutput out;
+  {
+    const smithy::Document* member = doc.Find("nested");
+    if (member != nullptr && !member->is_null()) {
+      NestedPayload parsed_member{};
+      {
+        auto parsed = DeserializeNestedPayload(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.nested = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeUnionPayload(const UnionPayload& value) {
+  smithy::DocumentMap map;
+  if (value.is_greeting()) {
+    map.emplace("greeting", smithy::Document(value.as_greeting()));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<UnionPayload> DeserializeUnionPayload(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("UnionPayload: expected a map on the wire");
+  if (doc.as_map().size() - (doc.Find("__type") != nullptr ? 1 : 0) != 1) return smithy::Error::Serialization("UnionPayload: expected exactly one union member");
+  if (const smithy::Document* member = doc.Find("greeting"); member != nullptr && !member->is_null()) {
+    std::string parsed_member{};
+    if (!member->is_string()) return smithy::Error::Serialization("UnionPayload.greeting: unexpected type on the wire");
+    parsed_member = member->as_string();
+    return UnionPayload::FromGreeting(std::move(parsed_member));
+  }
+  return smithy::Error::Serialization("UnionPayload: unknown or missing union member");
+}
+
+smithy::Document SerializeHttpPayloadWithUnionInput(const HttpPayloadWithUnionInput& value) {
+  smithy::DocumentMap map;
+  if (value.nested.has_value()) {
+    map.emplace("nested", SerializeUnionPayload((*value.nested)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<HttpPayloadWithUnionInput> DeserializeHttpPayloadWithUnionInput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("HttpPayloadWithUnionInput: expected a map on the wire");
+  HttpPayloadWithUnionInput out;
+  {
+    const smithy::Document* member = doc.Find("nested");
+    if (member != nullptr && !member->is_null()) {
+      UnionPayload parsed_member{};
+      {
+        auto parsed = DeserializeUnionPayload(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.nested = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeHttpPayloadWithUnionOutput(const HttpPayloadWithUnionOutput& value) {
+  smithy::DocumentMap map;
+  if (value.nested.has_value()) {
+    map.emplace("nested", SerializeUnionPayload((*value.nested)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<HttpPayloadWithUnionOutput> DeserializeHttpPayloadWithUnionOutput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("HttpPayloadWithUnionOutput: expected a map on the wire");
+  HttpPayloadWithUnionOutput out;
+  {
+    const smithy::Document* member = doc.Find("nested");
+    if (member != nullptr && !member->is_null()) {
+      UnionPayload parsed_member{};
+      {
+        auto parsed = DeserializeUnionPayload(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.nested = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeHttpPrefixHeadersInput(const HttpPrefixHeadersInput& value) {
+  smithy::DocumentMap map;
+  if (value.foo.has_value()) {
+    map.emplace("foo", smithy::Document((*value.foo)));
+  }
+  if (value.fooMap.has_value()) {
+    map.emplace("fooMap", SerializeStringMap((*value.fooMap)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<HttpPrefixHeadersInput> DeserializeHttpPrefixHeadersInput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("HttpPrefixHeadersInput: expected a map on the wire");
+  HttpPrefixHeadersInput out;
+  {
+    const smithy::Document* member = doc.Find("foo");
+    if (member != nullptr && !member->is_null()) {
+      std::string parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("HttpPrefixHeadersInput.foo: unexpected type on the wire");
+      parsed_member = member->as_string();
+      out.foo = std::move(parsed_member);
+    }
+  }
+  {
+    const smithy::Document* member = doc.Find("fooMap");
+    if (member != nullptr && !member->is_null()) {
+      std::map<std::string, std::string> parsed_member{};
+      {
+        auto parsed = DeserializeStringMap(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.fooMap = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeHttpPrefixHeadersOutput(const HttpPrefixHeadersOutput& value) {
+  smithy::DocumentMap map;
+  if (value.foo.has_value()) {
+    map.emplace("foo", smithy::Document((*value.foo)));
+  }
+  if (value.fooMap.has_value()) {
+    map.emplace("fooMap", SerializeStringMap((*value.fooMap)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<HttpPrefixHeadersOutput> DeserializeHttpPrefixHeadersOutput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("HttpPrefixHeadersOutput: expected a map on the wire");
+  HttpPrefixHeadersOutput out;
+  {
+    const smithy::Document* member = doc.Find("foo");
+    if (member != nullptr && !member->is_null()) {
+      std::string parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("HttpPrefixHeadersOutput.foo: unexpected type on the wire");
+      parsed_member = member->as_string();
+      out.foo = std::move(parsed_member);
+    }
+  }
+  {
+    const smithy::Document* member = doc.Find("fooMap");
+    if (member != nullptr && !member->is_null()) {
+      std::map<std::string, std::string> parsed_member{};
+      {
+        auto parsed = DeserializeStringMap(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.fooMap = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeHttpPrefixHeadersInResponseInput(const HttpPrefixHeadersInResponseInput& value) {
+  smithy::DocumentMap map;
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<HttpPrefixHeadersInResponseInput> DeserializeHttpPrefixHeadersInResponseInput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("HttpPrefixHeadersInResponseInput: expected a map on the wire");
+  HttpPrefixHeadersInResponseInput out;
+  return out;
+}
+
+smithy::Document SerializeHttpPrefixHeadersInResponseOutput(const HttpPrefixHeadersInResponseOutput& value) {
+  smithy::DocumentMap map;
+  if (value.prefixHeaders.has_value()) {
+    map.emplace("prefixHeaders", SerializeStringMap((*value.prefixHeaders)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<HttpPrefixHeadersInResponseOutput> DeserializeHttpPrefixHeadersInResponseOutput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("HttpPrefixHeadersInResponseOutput: expected a map on the wire");
+  HttpPrefixHeadersInResponseOutput out;
+  {
+    const smithy::Document* member = doc.Find("prefixHeaders");
+    if (member != nullptr && !member->is_null()) {
+      std::map<std::string, std::string> parsed_member{};
+      {
+        auto parsed = DeserializeStringMap(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.prefixHeaders = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
 smithy::Document SerializeHttpRequestWithFloatLabelsInput(const HttpRequestWithFloatLabelsInput& value) {
   smithy::DocumentMap map;
   map.emplace("float", smithy::Document(static_cast<double>(value.float_)));
@@ -2209,6 +2737,7 @@ smithy::Outcome<HttpRequestWithLabelsInput> DeserializeHttpRequestWithLabelsInpu
       return smithy::Error::Serialization("HttpRequestWithLabelsInput: missing required member: short");
     }
     if (!member->is_int()) return smithy::Error::Serialization("HttpRequestWithLabelsInput.short: unexpected type on the wire");
+    if (member->as_int() < -32768 || member->as_int() > 32767) return smithy::Error::Serialization("HttpRequestWithLabelsInput.short: value out of range");
     out.short_ = static_cast<std::int16_t>(member->as_int());
   }
   {
@@ -2217,6 +2746,7 @@ smithy::Outcome<HttpRequestWithLabelsInput> DeserializeHttpRequestWithLabelsInpu
       return smithy::Error::Serialization("HttpRequestWithLabelsInput: missing required member: integer");
     }
     if (!member->is_int()) return smithy::Error::Serialization("HttpRequestWithLabelsInput.integer: unexpected type on the wire");
+    if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("HttpRequestWithLabelsInput.integer: value out of range");
     out.integer = static_cast<std::int32_t>(member->as_int());
   }
   {
@@ -2446,8 +2976,55 @@ smithy::Outcome<HttpResponseCodeOutput> DeserializeHttpResponseCodeOutput(const 
     if (member != nullptr && !member->is_null()) {
       std::int32_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("HttpResponseCodeOutput.Status: unexpected type on the wire");
+      if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("HttpResponseCodeOutput.Status: value out of range");
       parsed_member = static_cast<std::int32_t>(member->as_int());
       out.Status = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeHttpStringPayloadInput(const HttpStringPayloadInput& value) {
+  smithy::DocumentMap map;
+  if (value.payload.has_value()) {
+    map.emplace("payload", smithy::Document((*value.payload)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<HttpStringPayloadInput> DeserializeHttpStringPayloadInput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("HttpStringPayloadInput: expected a map on the wire");
+  HttpStringPayloadInput out;
+  {
+    const smithy::Document* member = doc.Find("payload");
+    if (member != nullptr && !member->is_null()) {
+      std::string parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("HttpStringPayloadInput.payload: unexpected type on the wire");
+      parsed_member = member->as_string();
+      out.payload = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeHttpStringPayloadOutput(const HttpStringPayloadOutput& value) {
+  smithy::DocumentMap map;
+  if (value.payload.has_value()) {
+    map.emplace("payload", smithy::Document((*value.payload)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<HttpStringPayloadOutput> DeserializeHttpStringPayloadOutput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("HttpStringPayloadOutput: expected a map on the wire");
+  HttpStringPayloadOutput out;
+  {
+    const smithy::Document* member = doc.Find("payload");
+    if (member != nullptr && !member->is_null()) {
+      std::string parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("HttpStringPayloadOutput.payload: unexpected type on the wire");
+      parsed_member = member->as_string();
+      out.payload = std::move(parsed_member);
     }
   }
   return out;
@@ -2563,6 +3140,7 @@ smithy::Outcome<InputAndOutputWithHeadersInput> DeserializeInputAndOutputWithHea
     if (member != nullptr && !member->is_null()) {
       std::int8_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("InputAndOutputWithHeadersInput.headerByte: unexpected type on the wire");
+      if (member->as_int() < -128 || member->as_int() > 127) return smithy::Error::Serialization("InputAndOutputWithHeadersInput.headerByte: value out of range");
       parsed_member = static_cast<std::int8_t>(member->as_int());
       out.headerByte = std::move(parsed_member);
     }
@@ -2572,6 +3150,7 @@ smithy::Outcome<InputAndOutputWithHeadersInput> DeserializeInputAndOutputWithHea
     if (member != nullptr && !member->is_null()) {
       std::int16_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("InputAndOutputWithHeadersInput.headerShort: unexpected type on the wire");
+      if (member->as_int() < -32768 || member->as_int() > 32767) return smithy::Error::Serialization("InputAndOutputWithHeadersInput.headerShort: value out of range");
       parsed_member = static_cast<std::int16_t>(member->as_int());
       out.headerShort = std::move(parsed_member);
     }
@@ -2581,6 +3160,7 @@ smithy::Outcome<InputAndOutputWithHeadersInput> DeserializeInputAndOutputWithHea
     if (member != nullptr && !member->is_null()) {
       std::int32_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("InputAndOutputWithHeadersInput.headerInteger: unexpected type on the wire");
+      if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("InputAndOutputWithHeadersInput.headerInteger: value out of range");
       parsed_member = static_cast<std::int32_t>(member->as_int());
       out.headerInteger = std::move(parsed_member);
     }
@@ -2817,6 +3397,7 @@ smithy::Outcome<InputAndOutputWithHeadersOutput> DeserializeInputAndOutputWithHe
     if (member != nullptr && !member->is_null()) {
       std::int8_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("InputAndOutputWithHeadersOutput.headerByte: unexpected type on the wire");
+      if (member->as_int() < -128 || member->as_int() > 127) return smithy::Error::Serialization("InputAndOutputWithHeadersOutput.headerByte: value out of range");
       parsed_member = static_cast<std::int8_t>(member->as_int());
       out.headerByte = std::move(parsed_member);
     }
@@ -2826,6 +3407,7 @@ smithy::Outcome<InputAndOutputWithHeadersOutput> DeserializeInputAndOutputWithHe
     if (member != nullptr && !member->is_null()) {
       std::int16_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("InputAndOutputWithHeadersOutput.headerShort: unexpected type on the wire");
+      if (member->as_int() < -32768 || member->as_int() > 32767) return smithy::Error::Serialization("InputAndOutputWithHeadersOutput.headerShort: value out of range");
       parsed_member = static_cast<std::int16_t>(member->as_int());
       out.headerShort = std::move(parsed_member);
     }
@@ -2835,6 +3417,7 @@ smithy::Outcome<InputAndOutputWithHeadersOutput> DeserializeInputAndOutputWithHe
     if (member != nullptr && !member->is_null()) {
       std::int32_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("InputAndOutputWithHeadersOutput.headerInteger: unexpected type on the wire");
+      if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("InputAndOutputWithHeadersOutput.headerInteger: value out of range");
       parsed_member = static_cast<std::int32_t>(member->as_int());
       out.headerInteger = std::move(parsed_member);
     }
@@ -4233,6 +4816,7 @@ smithy::Document SerializeMyUnion(const MyUnion& value) {
 
 smithy::Outcome<MyUnion> DeserializeMyUnion(const smithy::Document& doc) {
   if (!doc.is_map()) return smithy::Error::Serialization("MyUnion: expected a map on the wire");
+  if (doc.as_map().size() - (doc.Find("__type") != nullptr ? 1 : 0) != 1) return smithy::Error::Serialization("MyUnion: expected exactly one union member");
   if (const smithy::Document* member = doc.Find("stringValue"); member != nullptr && !member->is_null()) {
     std::string parsed_member{};
     if (!member->is_string()) return smithy::Error::Serialization("MyUnion.stringValue: unexpected type on the wire");
@@ -4248,6 +4832,7 @@ smithy::Outcome<MyUnion> DeserializeMyUnion(const smithy::Document& doc) {
   if (const smithy::Document* member = doc.Find("numberValue"); member != nullptr && !member->is_null()) {
     std::int32_t parsed_member{};
     if (!member->is_int()) return smithy::Error::Serialization("MyUnion.numberValue: unexpected type on the wire");
+    if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("MyUnion.numberValue: value out of range");
     parsed_member = static_cast<std::int32_t>(member->as_int());
     return MyUnion::FromNumbervalue(std::move(parsed_member));
   }
@@ -4400,6 +4985,77 @@ smithy::Outcome<MalformedAcceptWithBodyOutput> DeserializeMalformedAcceptWithBod
   return out;
 }
 
+smithy::Document SerializeMalformedAcceptWithGenericStringInput(const MalformedAcceptWithGenericStringInput& value) {
+  smithy::DocumentMap map;
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<MalformedAcceptWithGenericStringInput> DeserializeMalformedAcceptWithGenericStringInput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("MalformedAcceptWithGenericStringInput: expected a map on the wire");
+  MalformedAcceptWithGenericStringInput out;
+  return out;
+}
+
+smithy::Document SerializeMalformedAcceptWithGenericStringOutput(const MalformedAcceptWithGenericStringOutput& value) {
+  smithy::DocumentMap map;
+  if (value.payload.has_value()) {
+    map.emplace("payload", smithy::Document((*value.payload)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<MalformedAcceptWithGenericStringOutput> DeserializeMalformedAcceptWithGenericStringOutput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("MalformedAcceptWithGenericStringOutput: expected a map on the wire");
+  MalformedAcceptWithGenericStringOutput out;
+  {
+    const smithy::Document* member = doc.Find("payload");
+    if (member != nullptr && !member->is_null()) {
+      std::string parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("MalformedAcceptWithGenericStringOutput.payload: unexpected type on the wire");
+      parsed_member = member->as_string();
+      out.payload = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeMalformedAcceptWithPayloadInput(const MalformedAcceptWithPayloadInput& value) {
+  smithy::DocumentMap map;
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<MalformedAcceptWithPayloadInput> DeserializeMalformedAcceptWithPayloadInput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("MalformedAcceptWithPayloadInput: expected a map on the wire");
+  MalformedAcceptWithPayloadInput out;
+  return out;
+}
+
+smithy::Document SerializeMalformedAcceptWithPayloadOutput(const MalformedAcceptWithPayloadOutput& value) {
+  smithy::DocumentMap map;
+  if (value.payload.has_value()) {
+    map.emplace("payload", smithy::Document((*value.payload)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<MalformedAcceptWithPayloadOutput> DeserializeMalformedAcceptWithPayloadOutput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("MalformedAcceptWithPayloadOutput: expected a map on the wire");
+  MalformedAcceptWithPayloadOutput out;
+  {
+    const smithy::Document* member = doc.Find("payload");
+    if (member != nullptr && !member->is_null()) {
+      smithy::Blob parsed_member{};
+      {
+        auto parsed = smithy::BlobFromDocument(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.payload = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
 smithy::Document SerializeMalformedBlobInput(const MalformedBlobInput& value) {
   smithy::DocumentMap map;
   if (value.blob.has_value()) {
@@ -4527,6 +5183,7 @@ smithy::Outcome<MalformedByteInput> DeserializeMalformedByteInput(const smithy::
     if (member != nullptr && !member->is_null()) {
       std::int8_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("MalformedByteInput.byteInBody: unexpected type on the wire");
+      if (member->as_int() < -128 || member->as_int() > 127) return smithy::Error::Serialization("MalformedByteInput.byteInBody: value out of range");
       parsed_member = static_cast<std::int8_t>(member->as_int());
       out.byteInBody = std::move(parsed_member);
     }
@@ -4537,6 +5194,7 @@ smithy::Outcome<MalformedByteInput> DeserializeMalformedByteInput(const smithy::
       return smithy::Error::Serialization("MalformedByteInput: missing required member: byteInPath");
     }
     if (!member->is_int()) return smithy::Error::Serialization("MalformedByteInput.byteInPath: unexpected type on the wire");
+    if (member->as_int() < -128 || member->as_int() > 127) return smithy::Error::Serialization("MalformedByteInput.byteInPath: value out of range");
     out.byteInPath = static_cast<std::int8_t>(member->as_int());
   }
   {
@@ -4544,6 +5202,7 @@ smithy::Outcome<MalformedByteInput> DeserializeMalformedByteInput(const smithy::
     if (member != nullptr && !member->is_null()) {
       std::int8_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("MalformedByteInput.byteInQuery: unexpected type on the wire");
+      if (member->as_int() < -128 || member->as_int() > 127) return smithy::Error::Serialization("MalformedByteInput.byteInQuery: value out of range");
       parsed_member = static_cast<std::int8_t>(member->as_int());
       out.byteInQuery = std::move(parsed_member);
     }
@@ -4553,6 +5212,7 @@ smithy::Outcome<MalformedByteInput> DeserializeMalformedByteInput(const smithy::
     if (member != nullptr && !member->is_null()) {
       std::int8_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("MalformedByteInput.byteInHeader: unexpected type on the wire");
+      if (member->as_int() < -128 || member->as_int() > 127) return smithy::Error::Serialization("MalformedByteInput.byteInHeader: value out of range");
       parsed_member = static_cast<std::int8_t>(member->as_int());
       out.byteInHeader = std::move(parsed_member);
     }
@@ -4602,6 +5262,40 @@ smithy::Document SerializeMalformedContentTypeWithBodyOutput(const MalformedCont
 smithy::Outcome<MalformedContentTypeWithBodyOutput> DeserializeMalformedContentTypeWithBodyOutput(const smithy::Document& doc) {
   if (!doc.is_map()) return smithy::Error::Serialization("MalformedContentTypeWithBodyOutput: expected a map on the wire");
   MalformedContentTypeWithBodyOutput out;
+  return out;
+}
+
+smithy::Document SerializeMalformedContentTypeWithGenericStringInput(const MalformedContentTypeWithGenericStringInput& value) {
+  smithy::DocumentMap map;
+  if (value.payload.has_value()) {
+    map.emplace("payload", smithy::Document((*value.payload)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<MalformedContentTypeWithGenericStringInput> DeserializeMalformedContentTypeWithGenericStringInput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("MalformedContentTypeWithGenericStringInput: expected a map on the wire");
+  MalformedContentTypeWithGenericStringInput out;
+  {
+    const smithy::Document* member = doc.Find("payload");
+    if (member != nullptr && !member->is_null()) {
+      std::string parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("MalformedContentTypeWithGenericStringInput.payload: unexpected type on the wire");
+      parsed_member = member->as_string();
+      out.payload = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeMalformedContentTypeWithGenericStringOutput(const MalformedContentTypeWithGenericStringOutput& value) {
+  smithy::DocumentMap map;
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<MalformedContentTypeWithGenericStringOutput> DeserializeMalformedContentTypeWithGenericStringOutput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("MalformedContentTypeWithGenericStringOutput: expected a map on the wire");
+  MalformedContentTypeWithGenericStringOutput out;
   return out;
 }
 
@@ -4658,6 +5352,43 @@ smithy::Document SerializeMalformedContentTypeWithoutBodyEmptyInputOutput(const 
 smithy::Outcome<MalformedContentTypeWithoutBodyEmptyInputOutput> DeserializeMalformedContentTypeWithoutBodyEmptyInputOutput(const smithy::Document& doc) {
   if (!doc.is_map()) return smithy::Error::Serialization("MalformedContentTypeWithoutBodyEmptyInputOutput: expected a map on the wire");
   MalformedContentTypeWithoutBodyEmptyInputOutput out;
+  return out;
+}
+
+smithy::Document SerializeMalformedContentTypeWithPayloadInput(const MalformedContentTypeWithPayloadInput& value) {
+  smithy::DocumentMap map;
+  if (value.payload.has_value()) {
+    map.emplace("payload", smithy::Document((*value.payload)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<MalformedContentTypeWithPayloadInput> DeserializeMalformedContentTypeWithPayloadInput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("MalformedContentTypeWithPayloadInput: expected a map on the wire");
+  MalformedContentTypeWithPayloadInput out;
+  {
+    const smithy::Document* member = doc.Find("payload");
+    if (member != nullptr && !member->is_null()) {
+      smithy::Blob parsed_member{};
+      {
+        auto parsed = smithy::BlobFromDocument(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.payload = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeMalformedContentTypeWithPayloadOutput(const MalformedContentTypeWithPayloadOutput& value) {
+  smithy::DocumentMap map;
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<MalformedContentTypeWithPayloadOutput> DeserializeMalformedContentTypeWithPayloadOutput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("MalformedContentTypeWithPayloadOutput: expected a map on the wire");
+  MalformedContentTypeWithPayloadOutput out;
   return out;
 }
 
@@ -4842,6 +5573,7 @@ smithy::Outcome<MalformedIntegerInput> DeserializeMalformedIntegerInput(const sm
     if (member != nullptr && !member->is_null()) {
       std::int32_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("MalformedIntegerInput.integerInBody: unexpected type on the wire");
+      if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("MalformedIntegerInput.integerInBody: value out of range");
       parsed_member = static_cast<std::int32_t>(member->as_int());
       out.integerInBody = std::move(parsed_member);
     }
@@ -4852,6 +5584,7 @@ smithy::Outcome<MalformedIntegerInput> DeserializeMalformedIntegerInput(const sm
       return smithy::Error::Serialization("MalformedIntegerInput: missing required member: integerInPath");
     }
     if (!member->is_int()) return smithy::Error::Serialization("MalformedIntegerInput.integerInPath: unexpected type on the wire");
+    if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("MalformedIntegerInput.integerInPath: value out of range");
     out.integerInPath = static_cast<std::int32_t>(member->as_int());
   }
   {
@@ -4859,6 +5592,7 @@ smithy::Outcome<MalformedIntegerInput> DeserializeMalformedIntegerInput(const sm
     if (member != nullptr && !member->is_null()) {
       std::int32_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("MalformedIntegerInput.integerInQuery: unexpected type on the wire");
+      if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("MalformedIntegerInput.integerInQuery: value out of range");
       parsed_member = static_cast<std::int32_t>(member->as_int());
       out.integerInQuery = std::move(parsed_member);
     }
@@ -4868,6 +5602,7 @@ smithy::Outcome<MalformedIntegerInput> DeserializeMalformedIntegerInput(const sm
     if (member != nullptr && !member->is_null()) {
       std::int32_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("MalformedIntegerInput.integerInHeader: unexpected type on the wire");
+      if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("MalformedIntegerInput.integerInHeader: value out of range");
       parsed_member = static_cast<std::int32_t>(member->as_int());
       out.integerInHeader = std::move(parsed_member);
     }
@@ -5093,6 +5828,7 @@ smithy::Outcome<MalformedRequestBodyInput> DeserializeMalformedRequestBodyInput(
     if (member != nullptr && !member->is_null()) {
       std::int32_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("MalformedRequestBodyInput.int: unexpected type on the wire");
+      if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("MalformedRequestBodyInput.int: value out of range");
       parsed_member = static_cast<std::int32_t>(member->as_int());
       out.int_ = std::move(parsed_member);
     }
@@ -5146,6 +5882,7 @@ smithy::Outcome<MalformedShortInput> DeserializeMalformedShortInput(const smithy
     if (member != nullptr && !member->is_null()) {
       std::int16_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("MalformedShortInput.shortInBody: unexpected type on the wire");
+      if (member->as_int() < -32768 || member->as_int() > 32767) return smithy::Error::Serialization("MalformedShortInput.shortInBody: value out of range");
       parsed_member = static_cast<std::int16_t>(member->as_int());
       out.shortInBody = std::move(parsed_member);
     }
@@ -5156,6 +5893,7 @@ smithy::Outcome<MalformedShortInput> DeserializeMalformedShortInput(const smithy
       return smithy::Error::Serialization("MalformedShortInput: missing required member: shortInPath");
     }
     if (!member->is_int()) return smithy::Error::Serialization("MalformedShortInput.shortInPath: unexpected type on the wire");
+    if (member->as_int() < -32768 || member->as_int() > 32767) return smithy::Error::Serialization("MalformedShortInput.shortInPath: value out of range");
     out.shortInPath = static_cast<std::int16_t>(member->as_int());
   }
   {
@@ -5163,6 +5901,7 @@ smithy::Outcome<MalformedShortInput> DeserializeMalformedShortInput(const smithy
     if (member != nullptr && !member->is_null()) {
       std::int16_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("MalformedShortInput.shortInQuery: unexpected type on the wire");
+      if (member->as_int() < -32768 || member->as_int() > 32767) return smithy::Error::Serialization("MalformedShortInput.shortInQuery: value out of range");
       parsed_member = static_cast<std::int16_t>(member->as_int());
       out.shortInQuery = std::move(parsed_member);
     }
@@ -5172,6 +5911,7 @@ smithy::Outcome<MalformedShortInput> DeserializeMalformedShortInput(const smithy
     if (member != nullptr && !member->is_null()) {
       std::int16_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("MalformedShortInput.shortInHeader: unexpected type on the wire");
+      if (member->as_int() < -32768 || member->as_int() > 32767) return smithy::Error::Serialization("MalformedShortInput.shortInHeader: value out of range");
       parsed_member = static_cast<std::int16_t>(member->as_int());
       out.shortInHeader = std::move(parsed_member);
     }
@@ -5645,9 +6385,11 @@ smithy::Document SerializeSimpleUnion(const SimpleUnion& value) {
 
 smithy::Outcome<SimpleUnion> DeserializeSimpleUnion(const smithy::Document& doc) {
   if (!doc.is_map()) return smithy::Error::Serialization("SimpleUnion: expected a map on the wire");
+  if (doc.as_map().size() - (doc.Find("__type") != nullptr ? 1 : 0) != 1) return smithy::Error::Serialization("SimpleUnion: expected exactly one union member");
   if (const smithy::Document* member = doc.Find("int"); member != nullptr && !member->is_null()) {
     std::int32_t parsed_member{};
     if (!member->is_int()) return smithy::Error::Serialization("SimpleUnion.int: unexpected type on the wire");
+    if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("SimpleUnion.int: value out of range");
     parsed_member = static_cast<std::int32_t>(member->as_int());
     return SimpleUnion::FromInt(std::move(parsed_member));
   }
@@ -6218,6 +6960,7 @@ smithy::Outcome<OperationWithDefaultsInput> DeserializeOperationWithDefaultsInpu
     if (member != nullptr && !member->is_null()) {
       std::int32_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("OperationWithDefaultsInput.otherTopLevelDefault: unexpected type on the wire");
+      if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("OperationWithDefaultsInput.otherTopLevelDefault: value out of range");
       parsed_member = static_cast<std::int32_t>(member->as_int());
       out.otherTopLevelDefault = std::move(parsed_member);
     }
@@ -6416,6 +7159,7 @@ smithy::Outcome<OperationWithDefaultsOutput> DeserializeOperationWithDefaultsOut
     if (member != nullptr && !member->is_null()) {
       std::int8_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("OperationWithDefaultsOutput.defaultByte: unexpected type on the wire");
+      if (member->as_int() < -128 || member->as_int() > 127) return smithy::Error::Serialization("OperationWithDefaultsOutput.defaultByte: value out of range");
       parsed_member = static_cast<std::int8_t>(member->as_int());
       out.defaultByte = std::move(parsed_member);
     }
@@ -6425,6 +7169,7 @@ smithy::Outcome<OperationWithDefaultsOutput> DeserializeOperationWithDefaultsOut
     if (member != nullptr && !member->is_null()) {
       std::int16_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("OperationWithDefaultsOutput.defaultShort: unexpected type on the wire");
+      if (member->as_int() < -32768 || member->as_int() > 32767) return smithy::Error::Serialization("OperationWithDefaultsOutput.defaultShort: value out of range");
       parsed_member = static_cast<std::int16_t>(member->as_int());
       out.defaultShort = std::move(parsed_member);
     }
@@ -6434,6 +7179,7 @@ smithy::Outcome<OperationWithDefaultsOutput> DeserializeOperationWithDefaultsOut
     if (member != nullptr && !member->is_null()) {
       std::int32_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("OperationWithDefaultsOutput.defaultInteger: unexpected type on the wire");
+      if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("OperationWithDefaultsOutput.defaultInteger: value out of range");
       parsed_member = static_cast<std::int32_t>(member->as_int());
       out.defaultInteger = std::move(parsed_member);
     }
@@ -6536,6 +7282,7 @@ smithy::Outcome<OperationWithDefaultsOutput> DeserializeOperationWithDefaultsOut
     if (member != nullptr && !member->is_null()) {
       std::int8_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("OperationWithDefaultsOutput.zeroByte: unexpected type on the wire");
+      if (member->as_int() < -128 || member->as_int() > 127) return smithy::Error::Serialization("OperationWithDefaultsOutput.zeroByte: value out of range");
       parsed_member = static_cast<std::int8_t>(member->as_int());
       out.zeroByte = std::move(parsed_member);
     }
@@ -6545,6 +7292,7 @@ smithy::Outcome<OperationWithDefaultsOutput> DeserializeOperationWithDefaultsOut
     if (member != nullptr && !member->is_null()) {
       std::int16_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("OperationWithDefaultsOutput.zeroShort: unexpected type on the wire");
+      if (member->as_int() < -32768 || member->as_int() > 32767) return smithy::Error::Serialization("OperationWithDefaultsOutput.zeroShort: value out of range");
       parsed_member = static_cast<std::int16_t>(member->as_int());
       out.zeroShort = std::move(parsed_member);
     }
@@ -6554,6 +7302,7 @@ smithy::Outcome<OperationWithDefaultsOutput> DeserializeOperationWithDefaultsOut
     if (member != nullptr && !member->is_null()) {
       std::int32_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("OperationWithDefaultsOutput.zeroInteger: unexpected type on the wire");
+      if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("OperationWithDefaultsOutput.zeroInteger: value out of range");
       parsed_member = static_cast<std::int32_t>(member->as_int());
       out.zeroInteger = std::move(parsed_member);
     }
@@ -6723,6 +7472,30 @@ smithy::Outcome<OperationWithNestedStructureOutput> DeserializeOperationWithNest
   return out;
 }
 
+smithy::Document SerializePayloadConfig(const PayloadConfig& value) {
+  smithy::DocumentMap map;
+  if (value.data.has_value()) {
+    map.emplace("data", smithy::Document(static_cast<std::int64_t>((*value.data))));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<PayloadConfig> DeserializePayloadConfig(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("PayloadConfig: expected a map on the wire");
+  PayloadConfig out;
+  {
+    const smithy::Document* member = doc.Find("data");
+    if (member != nullptr && !member->is_null()) {
+      std::int32_t parsed_member{};
+      if (!member->is_int()) return smithy::Error::Serialization("PayloadConfig.data: unexpected type on the wire");
+      if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("PayloadConfig.data: value out of range");
+      parsed_member = static_cast<std::int32_t>(member->as_int());
+      out.data = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
 smithy::Document SerializePlayerAction(const PlayerAction& value) {
   smithy::DocumentMap map;
   if (value.is_quit()) {
@@ -6733,6 +7506,7 @@ smithy::Document SerializePlayerAction(const PlayerAction& value) {
 
 smithy::Outcome<PlayerAction> DeserializePlayerAction(const smithy::Document& doc) {
   if (!doc.is_map()) return smithy::Error::Serialization("PlayerAction: expected a map on the wire");
+  if (doc.as_map().size() - (doc.Find("__type") != nullptr ? 1 : 0) != 1) return smithy::Error::Serialization("PlayerAction: expected exactly one union member");
   if (const smithy::Document* member = doc.Find("quit"); member != nullptr && !member->is_null()) {
     smithy::Unit parsed_member{};
     parsed_member = smithy::Unit{};
@@ -6806,6 +7580,7 @@ smithy::Document SerializeUnionWithJsonName(const UnionWithJsonName& value) {
 
 smithy::Outcome<UnionWithJsonName> DeserializeUnionWithJsonName(const smithy::Document& doc) {
   if (!doc.is_map()) return smithy::Error::Serialization("UnionWithJsonName: expected a map on the wire");
+  if (doc.as_map().size() - (doc.Find("__type") != nullptr ? 1 : 0) != 1) return smithy::Error::Serialization("UnionWithJsonName: expected exactly one union member");
   if (const smithy::Document* member = doc.Find("FOO"); member != nullptr && !member->is_null()) {
     std::string parsed_member{};
     if (!member->is_string()) return smithy::Error::Serialization("UnionWithJsonName.FOO: unexpected type on the wire");
@@ -7102,6 +7877,7 @@ smithy::Outcome<ResponseCodeRequiredOutput> DeserializeResponseCodeRequiredOutpu
       return smithy::Error::Serialization("ResponseCodeRequiredOutput: missing required member: responseCode");
     }
     if (!member->is_int()) return smithy::Error::Serialization("ResponseCodeRequiredOutput.responseCode: unexpected type on the wire");
+    if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("ResponseCodeRequiredOutput.responseCode: value out of range");
     out.responseCode = static_cast<std::int32_t>(member->as_int());
   }
   return out;
@@ -7186,6 +7962,7 @@ smithy::Outcome<SimpleScalarPropertiesInput> DeserializeSimpleScalarPropertiesIn
     if (member != nullptr && !member->is_null()) {
       std::int8_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("SimpleScalarPropertiesInput.byteValue: unexpected type on the wire");
+      if (member->as_int() < -128 || member->as_int() > 127) return smithy::Error::Serialization("SimpleScalarPropertiesInput.byteValue: value out of range");
       parsed_member = static_cast<std::int8_t>(member->as_int());
       out.byteValue = std::move(parsed_member);
     }
@@ -7195,6 +7972,7 @@ smithy::Outcome<SimpleScalarPropertiesInput> DeserializeSimpleScalarPropertiesIn
     if (member != nullptr && !member->is_null()) {
       std::int16_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("SimpleScalarPropertiesInput.shortValue: unexpected type on the wire");
+      if (member->as_int() < -32768 || member->as_int() > 32767) return smithy::Error::Serialization("SimpleScalarPropertiesInput.shortValue: value out of range");
       parsed_member = static_cast<std::int16_t>(member->as_int());
       out.shortValue = std::move(parsed_member);
     }
@@ -7204,6 +7982,7 @@ smithy::Outcome<SimpleScalarPropertiesInput> DeserializeSimpleScalarPropertiesIn
     if (member != nullptr && !member->is_null()) {
       std::int32_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("SimpleScalarPropertiesInput.integerValue: unexpected type on the wire");
+      if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("SimpleScalarPropertiesInput.integerValue: value out of range");
       parsed_member = static_cast<std::int32_t>(member->as_int());
       out.integerValue = std::move(parsed_member);
     }
@@ -7323,6 +8102,7 @@ smithy::Outcome<SimpleScalarPropertiesOutput> DeserializeSimpleScalarPropertiesO
     if (member != nullptr && !member->is_null()) {
       std::int8_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("SimpleScalarPropertiesOutput.byteValue: unexpected type on the wire");
+      if (member->as_int() < -128 || member->as_int() > 127) return smithy::Error::Serialization("SimpleScalarPropertiesOutput.byteValue: value out of range");
       parsed_member = static_cast<std::int8_t>(member->as_int());
       out.byteValue = std::move(parsed_member);
     }
@@ -7332,6 +8112,7 @@ smithy::Outcome<SimpleScalarPropertiesOutput> DeserializeSimpleScalarPropertiesO
     if (member != nullptr && !member->is_null()) {
       std::int16_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("SimpleScalarPropertiesOutput.shortValue: unexpected type on the wire");
+      if (member->as_int() < -32768 || member->as_int() > 32767) return smithy::Error::Serialization("SimpleScalarPropertiesOutput.shortValue: value out of range");
       parsed_member = static_cast<std::int16_t>(member->as_int());
       out.shortValue = std::move(parsed_member);
     }
@@ -7341,6 +8122,7 @@ smithy::Outcome<SimpleScalarPropertiesOutput> DeserializeSimpleScalarPropertiesO
     if (member != nullptr && !member->is_null()) {
       std::int32_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("SimpleScalarPropertiesOutput.integerValue: unexpected type on the wire");
+      if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("SimpleScalarPropertiesOutput.integerValue: value out of range");
       parsed_member = static_cast<std::int32_t>(member->as_int());
       out.integerValue = std::move(parsed_member);
     }
@@ -7406,6 +8188,7 @@ smithy::Outcome<std::vector<std::optional<std::int16_t>>> DeserializeSparseShort
     }
     std::int16_t parsed_item{};
     if (!item->is_int()) return smithy::Error::Serialization("std::vector<std::optional<std::int16_t>>[]: unexpected type on the wire");
+    if (item->as_int() < -32768 || item->as_int() > 32767) return smithy::Error::Serialization("std::vector<std::optional<std::int16_t>>[]: value out of range");
     parsed_item = static_cast<std::int16_t>(item->as_int());
     out.push_back(std::move(parsed_item));
   }
@@ -7546,6 +8329,7 @@ smithy::Outcome<std::map<std::string, std::optional<std::int32_t>>> DeserializeS
     }
     std::int32_t parsed_item{};
     if (!item->is_int()) return smithy::Error::Serialization("std::map<std::string, std::optional<std::int32_t>>{}: unexpected type on the wire");
+    if (item->as_int() < -2147483648LL || item->as_int() > 2147483647LL) return smithy::Error::Serialization("std::map<std::string, std::optional<std::int32_t>>{}: value out of range");
     parsed_item = static_cast<std::int32_t>(item->as_int());
     out.emplace(key, std::move(parsed_item));
   }
@@ -7804,6 +8588,7 @@ smithy::Outcome<TestConfig> DeserializeTestConfig(const smithy::Document& doc) {
     if (member != nullptr && !member->is_null()) {
       std::int32_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("TestConfig.timeout: unexpected type on the wire");
+      if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("TestConfig.timeout: value out of range");
       parsed_member = static_cast<std::int32_t>(member->as_int());
       out.timeout = std::move(parsed_member);
     }
@@ -7962,6 +8747,158 @@ smithy::Outcome<TestGetNoPayloadOutput> DeserializeTestGetNoPayloadOutput(const 
       if (!member->is_string()) return smithy::Error::Serialization("TestGetNoPayloadOutput.testId: unexpected type on the wire");
       parsed_member = member->as_string();
       out.testId = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeTestPayloadBlobInput(const TestPayloadBlobInput& value) {
+  smithy::DocumentMap map;
+  if (value.contentType.has_value()) {
+    map.emplace("contentType", smithy::Document((*value.contentType)));
+  }
+  if (value.data.has_value()) {
+    map.emplace("data", smithy::Document((*value.data)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<TestPayloadBlobInput> DeserializeTestPayloadBlobInput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("TestPayloadBlobInput: expected a map on the wire");
+  TestPayloadBlobInput out;
+  {
+    const smithy::Document* member = doc.Find("contentType");
+    if (member != nullptr && !member->is_null()) {
+      std::string parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("TestPayloadBlobInput.contentType: unexpected type on the wire");
+      parsed_member = member->as_string();
+      out.contentType = std::move(parsed_member);
+    }
+  }
+  {
+    const smithy::Document* member = doc.Find("data");
+    if (member != nullptr && !member->is_null()) {
+      smithy::Blob parsed_member{};
+      {
+        auto parsed = smithy::BlobFromDocument(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.data = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeTestPayloadBlobOutput(const TestPayloadBlobOutput& value) {
+  smithy::DocumentMap map;
+  if (value.contentType.has_value()) {
+    map.emplace("contentType", smithy::Document((*value.contentType)));
+  }
+  if (value.data.has_value()) {
+    map.emplace("data", smithy::Document((*value.data)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<TestPayloadBlobOutput> DeserializeTestPayloadBlobOutput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("TestPayloadBlobOutput: expected a map on the wire");
+  TestPayloadBlobOutput out;
+  {
+    const smithy::Document* member = doc.Find("contentType");
+    if (member != nullptr && !member->is_null()) {
+      std::string parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("TestPayloadBlobOutput.contentType: unexpected type on the wire");
+      parsed_member = member->as_string();
+      out.contentType = std::move(parsed_member);
+    }
+  }
+  {
+    const smithy::Document* member = doc.Find("data");
+    if (member != nullptr && !member->is_null()) {
+      smithy::Blob parsed_member{};
+      {
+        auto parsed = smithy::BlobFromDocument(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.data = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeTestPayloadStructureInput(const TestPayloadStructureInput& value) {
+  smithy::DocumentMap map;
+  if (value.testId.has_value()) {
+    map.emplace("testId", smithy::Document((*value.testId)));
+  }
+  if (value.payloadConfig.has_value()) {
+    map.emplace("payloadConfig", SerializePayloadConfig((*value.payloadConfig)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<TestPayloadStructureInput> DeserializeTestPayloadStructureInput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("TestPayloadStructureInput: expected a map on the wire");
+  TestPayloadStructureInput out;
+  {
+    const smithy::Document* member = doc.Find("testId");
+    if (member != nullptr && !member->is_null()) {
+      std::string parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("TestPayloadStructureInput.testId: unexpected type on the wire");
+      parsed_member = member->as_string();
+      out.testId = std::move(parsed_member);
+    }
+  }
+  {
+    const smithy::Document* member = doc.Find("payloadConfig");
+    if (member != nullptr && !member->is_null()) {
+      PayloadConfig parsed_member{};
+      {
+        auto parsed = DeserializePayloadConfig(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.payloadConfig = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeTestPayloadStructureOutput(const TestPayloadStructureOutput& value) {
+  smithy::DocumentMap map;
+  if (value.testId.has_value()) {
+    map.emplace("testId", smithy::Document((*value.testId)));
+  }
+  if (value.payloadConfig.has_value()) {
+    map.emplace("payloadConfig", SerializePayloadConfig((*value.payloadConfig)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<TestPayloadStructureOutput> DeserializeTestPayloadStructureOutput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("TestPayloadStructureOutput: expected a map on the wire");
+  TestPayloadStructureOutput out;
+  {
+    const smithy::Document* member = doc.Find("testId");
+    if (member != nullptr && !member->is_null()) {
+      std::string parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("TestPayloadStructureOutput.testId: unexpected type on the wire");
+      parsed_member = member->as_string();
+      out.testId = std::move(parsed_member);
+    }
+  }
+  {
+    const smithy::Document* member = doc.Find("payloadConfig");
+    if (member != nullptr && !member->is_null()) {
+      PayloadConfig parsed_member{};
+      {
+        auto parsed = DeserializePayloadConfig(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.payloadConfig = std::move(parsed_member);
     }
   }
   return out;

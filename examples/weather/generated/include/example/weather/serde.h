@@ -14,14 +14,20 @@ namespace example::weather {
 // Serializers never fail; deserializers return smithy::Error on wire
 // mismatches and enforce @required members.
 
+smithy::Document SerializeDeleteCityInput(const DeleteCityInput& value);
+smithy::Outcome<DeleteCityInput> DeserializeDeleteCityInput(const smithy::Document& doc);
+
+smithy::Document SerializeDeleteCityOutput(const DeleteCityOutput& value);
+smithy::Outcome<DeleteCityOutput> DeserializeDeleteCityOutput(const smithy::Document& doc);
+
+smithy::Document SerializeNoSuchResource(const NoSuchResource& value);
+smithy::Outcome<NoSuchResource> DeserializeNoSuchResource(const smithy::Document& doc);
+
 smithy::Document SerializeGetForecastInput(const GetForecastInput& value);
 smithy::Outcome<GetForecastInput> DeserializeGetForecastInput(const smithy::Document& doc);
 
 smithy::Document SerializeGetForecastOutput(const GetForecastOutput& value);
 smithy::Outcome<GetForecastOutput> DeserializeGetForecastOutput(const smithy::Document& doc);
-
-smithy::Document SerializeNoSuchResource(const NoSuchResource& value);
-smithy::Outcome<NoSuchResource> DeserializeNoSuchResource(const smithy::Document& doc);
 
 smithy::Document SerializeGetCityInput(const GetCityInput& value);
 smithy::Outcome<GetCityInput> DeserializeGetCityInput(const smithy::Document& doc);

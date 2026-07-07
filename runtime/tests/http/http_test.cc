@@ -8,6 +8,27 @@
 namespace smithy::http {
 namespace {
 
+TEST(HeadersTest, AcceptMatches) {
+  using smithy::http::AcceptMatches;
+  EXPECT_TRUE(AcceptMatches("application/json", "application/json"));
+  EXPECT_TRUE(AcceptMatches("Application/JSON", "application/json"));
+  EXPECT_TRUE(AcceptMatches("*/*", "image/jpeg"));
+  EXPECT_TRUE(AcceptMatches("image/*", "image/jpeg"));
+  EXPECT_TRUE(AcceptMatches("text/html, application/json;q=0.9", "application/json"));
+  EXPECT_FALSE(AcceptMatches("application/hal+json", "application/json"));
+  EXPECT_FALSE(AcceptMatches("application/json", "image/jpeg"));
+  EXPECT_FALSE(AcceptMatches("text/*", "image/jpeg"));
+}
+
+TEST(HeadersTest, HeaderNameStartsWith) {
+  using smithy::http::HeaderNameStartsWith;
+  EXPECT_TRUE(HeaderNameStartsWith("x-foo-abc", "x-foo-"));
+  EXPECT_TRUE(HeaderNameStartsWith("X-Foo-Abc", "x-foo-"));
+  EXPECT_TRUE(HeaderNameStartsWith("anything", ""));
+  EXPECT_FALSE(HeaderNameStartsWith("x-foo", "x-foo-"));
+  EXPECT_FALSE(HeaderNameStartsWith("x-bar-abc", "x-foo-"));
+}
+
 TEST(HeadersTest, GetIsCaseInsensitive) {
   Headers headers;
   headers.Add("Content-Type", "application/json");

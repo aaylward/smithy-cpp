@@ -12,7 +12,7 @@
 
 namespace example::roundtrip::rest {
 
-/// restJson1 client for example.roundtrip#RoundTripRest.
+/// simpleRestJson client for example.roundtrip#RoundTripRest.
 /// Modeled service errors surface as smithy::Error with kind kModeled,
 /// code() set to the error shape name, and the deserialized error
 /// structure attached: error.detail<TheErrorShape>().

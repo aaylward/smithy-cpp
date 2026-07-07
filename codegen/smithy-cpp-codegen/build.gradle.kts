@@ -43,6 +43,15 @@ val generateCafeFixture = registerFixtureTask(
     "examples/cafe/generated",
 )
 
+// simpleRestJson (alloy) fixture: the vendor-neutral REST/JSON protocol.
+val generateBookstoreFixture = registerFixtureTask(
+    "generateBookstoreFixture",
+    "examples/simplerestjson/model/bookstore.smithy",
+    "example.bookstore#Bookstore",
+    "example::bookstore",
+    "examples/simplerestjson/generated",
+)
+
 // The kitchen-sink round-trip fixture: one model, two protocol variants, so the
 // Phase 5 integration matrix covers REST and RPC with the same shapes.
 val generateRoundTripRestFixture = registerFixtureTask(
@@ -70,7 +79,7 @@ fun registerProtocolTestTask(
     service: String,
     cppNamespace: String,
     outputPath: String,
-    omitOperations: List<String>,
+    omitOperations: List<String> = emptyList(),
     malformedTests: Boolean = false,
 ) = tasks.register<JavaExec>(taskName) {
     group = "smithy-cpp"
@@ -93,20 +102,19 @@ fun registerProtocolTestTask(
 // Operations pruned from the suites because they use bindings the generator
 // does not implement yet (PLAN Phase 3b/4 follow-ups). This list, like the
 // test exclusion list, must only shrink.
-val generateRestJson1ProtocolTests = registerProtocolTestTask(
-    "generateRestJson1ProtocolTests",
-    "aws.protocoltests.restjson#RestJson",
-    "smithy::protocoltests::restjson",
-    "protocol-tests/restjson1/generated",
-    malformedTests = true,
+// alloy#simpleRestJson conformance: alloy's own protocol-test service
+// (alloy-protocol-tests), the vendor-neutral counterpart of the AWS restJson1
+// suite. Standard httpRequestTests/httpResponseTests, consumed as-is.
+val generateSimpleRestJsonProtocolTests = registerProtocolTestTask(
+    "generateSimpleRestJsonProtocolTests",
+    "alloy.test#PizzaAdminService",
+    "smithy::protocoltests::simplerestjson",
+    "protocol-tests/simplerestjson/generated",
     omitOperations = listOf(
-        // Recursive shapes need boxed-recursion support (PLAN Phase 2 note).
-        "aws.protocoltests.restjson#RecursiveShapes",
-        // @streaming payloads are Phase 8 scope.
-        "aws.protocoltests.restjson#StreamingTraits",
-        "aws.protocoltests.restjson#StreamingTraitsRequireLength",
-        "aws.protocoltests.restjson#StreamingTraitsWithMediaType",
+        // @required response @httpHeader members not generated yet (Phase 4d note).
+        "alloy.test#AddMenuItem",
     ),
+    malformedTests = true,
 )
 
 val generateRpcv2CborProtocolTests = registerProtocolTestTask(
@@ -121,28 +129,12 @@ val generateRpcv2CborProtocolTests = registerProtocolTestTask(
     ),
 )
 
-// The constraint-validation suite: httpMalformedRequestTests only (no
-// httpRequestTests/httpResponseTests). The main suites above also run their
-// malformed tests (parser strictness, since Phase 4d).
-val generateRestJson1ValidationProtocolTests = registerProtocolTestTask(
-    "generateRestJson1ValidationProtocolTests",
-    "aws.protocoltests.restjson.validation#RestJsonValidation",
-    "smithy::protocoltests::restjsonvalidation",
-    "protocol-tests/restjson1-validation/generated",
-    listOf(
-        // Recursive shapes need boxed-recursion support (PLAN Phase 2 note).
-        "aws.protocoltests.restjson.validation#RecursiveStructures",
-    ),
-    malformedTests = true,
-)
-
 tasks.register("generateProtocolTests") {
     group = "smithy-cpp"
     description = "Regenerates the checked-in protocol conformance suites under protocol-tests/"
     dependsOn(
-        generateRestJson1ProtocolTests,
+        generateSimpleRestJsonProtocolTests,
         generateRpcv2CborProtocolTests,
-        generateRestJson1ValidationProtocolTests,
     )
 }
 
@@ -152,6 +144,7 @@ tasks.register("generateFixtures") {
     dependsOn(
         generateWeatherFixture,
         generateCafeFixture,
+        generateBookstoreFixture,
         generateRoundTripRestFixture,
         generateRoundTripRpcFixture,
     )
@@ -162,16 +155,19 @@ tasks.withType<Test>().configureEach {
 }
 
 dependencies {
-    api("software.amazon.smithy:smithy-codegen-core:1.53.0")
-    api("software.amazon.smithy:smithy-build:1.53.0")
+    api("software.amazon.smithy:smithy-codegen-core:1.58.0")
+    api("software.amazon.smithy:smithy-build:1.58.0")
     // Trait definitions used by the fixture models.
-    implementation("software.amazon.smithy:smithy-aws-traits:1.53.0")
-    implementation("software.amazon.smithy:smithy-protocol-traits:1.53.0")
+    // alloy#simpleRestJson — the vendor-neutral REST/JSON protocol (smithy4s).
+    // alloy is built against Smithy 1.58, which the whole build now pins to.
+    implementation("com.disneystreaming.alloy:alloy-core:0.3.21")
+    implementation("software.amazon.smithy:smithy-protocol-traits:1.58.0")
     // smithy.test#http{Request,Response}Tests trait definitions.
-    implementation("software.amazon.smithy:smithy-protocol-test-traits:1.53.0")
+    implementation("software.amazon.smithy:smithy-protocol-test-traits:1.58.0")
     // The official conformance suite models (generateProtocolTests classpath only).
-    protocolTestModels("software.amazon.smithy:smithy-aws-protocol-tests:1.53.0")
-    protocolTestModels("software.amazon.smithy:smithy-protocol-tests:1.53.0")
+    // alloy's simpleRestJson conformance suite.
+    protocolTestModels("com.disneystreaming.alloy:alloy-protocol-tests:0.3.21")
+    protocolTestModels("software.amazon.smithy:smithy-protocol-tests:1.58.0")
 
     testImplementation(platform("org.junit:junit-bom:5.11.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")

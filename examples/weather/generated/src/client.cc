@@ -46,7 +46,7 @@ ParsedError ParseError(const smithy::http::HttpResponse& response) {
   parsed.message = "HTTP " + std::to_string(response.status);
   auto doc = smithy::json::Decode(response.body);
   if (doc.ok()) parsed.doc = *std::move(doc);
-  const auto type_header = response.headers.Get("x-amzn-errortype");
+  const auto type_header = response.headers.Get("x-error-type");
   if (type_header.has_value()) parsed.code = SanitizeErrorCode(*type_header);
   if (parsed.doc.is_map()) {
     const smithy::Document* type = parsed.doc.Find("__type");

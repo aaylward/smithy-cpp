@@ -152,6 +152,13 @@ services — smithy-rs's generic server targets it — and carries no AWS coupli
 protocol-mandated names (e.g. its error-discriminator header). smithy-cpp implements protocol
 specs and nothing else: no AWS traits, endpoints, auth, or SDK behaviors (see §2).
 
+> **Superseded before 0.1.0 (Phase 7e).** We used `restJson1` through Phases 3–7 precisely
+> because its official conformance suite (~526 cases) is the best possible hardening for the
+> HTTP-binding + JSON-serde stack. But every Smithy REST/JSON protocol is AWS-namespaced, so
+> shipping `restJson1` as our headline REST protocol contradicts the vendor-neutrality goal.
+> Phase 7e replaces it with a neutral `smithy.cpp.protocols#httpJson` (see below). The only
+> vendor-neutral protocol Smithy itself defines is `smithy.protocols#rpcv2Cbor`, which we keep.
+
 ### 3.4 Generated API shape (sketch, refined in Phase 2/3/4 design docs)
 
 ```cpp
@@ -564,16 +571,46 @@ the full test matrix and the quick-start acceptance test.
 
 ---
 
-### Future protocols: JSON-RPC 2.0 (post-0.1.0, candidate phase)
+### Phase 7e — Protocol realignment to vendor-neutral (before 0.1.0)
 
-The generator is protocol-pluggable by construction — `ProtocolGenerator` is an interface and
-`resolveProtocol` picks the implementation from the service's protocol trait, which is how
-restJson1 and rpcv2Cbor coexist today. A JSON-RPC 2.0 protocol is a natural third
-implementation: a custom `@jsonRpc2` protocol trait, a fixed POST endpoint with
-`method` = operation name and `params`/`result` over the same `smithy::Document` serde pivot,
-and JSON-RPC error objects mapped to modeled errors. It inherits the whole test machinery
-(smoke, integration, goldens) for free. Not scheduled; recorded here so the protocol seam stays
-honest.
+**Decision (2026-07):** the out-of-the-box protocols must be vendor-neutral. `restJson1` is
+AWS-namespaced (`aws.protocols`), so we **drop it entirely**. Rather than invent a homegrown REST
+protocol, we **adopt `alloy#simpleRestJson`** — the vendor-neutral HTTP+JSON protocol smithy4s
+uses (`com.disneystreaming.alloy:alloy-core`, Maven Central). It is restJson1's binding model
+with neutral error identity, and it ships an **official conformance suite**
+(`alloy-protocol-tests`) as a standard `smithy.test#httpRequestTests`/`httpResponseTests` model —
+which our `ProtocolTestGenerator` already consumes. Adopting it gives a documented spec, wire
+interop with the smithy4s ecosystem, and a ready-made conformance suite (no test authoring), while
+dropping every `aws.*` dependency. Final 0.1.0 protocol set: **`alloy#simpleRestJson` (REST/JSON) +
+`smithy.protocols#rpcv2Cbor` (RPC/CBOR) + `smithy.cpp.protocols#jsonRpc2` (RPC/JSON)** — all neutral.
+
+`simpleRestJson` error wire format (verified against alloy's own conformance model): modeled
+error → status from `@httpError`, response header **`X-Error-Type: <ShapeName>`** (name without
+namespace), body = the error structure's members as plain JSON. **No `__type` body field** — the
+header is the sole discriminator; the client falls back to the `@httpError` status when the header
+is absent. Deltas from restJson1: (1) header `x-error-type` not `x-amzn-errortype`, (2) no `__type`
+in the error body, (3) client status-code fallback.
+
+**Tasks**
+- **`simpleRestJson` protocol generator**: `SimpleRestJsonProtocol` targeting `alloy#simpleRestJson`,
+  reusing the shared HTTP+JSON binding code (now a base class extracted from `RestJson1Protocol`).
+  Protocol hooks carry the three error deltas above. Add `alloy-core` as a codegen dependency.
+- **Adopt the alloy conformance suite**: add `alloy-protocol-tests`; generate a simpleRestJson
+  protocol-test module the same way as the restjson1/rpcv2cbor suites; drive to green.
+- **Remove `restJson1`**: delete from `resolveProtocol`, drop `smithy-aws-traits` +
+  `smithy-aws-protocol-tests` — no `aws.*` on the classpath.
+- **`jsonRpc2` protocol** (homegrown; JSON-RPC 2.0 is an open standard, alloy has no equivalent):
+  `@protocolDefinition` trait `smithy.cpp.protocols#jsonRpc2`; single POST endpoint,
+  `{"jsonrpc":"2.0","method":<operation>,"params":<input>,"id":…}` request and
+  `{"jsonrpc":"2.0","result":<output>,"id":…}` / `{"error":{code,message,data}}` response over the
+  `smithy::Document` JSON pivot; JSON-RPC error objects map to modeled errors (`data` carries the
+  shape). We author its protocol-test model (no external suite exists).
+- **Migrate fixtures/examples**: weather + roundtrip REST move to `simpleRestJson`; add a `jsonRpc2`
+  fixture. Consumer example overlays become `simplerestjson` / `rpcv2cbor` / `jsonrpc2`.
+
+**Sequencing:** lands after Phase 7d fuzzing/benchmarks and before the 0.1.0 tag — no point
+cutting a release on a protocol surface we are about to replace. Release engineering (versioning,
+CHANGELOG, tag) is the last step, on the finalized neutral protocol set.
 
 ### Phase 8 — Bidirectional streaming (post-0.1.0, ≈6–8 weeks)
 

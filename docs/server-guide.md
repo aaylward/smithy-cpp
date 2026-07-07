@@ -25,9 +25,9 @@ class MyHandler final : public example::weather::WeatherHandler {
 
 - **Modeled errors**: return `smithy::Error::Modeled("<ErrorShapeName>", message)`. The server
   maps the code to the shape's `@httpError` status (else 400/`@error("server")` → 500) and the
-  protocol's error identity — restJson1 sets the `X-Amzn-Errortype` header and serializes the
+  protocol's error identity — simpleRestJson sets the neutral `X-Error-Type` header and serializes the
   detail as the body; rpcv2Cbor writes the fully qualified shape id as `__type` in the CBOR
-  body. Attach the typed structure with `set_detail()` to serialize its members (restJson1
+  body. Attach the typed structure with `set_detail()` to serialize its members (simpleRestJson
   `@httpHeader`-bound error members become response headers); the generic message is added
   only when the detail carries no message member of its own.
 - **Validation/serialization errors** (including malformed request input the framework catches
@@ -79,9 +79,7 @@ members stay accepted on the wire but are omitted from the advertised value set.
 ## Conformance
 
 Generated servers pass the official server-mode `httpRequestTests`/`httpResponseTests` suites
-(251 cases across restJson1 and rpcv2Cbor) plus the `httpMalformedRequestTests` suites: the
-`RestJsonValidation` constraint-validation suite (122 cases) and the main restJson1
-parser-strictness suite (526 cases), all with a documented must-shrink exclusion list. Wire
+(across the alloy simpleRestJson and rpcv2Cbor suites) plus the `httpMalformedRequestTests` parser-strictness suite, all with a documented must-shrink exclusion list. Wire
 requests parse into the exact modeled inputs — including `@httpPayload` (blob/string/enum raw
 bodies, structure/union/document JSON bodies) and `@httpPrefixHeaders` — malformed ones are
 rejected with the exact error identity (strict booleans, bounds-checked integers, strict

@@ -30,7 +30,7 @@ class WeatherHandler {
     virtual smithy::Outcome<ListCitiesOutput> ListCities(const ListCitiesInput& input) = 0;
 };
 
-/// restJson1 server for example.weather#Weather: routing, deserialization, handler dispatch,
+/// simpleRestJson server for example.weather#Weather: routing, deserialization, handler dispatch,
 /// response serialization, and modeled-error mapping. Pass Handler() to any
 /// smithy::http::HttpServerTransport.
 class WeatherServer {

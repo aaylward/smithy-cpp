@@ -125,8 +125,8 @@ public final class DirectedCppCodegen
   /** Null when the service declares no supported protocol (types+serde still generate). */
   private static ProtocolGenerator resolveProtocol(
       software.amazon.smithy.model.shapes.ServiceShape service) {
-    if (service.hasTrait(software.amazon.smithy.aws.traits.protocols.RestJson1Trait.class)) {
-      return new RestJson1Protocol();
+    if (service.hasTrait(SimpleRestJsonProtocol.TRAIT)) {
+      return new SimpleRestJsonProtocol();
     }
     if (service.hasTrait(software.amazon.smithy.protocol.traits.Rpcv2CborTrait.class)) {
       return new Rpcv2CborProtocol();

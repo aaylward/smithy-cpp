@@ -149,7 +149,7 @@ final class ValidationGenerator {
    * shape ({@code message} summary + {@code fieldList}), built on the protocol's error helper.
    */
   static void writeValidationErrorResponse(
-      CppWriter w, String errorFn, String errorCode, boolean errortypeHeader) {
+      CppWriter w, String errorFn, String errorCode, String errortypeHeader) {
     w.addInclude("<cstddef>");
     w.addInclude("<string>");
     w.addInclude("<utility>");
@@ -176,8 +176,8 @@ final class ValidationGenerator {
         "smithy::http::HttpResponse response = $L(400, $S, summary, std::move(body));",
         errorFn,
         errorCode);
-    if (errortypeHeader) {
-      w.write("response.headers.Set(\"x-amzn-errortype\", \"ValidationException\");");
+    if (!errortypeHeader.isEmpty()) {
+      w.write("response.headers.Set($S, \"ValidationException\");", errortypeHeader);
     }
     w.write("return response;");
     w.closeBlock("}");

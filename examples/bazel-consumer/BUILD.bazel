@@ -7,7 +7,7 @@ load("@smithy_cpp//bazel:defs.bzl", "smithy_cpp_client_library", "smithy_cpp_ser
 smithy_cpp_client_library(
     name = "todo_client",
     srcs = [
-        "model/bindings/restjson1.smithy",
+        "model/bindings/simplerestjson.smithy",
         "model/todo.smithy",
     ],
     namespace = "acme::todo",
@@ -17,7 +17,7 @@ smithy_cpp_client_library(
 smithy_cpp_server_library(
     name = "todo_server",
     srcs = [
-        "model/bindings/restjson1.smithy",
+        "model/bindings/simplerestjson.smithy",
         "model/todo.smithy",
     ],
     namespace = "acme::todo",

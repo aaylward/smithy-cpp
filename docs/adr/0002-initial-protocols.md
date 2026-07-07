@@ -1,6 +1,13 @@
 # ADR-0002: Ship restJson1 and rpcv2Cbor from the start
 
-**Status:** Accepted (2026-07-06)
+**Status:** Superseded by Phase 7e (2026-07) on the REST protocol — see below.
+
+> **Superseded (Phase 7e):** `restJson1` was used through Phases 3–7 for its mature official
+> conformance suite, but it lives in the AWS `aws.protocols` namespace, contradicting the
+> vendor-neutrality goal. The REST protocol is now **`alloy#simpleRestJson`** (the neutral
+> protocol smithy4s uses; from `com.disneystreaming.alloy:alloy-core`), conformance-tested with
+> `alloy-protocol-tests`. `rpcv2Cbor` (this ADR's RPC choice, already neutral) is unchanged. No
+> `aws.*` remains on the generator classpath. See docs/PLAN.md §"Phase 7e".
 
 ## Context
 

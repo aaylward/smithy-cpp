@@ -86,7 +86,7 @@ smithy::http::HttpResponse ErrorToResponse(const smithy::Error& error) {
         body.emplace("message", smithy::Document(error.message()));
       }
       auto response = JsonError(404, "", "", std::move(body));
-      response.headers.Set("x-amzn-errortype", error.code());
+      response.headers.Set("x-error-type", error.code());
       for (const auto& [name, value] : header_values) response.headers.Set(name, value);
       return response;
     }
@@ -94,7 +94,7 @@ smithy::http::HttpResponse ErrorToResponse(const smithy::Error& error) {
   }
   if (error.kind() == smithy::ErrorKind::kValidation || error.kind() == smithy::ErrorKind::kSerialization) {
     auto response = JsonError(400, "", error.message(), {});
-    response.headers.Set("x-amzn-errortype", "SerializationException");
+    response.headers.Set("x-error-type", "SerializationException");
     return response;
   }
   // Never leak internal detail on unexpected failures.
@@ -145,7 +145,7 @@ smithy::http::HttpResponse ValidationErrorResponse(const std::vector<smithy::ser
   smithy::DocumentMap body;
   body.emplace("fieldList", smithy::Document(std::move(field_list)));
   smithy::http::HttpResponse response = JsonError(400, "", summary, std::move(body));
-  response.headers.Set("x-amzn-errortype", "ValidationException");
+  response.headers.Set("x-error-type", "ValidationException");
   return response;
 }
 
@@ -308,7 +308,7 @@ WeatherServer::WeatherServer(std::shared_ptr<WeatherHandler> handler)
     // any content type / accept.
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
       auto error_response = JsonError(415, "", "unsupported media type", {});
-      error_response.headers.Set("x-amzn-errortype", "UnsupportedMediaTypeException");
+      error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
@@ -328,12 +328,12 @@ WeatherServer::WeatherServer(std::shared_ptr<WeatherHandler> handler)
     // any content type / accept.
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
       auto error_response = JsonError(415, "", "unsupported media type", {});
-      error_response.headers.Set("x-amzn-errortype", "UnsupportedMediaTypeException");
+      error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
       auto error_response = JsonError(406, "", "not acceptable", {});
-      error_response.headers.Set("x-amzn-errortype", "NotAcceptableException");
+      error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
@@ -353,12 +353,12 @@ WeatherServer::WeatherServer(std::shared_ptr<WeatherHandler> handler)
     // any content type / accept.
     if (request.headers.Get("content-type").has_value()) {
       auto error_response = JsonError(415, "", "unsupported media type", {});
-      error_response.headers.Set("x-amzn-errortype", "UnsupportedMediaTypeException");
+      error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
       auto error_response = JsonError(406, "", "not acceptable", {});
-      error_response.headers.Set("x-amzn-errortype", "NotAcceptableException");
+      error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
@@ -376,12 +376,12 @@ WeatherServer::WeatherServer(std::shared_ptr<WeatherHandler> handler)
     // any content type / accept.
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
       auto error_response = JsonError(415, "", "unsupported media type", {});
-      error_response.headers.Set("x-amzn-errortype", "UnsupportedMediaTypeException");
+      error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
       auto error_response = JsonError(406, "", "not acceptable", {});
-      error_response.headers.Set("x-amzn-errortype", "NotAcceptableException");
+      error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
@@ -401,12 +401,12 @@ WeatherServer::WeatherServer(std::shared_ptr<WeatherHandler> handler)
     // any content type / accept.
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
       auto error_response = JsonError(415, "", "unsupported media type", {});
-      error_response.headers.Set("x-amzn-errortype", "UnsupportedMediaTypeException");
+      error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
       auto error_response = JsonError(406, "", "not acceptable", {});
-      error_response.headers.Set("x-amzn-errortype", "NotAcceptableException");
+      error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
@@ -424,12 +424,12 @@ WeatherServer::WeatherServer(std::shared_ptr<WeatherHandler> handler)
     // any content type / accept.
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
       auto error_response = JsonError(415, "", "unsupported media type", {});
-      error_response.headers.Set("x-amzn-errortype", "UnsupportedMediaTypeException");
+      error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
       auto error_response = JsonError(406, "", "not acceptable", {});
-      error_response.headers.Set("x-amzn-errortype", "NotAcceptableException");
+      error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;

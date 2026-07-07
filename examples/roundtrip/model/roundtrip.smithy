@@ -2,13 +2,13 @@ $version: "2.0"
 
 namespace example.roundtrip
 
-use aws.protocols#restJson1
+use alloy#simpleRestJson
 use smithy.protocols#rpcv2Cbor
 
 /// Kitchen-sink fixture for the Phase 5 integration matrix: the same shapes
-/// served over restJson1 (with every supported HTTP binding) and rpcv2Cbor,
+/// served over simpleRestJson (with every supported HTTP binding) and rpcv2Cbor,
 /// so random round-trips exercise both protocols' serde end to end.
-@restJson1
+@simpleRestJson
 @httpApiKeyAuth(name: "api-key", in: "query")
 service RoundTripRest {
     version: "2026-01-01"

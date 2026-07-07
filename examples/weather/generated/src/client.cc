@@ -158,7 +158,7 @@ smithy::Outcome<smithy::http::HttpResponse> WeatherClient::Send(smithy::http::Ht
   if (!request.body.empty()) {
     request.headers.Set("content-length", std::to_string(request.body.size()));
   }
-  return smithy::SendWithRetries(*transport_, request, config_.retry);
+  return smithy::SendWithRetries(*transport_, request, config_.retry, config_.interceptors);
 }
 
 smithy::Outcome<DeleteCityOutput> WeatherClient::DeleteCity(const DeleteCityInput& input) const {

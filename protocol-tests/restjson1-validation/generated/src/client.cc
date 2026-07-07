@@ -206,7 +206,7 @@ smithy::Outcome<smithy::http::HttpResponse> RestJsonValidationClient::Send(smith
   if (!request.body.empty()) {
     request.headers.Set("content-length", std::to_string(request.body.size()));
   }
-  return smithy::SendWithRetries(*transport_, request, config_.retry);
+  return smithy::SendWithRetries(*transport_, request, config_.retry, config_.interceptors);
 }
 
 smithy::Outcome<MalformedEnumOutput> RestJsonValidationClient::MalformedEnum(const MalformedEnumInput& input) const {

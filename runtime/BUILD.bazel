@@ -201,6 +201,7 @@ cc_library(
     srcs = ["src/client/retry.cc"],
     hdrs = [
         "include/smithy/client/config.h",
+        "include/smithy/client/interceptor.h",
         "include/smithy/client/retry.h",
     ],
     copts = COPTS,
@@ -224,8 +225,14 @@ cc_test(
 
 cc_library(
     name = "server",
-    srcs = ["src/server/router.cc"],
-    hdrs = ["include/smithy/server/router.h"],
+    srcs = [
+        "src/server/middleware.cc",
+        "src/server/router.cc",
+    ],
+    hdrs = [
+        "include/smithy/server/middleware.h",
+        "include/smithy/server/router.h",
+    ],
     copts = COPTS,
     includes = ["include"],
     deps = [
@@ -238,6 +245,17 @@ cc_test(
     name = "router_test",
     size = "small",
     srcs = ["tests/server/router_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":server",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "middleware_test",
+    size = "small",
+    srcs = ["tests/server/middleware_test.cc"],
     copts = COPTS,
     deps = [
         ":server",

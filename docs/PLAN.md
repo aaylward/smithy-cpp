@@ -525,6 +525,15 @@ the project) completes the tutorial without help; BCR + Maven Central packaging 
   malformed tests.
 - **Server robustness**: thread-pool tuning knobs, graceful shutdown/drain, request size limits,
   slow-client timeouts, structured logging hooks, metrics hooks (request count/latency callbacks).
+- **User-supplied middleware**: first-class extension seams on both sides, so auth, logging,
+  tracing, and metrics are user-composable rather than one-off knobs (smithy-rs prior art:
+  client interceptors + tower layers). Client side: an interceptor chain on `ClientConfig` with
+  hooks around the full call and around each attempt (mutate the outgoing `HttpRequest` —
+  e.g. inject auth headers — and observe the `HttpResponse`/outcome). Server side: middleware
+  wrapping the transport-facing `RequestHandler` (a decorator: pre-dispatch request
+  inspection/rejection, post-dispatch response observation), composing outside the generated
+  router so it works with any transport. The logging/metrics hooks above and the auth hooks
+  below should be built as middleware on these seams, not as parallel mechanisms.
 - **Auth hooks**: `@httpBearerAuth` / `@httpApiKeyAuth` support — client-side credential
   providers, server-side authenticator interface (vendor-specific schemes such as SigV4 are out
   of scope, per §2).

@@ -3,7 +3,10 @@
 
 #include <chrono>
 #include <functional>
+#include <memory>
+#include <vector>
 
+#include "smithy/client/interceptor.h"
 #include "smithy/core/outcome.h"
 #include "smithy/http/message.h"
 #include "smithy/http/transport.h"
@@ -34,10 +37,18 @@ bool RetryableStatus(int status);
 // Sends through the transport with retries: transport failures flagged
 // retryable (connection, timeout) and transient response statuses are
 // retried up to policy.max_attempts, sleeping the backoff in between.
-// The last outcome — success or not — is returned as-is.
-Outcome<http::HttpResponse> SendWithRetries(http::HttpClient& transport,
-                                            const http::HttpRequest& request,
-                                            const RetryPolicy& policy);
+// The last outcome — success or not — is returned as-is. Interceptors run
+// around every attempt (ModifyBeforeTransmit on a per-attempt copy of the
+// request, ReadAfterTransmit on the outcome), in registration order.
+Outcome<http::HttpResponse> SendWithRetries(
+    http::HttpClient& transport, const http::HttpRequest& request, const RetryPolicy& policy,
+    const std::vector<std::shared_ptr<Interceptor>>& interceptors);
+
+inline Outcome<http::HttpResponse> SendWithRetries(http::HttpClient& transport,
+                                                   const http::HttpRequest& request,
+                                                   const RetryPolicy& policy) {
+  return SendWithRetries(transport, request, policy, {});
+}
 
 }  // namespace smithy
 

@@ -86,10 +86,70 @@ Compression trades CPU for bytes: leave the 10 KiB threshold alone unless
 you have measured small-payload wins; compressing tiny bodies usually
 inflates them.
 
+## Client interceptors
+
+`config.interceptors` (`smithy/client/interceptor.h`) hooks user code around
+every HTTP attempt a generated client makes — auth headers, tracing ids,
+request/response logging — without touching generated code:
+
+```cpp
+class BearerAuth final : public smithy::Interceptor {
+ public:
+  void ModifyBeforeTransmit(smithy::http::HttpRequest& request, int attempt) override {
+    request.headers.Set("authorization", "Bearer " + LoadToken());
+  }
+  void ReadAfterTransmit(const smithy::http::HttpRequest& request,
+                         const smithy::Outcome<smithy::http::HttpResponse>& outcome,
+                         int attempt) override {
+    LogAttempt(request.target, attempt, outcome.ok() ? outcome->status : -1);
+  }
+};
+
+config.interceptors.push_back(std::make_shared<BearerAuth>());
+```
+
+Interceptors run in registration order, around each attempt (retries included
+— `attempt` is 1-based). `ModifyBeforeTransmit` mutates a fresh copy of the
+request per attempt, so edits never accumulate across retries or leak into
+the caller's view. Hooks must not throw.
+
+## Server middleware
+
+Generated servers expose their router as a plain
+`smithy::http::RequestHandler`, so cross-cutting server behavior — auth
+checks, request logging, metrics — composes as middleware outside the
+generated code (`smithy/server/middleware.h`), with any transport:
+
+```cpp
+WeatherServer server(handler);
+
+auto require_auth = [](smithy::http::RequestHandler next) {
+  return [next = std::move(next)](const smithy::http::HttpRequest& request) {
+    if (!Authorized(request)) return smithy::http::HttpResponse{401, {}, ""};
+    return next(request);
+  };
+};
+
+transport.Start(smithy::server::Chain(
+    {require_auth,
+     smithy::server::Observe([](const smithy::server::RequestObservation& o) {
+       // o.method, o.target, o.status, o.duration — log or feed metrics
+       // (count = one callback per request, latency = o.duration).
+     })},
+    server.Handler()));
+```
+
+The first middleware in the chain is outermost: it sees the request first and
+the response last, and can short-circuit before the router runs. `Observe` is
+the built-in structured-logging/metrics hook; its callback runs on the
+transport's request thread, so keep it cheap or hand off.
+
 ## Server hardening
 
-The production server transport (`BeastServerTransport`, ADR-0006) already
-enforces per-connection timeouts, body-size limits, and graceful shutdown;
-see [server-guide.md](server-guide.md). Phase 7b extends this area
-(thread-pool sizing, drain, slow-client handling, logging/metrics hooks) —
-see [PLAN.md](PLAN.md).
+The production server transport (`BeastServerTransport`, ADR-0006) enforces
+per-connection timeouts (`request_timeout_seconds`), body- and header-size
+limits (`max_body_bytes`, `max_header_bytes`), and drains on `Stop()`: new
+connections and keep-alive reads cease immediately, while requests already
+read off the wire get up to `drain_timeout_seconds` (default 10) to finish
+writing their responses before the thread pool is torn down. See
+[server-guide.md](server-guide.md).

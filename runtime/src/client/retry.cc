@@ -28,16 +28,33 @@ bool RetryableStatus(int status) {
   return status == 429 || status == 500 || status == 502 || status == 503 || status == 504;
 }
 
-Outcome<http::HttpResponse> SendWithRetries(http::HttpClient& transport,
-                                            const http::HttpRequest& request,
-                                            const RetryPolicy& policy) {
+Outcome<http::HttpResponse> SendWithRetries(
+    http::HttpClient& transport, const http::HttpRequest& request, const RetryPolicy& policy,
+    const std::vector<std::shared_ptr<Interceptor>>& interceptors) {
   const auto sleep = policy.sleep != nullptr ? policy.sleep : [](std::chrono::milliseconds d) {
     std::this_thread::sleep_for(d);
   };
   const auto jitter = policy.jitter != nullptr ? policy.jitter : UniformJitter;
   const int attempts = std::max(policy.max_attempts, 1);
 
-  Outcome<http::HttpResponse> outcome = transport.Send(request);
+  // Each attempt mutates a fresh copy, so interceptor edits never accumulate
+  // across retries.
+  const auto attempt_send = [&](int attempt) -> Outcome<http::HttpResponse> {
+    if (interceptors.empty()) {
+      return transport.Send(request);  // skip the request copy
+    }
+    http::HttpRequest attempt_request = request;
+    for (const auto& interceptor : interceptors) {
+      interceptor->ModifyBeforeTransmit(attempt_request, attempt);
+    }
+    Outcome<http::HttpResponse> outcome = transport.Send(attempt_request);
+    for (const auto& interceptor : interceptors) {
+      interceptor->ReadAfterTransmit(attempt_request, outcome, attempt);
+    }
+    return outcome;
+  };
+
+  Outcome<http::HttpResponse> outcome = attempt_send(1);
   for (int retry = 1; retry < attempts; ++retry) {
     const bool retryable =
         outcome.ok() ? RetryableStatus(outcome->status) : outcome.error().retryable();
@@ -45,7 +62,7 @@ Outcome<http::HttpResponse> SendWithRetries(http::HttpClient& transport,
       return outcome;
     }
     sleep(RetryDelay(policy, retry, jitter()));
-    outcome = transport.Send(request);
+    outcome = attempt_send(retry + 1);
   }
   return outcome;
 }

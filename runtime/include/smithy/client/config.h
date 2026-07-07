@@ -3,7 +3,9 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "smithy/client/interceptor.h"
 #include "smithy/client/retry.h"
 #include "smithy/http/transport.h"
 
@@ -29,6 +31,10 @@ struct ClientConfig {
   // @requestCompression: bodies at least this large are gzip-compressed
   // (the Smithy default; 0 compresses everything).
   int request_min_compression_size_bytes = 10240;
+
+  // User-supplied hooks around every HTTP attempt (auth headers, logging,
+  // tracing); run in registration order. See smithy/client/interceptor.h.
+  std::vector<std::shared_ptr<Interceptor>> interceptors;
 
   // Optional transport override; shared so several clients can reuse one.
   std::shared_ptr<http::HttpClient> http_client;

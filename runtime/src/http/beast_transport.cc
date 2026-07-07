@@ -1,12 +1,16 @@
 #include "smithy/http/beast_transport.h"
 
+#include <algorithm>
 #include <atomic>
 #include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/post.hpp>
 #include <boost/asio/strand.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <chrono>
+#include <cstdint>
 #include <memory>
+#include <thread>
 #include <utility>
 
 namespace smithy::http {
@@ -53,6 +57,9 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
   Options opts;
   RequestHandler handler;
   std::atomic<bool> stopping{false};
+  // Requests read off the wire whose responses are not fully written yet;
+  // Stop() drains until this reaches zero (or the drain deadline passes).
+  std::atomic<int> active{0};
 
   // All completion handlers capture State weakly: handlers queued inside the
   // io_context must not own the State that owns the io_context, or abandoned
@@ -80,6 +87,7 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
     auto buffer = std::make_shared<beast::flat_buffer>();
     auto parser = std::make_shared<bhttp::request_parser<bhttp::string_body>>();
     parser->body_limit(opts.max_body_bytes);
+    parser->header_limit(static_cast<std::uint32_t>(opts.max_header_bytes));
     stream->expires_after(std::chrono::seconds(opts.request_timeout_seconds));
     auto& stream_ref = *stream;
     bhttp::async_read(
@@ -91,6 +99,7 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
             (void)stream->socket().shutdown(asio::ip::tcp::socket::shutdown_send, ignored);
             return;
           }
+          self->active.fetch_add(1);
           const bool keep_alive = parser->get().keep_alive() && !self->stopping;
           const HttpRequest request = ToSmithyRequest(parser->get());
           // Handlers are synchronous for now (ADR-0003 keeps them exception-free);
@@ -105,6 +114,9 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
               wire_stream, wire_ref,
               [weak, stream, wire, keep_alive](beast::error_code write_ec, std::size_t) {
                 auto self = weak.lock();
+                if (self != nullptr) {
+                  self->active.fetch_sub(1);
+                }
                 if (self == nullptr || write_ec || !keep_alive) {
                   beast::error_code ignored;
                   (void)stream->socket().shutdown(asio::ip::tcp::socket::shutdown_send, ignored);
@@ -180,17 +192,32 @@ void BeastServerTransport::Shutdown() noexcept {
   }
   state_->stopping = true;
   try {
-    // Stop the pool and join; once no io thread is running, it is safe to
-    // touch the acceptor directly (nothing may be posted into the io_context
-    // here — an abandoned handler would keep State alive and leak it).
+    // Stop accepting first: close the acceptor on its strand (the accept
+    // loop may be touching it on an io thread). The posted closure captures
+    // State weakly so an abandoned handler cannot keep State alive.
+    asio::post(state_->acceptor.get_executor(), [weak = std::weak_ptr<State>(state_)] {
+      auto self = weak.lock();
+      if (self != nullptr) {
+        boost::system::error_code ignored;
+        (void)self->acceptor.close(ignored);
+      }
+    });
+    // Drain: requests already read get up to drain_timeout_seconds to finish
+    // writing; keep-alive is off (stopping), so served sessions then close.
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::seconds(std::max(state_->opts.drain_timeout_seconds, 0));
+    while (state_->active.load() > 0 && std::chrono::steady_clock::now() < deadline) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    // Now stop the pool and join; once no io thread is running, nothing may
+    // be posted into the io_context (an abandoned handler owning State would
+    // form a reference cycle and leak everything).
     state_->io.stop();
     for (std::thread& thread : threads_) {
       if (thread.joinable()) {
         thread.join();
       }
     }
-    boost::system::error_code ignored;
-    (void)state_->acceptor.close(ignored);
   } catch (...) {
     // Teardown must not propagate out of a destructor.
   }

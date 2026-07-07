@@ -28,6 +28,10 @@ class BeastServerTransport : public HttpServerTransport {
     int threads = 4;
     int request_timeout_seconds = 30;
     std::size_t max_body_bytes = std::size_t{64} * 1024 * 1024;
+    std::size_t max_header_bytes = std::size_t{8} * 1024;
+    // Stop() drains: no new connections or keep-alive reads, and in-flight
+    // requests get this long to finish before the pool is torn down.
+    int drain_timeout_seconds = 10;
   };
 
   BeastServerTransport() : BeastServerTransport(Options{}) {}

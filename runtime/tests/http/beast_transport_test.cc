@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <chrono>
 #include <string>
 #include <thread>
 #include <vector>
@@ -121,6 +122,53 @@ TEST(BeastTransportTest, RejectsOversizedBodies) {
     EXPECT_GE(response->status, 400);
   }
   server.Stop();
+}
+
+TEST(BeastTransportTest, RejectsOversizedHeaders) {
+  BeastServerTransport server(BeastServerTransport::Options{.max_header_bytes = 1024});
+  ASSERT_TRUE(server.Start([](const HttpRequest&) { return HttpResponse{200, {}, ""}; }).ok());
+  SocketHttpClient client("127.0.0.1", server.port());
+  HttpRequest request;
+  request.method = "GET";
+  request.target = "/";
+  request.headers.Set("x-huge", std::string(8 * 1024, 'h'));
+  const auto response = client.Send(request);
+  // Beast closes the connection on a header-limit violation; either a
+  // transport error or an HTTP error status is acceptable, but never a 200.
+  if (response.ok()) {
+    EXPECT_GE(response->status, 400);
+  }
+  server.Stop();
+}
+
+TEST(BeastTransportTest, StopDrainsInFlightRequests) {
+  std::atomic<bool> handler_entered{false};
+  BeastServerTransport server(BeastServerTransport::Options{.drain_timeout_seconds = 5});
+  ASSERT_TRUE(server
+                  .Start([&](const HttpRequest&) {
+                    handler_entered = true;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                    return HttpResponse{200, {}, "drained"};
+                  })
+                  .ok());
+
+  const int port = server.port();
+  Outcome<HttpResponse> response = HttpResponse{};
+  std::thread caller([&] {
+    SocketHttpClient client("127.0.0.1", port);
+    response = client.Send(HttpRequest{"GET", "/", {}, ""});
+  });
+  while (!handler_entered) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+
+  // Stop while the handler is mid-request: the response must still be
+  // written in full before the pool is torn down.
+  server.Stop();
+  caller.join();
+  ASSERT_TRUE(response.ok()) << response.error().message();
+  EXPECT_EQ(response->status, 200);
+  EXPECT_EQ(response->body, "drained");
 }
 
 TEST(BeastTransportTest, StartupErrorsAreReported) {

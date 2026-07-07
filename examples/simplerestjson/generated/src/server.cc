@@ -157,7 +157,7 @@ smithy::http::HttpResponse SerializeAddBookResponse(const AddBookOutput& output)
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 201;
-  if (output.status.has_value()) response.status = static_cast<int>(*output.status);
+  response.status = static_cast<int>(output.status);
   smithy::DocumentMap body_map;
   body_map.emplace("isbn", smithy::Document(output.isbn));
   response.headers.Set("content-type", "application/json");

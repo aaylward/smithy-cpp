@@ -171,14 +171,54 @@ cc_test(
     ],
 )
 
+# Gzip codec for @requestCompression bodies; separate target so consumers
+# without compressed operations don't pull in zlib.
+cc_library(
+    name = "compression",
+    srcs = ["src/compression/gzip.cc"],
+    hdrs = ["include/smithy/compression/gzip.h"],
+    copts = COPTS,
+    includes = ["include"],
+    deps = [
+        ":core",
+        "@zlib",
+    ],
+)
+
+cc_test(
+    name = "gzip_test",
+    size = "small",
+    srcs = ["tests/compression/gzip_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":compression",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "client",
-    hdrs = ["include/smithy/client/config.h"],
+    srcs = ["src/client/retry.cc"],
+    hdrs = [
+        "include/smithy/client/config.h",
+        "include/smithy/client/retry.h",
+    ],
     copts = COPTS,
     includes = ["include"],
     deps = [
         ":core",
         ":http",
+    ],
+)
+
+cc_test(
+    name = "retry_test",
+    size = "small",
+    srcs = ["tests/client/retry_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":client",
+        "@googletest//:gtest_main",
     ],
 )
 

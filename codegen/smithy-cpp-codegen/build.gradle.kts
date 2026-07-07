@@ -122,9 +122,8 @@ val generateRpcv2CborProtocolTests = registerProtocolTestTask(
 )
 
 // The constraint-validation suite: httpMalformedRequestTests only (no
-// httpRequestTests/httpResponseTests), so malformed generation is enabled for
-// this module. The main suites' malformed tests (parser strictness) are a
-// Phase 4d follow-up.
+// httpRequestTests/httpResponseTests). The main suites above also run their
+// malformed tests (parser strictness, since Phase 4d).
 val generateRestJson1ValidationProtocolTests = registerProtocolTestTask(
     "generateRestJson1ValidationProtocolTests",
     "aws.protocoltests.restjson.validation#RestJsonValidation",

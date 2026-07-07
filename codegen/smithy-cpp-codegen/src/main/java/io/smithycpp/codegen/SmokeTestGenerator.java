@@ -183,6 +183,7 @@ final class SmokeTestGenerator {
     w.write("auto loopback = std::make_shared<smithy::http::Loopback>();");
     w.write("(void)loopback->Start(server.Handler());");
     w.write("smithy::ClientConfig config;");
+    w.write("config.retry.max_attempts = 1;  // wire-exact tests: no retries");
     w.write("config.http_client = loopback;");
     w.write("// Create cannot fail when a transport is injected.");
     w.write("return *$LClient::Create(std::move(config));", name);

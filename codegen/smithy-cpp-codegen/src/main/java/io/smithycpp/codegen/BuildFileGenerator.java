@@ -14,7 +14,8 @@ final class BuildFileGenerator {
       ProtocolGenerator protocol,
       boolean hasClient,
       boolean hasSerde,
-      boolean hasServer) {
+      boolean hasServer,
+      boolean hasCompression) {
     CppSettings settings = context.settings();
     StringBuilder out = new StringBuilder();
     out.append(
@@ -59,6 +60,9 @@ final class BuildFileGenerator {
       deps.add("\"" + pkg + ":client\"");
       deps.add("\"" + pkg + ":core\"");
       deps.add("\"" + pkg + ":http\"");
+      if (hasCompression) {
+        deps.add("\"" + pkg + ":compression\"");
+      }
       for (String dep : protocol.runtimeDeps()) {
         deps.add("\"" + pkg + dep + "\"");
       }
@@ -83,6 +87,9 @@ final class BuildFileGenerator {
       serverDeps.add("\"" + pkg + ":core\"");
       serverDeps.add("\"" + pkg + ":http\"");
       serverDeps.add("\"" + pkg + ":server\"");
+      if (hasCompression) {
+        serverDeps.add("\"" + pkg + ":compression\"");
+      }
       for (String dep : protocol.runtimeDeps()) {
         serverDeps.add("\"" + pkg + dep + "\"");
       }

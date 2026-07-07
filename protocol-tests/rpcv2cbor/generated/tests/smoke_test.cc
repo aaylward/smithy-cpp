@@ -159,6 +159,7 @@ RpcV2ProtocolClient MakeClient(std::shared_ptr<RpcV2ProtocolHandler> handler) {
   auto loopback = std::make_shared<smithy::http::Loopback>();
   (void)loopback->Start(server.Handler());
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = loopback;
   // Create cannot fail when a transport is injected.
   return *RpcV2ProtocolClient::Create(std::move(config));

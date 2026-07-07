@@ -26,8 +26,8 @@ namespace smithy::protocoltests::restjson {
 //   RestJsonOmitsEmptyListQueryValues (server-request) — absent query lists stay unset (nullopt), not engaged empty lists
 //   RestJsonServerPopulatesDefaultsWhenMissingInRequestBody (server-request) — @default population is not implemented yet
 //   RestJsonServerPopulatesNestedDefaultsWhenMissingInRequestBody (server-request) — @default population is not implemented yet
-//   SDKAppliedContentEncoding_restJson1 (server-request) — @requestCompression is not implemented yet
-//   SDKAppendedGzipAfterProvidedEncoding_restJson1 (server-request) — @requestCompression is not implemented yet
+//   SDKAppliedContentEncoding_restJson1 (server-request) — the case has no wire body for the server to parse
+//   SDKAppendedGzipAfterProvidedEncoding_restJson1 (server-request) — the case has no wire body for the server to parse
 //   RestJsonSupportsNaNFloatInputs (server-request) — NaN input members compare unequal under operator==
 
 namespace {

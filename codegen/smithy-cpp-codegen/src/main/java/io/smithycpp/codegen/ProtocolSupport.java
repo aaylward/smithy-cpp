@@ -142,6 +142,62 @@ final class ProtocolSupport {
     };
   }
 
+  /**
+   * Client-side @requestCompression: gzip the request body once it reaches the configured minimum
+   * size, appending to any member-bound Content-Encoding header. Emitted after the body and every
+   * header binding; Send() computes content-length afterwards.
+   */
+  static void writeRequestCompression(
+      CppWriter w, software.amazon.smithy.model.shapes.OperationShape operation) {
+    var trait =
+        operation.getTrait(software.amazon.smithy.model.traits.RequestCompressionTrait.class);
+    if (trait.isEmpty() || !trait.get().getEncodings().contains("gzip")) {
+      return;
+    }
+    w.addInclude("\"smithy/compression/gzip.h\"");
+    w.addInclude("<cstddef>");
+    w.write("// @requestCompression(gzip): applied last, appended to Content-Encoding.");
+    w.openBlock(
+        "if (request.body.size() >= "
+            + "static_cast<std::size_t>(config_.request_min_compression_size_bytes)) {");
+    w.write("auto compressed = smithy::GzipCompress(request.body);");
+    w.write("if (!compressed) return std::move(compressed).error();");
+    w.write("request.body = *std::move(compressed);");
+    w.write("const auto existing_encoding = request.headers.Get(\"content-encoding\");");
+    w.write(
+        "request.headers.Set(\"content-encoding\", existing_encoding.has_value() && "
+            + "!existing_encoding->empty() ? *existing_encoding + \", gzip\" : \"gzip\");");
+    w.closeBlock("}");
+  }
+
+  /**
+   * Server-side inverse: transparently gunzip request bodies for @requestCompression operations
+   * when the (final) Content-Encoding is gzip. Emitted at the top of the route lambda.
+   */
+  static void writeRequestDecompression(
+      CppWriter w,
+      software.amazon.smithy.model.shapes.OperationShape operation,
+      String errorFn,
+      String errorCode) {
+    var trait =
+        operation.getTrait(software.amazon.smithy.model.traits.RequestCompressionTrait.class);
+    if (trait.isEmpty() || !trait.get().getEncodings().contains("gzip")) {
+      return;
+    }
+    w.addInclude("\"smithy/compression/gzip.h\"");
+    w.write("// @requestCompression(gzip): decode before parsing.");
+    w.openBlock(
+        "if (const auto request_encoding = request.headers.Get(\"content-encoding\"); "
+            + "request_encoding.has_value() && (*request_encoding == \"gzip\" || "
+            + "request_encoding->ends_with(\", gzip\"))) {");
+    w.write("auto decompressed = smithy::GzipDecompress(request.body);");
+    w.openBlock("if (!decompressed) {");
+    w.write("return $L(400, $S, \"invalid gzip request body\", {});", errorFn, errorCode);
+    w.closeBlock("}");
+    w.write("request.body = *std::move(decompressed);");
+    w.closeBlock("}");
+  }
+
   /** HTTP status for a modeled error shape: @httpError, else @error class default. */
   static int errorStatus(StructureShape shape) {
     var httpError = shape.getTrait(software.amazon.smithy.model.traits.HttpErrorTrait.class);

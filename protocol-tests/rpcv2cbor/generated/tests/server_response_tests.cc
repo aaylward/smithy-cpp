@@ -174,6 +174,7 @@ class RecordingHandler : public RpcV2ProtocolHandler {
 smithy::http::HttpRequest MinimalRequestForEmptyInputOutput() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RpcV2ProtocolClient::Create(std::move(config));
     EmptyInputOutputInput input = [] {
@@ -187,6 +188,7 @@ smithy::http::HttpRequest MinimalRequestForEmptyInputOutput() {
 smithy::http::HttpRequest MinimalRequestForNoInputOutput() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RpcV2ProtocolClient::Create(std::move(config));
     NoInputOutputInput input = [] {
@@ -200,6 +202,7 @@ smithy::http::HttpRequest MinimalRequestForNoInputOutput() {
 smithy::http::HttpRequest MinimalRequestForOptionalInputOutput() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RpcV2ProtocolClient::Create(std::move(config));
     OptionalInputOutputInput input = [] {
@@ -213,6 +216,7 @@ smithy::http::HttpRequest MinimalRequestForOptionalInputOutput() {
 smithy::http::HttpRequest MinimalRequestForRpcV2CborDenseMaps() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RpcV2ProtocolClient::Create(std::move(config));
     RpcV2CborDenseMapsInput input = [] {
@@ -226,6 +230,7 @@ smithy::http::HttpRequest MinimalRequestForRpcV2CborDenseMaps() {
 smithy::http::HttpRequest MinimalRequestForRpcV2CborLists() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RpcV2ProtocolClient::Create(std::move(config));
     RpcV2CborListsInput input = [] {
@@ -239,6 +244,7 @@ smithy::http::HttpRequest MinimalRequestForRpcV2CborLists() {
 smithy::http::HttpRequest MinimalRequestForRpcV2CborSparseMaps() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RpcV2ProtocolClient::Create(std::move(config));
     RpcV2CborSparseMapsInput input = [] {
@@ -252,6 +258,7 @@ smithy::http::HttpRequest MinimalRequestForRpcV2CborSparseMaps() {
 smithy::http::HttpRequest MinimalRequestForSimpleScalarProperties() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RpcV2ProtocolClient::Create(std::move(config));
     SimpleScalarPropertiesInput input = [] {
@@ -265,6 +272,7 @@ smithy::http::HttpRequest MinimalRequestForSimpleScalarProperties() {
 smithy::http::HttpRequest MinimalRequestForSparseNullsOperation() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RpcV2ProtocolClient::Create(std::move(config));
     SparseNullsOperationInput input = [] {
@@ -278,6 +286,7 @@ smithy::http::HttpRequest MinimalRequestForSparseNullsOperation() {
 smithy::http::HttpRequest MinimalRequestForGreetingWithErrors() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RpcV2ProtocolClient::Create(std::move(config));
     GreetingWithErrorsInput input = [] {

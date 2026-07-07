@@ -202,6 +202,7 @@ class WeatherIntegrationTest : public ::testing::TestWithParam<TransportKind> {
       handler_ = std::make_shared<ScriptedHandler>();
       server_ = std::make_unique<WeatherServer>(handler_);
       smithy::ClientConfig config;
+      config.retry.max_attempts = 1;  // wire-exact tests: no retries
       if (GetParam() == TransportKind::kLoopback) {
         auto loopback = std::make_shared<smithy::http::Loopback>();
         ASSERT_TRUE(loopback->Start(server_->Handler()).ok());
@@ -413,6 +414,7 @@ TEST(WeatherIntegrationUnknownMembers, GetCityToleratesUnknownResponseMembers) {
   };
   auto transport = std::make_shared<smithy::testing::MutatingTransport>(loopback, inject);
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *WeatherClient::Create(std::move(config));
   Rng rng{std::mt19937{99U}, /*fill_all=*/true};
@@ -438,6 +440,7 @@ TEST(WeatherIntegrationUnknownMembers, GetCurrentTimeToleratesUnknownResponseMem
   };
   auto transport = std::make_shared<smithy::testing::MutatingTransport>(loopback, inject);
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *WeatherClient::Create(std::move(config));
   Rng rng{std::mt19937{99U}, /*fill_all=*/true};
@@ -463,6 +466,7 @@ TEST(WeatherIntegrationUnknownMembers, GetForecastToleratesUnknownResponseMember
   };
   auto transport = std::make_shared<smithy::testing::MutatingTransport>(loopback, inject);
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *WeatherClient::Create(std::move(config));
   Rng rng{std::mt19937{99U}, /*fill_all=*/true};
@@ -488,6 +492,7 @@ TEST(WeatherIntegrationUnknownMembers, ListCitiesToleratesUnknownResponseMembers
   };
   auto transport = std::make_shared<smithy::testing::MutatingTransport>(loopback, inject);
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *WeatherClient::Create(std::move(config));
   Rng rng{std::mt19937{99U}, /*fill_all=*/true};

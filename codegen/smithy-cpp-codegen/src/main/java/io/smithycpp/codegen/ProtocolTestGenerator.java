@@ -410,6 +410,7 @@ final class ProtocolTestGenerator {
     w.openBlock("Fixture MakeFixture(const std::string& endpoint = \"\") {");
     w.write("auto transport = std::make_shared<smithy::testing::CapturingTransport>();");
     w.write("smithy::ClientConfig config;");
+    w.write("config.retry.max_attempts = 1;  // wire-exact tests: no retries");
     w.write("config.http_client = transport;");
     w.write("config.endpoint = endpoint;");
     w.write("// Create cannot fail when a transport is injected.");
@@ -678,6 +679,7 @@ final class ProtocolTestGenerator {
     w.openBlock("smithy::http::HttpRequest MinimalRequestFor$L() {", opName);
     w.write("auto transport = std::make_shared<smithy::testing::CapturingTransport>();");
     w.write("smithy::ClientConfig config;");
+    w.write("config.retry.max_attempts = 1;  // wire-exact tests: no retries");
     w.write("config.http_client = transport;");
     w.write("auto client = *$L::Create(std::move(config));", clientType());
     w.writeWithNoFormatting(

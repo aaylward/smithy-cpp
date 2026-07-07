@@ -1234,6 +1234,7 @@ class RecordingHandler : public RestJsonHandler {
 smithy::http::HttpRequest MinimalRequestForDocumentType() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     DocumentTypeInput input = [] {
@@ -1247,6 +1248,7 @@ smithy::http::HttpRequest MinimalRequestForDocumentType() {
 smithy::http::HttpRequest MinimalRequestForDocumentTypeAsMapValue() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     DocumentTypeAsMapValueInput input = [] {
@@ -1260,6 +1262,7 @@ smithy::http::HttpRequest MinimalRequestForDocumentTypeAsMapValue() {
 smithy::http::HttpRequest MinimalRequestForDocumentTypeAsPayload() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     DocumentTypeAsPayloadInput input = [] {
@@ -1273,6 +1276,7 @@ smithy::http::HttpRequest MinimalRequestForDocumentTypeAsPayload() {
 smithy::http::HttpRequest MinimalRequestForEmptyInputAndEmptyOutput() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     EmptyInputAndEmptyOutputInput input = [] {
@@ -1286,6 +1290,7 @@ smithy::http::HttpRequest MinimalRequestForEmptyInputAndEmptyOutput() {
 smithy::http::HttpRequest MinimalRequestForGreetingWithErrors() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     GreetingWithErrorsInput input = [] {
@@ -1299,6 +1304,7 @@ smithy::http::HttpRequest MinimalRequestForGreetingWithErrors() {
 smithy::http::HttpRequest MinimalRequestForHttpEnumPayload() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     HttpEnumPayloadInput input = [] {
@@ -1312,6 +1318,7 @@ smithy::http::HttpRequest MinimalRequestForHttpEnumPayload() {
 smithy::http::HttpRequest MinimalRequestForHttpPayloadTraits() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     HttpPayloadTraitsInput input = [] {
@@ -1325,6 +1332,7 @@ smithy::http::HttpRequest MinimalRequestForHttpPayloadTraits() {
 smithy::http::HttpRequest MinimalRequestForHttpPayloadTraitsWithMediaType() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     HttpPayloadTraitsWithMediaTypeInput input = [] {
@@ -1338,6 +1346,7 @@ smithy::http::HttpRequest MinimalRequestForHttpPayloadTraitsWithMediaType() {
 smithy::http::HttpRequest MinimalRequestForHttpPayloadWithStructure() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     HttpPayloadWithStructureInput input = [] {
@@ -1351,6 +1360,7 @@ smithy::http::HttpRequest MinimalRequestForHttpPayloadWithStructure() {
 smithy::http::HttpRequest MinimalRequestForHttpPayloadWithUnion() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     HttpPayloadWithUnionInput input = [] {
@@ -1364,6 +1374,7 @@ smithy::http::HttpRequest MinimalRequestForHttpPayloadWithUnion() {
 smithy::http::HttpRequest MinimalRequestForHttpPrefixHeaders() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     HttpPrefixHeadersInput input = [] {
@@ -1377,6 +1388,7 @@ smithy::http::HttpRequest MinimalRequestForHttpPrefixHeaders() {
 smithy::http::HttpRequest MinimalRequestForHttpPrefixHeadersInResponse() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     HttpPrefixHeadersInResponseInput input = [] {
@@ -1390,6 +1402,7 @@ smithy::http::HttpRequest MinimalRequestForHttpPrefixHeadersInResponse() {
 smithy::http::HttpRequest MinimalRequestForHttpResponseCode() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     HttpResponseCodeInput input = [] {
@@ -1403,6 +1416,7 @@ smithy::http::HttpRequest MinimalRequestForHttpResponseCode() {
 smithy::http::HttpRequest MinimalRequestForHttpStringPayload() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     HttpStringPayloadInput input = [] {
@@ -1416,6 +1430,7 @@ smithy::http::HttpRequest MinimalRequestForHttpStringPayload() {
 smithy::http::HttpRequest MinimalRequestForIgnoreQueryParamsInResponse() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     IgnoreQueryParamsInResponseInput input = [] {
@@ -1429,6 +1444,7 @@ smithy::http::HttpRequest MinimalRequestForIgnoreQueryParamsInResponse() {
 smithy::http::HttpRequest MinimalRequestForInputAndOutputWithHeaders() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     InputAndOutputWithHeadersInput input = [] {
@@ -1442,6 +1458,7 @@ smithy::http::HttpRequest MinimalRequestForInputAndOutputWithHeaders() {
 smithy::http::HttpRequest MinimalRequestForJsonBlobs() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     JsonBlobsInput input = [] {
@@ -1455,6 +1472,7 @@ smithy::http::HttpRequest MinimalRequestForJsonBlobs() {
 smithy::http::HttpRequest MinimalRequestForJsonEnums() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     JsonEnumsInput input = [] {
@@ -1468,6 +1486,7 @@ smithy::http::HttpRequest MinimalRequestForJsonEnums() {
 smithy::http::HttpRequest MinimalRequestForJsonIntEnums() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     JsonIntEnumsInput input = [] {
@@ -1481,6 +1500,7 @@ smithy::http::HttpRequest MinimalRequestForJsonIntEnums() {
 smithy::http::HttpRequest MinimalRequestForJsonLists() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     JsonListsInput input = [] {
@@ -1494,6 +1514,7 @@ smithy::http::HttpRequest MinimalRequestForJsonLists() {
 smithy::http::HttpRequest MinimalRequestForJsonMaps() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     JsonMapsInput input = [] {
@@ -1507,6 +1528,7 @@ smithy::http::HttpRequest MinimalRequestForJsonMaps() {
 smithy::http::HttpRequest MinimalRequestForJsonTimestamps() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     JsonTimestampsInput input = [] {
@@ -1520,6 +1542,7 @@ smithy::http::HttpRequest MinimalRequestForJsonTimestamps() {
 smithy::http::HttpRequest MinimalRequestForJsonUnions() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     JsonUnionsInput input = [] {
@@ -1533,6 +1556,7 @@ smithy::http::HttpRequest MinimalRequestForJsonUnions() {
 smithy::http::HttpRequest MinimalRequestForMediaTypeHeader() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     MediaTypeHeaderInput input = [] {
@@ -1546,6 +1570,7 @@ smithy::http::HttpRequest MinimalRequestForMediaTypeHeader() {
 smithy::http::HttpRequest MinimalRequestForNoInputAndNoOutput() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     NoInputAndNoOutputInput input = [] {
@@ -1559,6 +1584,7 @@ smithy::http::HttpRequest MinimalRequestForNoInputAndNoOutput() {
 smithy::http::HttpRequest MinimalRequestForNoInputAndOutput() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     NoInputAndOutputInput input = [] {
@@ -1572,6 +1598,7 @@ smithy::http::HttpRequest MinimalRequestForNoInputAndOutput() {
 smithy::http::HttpRequest MinimalRequestForNullAndEmptyHeadersServer() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     NullAndEmptyHeadersServerInput input = [] {
@@ -1585,6 +1612,7 @@ smithy::http::HttpRequest MinimalRequestForNullAndEmptyHeadersServer() {
 smithy::http::HttpRequest MinimalRequestForPostPlayerAction() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     PostPlayerActionInput input = [] {
@@ -1598,6 +1626,7 @@ smithy::http::HttpRequest MinimalRequestForPostPlayerAction() {
 smithy::http::HttpRequest MinimalRequestForPostUnionWithJsonName() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     PostUnionWithJsonNameInput input = [] {
@@ -1611,6 +1640,7 @@ smithy::http::HttpRequest MinimalRequestForPostUnionWithJsonName() {
 smithy::http::HttpRequest MinimalRequestForResponseCodeHttpFallback() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     ResponseCodeHttpFallbackInput input = [] {
@@ -1624,6 +1654,7 @@ smithy::http::HttpRequest MinimalRequestForResponseCodeHttpFallback() {
 smithy::http::HttpRequest MinimalRequestForResponseCodeRequired() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     ResponseCodeRequiredInput input = [] {
@@ -1637,6 +1668,7 @@ smithy::http::HttpRequest MinimalRequestForResponseCodeRequired() {
 smithy::http::HttpRequest MinimalRequestForSimpleScalarProperties() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     SimpleScalarPropertiesInput input = [] {
@@ -1650,6 +1682,7 @@ smithy::http::HttpRequest MinimalRequestForSimpleScalarProperties() {
 smithy::http::HttpRequest MinimalRequestForSparseJsonLists() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     SparseJsonListsInput input = [] {
@@ -1663,6 +1696,7 @@ smithy::http::HttpRequest MinimalRequestForSparseJsonLists() {
 smithy::http::HttpRequest MinimalRequestForSparseJsonMaps() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     SparseJsonMapsInput input = [] {
@@ -1676,6 +1710,7 @@ smithy::http::HttpRequest MinimalRequestForSparseJsonMaps() {
 smithy::http::HttpRequest MinimalRequestForTimestampFormatHeaders() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     TimestampFormatHeadersInput input = [] {
@@ -1689,6 +1724,7 @@ smithy::http::HttpRequest MinimalRequestForTimestampFormatHeaders() {
 smithy::http::HttpRequest MinimalRequestForUnitInputAndOutput() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   auto client = *RestJsonClient::Create(std::move(config));
     UnitInputAndOutputInput input = [] {

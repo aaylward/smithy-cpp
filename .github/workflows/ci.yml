@@ -48,13 +48,18 @@ jobs:
         run: bazelisk test //... --config=ci --config=asan --config=ubsan
 
   consumer:
-    name: bazel consumer (quick start)
-    runs-on: ubuntu-24.04
+    name: bazel consumer (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14, windows-2022]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       # The quick-start acceptance test (docs/quickstart.md): a standalone
       # out-of-tree Bazel module consumes smithy_cpp via the rules in
-      # bazel/defs.bzl — generation runs inside the consumer's build graph.
+      # bazel/defs.bzl — generation runs inside the consumer's build graph,
+      # on every OS the runtime itself supports.
       - name: bazel test (out-of-tree module)
         working-directory: examples/bazel-consumer
         run: bazelisk test //... --verbose_failures

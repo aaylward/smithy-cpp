@@ -497,6 +497,14 @@ without reading generator internals or touching Gradle.
   test) — if the tutorial breaks, CI fails.
 - Bazel rules tested against the out-of-tree consumer module on current Bazel 9 releases
   (tracked via bazelisk pinning).
+- **Follow-up**: run the consumer acceptance job on the full OS matrix (Linux/macOS/Windows),
+  not just Linux.
+- **Follow-up — incremental development flows**: support and document the model-evolution loop
+  after initial integration: change the model (add an operation or member, tighten a
+  constraint), rebuild, and let the handler-interface compile errors guide the update;
+  regenerate vendored CLI output safely; keep hand-written handlers and tests working across
+  regenerations. Exercise the flow in CI (scripted evolve-and-rebuild against the consumer
+  example).
 
 **Docs:** the docs site is the deliverable.
 

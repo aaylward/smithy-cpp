@@ -121,7 +121,7 @@ smithy::Outcome<smithy::http::HttpResponse> CafeClient::Send(smithy::http::HttpR
   if (!request.body.empty()) {
     request.headers.Set("content-length", std::to_string(request.body.size()));
   }
-  return transport_->Send(request);
+  return smithy::SendWithRetries(*transport_, request, config_.retry);
 }
 
 smithy::Outcome<GetOrderOutput> CafeClient::GetOrder(const GetOrderInput& input) const {

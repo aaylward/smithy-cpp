@@ -32,6 +32,7 @@ struct Fixture {
 Fixture MakeFixture(const std::string& endpoint = "") {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
   config.http_client = transport;
   config.endpoint = endpoint;
   // Create cannot fail when a transport is injected.

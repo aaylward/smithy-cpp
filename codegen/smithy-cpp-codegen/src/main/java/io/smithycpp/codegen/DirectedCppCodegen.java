@@ -110,7 +110,15 @@ public final class DirectedCppCodegen
       }
     }
     if (directive.settings().emitBuildFile()) {
-      BuildFileGenerator.run(directive.context(), protocol, hasClient, hasSerde, hasServer);
+      boolean hasCompression =
+          protocol != null
+              && directive.context().model().getOperationShapes().stream()
+                  .anyMatch(
+                      op ->
+                          op.hasTrait(
+                              software.amazon.smithy.model.traits.RequestCompressionTrait.class));
+      BuildFileGenerator.run(
+          directive.context(), protocol, hasClient, hasSerde, hasServer, hasCompression);
     }
   }
 

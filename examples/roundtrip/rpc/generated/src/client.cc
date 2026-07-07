@@ -116,7 +116,7 @@ smithy::Outcome<smithy::http::HttpResponse> RoundTripRpcClient::Send(smithy::htt
   if (!request.body.empty()) {
     request.headers.Set("content-length", std::to_string(request.body.size()));
   }
-  return transport_->Send(request);
+  return smithy::SendWithRetries(*transport_, request, config_.retry);
 }
 
 smithy::Outcome<PutSinkRpcOutput> RoundTripRpcClient::PutSinkRpc(const PutSinkRpcInput& input) const {

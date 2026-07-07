@@ -375,6 +375,42 @@ TEST(RestJsonRequestTest, DocumentTypeAsMapValueInput) {
   EXPECT_TRUE(smithy::testing::JsonBodyEquals("{\n    \"docValuedMap\": {\n        \"foo\": { \"f\": 1, \"o\": 2 },\n        \"bar\": [ \"b\", \"a\", \"r\" ],\n        \"baz\": \"BAZ\"\n    }\n}", request.body));
 }
 
+// Serializes a document as the target of the httpPayload trait.
+TEST(RestJsonRequestTest, DocumentTypeAsPayloadInput) {
+  Fixture fixture = MakeFixture();
+  const DocumentTypeAsPayloadInput input = [] {
+  DocumentTypeAsPayloadInput v{};
+  v.documentValue = [] {
+  smithy::DocumentMap map;
+  map.emplace("foo", smithy::Document(std::string("bar")));
+  return smithy::Document(std::move(map));
+}();
+  return v;
+}();
+  (void)fixture.client.DocumentTypeAsPayload(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "PUT");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/DocumentTypeAsPayload");
+  EXPECT_EQ(request.headers.Get("Content-Type").value_or("<missing>"), "application/json");
+  EXPECT_TRUE(smithy::testing::JsonBodyEquals("{\n    \"foo\": \"bar\"\n}", request.body));
+}
+
+// Serializes a document as the target of the httpPayload trait using a string.
+TEST(RestJsonRequestTest, DocumentTypeAsPayloadInputString) {
+  Fixture fixture = MakeFixture();
+  const DocumentTypeAsPayloadInput input = [] {
+  DocumentTypeAsPayloadInput v{};
+  v.documentValue = smithy::Document(std::string("hello"));
+  return v;
+}();
+  (void)fixture.client.DocumentTypeAsPayload(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "PUT");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/DocumentTypeAsPayload");
+  EXPECT_EQ(request.headers.Get("Content-Type").value_or("<missing>"), "application/json");
+  EXPECT_TRUE(smithy::testing::JsonBodyEquals("\"hello\"", request.body));
+}
+
 // Clients should not serialize a JSON payload when no parameters
 // are given that are sent in the body. A service will tolerate
 // clients that omit a payload or that send a JSON object.
@@ -434,6 +470,180 @@ TEST(RestJsonRequestTest, RestJsonHostWithPath) {
   const smithy::http::HttpRequest& request = fixture.transport->last_request;
   EXPECT_EQ(request.method, "GET");
   EXPECT_EQ(smithy::testing::UriPath(request.target), "/custom/HostWithPathOperation");
+  EXPECT_TRUE(request.body.empty()) << request.body;
+}
+
+TEST(RestJsonRequestTest, RestJsonEnumPayloadRequest) {
+  Fixture fixture = MakeFixture();
+  const HttpEnumPayloadInput input = [] {
+  HttpEnumPayloadInput v{};
+  v.payload = StringEnum::FromString("enumvalue");
+  return v;
+}();
+  (void)fixture.client.HttpEnumPayload(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "POST");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/EnumPayload");
+  EXPECT_EQ(request.headers.Get("Content-Type").value_or("<missing>"), "text/plain");
+  EXPECT_EQ(request.body, "enumvalue");
+}
+
+// Serializes a blob in the HTTP payload
+TEST(RestJsonRequestTest, RestJsonHttpPayloadTraitsWithBlob) {
+  Fixture fixture = MakeFixture();
+  const HttpPayloadTraitsInput input = [] {
+  HttpPayloadTraitsInput v{};
+  v.foo = "Foo";
+  v.blob = smithy::Blob::FromString("blobby blob blob");
+  return v;
+}();
+  (void)fixture.client.HttpPayloadTraits(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "POST");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/HttpPayloadTraits");
+  EXPECT_EQ(request.headers.Get("Content-Type").value_or("<missing>"), "application/octet-stream");
+  EXPECT_EQ(request.headers.Get("X-Foo").value_or("<missing>"), "Foo");
+  EXPECT_TRUE(request.headers.Has("Content-Length"));
+  EXPECT_EQ(request.body, "blobby blob blob");
+}
+
+// Serializes an empty blob in the HTTP payload
+TEST(RestJsonRequestTest, RestJsonHttpPayloadTraitsWithNoBlobBody) {
+  Fixture fixture = MakeFixture();
+  const HttpPayloadTraitsInput input = [] {
+  HttpPayloadTraitsInput v{};
+  v.foo = "Foo";
+  return v;
+}();
+  (void)fixture.client.HttpPayloadTraits(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "POST");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/HttpPayloadTraits");
+  EXPECT_EQ(request.headers.Get("X-Foo").value_or("<missing>"), "Foo");
+  EXPECT_TRUE(request.body.empty()) << request.body;
+}
+
+// Serializes a blob in the HTTP payload with a content-type
+TEST(RestJsonRequestTest, RestJsonHttpPayloadTraitsWithMediaTypeWithBlob) {
+  Fixture fixture = MakeFixture();
+  const HttpPayloadTraitsWithMediaTypeInput input = [] {
+  HttpPayloadTraitsWithMediaTypeInput v{};
+  v.foo = "Foo";
+  v.blob = smithy::Blob::FromString("blobby blob blob");
+  return v;
+}();
+  (void)fixture.client.HttpPayloadTraitsWithMediaType(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "POST");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/HttpPayloadTraitsWithMediaType");
+  EXPECT_EQ(request.headers.Get("Content-Type").value_or("<missing>"), "text/plain");
+  EXPECT_EQ(request.headers.Get("X-Foo").value_or("<missing>"), "Foo");
+  EXPECT_TRUE(request.headers.Has("Content-Length"));
+  EXPECT_EQ(request.body, "blobby blob blob");
+}
+
+// Serializes a structure in the payload
+TEST(RestJsonRequestTest, RestJsonHttpPayloadWithStructure) {
+  Fixture fixture = MakeFixture();
+  const HttpPayloadWithStructureInput input = [] {
+  HttpPayloadWithStructureInput v{};
+  v.nested = [] {
+  NestedPayload v{};
+  v.greeting = "hello";
+  v.name = "Phreddy";
+  return v;
+}();
+  return v;
+}();
+  (void)fixture.client.HttpPayloadWithStructure(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "PUT");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/HttpPayloadWithStructure");
+  EXPECT_EQ(request.headers.Get("Content-Type").value_or("<missing>"), "application/json");
+  EXPECT_TRUE(request.headers.Has("Content-Length"));
+  EXPECT_TRUE(smithy::testing::JsonBodyEquals("{\n    \"greeting\": \"hello\",\n    \"name\": \"Phreddy\"\n}", request.body));
+}
+
+// Serializes a union in the payload.
+TEST(RestJsonRequestTest, RestJsonHttpPayloadWithUnion) {
+  Fixture fixture = MakeFixture();
+  const HttpPayloadWithUnionInput input = [] {
+  HttpPayloadWithUnionInput v{};
+  v.nested = UnionPayload::FromGreeting("hello");
+  return v;
+}();
+  (void)fixture.client.HttpPayloadWithUnion(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "PUT");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/HttpPayloadWithUnion");
+  EXPECT_EQ(request.headers.Get("Content-Type").value_or("<missing>"), "application/json");
+  EXPECT_TRUE(request.headers.Has("Content-Length"));
+  EXPECT_TRUE(smithy::testing::JsonBodyEquals("{\n    \"greeting\": \"hello\"\n}", request.body));
+}
+
+// No payload is sent if the union has no value.
+TEST(RestJsonRequestTest, RestJsonHttpPayloadWithUnsetUnion) {
+  Fixture fixture = MakeFixture();
+  const HttpPayloadWithUnionInput input = [] {
+  HttpPayloadWithUnionInput v{};
+  return v;
+}();
+  (void)fixture.client.HttpPayloadWithUnion(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "PUT");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/HttpPayloadWithUnion");
+  EXPECT_TRUE(request.body.empty()) << request.body;
+}
+
+// Adds headers by prefix
+TEST(RestJsonRequestTest, RestJsonHttpPrefixHeadersArePresent) {
+  Fixture fixture = MakeFixture();
+  const HttpPrefixHeadersInput input = [] {
+  HttpPrefixHeadersInput v{};
+  v.foo = "Foo";
+  v.fooMap = std::map<std::string, std::string>{{"abc", "Abc value"}, {"def", "Def value"}};
+  return v;
+}();
+  (void)fixture.client.HttpPrefixHeaders(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "GET");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/HttpPrefixHeaders");
+  EXPECT_EQ(request.headers.Get("x-foo").value_or("<missing>"), "Foo");
+  EXPECT_EQ(request.headers.Get("x-foo-abc").value_or("<missing>"), "Abc value");
+  EXPECT_EQ(request.headers.Get("x-foo-def").value_or("<missing>"), "Def value");
+  EXPECT_TRUE(request.body.empty()) << request.body;
+}
+
+// No prefix headers are serialized because the value is not present
+TEST(RestJsonRequestTest, RestJsonHttpPrefixHeadersAreNotPresent) {
+  Fixture fixture = MakeFixture();
+  const HttpPrefixHeadersInput input = [] {
+  HttpPrefixHeadersInput v{};
+  v.foo = "Foo";
+  v.fooMap = std::map<std::string, std::string>{};
+  return v;
+}();
+  (void)fixture.client.HttpPrefixHeaders(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "GET");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/HttpPrefixHeaders");
+  EXPECT_EQ(request.headers.Get("x-foo").value_or("<missing>"), "Foo");
+  EXPECT_TRUE(request.body.empty()) << request.body;
+}
+
+// Serialize prefix headers were the value is present but empty
+TEST(RestJsonRequestTest, RestJsonHttpPrefixEmptyHeaders) {
+  Fixture fixture = MakeFixture();
+  const HttpPrefixHeadersInput input = [] {
+  HttpPrefixHeadersInput v{};
+  v.fooMap = std::map<std::string, std::string>{{"abc", ""}};
+  return v;
+}();
+  (void)fixture.client.HttpPrefixHeaders(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "GET");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/HttpPrefixHeaders");
+  EXPECT_EQ(request.headers.Get("x-foo-abc").value_or("<missing>"), "");
   EXPECT_TRUE(request.body.empty()) << request.body;
 }
 
@@ -579,6 +789,22 @@ TEST(RestJsonRequestTest, RestJsonToleratesRegexCharsInSegments) {
   EXPECT_EQ(request.method, "GET");
   EXPECT_EQ(smithy::testing::UriPath(request.target), "/ReDosLiteral/abc/(a+)+");
   EXPECT_TRUE(request.body.empty()) << request.body;
+}
+
+TEST(RestJsonRequestTest, RestJsonStringPayloadRequest) {
+  Fixture fixture = MakeFixture();
+  const HttpStringPayloadInput input = [] {
+  HttpStringPayloadInput v{};
+  v.payload = "rawstring";
+  return v;
+}();
+  (void)fixture.client.HttpStringPayload(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "POST");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/StringPayload");
+  EXPECT_EQ(request.headers.Get("Content-Type").value_or("<missing>"), "text/plain");
+  EXPECT_TRUE(request.headers.Has("Content-Length"));
+  EXPECT_EQ(request.body, "rawstring");
 }
 
 // Tests requests with string header bindings
@@ -1824,6 +2050,93 @@ TEST(RestJsonRequestTest, RestJsonHttpGetWithHeaderMemberNoModeledBody) {
   EXPECT_FALSE(request.headers.Has("Content-Length"));
   EXPECT_FALSE(request.headers.Has("Content-Type"));
   EXPECT_TRUE(request.body.empty()) << request.body;
+}
+
+// Serializes a payload targeting an empty blob
+TEST(RestJsonRequestTest, RestJsonHttpWithEmptyBlobPayload) {
+  Fixture fixture = MakeFixture();
+  const TestPayloadBlobInput input = [] {
+  TestPayloadBlobInput v{};
+  return v;
+}();
+  (void)fixture.client.TestPayloadBlob(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "POST");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/blob_payload");
+  EXPECT_TRUE(request.body.empty()) << request.body;
+}
+
+// Serializes a payload targeting a blob
+TEST(RestJsonRequestTest, RestJsonTestPayloadBlob) {
+  Fixture fixture = MakeFixture();
+  const TestPayloadBlobInput input = [] {
+  TestPayloadBlobInput v{};
+  v.contentType = "image/jpg";
+  v.data = smithy::Blob::FromString("1234");
+  return v;
+}();
+  (void)fixture.client.TestPayloadBlob(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "POST");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/blob_payload");
+  EXPECT_EQ(request.headers.Get("Content-Type").value_or("<missing>"), "image/jpg");
+  EXPECT_TRUE(request.headers.Has("Content-Length"));
+  EXPECT_EQ(request.body, "1234");
+}
+
+// Serializes a payload targeting an empty structure
+TEST(RestJsonRequestTest, RestJsonHttpWithEmptyStructurePayload) {
+  Fixture fixture = MakeFixture();
+  const TestPayloadStructureInput input = [] {
+  TestPayloadStructureInput v{};
+  return v;
+}();
+  (void)fixture.client.TestPayloadStructure(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "POST");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/payload");
+  EXPECT_EQ(request.headers.Get("Content-Type").value_or("<missing>"), "application/json");
+  EXPECT_TRUE(request.headers.Has("Content-Length"));
+  EXPECT_TRUE(smithy::testing::JsonBodyEquals("{}", request.body));
+}
+
+// Serializes a payload targeting a structure
+TEST(RestJsonRequestTest, RestJsonTestPayloadStructure) {
+  Fixture fixture = MakeFixture();
+  const TestPayloadStructureInput input = [] {
+  TestPayloadStructureInput v{};
+  v.payloadConfig = [] {
+  PayloadConfig v{};
+  v.data = 25;
+  return v;
+}();
+  return v;
+}();
+  (void)fixture.client.TestPayloadStructure(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "POST");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/payload");
+  EXPECT_EQ(request.headers.Get("Content-Type").value_or("<missing>"), "application/json");
+  EXPECT_TRUE(request.headers.Has("Content-Length"));
+  EXPECT_TRUE(smithy::testing::JsonBodyEquals("{\"data\": 25\n}", request.body));
+}
+
+// Serializes an request with header members but no payload
+TEST(RestJsonRequestTest, RestJsonHttpWithHeadersButNoPayload) {
+  Fixture fixture = MakeFixture();
+  const TestPayloadStructureInput input = [] {
+  TestPayloadStructureInput v{};
+  v.testId = "t-12345";
+  return v;
+}();
+  (void)fixture.client.TestPayloadStructure(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "POST");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/payload");
+  EXPECT_EQ(request.headers.Get("Content-Type").value_or("<missing>"), "application/json");
+  EXPECT_EQ(request.headers.Get("X-Amz-Test-Id").value_or("<missing>"), "t-12345");
+  EXPECT_TRUE(request.headers.Has("Content-Length"));
+  EXPECT_TRUE(smithy::testing::JsonBodyEquals("{}", request.body));
 }
 
 // Serializes a POST request for an operation with no input, and therefore no modeled body

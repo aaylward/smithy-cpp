@@ -9,6 +9,7 @@
 #include "example/weather/server.h"
 #include "examples/weather/handwritten/weather_client.h"
 #include "smithy/http/loopback.h"
+#include "smithy/http/message.h"
 
 namespace example::weather {
 namespace {
@@ -27,6 +28,15 @@ class ReferenceHandler final : public WeatherHandler {
     return GetCityOutput{
         .name = "Seattle",
         .coordinates = CityCoordinates{.latitude = 47.6062F, .longitude = -122.3321F}};
+  }
+
+  smithy::Outcome<DeleteCityOutput> DeleteCity(const DeleteCityInput& input) override {
+    if (input.cityId != "seattle") {
+      smithy::Error error = smithy::Error::Modeled("NoSuchResource", "no city: " + input.cityId);
+      error.set_detail(NoSuchResource{.resourceType = "City"});
+      return error;
+    }
+    return DeleteCityOutput{};
   }
 
   smithy::Outcome<ListCitiesOutput> ListCities(const ListCitiesInput& input) override {
@@ -76,6 +86,16 @@ TEST_F(GeneratedServerEndToEndTest, GetCityRoundTrips) {
   EXPECT_EQ(city->name, "Seattle");
   EXPECT_FLOAT_EQ(city->coordinates.latitude, 47.6062F);
   EXPECT_FLOAT_EQ(city->coordinates.longitude, -122.3321F);
+}
+
+TEST_F(GeneratedServerEndToEndTest, DeleteCityIs204WithNoBody) {
+  smithy::http::HttpRequest request;
+  request.method = "DELETE";
+  request.target = "/cities/seattle";
+  const smithy::http::HttpResponse response = server_->Handler()(request);
+  EXPECT_EQ(response.status, 204);
+  EXPECT_TRUE(response.body.empty()) << response.body;
+  EXPECT_FALSE(response.headers.Get("content-type").has_value());
 }
 
 TEST_F(GeneratedServerEndToEndTest, ModeledErrorsGetTheirHttpStatusAndCode) {

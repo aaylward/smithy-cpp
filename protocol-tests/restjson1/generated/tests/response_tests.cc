@@ -193,6 +193,42 @@ TEST(RestJsonResponseTest, DocumentTypeAsMapValueOutput) {
   EXPECT_EQ(*outcome, expected);
 }
 
+// Serializes a document as the target of the httpPayload trait.
+TEST(RestJsonResponseTest, DocumentTypeAsPayloadOutput) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 200;
+  fixture.transport->next_response.headers.Set("Content-Type", "application/json");
+  fixture.transport->next_response.body = "{\n    \"foo\": \"bar\"\n}";
+  const auto outcome = fixture.client.DocumentTypeAsPayload(DocumentTypeAsPayloadInput{});
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  const DocumentTypeAsPayloadOutput expected = [] {
+  DocumentTypeAsPayloadOutput v{};
+  v.documentValue = [] {
+  smithy::DocumentMap map;
+  map.emplace("foo", smithy::Document(std::string("bar")));
+  return smithy::Document(std::move(map));
+}();
+  return v;
+}();
+  EXPECT_EQ(*outcome, expected);
+}
+
+// Serializes a document as a payload string.
+TEST(RestJsonResponseTest, DocumentTypeAsPayloadOutputString) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 200;
+  fixture.transport->next_response.headers.Set("Content-Type", "application/json");
+  fixture.transport->next_response.body = "\"hello\"";
+  const auto outcome = fixture.client.DocumentTypeAsPayload(DocumentTypeAsPayloadInput{});
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  const DocumentTypeAsPayloadOutput expected = [] {
+  DocumentTypeAsPayloadOutput v{};
+  v.documentValue = smithy::Document(std::string("hello"));
+  return v;
+}();
+  EXPECT_EQ(*outcome, expected);
+}
+
 // As of January 2021, server implementations are expected to
 // respond with a JSON object regardless of if the output
 // parameters are empty.
@@ -278,6 +314,160 @@ TEST(RestJsonResponseTest, RestJsonGreetingWithErrorsNoPayload) {
   EXPECT_EQ(*outcome, expected);
 }
 
+TEST(RestJsonResponseTest, RestJsonEnumPayloadResponse) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 200;
+  fixture.transport->next_response.headers.Set("Content-Type", "text/plain");
+  fixture.transport->next_response.body = "enumvalue";
+  const auto outcome = fixture.client.HttpEnumPayload(HttpEnumPayloadInput{});
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  const HttpEnumPayloadOutput expected = [] {
+  HttpEnumPayloadOutput v{};
+  v.payload = StringEnum::FromString("enumvalue");
+  return v;
+}();
+  EXPECT_EQ(*outcome, expected);
+}
+
+// Serializes a blob in the HTTP payload
+TEST(RestJsonResponseTest, RestJsonHttpPayloadTraitsWithBlob) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 200;
+  fixture.transport->next_response.headers.Set("X-Foo", "Foo");
+  fixture.transport->next_response.body = "blobby blob blob";
+  const auto outcome = fixture.client.HttpPayloadTraits(HttpPayloadTraitsInput{});
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  const HttpPayloadTraitsOutput expected = [] {
+  HttpPayloadTraitsOutput v{};
+  v.foo = "Foo";
+  v.blob = smithy::Blob::FromString("blobby blob blob");
+  return v;
+}();
+  EXPECT_EQ(*outcome, expected);
+}
+
+// Serializes an empty blob in the HTTP payload
+TEST(RestJsonResponseTest, RestJsonHttpPayloadTraitsWithNoBlobBody) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 200;
+  fixture.transport->next_response.headers.Set("X-Foo", "Foo");
+  fixture.transport->next_response.body = "";
+  const auto outcome = fixture.client.HttpPayloadTraits(HttpPayloadTraitsInput{});
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  const HttpPayloadTraitsOutput expected = [] {
+  HttpPayloadTraitsOutput v{};
+  v.foo = "Foo";
+  return v;
+}();
+  EXPECT_EQ(*outcome, expected);
+}
+
+// Serializes a blob in the HTTP payload with a content-type
+TEST(RestJsonResponseTest, RestJsonHttpPayloadTraitsWithMediaTypeWithBlob) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 200;
+  fixture.transport->next_response.headers.Set("Content-Type", "text/plain");
+  fixture.transport->next_response.headers.Set("X-Foo", "Foo");
+  fixture.transport->next_response.body = "blobby blob blob";
+  const auto outcome = fixture.client.HttpPayloadTraitsWithMediaType(HttpPayloadTraitsWithMediaTypeInput{});
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  const HttpPayloadTraitsWithMediaTypeOutput expected = [] {
+  HttpPayloadTraitsWithMediaTypeOutput v{};
+  v.foo = "Foo";
+  v.blob = smithy::Blob::FromString("blobby blob blob");
+  return v;
+}();
+  EXPECT_EQ(*outcome, expected);
+}
+
+// Serializes a structure in the payload
+TEST(RestJsonResponseTest, RestJsonHttpPayloadWithStructure) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 200;
+  fixture.transport->next_response.headers.Set("Content-Type", "application/json");
+  fixture.transport->next_response.body = "{\n    \"greeting\": \"hello\",\n    \"name\": \"Phreddy\"\n}";
+  const auto outcome = fixture.client.HttpPayloadWithStructure(HttpPayloadWithStructureInput{});
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  const HttpPayloadWithStructureOutput expected = [] {
+  HttpPayloadWithStructureOutput v{};
+  v.nested = [] {
+  NestedPayload v{};
+  v.greeting = "hello";
+  v.name = "Phreddy";
+  return v;
+}();
+  return v;
+}();
+  EXPECT_EQ(*outcome, expected);
+}
+
+// Serializes a union in the payload.
+TEST(RestJsonResponseTest, RestJsonHttpPayloadWithUnion) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 200;
+  fixture.transport->next_response.headers.Set("Content-Type", "application/json");
+  fixture.transport->next_response.body = "{\n    \"greeting\": \"hello\"\n}";
+  const auto outcome = fixture.client.HttpPayloadWithUnion(HttpPayloadWithUnionInput{});
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  const HttpPayloadWithUnionOutput expected = [] {
+  HttpPayloadWithUnionOutput v{};
+  v.nested = UnionPayload::FromGreeting("hello");
+  return v;
+}();
+  EXPECT_EQ(*outcome, expected);
+}
+
+// No payload is sent if the union has no value.
+TEST(RestJsonResponseTest, RestJsonHttpPayloadWithUnsetUnion) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 200;
+  fixture.transport->next_response.headers.Set("Content-Length", "0");
+  fixture.transport->next_response.body = "";
+  const auto outcome = fixture.client.HttpPayloadWithUnion(HttpPayloadWithUnionInput{});
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  const HttpPayloadWithUnionOutput expected = [] {
+  HttpPayloadWithUnionOutput v{};
+  return v;
+}();
+  EXPECT_EQ(*outcome, expected);
+}
+
+// Adds headers by prefix
+TEST(RestJsonResponseTest, RestJsonHttpPrefixHeadersArePresent) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 200;
+  fixture.transport->next_response.headers.Set("x-foo", "Foo");
+  fixture.transport->next_response.headers.Set("x-foo-abc", "Abc value");
+  fixture.transport->next_response.headers.Set("x-foo-def", "Def value");
+  fixture.transport->next_response.body = "";
+  const auto outcome = fixture.client.HttpPrefixHeaders(HttpPrefixHeadersInput{});
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  const HttpPrefixHeadersOutput expected = [] {
+  HttpPrefixHeadersOutput v{};
+  v.foo = "Foo";
+  v.fooMap = std::map<std::string, std::string>{{"abc", "Abc value"}, {"def", "Def value"}};
+  return v;
+}();
+  EXPECT_EQ(*outcome, expected);
+}
+
+// (de)serializes all response headers
+TEST(RestJsonResponseTest, HttpPrefixHeadersResponse) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 200;
+  fixture.transport->next_response.headers.Set("hello", "Hello");
+  fixture.transport->next_response.headers.Set("x-foo", "Foo");
+  fixture.transport->next_response.body = "";
+  const auto outcome = fixture.client.HttpPrefixHeadersInResponse(HttpPrefixHeadersInResponseInput{});
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  const HttpPrefixHeadersInResponseOutput expected = [] {
+  HttpPrefixHeadersInResponseOutput v{};
+  v.prefixHeaders = std::map<std::string, std::string>{{"x-foo", "Foo"}, {"hello", "Hello"}};
+  return v;
+}();
+  EXPECT_EQ(*outcome, expected);
+}
+
 // Binds the http response code to an output structure. Note that
 // even though all members are bound outside of the payload, an
 // empty JSON object is serialized in the response. However,
@@ -310,6 +500,21 @@ TEST(RestJsonResponseTest, RestJsonHttpResponseCodeWithNoPayload) {
   const HttpResponseCodeOutput expected = [] {
   HttpResponseCodeOutput v{};
   v.Status = 201;
+  return v;
+}();
+  EXPECT_EQ(*outcome, expected);
+}
+
+TEST(RestJsonResponseTest, RestJsonStringPayloadResponse) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 200;
+  fixture.transport->next_response.headers.Set("Content-Type", "text/plain");
+  fixture.transport->next_response.body = "rawstring";
+  const auto outcome = fixture.client.HttpStringPayload(HttpStringPayloadInput{});
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  const HttpStringPayloadOutput expected = [] {
+  HttpStringPayloadOutput v{};
+  v.payload = "rawstring";
   return v;
 }();
   EXPECT_EQ(*outcome, expected);

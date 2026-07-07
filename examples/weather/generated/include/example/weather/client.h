@@ -21,6 +21,8 @@ class WeatherClient {
     /// Fails when the endpoint cannot be parsed and no transport is injected.
     static smithy::Outcome<WeatherClient> Create(smithy::ClientConfig config);
 
+    /// Deletes a city: a 204 No Content operation (the response has no body).
+    smithy::Outcome<DeleteCityOutput> DeleteCity(const DeleteCityInput& input) const;
     smithy::Outcome<GetCityOutput> GetCity(const GetCityInput& input) const;
     smithy::Outcome<GetCurrentTimeOutput> GetCurrentTime(const GetCurrentTimeInput& input = {}) const;
     smithy::Outcome<GetForecastOutput> GetForecast(const GetForecastInput& input) const;

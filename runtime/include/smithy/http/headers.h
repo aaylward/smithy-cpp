@@ -34,6 +34,14 @@ class Headers {
 // ASCII case-insensitive equality, as HTTP header names require.
 bool HeaderNameEquals(std::string_view a, std::string_view b);
 
+// True when an Accept header value (comma-separated media ranges; parameters
+// ignored) accepts the given content type: exact match, "type/*", or "*/*".
+bool AcceptMatches(std::string_view accept_header, std::string_view content_type);
+
+// True when the header name starts with prefix, ASCII case-insensitively
+// (@httpPrefixHeaders matching; an empty prefix matches every header).
+bool HeaderNameStartsWith(std::string_view name, std::string_view prefix);
+
 // Splits a comma-separated list-valued header into entries with surrounding
 // whitespace trimmed ("a, b,c" -> {"a", "b", "c"}). Quoted-string entries are
 // returned verbatim, quotes included — unescaping is the caller's concern.

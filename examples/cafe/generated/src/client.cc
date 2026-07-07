@@ -115,7 +115,8 @@ CafeClient::CafeClient(smithy::ClientConfig config, std::shared_ptr<smithy::http
     path_prefix_(std::move(path_prefix)) {}
 
 smithy::Outcome<smithy::http::HttpResponse> CafeClient::Send(smithy::http::HttpRequest request) const {
-  request.headers.Set("accept", "application/cbor");
+  // Operations with a non-document response payload set their own accept.
+  if (!request.headers.Get("accept").has_value()) request.headers.Set("accept", "application/cbor");
   request.headers.Set("user-agent", config_.user_agent);
   if (!request.body.empty()) {
     request.headers.Set("content-length", std::to_string(request.body.size()));

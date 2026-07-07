@@ -18,6 +18,8 @@ class WeatherHandler {
   public:
     virtual ~WeatherHandler() = default;
 
+    /// Deletes a city: a 204 No Content operation (the response has no body).
+    virtual smithy::Outcome<DeleteCityOutput> DeleteCity(const DeleteCityInput& input) = 0;
     virtual smithy::Outcome<GetCityOutput> GetCity(const GetCityInput& input) = 0;
     virtual smithy::Outcome<GetCurrentTimeOutput> GetCurrentTime(const GetCurrentTimeInput& input) = 0;
     virtual smithy::Outcome<GetForecastOutput> GetForecast(const GetForecastInput& input) = 0;

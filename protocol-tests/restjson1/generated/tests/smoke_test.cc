@@ -67,6 +67,13 @@ DocumentTypeAsMapValueOutput MinimalDocumentTypeAsMapValueOutput() {
   }();
 }
 
+DocumentTypeAsPayloadOutput MinimalDocumentTypeAsPayloadOutput() {
+    return [] {
+    DocumentTypeAsPayloadOutput v{};
+    return v;
+  }();
+}
+
 EmptyInputAndEmptyOutputOutput MinimalEmptyInputAndEmptyOutputOutput() {
     return [] {
     EmptyInputAndEmptyOutputOutput v{};
@@ -116,6 +123,55 @@ HttpChecksumRequiredOutput MinimalHttpChecksumRequiredOutput() {
   }();
 }
 
+HttpEnumPayloadOutput MinimalHttpEnumPayloadOutput() {
+    return [] {
+    HttpEnumPayloadOutput v{};
+    return v;
+  }();
+}
+
+HttpPayloadTraitsOutput MinimalHttpPayloadTraitsOutput() {
+    return [] {
+    HttpPayloadTraitsOutput v{};
+    return v;
+  }();
+}
+
+HttpPayloadTraitsWithMediaTypeOutput MinimalHttpPayloadTraitsWithMediaTypeOutput() {
+    return [] {
+    HttpPayloadTraitsWithMediaTypeOutput v{};
+    return v;
+  }();
+}
+
+HttpPayloadWithStructureOutput MinimalHttpPayloadWithStructureOutput() {
+    return [] {
+    HttpPayloadWithStructureOutput v{};
+    return v;
+  }();
+}
+
+HttpPayloadWithUnionOutput MinimalHttpPayloadWithUnionOutput() {
+    return [] {
+    HttpPayloadWithUnionOutput v{};
+    return v;
+  }();
+}
+
+HttpPrefixHeadersOutput MinimalHttpPrefixHeadersOutput() {
+    return [] {
+    HttpPrefixHeadersOutput v{};
+    return v;
+  }();
+}
+
+HttpPrefixHeadersInResponseOutput MinimalHttpPrefixHeadersInResponseOutput() {
+    return [] {
+    HttpPrefixHeadersInResponseOutput v{};
+    return v;
+  }();
+}
+
 HttpRequestWithFloatLabelsOutput MinimalHttpRequestWithFloatLabelsOutput() {
     return [] {
     HttpRequestWithFloatLabelsOutput v{};
@@ -159,6 +215,13 @@ HttpResponseCodeOutput MinimalHttpResponseCodeOutput() {
   // The @httpResponseCode member drives the wire status; use a real 2xx.
   v.Status = 201;
   return v;
+}
+
+HttpStringPayloadOutput MinimalHttpStringPayloadOutput() {
+    return [] {
+    HttpStringPayloadOutput v{};
+    return v;
+  }();
 }
 
 IgnoreQueryParamsInResponseOutput MinimalIgnoreQueryParamsInResponseOutput() {
@@ -231,6 +294,20 @@ MalformedAcceptWithBodyOutput MinimalMalformedAcceptWithBodyOutput() {
   }();
 }
 
+MalformedAcceptWithGenericStringOutput MinimalMalformedAcceptWithGenericStringOutput() {
+    return [] {
+    MalformedAcceptWithGenericStringOutput v{};
+    return v;
+  }();
+}
+
+MalformedAcceptWithPayloadOutput MinimalMalformedAcceptWithPayloadOutput() {
+    return [] {
+    MalformedAcceptWithPayloadOutput v{};
+    return v;
+  }();
+}
+
 MalformedBlobOutput MinimalMalformedBlobOutput() {
     return [] {
     MalformedBlobOutput v{};
@@ -259,6 +336,13 @@ MalformedContentTypeWithBodyOutput MinimalMalformedContentTypeWithBodyOutput() {
   }();
 }
 
+MalformedContentTypeWithGenericStringOutput MinimalMalformedContentTypeWithGenericStringOutput() {
+    return [] {
+    MalformedContentTypeWithGenericStringOutput v{};
+    return v;
+  }();
+}
+
 MalformedContentTypeWithoutBodyOutput MinimalMalformedContentTypeWithoutBodyOutput() {
     return [] {
     MalformedContentTypeWithoutBodyOutput v{};
@@ -269,6 +353,13 @@ MalformedContentTypeWithoutBodyOutput MinimalMalformedContentTypeWithoutBodyOutp
 MalformedContentTypeWithoutBodyEmptyInputOutput MinimalMalformedContentTypeWithoutBodyEmptyInputOutput() {
     return [] {
     MalformedContentTypeWithoutBodyEmptyInputOutput v{};
+    return v;
+  }();
+}
+
+MalformedContentTypeWithPayloadOutput MinimalMalformedContentTypeWithPayloadOutput() {
+    return [] {
+    MalformedContentTypeWithPayloadOutput v{};
     return v;
   }();
 }
@@ -593,6 +684,20 @@ TestGetNoPayloadOutput MinimalTestGetNoPayloadOutput() {
   }();
 }
 
+TestPayloadBlobOutput MinimalTestPayloadBlobOutput() {
+    return [] {
+    TestPayloadBlobOutput v{};
+    return v;
+  }();
+}
+
+TestPayloadStructureOutput MinimalTestPayloadStructureOutput() {
+    return [] {
+    TestPayloadStructureOutput v{};
+    return v;
+  }();
+}
+
 TestPostNoInputNoPayloadOutput MinimalTestPostNoInputNoPayloadOutput() {
     return [] {
     TestPostNoInputNoPayloadOutput v{};
@@ -651,6 +756,10 @@ class SmokeHandler : public RestJsonHandler {
       (void)input;
       return MinimalDocumentTypeAsMapValueOutput();
     }
+    smithy::Outcome<DocumentTypeAsPayloadOutput> DocumentTypeAsPayload(const DocumentTypeAsPayloadInput& input) override {
+      (void)input;
+      return MinimalDocumentTypeAsPayloadOutput();
+    }
     smithy::Outcome<EmptyInputAndEmptyOutputOutput> EmptyInputAndEmptyOutput(const EmptyInputAndEmptyOutputInput& input) override {
       (void)input;
       return MinimalEmptyInputAndEmptyOutputOutput();
@@ -679,6 +788,34 @@ class SmokeHandler : public RestJsonHandler {
       (void)input;
       return MinimalHttpChecksumRequiredOutput();
     }
+    smithy::Outcome<HttpEnumPayloadOutput> HttpEnumPayload(const HttpEnumPayloadInput& input) override {
+      (void)input;
+      return MinimalHttpEnumPayloadOutput();
+    }
+    smithy::Outcome<HttpPayloadTraitsOutput> HttpPayloadTraits(const HttpPayloadTraitsInput& input) override {
+      (void)input;
+      return MinimalHttpPayloadTraitsOutput();
+    }
+    smithy::Outcome<HttpPayloadTraitsWithMediaTypeOutput> HttpPayloadTraitsWithMediaType(const HttpPayloadTraitsWithMediaTypeInput& input) override {
+      (void)input;
+      return MinimalHttpPayloadTraitsWithMediaTypeOutput();
+    }
+    smithy::Outcome<HttpPayloadWithStructureOutput> HttpPayloadWithStructure(const HttpPayloadWithStructureInput& input) override {
+      (void)input;
+      return MinimalHttpPayloadWithStructureOutput();
+    }
+    smithy::Outcome<HttpPayloadWithUnionOutput> HttpPayloadWithUnion(const HttpPayloadWithUnionInput& input) override {
+      (void)input;
+      return MinimalHttpPayloadWithUnionOutput();
+    }
+    smithy::Outcome<HttpPrefixHeadersOutput> HttpPrefixHeaders(const HttpPrefixHeadersInput& input) override {
+      (void)input;
+      return MinimalHttpPrefixHeadersOutput();
+    }
+    smithy::Outcome<HttpPrefixHeadersInResponseOutput> HttpPrefixHeadersInResponse(const HttpPrefixHeadersInResponseInput& input) override {
+      (void)input;
+      return MinimalHttpPrefixHeadersInResponseOutput();
+    }
     smithy::Outcome<HttpRequestWithFloatLabelsOutput> HttpRequestWithFloatLabels(const HttpRequestWithFloatLabelsInput& input) override {
       (void)input;
       return MinimalHttpRequestWithFloatLabelsOutput();
@@ -702,6 +839,10 @@ class SmokeHandler : public RestJsonHandler {
     smithy::Outcome<HttpResponseCodeOutput> HttpResponseCode(const HttpResponseCodeInput& input) override {
       (void)input;
       return MinimalHttpResponseCodeOutput();
+    }
+    smithy::Outcome<HttpStringPayloadOutput> HttpStringPayload(const HttpStringPayloadInput& input) override {
+      (void)input;
+      return MinimalHttpStringPayloadOutput();
     }
     smithy::Outcome<IgnoreQueryParamsInResponseOutput> IgnoreQueryParamsInResponse(const IgnoreQueryParamsInResponseInput& input) override {
       (void)input;
@@ -743,6 +884,14 @@ class SmokeHandler : public RestJsonHandler {
       (void)input;
       return MinimalMalformedAcceptWithBodyOutput();
     }
+    smithy::Outcome<MalformedAcceptWithGenericStringOutput> MalformedAcceptWithGenericString(const MalformedAcceptWithGenericStringInput& input) override {
+      (void)input;
+      return MinimalMalformedAcceptWithGenericStringOutput();
+    }
+    smithy::Outcome<MalformedAcceptWithPayloadOutput> MalformedAcceptWithPayload(const MalformedAcceptWithPayloadInput& input) override {
+      (void)input;
+      return MinimalMalformedAcceptWithPayloadOutput();
+    }
     smithy::Outcome<MalformedBlobOutput> MalformedBlob(const MalformedBlobInput& input) override {
       (void)input;
       return MinimalMalformedBlobOutput();
@@ -759,6 +908,10 @@ class SmokeHandler : public RestJsonHandler {
       (void)input;
       return MinimalMalformedContentTypeWithBodyOutput();
     }
+    smithy::Outcome<MalformedContentTypeWithGenericStringOutput> MalformedContentTypeWithGenericString(const MalformedContentTypeWithGenericStringInput& input) override {
+      (void)input;
+      return MinimalMalformedContentTypeWithGenericStringOutput();
+    }
     smithy::Outcome<MalformedContentTypeWithoutBodyOutput> MalformedContentTypeWithoutBody(const MalformedContentTypeWithoutBodyInput& input) override {
       (void)input;
       return MinimalMalformedContentTypeWithoutBodyOutput();
@@ -766,6 +919,10 @@ class SmokeHandler : public RestJsonHandler {
     smithy::Outcome<MalformedContentTypeWithoutBodyEmptyInputOutput> MalformedContentTypeWithoutBodyEmptyInput(const MalformedContentTypeWithoutBodyEmptyInputInput& input) override {
       (void)input;
       return MinimalMalformedContentTypeWithoutBodyEmptyInputOutput();
+    }
+    smithy::Outcome<MalformedContentTypeWithPayloadOutput> MalformedContentTypeWithPayload(const MalformedContentTypeWithPayloadInput& input) override {
+      (void)input;
+      return MinimalMalformedContentTypeWithPayloadOutput();
     }
     smithy::Outcome<MalformedDoubleOutput> MalformedDouble(const MalformedDoubleInput& input) override {
       (void)input;
@@ -947,6 +1104,14 @@ class SmokeHandler : public RestJsonHandler {
       (void)input;
       return MinimalTestGetNoPayloadOutput();
     }
+    smithy::Outcome<TestPayloadBlobOutput> TestPayloadBlob(const TestPayloadBlobInput& input) override {
+      (void)input;
+      return MinimalTestPayloadBlobOutput();
+    }
+    smithy::Outcome<TestPayloadStructureOutput> TestPayloadStructure(const TestPayloadStructureInput& input) override {
+      (void)input;
+      return MinimalTestPayloadStructureOutput();
+    }
     smithy::Outcome<TestPostNoInputNoPayloadOutput> TestPostNoInputNoPayload(const TestPostNoInputNoPayloadInput& input) override {
       (void)input;
       return MinimalTestPostNoInputNoPayloadOutput();
@@ -1056,6 +1221,17 @@ TEST(RestJsonSmokeTest, DocumentTypeAsMapValueRoundTrips) {
   EXPECT_EQ(*outcome, MinimalDocumentTypeAsMapValueOutput());
 }
 
+TEST(RestJsonSmokeTest, DocumentTypeAsPayloadRoundTrips) {
+  RestJsonClient client = MakeClient(std::make_shared<SmokeHandler>());
+    const DocumentTypeAsPayloadInput input = [] {
+    DocumentTypeAsPayloadInput v{};
+    return v;
+  }();
+  const auto outcome = client.DocumentTypeAsPayload(input);
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  EXPECT_EQ(*outcome, MinimalDocumentTypeAsPayloadOutput());
+}
+
 TEST(RestJsonSmokeTest, EmptyInputAndEmptyOutputRoundTrips) {
   RestJsonClient client = MakeClient(std::make_shared<SmokeHandler>());
     const EmptyInputAndEmptyOutputInput input = [] {
@@ -1133,6 +1309,84 @@ TEST(RestJsonSmokeTest, HttpChecksumRequiredRoundTrips) {
   EXPECT_EQ(*outcome, MinimalHttpChecksumRequiredOutput());
 }
 
+TEST(RestJsonSmokeTest, HttpEnumPayloadRoundTrips) {
+  RestJsonClient client = MakeClient(std::make_shared<SmokeHandler>());
+    const HttpEnumPayloadInput input = [] {
+    HttpEnumPayloadInput v{};
+    return v;
+  }();
+  const auto outcome = client.HttpEnumPayload(input);
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  EXPECT_EQ(*outcome, MinimalHttpEnumPayloadOutput());
+}
+
+TEST(RestJsonSmokeTest, HttpPayloadTraitsRoundTrips) {
+  RestJsonClient client = MakeClient(std::make_shared<SmokeHandler>());
+    const HttpPayloadTraitsInput input = [] {
+    HttpPayloadTraitsInput v{};
+    return v;
+  }();
+  const auto outcome = client.HttpPayloadTraits(input);
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  EXPECT_EQ(*outcome, MinimalHttpPayloadTraitsOutput());
+}
+
+TEST(RestJsonSmokeTest, HttpPayloadTraitsWithMediaTypeRoundTrips) {
+  RestJsonClient client = MakeClient(std::make_shared<SmokeHandler>());
+    const HttpPayloadTraitsWithMediaTypeInput input = [] {
+    HttpPayloadTraitsWithMediaTypeInput v{};
+    return v;
+  }();
+  const auto outcome = client.HttpPayloadTraitsWithMediaType(input);
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  EXPECT_EQ(*outcome, MinimalHttpPayloadTraitsWithMediaTypeOutput());
+}
+
+TEST(RestJsonSmokeTest, HttpPayloadWithStructureRoundTrips) {
+  RestJsonClient client = MakeClient(std::make_shared<SmokeHandler>());
+    const HttpPayloadWithStructureInput input = [] {
+    HttpPayloadWithStructureInput v{};
+    return v;
+  }();
+  const auto outcome = client.HttpPayloadWithStructure(input);
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  EXPECT_EQ(*outcome, MinimalHttpPayloadWithStructureOutput());
+}
+
+TEST(RestJsonSmokeTest, HttpPayloadWithUnionRoundTrips) {
+  RestJsonClient client = MakeClient(std::make_shared<SmokeHandler>());
+    const HttpPayloadWithUnionInput input = [] {
+    HttpPayloadWithUnionInput v{};
+    return v;
+  }();
+  const auto outcome = client.HttpPayloadWithUnion(input);
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  EXPECT_EQ(*outcome, MinimalHttpPayloadWithUnionOutput());
+}
+
+TEST(RestJsonSmokeTest, HttpPrefixHeadersRoundTrips) {
+  RestJsonClient client = MakeClient(std::make_shared<SmokeHandler>());
+    const HttpPrefixHeadersInput input = [] {
+    HttpPrefixHeadersInput v{};
+    return v;
+  }();
+  const auto outcome = client.HttpPrefixHeaders(input);
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  EXPECT_EQ(*outcome, MinimalHttpPrefixHeadersOutput());
+}
+
+TEST(RestJsonSmokeTest, HttpPrefixHeadersInResponseRoundTrips) {
+  RestJsonClient client = MakeClient(std::make_shared<SmokeHandler>());
+    const HttpPrefixHeadersInResponseInput input = [] {
+    HttpPrefixHeadersInResponseInput v{};
+    return v;
+  }();
+  const auto outcome = client.HttpPrefixHeadersInResponse(input);
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  // An empty-prefix @httpPrefixHeaders output member captures every
+  // response header (content-type, ...), so exact equality cannot hold.
+}
+
 TEST(RestJsonSmokeTest, HttpRequestWithFloatLabelsRoundTrips) {
   RestJsonClient client = MakeClient(std::make_shared<SmokeHandler>());
     const HttpRequestWithFloatLabelsInput input = [] {
@@ -1204,6 +1458,17 @@ TEST(RestJsonSmokeTest, HttpResponseCodeRoundTrips) {
   const auto outcome = client.HttpResponseCode(input);
   ASSERT_TRUE(outcome.ok()) << outcome.error().message();
   EXPECT_EQ(*outcome, MinimalHttpResponseCodeOutput());
+}
+
+TEST(RestJsonSmokeTest, HttpStringPayloadRoundTrips) {
+  RestJsonClient client = MakeClient(std::make_shared<SmokeHandler>());
+    const HttpStringPayloadInput input = [] {
+    HttpStringPayloadInput v{};
+    return v;
+  }();
+  const auto outcome = client.HttpStringPayload(input);
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  EXPECT_EQ(*outcome, MinimalHttpStringPayloadOutput());
 }
 
 TEST(RestJsonSmokeTest, IgnoreQueryParamsInResponseRoundTrips) {
@@ -1316,6 +1581,28 @@ TEST(RestJsonSmokeTest, MalformedAcceptWithBodyRoundTrips) {
   EXPECT_EQ(*outcome, MinimalMalformedAcceptWithBodyOutput());
 }
 
+TEST(RestJsonSmokeTest, MalformedAcceptWithGenericStringRoundTrips) {
+  RestJsonClient client = MakeClient(std::make_shared<SmokeHandler>());
+    const MalformedAcceptWithGenericStringInput input = [] {
+    MalformedAcceptWithGenericStringInput v{};
+    return v;
+  }();
+  const auto outcome = client.MalformedAcceptWithGenericString(input);
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  EXPECT_EQ(*outcome, MinimalMalformedAcceptWithGenericStringOutput());
+}
+
+TEST(RestJsonSmokeTest, MalformedAcceptWithPayloadRoundTrips) {
+  RestJsonClient client = MakeClient(std::make_shared<SmokeHandler>());
+    const MalformedAcceptWithPayloadInput input = [] {
+    MalformedAcceptWithPayloadInput v{};
+    return v;
+  }();
+  const auto outcome = client.MalformedAcceptWithPayload(input);
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  EXPECT_EQ(*outcome, MinimalMalformedAcceptWithPayloadOutput());
+}
+
 TEST(RestJsonSmokeTest, MalformedBlobRoundTrips) {
   RestJsonClient client = MakeClient(std::make_shared<SmokeHandler>());
     const MalformedBlobInput input = [] {
@@ -1360,6 +1647,17 @@ TEST(RestJsonSmokeTest, MalformedContentTypeWithBodyRoundTrips) {
   EXPECT_EQ(*outcome, MinimalMalformedContentTypeWithBodyOutput());
 }
 
+TEST(RestJsonSmokeTest, MalformedContentTypeWithGenericStringRoundTrips) {
+  RestJsonClient client = MakeClient(std::make_shared<SmokeHandler>());
+    const MalformedContentTypeWithGenericStringInput input = [] {
+    MalformedContentTypeWithGenericStringInput v{};
+    return v;
+  }();
+  const auto outcome = client.MalformedContentTypeWithGenericString(input);
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  EXPECT_EQ(*outcome, MinimalMalformedContentTypeWithGenericStringOutput());
+}
+
 TEST(RestJsonSmokeTest, MalformedContentTypeWithoutBodyRoundTrips) {
   RestJsonClient client = MakeClient(std::make_shared<SmokeHandler>());
     const MalformedContentTypeWithoutBodyInput input = [] {
@@ -1380,6 +1678,17 @@ TEST(RestJsonSmokeTest, MalformedContentTypeWithoutBodyEmptyInputRoundTrips) {
   const auto outcome = client.MalformedContentTypeWithoutBodyEmptyInput(input);
   ASSERT_TRUE(outcome.ok()) << outcome.error().message();
   EXPECT_EQ(*outcome, MinimalMalformedContentTypeWithoutBodyEmptyInputOutput());
+}
+
+TEST(RestJsonSmokeTest, MalformedContentTypeWithPayloadRoundTrips) {
+  RestJsonClient client = MakeClient(std::make_shared<SmokeHandler>());
+    const MalformedContentTypeWithPayloadInput input = [] {
+    MalformedContentTypeWithPayloadInput v{};
+    return v;
+  }();
+  const auto outcome = client.MalformedContentTypeWithPayload(input);
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  EXPECT_EQ(*outcome, MinimalMalformedContentTypeWithPayloadOutput());
 }
 
 TEST(RestJsonSmokeTest, MalformedDoubleRoundTrips) {
@@ -1875,6 +2184,28 @@ TEST(RestJsonSmokeTest, TestGetNoPayloadRoundTrips) {
   const auto outcome = client.TestGetNoPayload(input);
   ASSERT_TRUE(outcome.ok()) << outcome.error().message();
   EXPECT_EQ(*outcome, MinimalTestGetNoPayloadOutput());
+}
+
+TEST(RestJsonSmokeTest, TestPayloadBlobRoundTrips) {
+  RestJsonClient client = MakeClient(std::make_shared<SmokeHandler>());
+    const TestPayloadBlobInput input = [] {
+    TestPayloadBlobInput v{};
+    return v;
+  }();
+  const auto outcome = client.TestPayloadBlob(input);
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  EXPECT_EQ(*outcome, MinimalTestPayloadBlobOutput());
+}
+
+TEST(RestJsonSmokeTest, TestPayloadStructureRoundTrips) {
+  RestJsonClient client = MakeClient(std::make_shared<SmokeHandler>());
+    const TestPayloadStructureInput input = [] {
+    TestPayloadStructureInput v{};
+    return v;
+  }();
+  const auto outcome = client.TestPayloadStructure(input);
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  EXPECT_EQ(*outcome, MinimalTestPayloadStructureOutput());
 }
 
 TEST(RestJsonSmokeTest, TestPostNoInputNoPayloadRoundTrips) {

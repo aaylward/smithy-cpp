@@ -63,13 +63,14 @@ generated client against the wire (client cases), and
 `tests/server_{request,response}_tests.cc` feed wire requests into the generated server and
 check parsed inputs / serialized responses (server cases). The `restjson1-validation` module
 generates `tests/server_malformed_tests.cc` from `httpMalformedRequestTests` (behind the
-`malformedTests` plugin setting / `--malformed-tests` runner flag): malformed wire requests
-must be rejected with the exact `ValidationException` response before the handler runs. ~590
-cases green in CI. Two must-shrink escape hatches, both with reasons in-repo:
+`malformedTests` plugin setting / `--malformed-tests` runner flag, on for all three modules):
+malformed wire requests must be rejected with the exact error response — constraint
+`ValidationException`s and parser strictness — before the handler runs. ~1,175 cases green in
+CI. Two must-shrink escape hatches, both with reasons in-repo:
 
-- **Pruned operations** (`build.gradle.kts` task args): operations using bindings the generator
-  does not implement yet (`@httpPayload`, `@httpPrefixHeaders`, `@httpResponseCode`, recursion,
-  streaming) are removed from the model before generation.
+- **Pruned operations** (`build.gradle.kts` task args): operations using features the generator
+  does not implement yet (recursive shapes, `@streaming` payloads) are removed from the model
+  before generation.
 - **Excluded cases** (`protocol-test-exclusions.txt`): individually skipped tests
   (`@default` population, NaN output equality, quoted-string list headers, …); stale entries
   fail generation, and the skipped ids are echoed into the generated file header.

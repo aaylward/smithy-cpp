@@ -10,6 +10,45 @@ char AsciiLower(char c) { return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 
 
 }  // namespace
 
+namespace {
+
+std::string_view TrimSpaces(std::string_view text) {
+  while (!text.empty() && (text.front() == ' ' || text.front() == '\t')) text.remove_prefix(1);
+  while (!text.empty() && (text.back() == ' ' || text.back() == '\t')) text.remove_suffix(1);
+  return text;
+}
+
+}  // namespace
+
+bool AcceptMatches(std::string_view accept_header, std::string_view content_type) {
+  const auto expected_slash = content_type.find('/');
+  const std::string_view expected_type = expected_slash == std::string_view::npos
+                                             ? content_type
+                                             : content_type.substr(0, expected_slash);
+  while (!accept_header.empty()) {
+    const auto comma = accept_header.find(',');
+    std::string_view range = accept_header.substr(0, comma);
+    if (const auto semi = range.find(';'); semi != std::string_view::npos) {
+      range = range.substr(0, semi);
+    }
+    range = TrimSpaces(range);
+    if (range == "*/*" || HeaderNameEquals(range, content_type)) return true;
+    if (range.size() > 2 && range.substr(range.size() - 2) == "/*" &&
+        HeaderNameEquals(range.substr(0, range.size() - 2), expected_type)) {
+      return true;
+    }
+    if (comma == std::string_view::npos) break;
+    accept_header.remove_prefix(comma + 1);
+  }
+  return false;
+}
+
+bool HeaderNameStartsWith(std::string_view name, std::string_view prefix) {
+  return name.size() >= prefix.size() &&
+         std::equal(prefix.begin(), prefix.end(), name.begin(),
+                    [](char x, char y) { return AsciiLower(x) == AsciiLower(y); });
+}
+
 bool HeaderNameEquals(std::string_view a, std::string_view b) {
   return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin(), [](char x, char y) {
            return AsciiLower(x) == AsciiLower(y);

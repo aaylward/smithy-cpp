@@ -86,6 +86,7 @@ smithy::Outcome<PendingStatus> DeserializePendingStatus(const smithy::Document& 
       return smithy::Error::Serialization("PendingStatus: missing required member: position");
     }
     if (!member->is_int()) return smithy::Error::Serialization("PendingStatus.position: unexpected type on the wire");
+    if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("PendingStatus.position: value out of range");
     out.position = static_cast<std::int32_t>(member->as_int());
   }
   return out;
@@ -130,6 +131,7 @@ smithy::Document SerializeOrderStatus(const OrderStatus& value) {
 
 smithy::Outcome<OrderStatus> DeserializeOrderStatus(const smithy::Document& doc) {
   if (!doc.is_map()) return smithy::Error::Serialization("OrderStatus: expected a map on the wire");
+  if (doc.as_map().size() - (doc.Find("__type") != nullptr ? 1 : 0) != 1) return smithy::Error::Serialization("OrderStatus: expected exactly one union member");
   if (const smithy::Document* member = doc.Find("pending"); member != nullptr && !member->is_null()) {
     PendingStatus parsed_member{};
     {
@@ -260,6 +262,7 @@ smithy::Document SerializeMilkOption(const MilkOption& value) {
 
 smithy::Outcome<MilkOption> DeserializeMilkOption(const smithy::Document& doc) {
   if (!doc.is_map()) return smithy::Error::Serialization("MilkOption: expected a map on the wire");
+  if (doc.as_map().size() - (doc.Find("__type") != nullptr ? 1 : 0) != 1) return smithy::Error::Serialization("MilkOption: expected exactly one union member");
   if (const smithy::Document* member = doc.Find("none"); member != nullptr && !member->is_null()) {
     smithy::Unit parsed_member{};
     parsed_member = smithy::Unit{};

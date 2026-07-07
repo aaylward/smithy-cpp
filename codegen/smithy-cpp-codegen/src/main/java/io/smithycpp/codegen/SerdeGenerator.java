@@ -194,6 +194,13 @@ final class SerdeGenerator {
     w.write(
         "if (!doc.is_map()) return smithy::Error::Serialization($S);",
         type + ": expected a map on the wire");
+    // Unions are exactly one member on the wire; extra known or unknown
+    // members are malformed (the malformed-request suite pins this), but a
+    // "__type" hint is ignored (clients must tolerate it in responses).
+    w.write(
+        "if (doc.as_map().size() - (doc.Find(\"__type\") != nullptr ? 1 : 0) != 1) "
+            + "return smithy::Error::Serialization($S);",
+        type + ": expected exactly one union member");
     for (MemberShape member : shape.members()) {
       String wireName = wireName(member);
       Symbol targetType =

@@ -78,19 +78,56 @@ final class ProtocolSupport {
 
   /** Text-to-number helpers used for header/label/query bindings. */
   static void writeNumericParseHelpers(CppWriter w) {
-    w.write("// Text value parsing for label/query/header bindings ([[maybe_unused]]:");
+    w.addInclude("<charconv>");
+    w.write("// Strict text parsing for label/query/header bindings ([[maybe_unused]]:");
     w.write("// emitted for every service; not every service binds numeric values).");
-    w.openBlock("[[maybe_unused]] std::int64_t ParseHeaderInt64(const std::string& text) {");
-    w.write("return std::strtoll(text.c_str(), nullptr, 10);");
+    w.write("// Trailing text, floats-for-ints, and out-of-range values are rejected");
+    w.write("// (the malformed-request suites pin this).");
+    w.openBlock(
+        "[[maybe_unused]] smithy::Outcome<std::int64_t> ParseInt64Text(const std::string& text, "
+            + "std::int64_t min_value, std::int64_t max_value) {");
+    w.write("std::int64_t value = 0;");
+    w.write("const char* first = text.data();");
+    w.write("const char* last = first + text.size();");
+    w.write("const auto result = std::from_chars(first, last, value, 10);");
+    w.write(
+        "if (text.empty() || result.ec != std::errc() || result.ptr != last || "
+            + "value < min_value || value > max_value) {");
+    w.indent();
+    w.write("return smithy::Error::Serialization(\"invalid integer: \" + text);");
+    w.dedent();
+    w.write("}");
+    w.write("return value;");
     w.closeBlock("}");
     w.write("");
-    w.openBlock("[[maybe_unused]] double ParseHeaderDouble(const std::string& text) {");
+    w.openBlock(
+        "[[maybe_unused]] smithy::Outcome<double> ParseDoubleText(const std::string& text) {");
     w.write("if (text == \"NaN\") return std::numeric_limits<double>::quiet_NaN();");
     w.write("if (text == \"Infinity\") return std::numeric_limits<double>::infinity();");
     w.write("if (text == \"-Infinity\") return -std::numeric_limits<double>::infinity();");
-    w.write("return std::strtod(text.c_str(), nullptr);");
+    w.write("double value = 0.0;");
+    w.write("const char* first = text.data();");
+    w.write("const char* last = first + text.size();");
+    w.write("const auto result = std::from_chars(first, last, value);");
+    w.write("if (text.empty() || result.ec != std::errc() || result.ptr != last) {");
+    w.indent();
+    w.write("return smithy::Error::Serialization(\"invalid number: \" + text);");
+    w.dedent();
+    w.write("}");
+    w.write("return value;");
     w.closeBlock("}");
     w.write("");
+  }
+
+  /** min/max arguments for ParseInt64Text per integer shape type. */
+  static String int64Bounds(software.amazon.smithy.model.shapes.ShapeType type) {
+    return switch (type) {
+      case BYTE -> "-128, 127";
+      case SHORT -> "-32768, 32767";
+      case INTEGER, INT_ENUM -> "-2147483648LL, 2147483647LL";
+      default ->
+          "std::numeric_limits<std::int64_t>::min(), std::numeric_limits<std::int64_t>::max()";
+    };
   }
 
   /** HTTP status for a modeled error shape: @httpError, else @error class default. */
@@ -190,11 +227,23 @@ final class ProtocolSupport {
     }
     w.write("return $L(400, error.code(), error.message(), {});", errorBodyFn);
     w.closeBlock("}");
-    w.write(
-        "if (error.kind() == smithy::ErrorKind::kValidation || error.kind() == "
-            + "smithy::ErrorKind::kSerialization) return $L(400, \"ValidationException\", "
-            + "error.message(), {});",
-        errorBodyFn);
+    if (errortypeHeader) {
+      // restJson1: parse failures answer 400 with the SerializationException
+      // error identity in the header (the malformed-request suite pins this).
+      w.openBlock(
+          "if (error.kind() == smithy::ErrorKind::kValidation || error.kind() == "
+              + "smithy::ErrorKind::kSerialization) {");
+      w.write("auto response = $L(400, \"\", error.message(), {});", errorBodyFn);
+      w.write("response.headers.Set(\"x-amzn-errortype\", \"SerializationException\");");
+      w.write("return response;");
+      w.closeBlock("}");
+    } else {
+      w.write(
+          "if (error.kind() == smithy::ErrorKind::kValidation || error.kind() == "
+              + "smithy::ErrorKind::kSerialization) return $L(400, \"SerializationException\", "
+              + "error.message(), {});",
+          errorBodyFn);
+    }
     w.write("// Never leak internal detail on unexpected failures.");
     w.write("return $L(500, \"InternalFailure\", \"internal failure\", {});", errorBodyFn);
     w.closeBlock("}");

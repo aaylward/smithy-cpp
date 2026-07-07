@@ -11,6 +11,26 @@
 
 namespace example::weather {
 
+struct DeleteCityInput {
+  std::string cityId{};
+
+  friend bool operator==(const DeleteCityInput&, const DeleteCityInput&) = default;
+};
+
+
+struct DeleteCityOutput {
+  friend bool operator==(const DeleteCityOutput&, const DeleteCityOutput&) = default;
+};
+
+
+/// The requested resource does not exist.
+struct NoSuchResource {
+  std::string resourceType{};
+
+  friend bool operator==(const NoSuchResource&, const NoSuchResource&) = default;
+};
+
+
 struct GetForecastInput {
   std::string cityId{};
 
@@ -22,14 +42,6 @@ struct GetForecastOutput {
   std::optional<float> chanceOfRain{};
 
   friend bool operator==(const GetForecastOutput&, const GetForecastOutput&) = default;
-};
-
-
-/// The requested resource does not exist.
-struct NoSuchResource {
-  std::string resourceType{};
-
-  friend bool operator==(const NoSuchResource&, const NoSuchResource&) = default;
 };
 
 

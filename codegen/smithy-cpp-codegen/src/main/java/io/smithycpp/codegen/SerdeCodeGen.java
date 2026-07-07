@@ -95,6 +95,22 @@ final class SerdeCodeGen {
       case BYTE, SHORT, INTEGER, LONG -> {
         String type = context.cppSymbols().toSymbol(shape).getName();
         w.write("if (!$L->is_int()) $L", docExpr, wrong);
+        if (shape.getType() != software.amazon.smithy.model.shapes.ShapeType.LONG) {
+          // Narrower integers reject out-of-range wire values instead of
+          // truncating (the malformed-request suite pins this).
+          String bounds =
+              switch (shape.getType()) {
+                case BYTE -> "-128 || " + docExpr + "->as_int() > 127";
+                case SHORT -> "-32768 || " + docExpr + "->as_int() > 32767";
+                default -> "-2147483648LL || " + docExpr + "->as_int() > 2147483647LL";
+              };
+          w.write(
+              "if ($L->as_int() < $L) return smithy::Error::Serialization(\"$L: value out of "
+                  + "range\");",
+              docExpr,
+              bounds,
+              path);
+        }
         w.write("$L = static_cast<$L>($L->as_int());", outExpr, type, docExpr);
       }
       case INT_ENUM -> {

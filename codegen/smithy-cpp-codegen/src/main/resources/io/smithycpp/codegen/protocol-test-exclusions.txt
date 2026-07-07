@@ -64,3 +64,16 @@ aws.protocoltests.restjson.validation#RestJsonValidation server-malformed RestJs
 # deserialization errors without JSON-pointer paths; reporting them as fieldList
 # entries needs a validating deserializer (PLAN follow-up).
 aws.protocoltests.restjson.validation#RestJsonValidation server-malformed RestJsonMalformedUniqueItemsStructureMissingKeyList nested @required absences are strict serde errors, not fieldList entries, until a validating deserializer lands
+
+# Clients and servers share one serde: clients must SKIP null dense-map values
+# and ACCEPT RFC3339 UTC offsets in responses, so the server cannot also
+# reject them in bodies until a server-strict serde variant lands (PLAN).
+aws.protocoltests.restjson#RestJson server-malformed RestJsonBodyMalformedMapNullValue clients must skip null dense-map values through the same serde
+aws.protocoltests.restjson#RestJson server-malformed RestJsonBodyTimestampDateTimeRejectsUTCOffsets_case0 clients must accept UTC offsets in responses through the same serde
+
+# These two contradict server-mode httpRequestTests in the same suite
+# (RestJsonEndpointTraitWithHostLabel sends a body with no content-type and
+# must parse; RestJsonEmptyInputAndEmptyOutputWithJson sends application/json
+# to an empty-input operation and must succeed).
+aws.protocoltests.restjson#RestJson server-malformed RestJsonWithBodyExpectsApplicationJsonContentTypeNoHeaders contradicts RestJsonEndpointTraitWithHostLabel (body with no content-type must parse)
+aws.protocoltests.restjson#RestJson server-malformed RestJsonWithoutBodyEmptyInputExpectsEmptyContentType contradicts RestJsonEmptyInputAndEmptyOutputWithJson (application/json to empty input must succeed)

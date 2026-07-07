@@ -74,18 +74,22 @@ members stay accepted on the wire but are omitted from the advertised value set.
 ## Conformance
 
 Generated servers pass the official server-mode `httpRequestTests`/`httpResponseTests` suites
-(220 cases across restJson1 and rpcv2Cbor) plus the `RestJsonValidation`
-`httpMalformedRequestTests` suite (122 constraint-validation cases), all with a documented
-must-shrink exclusion list: wire requests parse into the exact modeled inputs, malformed ones
-produce the exact `ValidationException` bodies, and handler outputs/errors serialize to the
-exact wire responses — including `@httpResponseCode`, 415 Content-Type enforcement (parameters
-like `; charset=utf-8` accepted), and all-query-params `@httpQueryParams` maps. Ambiguous route
-tables fail at generation time.
+(251 cases across restJson1 and rpcv2Cbor) plus the `httpMalformedRequestTests` suites: the
+`RestJsonValidation` constraint-validation suite (122 cases) and the main restJson1
+parser-strictness suite (526 cases), all with a documented must-shrink exclusion list. Wire
+requests parse into the exact modeled inputs — including `@httpPayload` (blob/string/enum raw
+bodies, structure/union/document JSON bodies) and `@httpPrefixHeaders` — malformed ones are
+rejected with the exact error identity (strict booleans, bounds-checked integers, strict
+timestamps, single-member unions, `SerializationException`/`UnsupportedMediaTypeException`/
+`NotAcceptableException` headers), and handler outputs/errors serialize to the exact wire
+responses — `@httpResponseCode`, 204 No Content bodies suppressed, Content-Type (415) and
+Accept (406) enforcement (blob payloads without `@mediaType` accept anything), and
+all-query-params `@httpQueryParams` maps. Ambiguous route tables fail at generation time.
 
-## Not yet generated (Phase 4d+)
+## Not yet generated (Phase 5+)
 
-The bindings the client also lacks (`@httpPayload`, `@httpPrefixHeaders`), the main protocol
-suites' parser-strictness `httpMalformedRequestTests`, nested `@required` absences as
-`fieldList` entries (they are strict 400 deserialization errors today), and ReDoS-safe
-`@pattern` matching (`std::regex` backtracks, so the suite's deliberately catastrophic pattern
-is excluded).
+Nested `@required` absences as `fieldList` entries and a server-strict serde variant (clients
+must skip null dense-map values and accept UTC-offset timestamps in responses; servers share
+that serde today), ReDoS-safe `@pattern` matching (`std::regex` backtracks, so the suite's
+deliberately catastrophic pattern is excluded), `@streaming` payloads (Phase 8), and
+`@requestCompression`.

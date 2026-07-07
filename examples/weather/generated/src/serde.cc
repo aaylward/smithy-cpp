@@ -8,6 +8,57 @@
 
 namespace example::weather {
 
+smithy::Document SerializeDeleteCityInput(const DeleteCityInput& value) {
+  smithy::DocumentMap map;
+  map.emplace("cityId", smithy::Document(value.cityId));
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<DeleteCityInput> DeserializeDeleteCityInput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("DeleteCityInput: expected a map on the wire");
+  DeleteCityInput out;
+  {
+    const smithy::Document* member = doc.Find("cityId");
+    if (member == nullptr || member->is_null()) {
+      return smithy::Error::Serialization("DeleteCityInput: missing required member: cityId");
+    }
+    if (!member->is_string()) return smithy::Error::Serialization("DeleteCityInput.cityId: unexpected type on the wire");
+    out.cityId = member->as_string();
+  }
+  return out;
+}
+
+smithy::Document SerializeDeleteCityOutput(const DeleteCityOutput& value) {
+  smithy::DocumentMap map;
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<DeleteCityOutput> DeserializeDeleteCityOutput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("DeleteCityOutput: expected a map on the wire");
+  DeleteCityOutput out;
+  return out;
+}
+
+smithy::Document SerializeNoSuchResource(const NoSuchResource& value) {
+  smithy::DocumentMap map;
+  map.emplace("resourceType", smithy::Document(value.resourceType));
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<NoSuchResource> DeserializeNoSuchResource(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("NoSuchResource: expected a map on the wire");
+  NoSuchResource out;
+  {
+    const smithy::Document* member = doc.Find("resourceType");
+    if (member == nullptr || member->is_null()) {
+      return smithy::Error::Serialization("NoSuchResource: missing required member: resourceType");
+    }
+    if (!member->is_string()) return smithy::Error::Serialization("NoSuchResource.resourceType: unexpected type on the wire");
+    out.resourceType = member->as_string();
+  }
+  return out;
+}
+
 smithy::Document SerializeGetForecastInput(const GetForecastInput& value) {
   smithy::DocumentMap map;
   map.emplace("cityId", smithy::Document(value.cityId));
@@ -50,26 +101,6 @@ smithy::Outcome<GetForecastOutput> DeserializeGetForecastOutput(const smithy::Do
       }
       out.chanceOfRain = std::move(parsed_member);
     }
-  }
-  return out;
-}
-
-smithy::Document SerializeNoSuchResource(const NoSuchResource& value) {
-  smithy::DocumentMap map;
-  map.emplace("resourceType", smithy::Document(value.resourceType));
-  return smithy::Document(std::move(map));
-}
-
-smithy::Outcome<NoSuchResource> DeserializeNoSuchResource(const smithy::Document& doc) {
-  if (!doc.is_map()) return smithy::Error::Serialization("NoSuchResource: expected a map on the wire");
-  NoSuchResource out;
-  {
-    const smithy::Document* member = doc.Find("resourceType");
-    if (member == nullptr || member->is_null()) {
-      return smithy::Error::Serialization("NoSuchResource: missing required member: resourceType");
-    }
-    if (!member->is_string()) return smithy::Error::Serialization("NoSuchResource.resourceType: unexpected type on the wire");
-    out.resourceType = member->as_string();
   }
   return out;
 }
@@ -189,6 +220,7 @@ smithy::Outcome<ListCitiesInput> DeserializeListCitiesInput(const smithy::Docume
     if (member != nullptr && !member->is_null()) {
       std::int32_t parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("ListCitiesInput.pageSize: unexpected type on the wire");
+      if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("ListCitiesInput.pageSize: value out of range");
       parsed_member = static_cast<std::int32_t>(member->as_int());
       out.pageSize = std::move(parsed_member);
     }

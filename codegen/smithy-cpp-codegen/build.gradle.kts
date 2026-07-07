@@ -79,30 +79,14 @@ val generateRestJson1ProtocolTests = registerProtocolTestTask(
     "aws.protocoltests.restjson#RestJson",
     "smithy::protocoltests::restjson",
     "protocol-tests/restjson1/generated",
-    listOf(
+    malformedTests = true,
+    omitOperations = listOf(
         // Recursive shapes need boxed-recursion support (PLAN Phase 2 note).
         "aws.protocoltests.restjson#RecursiveShapes",
-        // @httpPayload bindings (input and output) are not implemented yet.
-        "aws.protocoltests.restjson#DocumentTypeAsPayload",
-        "aws.protocoltests.restjson#HttpEnumPayload",
-        "aws.protocoltests.restjson#HttpPayloadTraits",
-        "aws.protocoltests.restjson#HttpPayloadTraitsWithMediaType",
-        "aws.protocoltests.restjson#HttpPayloadWithStructure",
-        "aws.protocoltests.restjson#HttpPayloadWithUnion",
-        "aws.protocoltests.restjson#HttpStringPayload",
-        "aws.protocoltests.restjson#MalformedAcceptWithGenericString",
-        "aws.protocoltests.restjson#MalformedAcceptWithPayload",
-        "aws.protocoltests.restjson#MalformedContentTypeWithGenericString",
-        "aws.protocoltests.restjson#MalformedContentTypeWithPayload",
-        "aws.protocoltests.restjson#TestPayloadBlob",
-        "aws.protocoltests.restjson#TestPayloadStructure",
         // @streaming payloads are Phase 8 scope.
         "aws.protocoltests.restjson#StreamingTraits",
         "aws.protocoltests.restjson#StreamingTraitsRequireLength",
         "aws.protocoltests.restjson#StreamingTraitsWithMediaType",
-        // @httpPrefixHeaders bindings are not implemented yet.
-        "aws.protocoltests.restjson#HttpPrefixHeaders",
-        "aws.protocoltests.restjson#HttpPrefixHeadersInResponse",
     ),
 )
 
@@ -111,7 +95,8 @@ val generateRpcv2CborProtocolTests = registerProtocolTestTask(
     "smithy.protocoltests.rpcv2Cbor#RpcV2Protocol",
     "smithy::protocoltests::rpcv2cbor",
     "protocol-tests/rpcv2cbor/generated",
-    listOf(
+    malformedTests = true,
+    omitOperations = listOf(
         // Recursive shapes need boxed-recursion support (PLAN Phase 2 note).
         "smithy.protocoltests.rpcv2Cbor#RecursiveShapes",
     ),

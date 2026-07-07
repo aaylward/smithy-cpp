@@ -149,7 +149,11 @@ final class ClientGenerator {
         "smithy::Outcome<smithy::http::HttpResponse> $L::Send("
             + "smithy::http::HttpRequest request) const {",
         name);
-    w.write("request.headers.Set(\"accept\", $S);", protocol.contentType());
+    w.write("// Operations with a non-document response payload set their own accept.");
+    w.write(
+        "if (!request.headers.Get(\"accept\").has_value()) "
+            + "request.headers.Set(\"accept\", $S);",
+        protocol.contentType());
     w.write("request.headers.Set(\"user-agent\", config_.user_agent);");
     w.openBlock("if (!request.body.empty()) {");
     w.write("request.headers.Set(\"content-length\", std::to_string(request.body.size()));");

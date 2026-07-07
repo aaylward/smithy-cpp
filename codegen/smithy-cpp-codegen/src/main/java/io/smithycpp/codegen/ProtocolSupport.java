@@ -78,7 +78,10 @@ final class ProtocolSupport {
 
   /** Text-to-number helpers used for header/label/query bindings. */
   static void writeNumericParseHelpers(CppWriter w) {
+    w.addInclude("<algorithm>");
     w.addInclude("<charconv>");
+    w.addInclude("<cmath>");
+    w.addInclude("<cstdlib>");
     w.write("// Strict text parsing for label/query/header bindings ([[maybe_unused]]:");
     w.write("// emitted for every service; not every service binds numeric values).");
     w.write("// Trailing text, floats-for-ints, and out-of-range values are rejected");
@@ -100,20 +103,29 @@ final class ProtocolSupport {
     w.write("return value;");
     w.closeBlock("}");
     w.write("");
+    // Floating-point std::from_chars is missing on libc++ (Apple), so doubles
+    // pair a strict character-set check (rejects hex, inf/nan spellings, and
+    // leading '+'/whitespace strtod would accept) with a fully-consuming strtod.
     w.openBlock(
         "[[maybe_unused]] smithy::Outcome<double> ParseDoubleText(const std::string& text) {");
     w.write("if (text == \"NaN\") return std::numeric_limits<double>::quiet_NaN();");
     w.write("if (text == \"Infinity\") return std::numeric_limits<double>::infinity();");
     w.write("if (text == \"-Infinity\") return -std::numeric_limits<double>::infinity();");
-    w.write("double value = 0.0;");
-    w.write("const char* first = text.data();");
-    w.write("const char* last = first + text.size();");
-    w.write("const auto result = std::from_chars(first, last, value);");
-    w.write("if (text.empty() || result.ec != std::errc() || result.ptr != last) {");
-    w.indent();
+    w.openBlock("const auto valid_char = [](char c) {");
+    w.write(
+        "return (c >= '0' && c <= '9') || c == '.' || c == 'e' || c == 'E' || c == '+' || "
+            + "c == '-';");
+    w.closeBlock("};");
+    w.openBlock(
+        "if (text.empty() || text.front() == '+' || "
+            + "!std::all_of(text.begin(), text.end(), valid_char)) {");
     w.write("return smithy::Error::Serialization(\"invalid number: \" + text);");
-    w.dedent();
-    w.write("}");
+    w.closeBlock("}");
+    w.write("char* parse_end = nullptr;");
+    w.write("const double value = std::strtod(text.c_str(), &parse_end);");
+    w.openBlock("if (parse_end != text.c_str() + text.size() || !std::isfinite(value)) {");
+    w.write("return smithy::Error::Serialization(\"invalid number: \" + text);");
+    w.closeBlock("}");
     w.write("return value;");
     w.closeBlock("}");
     w.write("");

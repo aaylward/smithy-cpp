@@ -14,5 +14,14 @@
 // dependency) keeps //runtime:http_beast self-contained — same
 // exactly-one-TU rule as Beast's implementation above.
 
-#include <boost/asio/ssl/impl/src.hpp>
+// The module's header glob exports .ipp files but not the src.hpp umbrella,
+// so this replicates <boost/asio/ssl/impl/src.hpp> (asio 1.87) inline.
+#define BOOST_ASIO_SOURCE
+
+#include <boost/asio/detail/config.hpp>
+#include <boost/asio/ssl/detail/impl/engine.ipp>
+#include <boost/asio/ssl/detail/impl/openssl_init.ipp>
+#include <boost/asio/ssl/impl/context.ipp>
+#include <boost/asio/ssl/impl/error.ipp>
+#include <boost/asio/ssl/impl/host_name_verification.ipp>
 #include <boost/beast/src.hpp>

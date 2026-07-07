@@ -526,7 +526,7 @@ Outcome<HttpResponse> BeastHttpClient::Send(const HttpRequest& request) {
     if (!dialed) {
       return std::move(dialed).error();
     }
-    connection = *std::move(dialed);
+    connection = std::move(dialed).value();
   }
 
   bool stale = false;
@@ -538,7 +538,7 @@ Outcome<HttpResponse> BeastHttpClient::Send(const HttpRequest& request) {
     if (!dialed) {
       return std::move(dialed).error();
     }
-    connection = *std::move(dialed);
+    connection = std::move(dialed).value();
     outcome = state_->RoundTrip(*connection, wire, &stale, &keep_alive);
   }
   if (!outcome) {

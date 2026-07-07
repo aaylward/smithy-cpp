@@ -3,11 +3,13 @@ $version: "2.0"
 namespace example.roundtrip
 
 use alloy#simpleRestJson
+use smithy.cpp.protocols#jsonRpc2
 use smithy.protocols#rpcv2Cbor
 
 /// Kitchen-sink fixture for the Phase 5 integration matrix: the same shapes
-/// served over simpleRestJson (with every supported HTTP binding) and rpcv2Cbor,
-/// so random round-trips exercise both protocols' serde end to end.
+/// served over simpleRestJson (with every supported HTTP binding), rpcv2Cbor,
+/// and jsonRpc2, so random round-trips exercise every protocol's serde end
+/// to end.
 @simpleRestJson
 @httpApiKeyAuth(name: "api-key", in: "query")
 service RoundTripRest {
@@ -17,6 +19,14 @@ service RoundTripRest {
 
 @rpcv2Cbor
 service RoundTripRpc {
+    version: "2026-01-01"
+    operations: [PutSinkRpc]
+}
+
+/// The same RPC surface as RoundTripRpc, served over JSON-RPC 2.0: one model,
+/// three protocol variants.
+@jsonRpc2
+service RoundTripJsonRpc {
     version: "2026-01-01"
     operations: [PutSinkRpc]
 }

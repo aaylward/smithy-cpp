@@ -53,13 +53,16 @@ The `Rng` is seeded `std::mt19937`, so any failure reproduces deterministically.
 
 | Module | Protocol | Coverage |
 |---|---|---|
-| `examples/weather` | restJson1 | labels, query, resources, errors, 204 |
+| `examples/weather` | simpleRestJson | labels, query, resources, errors, 204 |
 | `examples/cafe` | rpcv2Cbor | unions (incl. Unit members), documents-free CBOR |
-| `examples/roundtrip` (rest) | restJson1 | kitchen sink: every binding location at once, all three timestamp formats, sparse/unique lists, maps, unions, blob payload + struct payload, prefix headers, documents, both error classes |
+| `examples/simplerestjson` | simpleRestJson | the bookstore quick-start service |
+| `examples/roundtrip` (rest) | simpleRestJson | kitchen sink: every binding location at once, all three timestamp formats, sparse/unique lists, maps, unions, blob payload + struct payload, prefix headers, documents, both error classes |
 | `examples/roundtrip` (rpc) | rpcv2Cbor | the same kitchen-sink shapes over CBOR |
+| `examples/roundtrip` (jsonrpc) | jsonRpc2 | the same kitchen-sink shapes over JSON-RPC 2.0 envelopes |
+| `examples/jsonrpc2` | jsonRpc2 | calculator showcase + hand-rolled-peer interop wire tests |
 
-`examples/roundtrip/model/roundtrip.smithy` defines both services over shared shapes, so the
-REST and RPC matrices exercise identical structures. To add a fixture: write the model, register
+`examples/roundtrip/model/roundtrip.smithy` defines all three services over shared shapes, so
+the REST and RPC matrices exercise identical structures. To add a fixture: write the model, register
 a `registerFixtureTask` in `codegen/smithy-cpp-codegen/build.gradle.kts` (the
 `--integration-tests true` flag is on for all fixture tasks), regenerate, and the suite exists.
 

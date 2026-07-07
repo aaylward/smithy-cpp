@@ -8,8 +8,9 @@ namespace acme.todo
 /// Deliberately protocol-agnostic (the upstream Smithy way): the @http
 /// bindings below describe HTTP semantics without picking a wire protocol.
 /// The overlays next to this file bind the service to a concrete protocol
-/// with `apply` — see bindings/simplerestjson.smithy and bindings/rpcv2cbor.smithy
-/// — so one model can serve REST and RPC without being edited.
+/// with `apply` — see bindings/simplerestjson.smithy, bindings/rpcv2cbor.smithy,
+/// and bindings/jsonrpc2.smithy — so one model can serve REST and RPC without
+/// being edited.
 service Todo {
     version: "2026-01-01"
     operations: [AddTask, GetTask]

@@ -154,9 +154,7 @@ final class ServerGenerator {
     w.write("// The route table is derived from the model's @http traits; conflicts are");
     w.write("// a modeling error surfaced by Router::Add (checked at generation time in a");
     w.write("// later phase), so registration results are intentionally discarded.");
-    for (OperationShape operation : operations) {
-      protocol.writeServerRoute(w, context, service, operation);
-    }
+    protocol.writeServerRoutes(w, context, service, operations);
     w.dedent();
     w.write("}");
     w.write("");

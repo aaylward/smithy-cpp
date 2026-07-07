@@ -16,8 +16,9 @@ smithy-rs's `codegen-core` structure (PLAN §3.2a).
 | `TypeGenerators` | The actual C++ emission for data shapes |
 | `SerdeGenerator` / `SerdeCodeGen` | `serde.h`/`src/serde.cc`: per-shape `Serialize*`/`Deserialize*` functions over the `smithy::Document` pivot, in topological order (`TopologicalIndex`) |
 | `ProtocolGenerator` (interface) | Per-protocol request building + response/error handling emission; `resolveProtocol` picks the implementation from the service's protocol traits |
-| `RestJson1Protocol` | `aws.protocols#restJson1`: HTTP bindings via `HttpBindingIndex` (labels incl. greedy, query, headers, status), JSON bodies |
+| `HttpJsonBindingProtocol` / `SimpleRestJsonProtocol` | `alloy#simpleRestJson`: HTTP bindings via `HttpBindingIndex` (labels incl. greedy, query, headers, status), JSON bodies, neutral `X-Error-Type` error identity |
 | `Rpcv2CborProtocol` | `smithy.protocols#rpcv2Cbor`: fixed `/service/{S}/operation/{O}` target, `smithy-protocol` header, CBOR bodies |
+| `JsonRpc2Protocol` | `smithy.cpp.protocols#jsonRpc2`: single `POST /` endpoint, JSON-RPC 2.0 envelopes, body-`method` dispatch (overrides `writeServerRoutes`), JSON-RPC error objects |
 | `ProtocolSupport` | Shared protocol emission: error deserialization + code sanitization, `@idempotencyToken` auto-fill, header/query to-string conversion |
 | `ClientGenerator` | `client.h`/`src/client.cc`: `<Service>Client` with `Create(ClientConfig)` and one method per operation |
 | `BuildFileGenerator` | The generated module's `BUILD.bazel` (buildifier-clean, sorted deps) |
@@ -57,8 +58,9 @@ in; Phases 3–5 extend it to clients, servers, and the integration harness.
 ## Official protocol conformance suites
 
 `gradle generateProtocolTests` regenerates
-`protocol-tests/{restjson1,rpcv2cbor,restjson1-validation}/generated` from the published
-`smithy-aws-protocol-tests` / `smithy-protocol-tests` models: a normal generated module
+`protocol-tests/{simplerestjson,rpcv2cbor,jsonrpc2}/generated` from the published
+`alloy-protocol-tests` / `smithy-protocol-tests` models (jsonRpc2's suite is authored in-repo
+under `protocol-tests/jsonrpc2/model` — no external suite exists): a normal generated module
 (types/serde/client/server) plus GoogleTest suites derived from the
 `httpRequestTests`/`httpResponseTests` traits: `tests/{request,response}_tests.cc` run the
 generated client against the wire (client cases), and

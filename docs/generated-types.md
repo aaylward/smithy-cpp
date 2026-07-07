@@ -99,13 +99,15 @@ auto city   = client->GetCity(GetCityInput{.cityId = "seattle"});  // Outcome<Ge
 - **Transport-agnostic**: `smithy::ClientConfig` supplies either an `endpoint` (uses the default
   socket transport) or an explicit `http_client` (loopback for tests, Beast, custom).
 - **Protocol binding** is chosen at generation time from the service's protocol trait:
-  simpleRestJson (HTTP bindings: labels, query, headers, status codes) or rpcv2Cbor
-  (`POST /service/{S}/operation/{O}`, `smithy-protocol: rpc-v2-cbor`, CBOR bodies).
+  simpleRestJson (HTTP bindings: labels, query, headers, status codes), rpcv2Cbor
+  (`POST /service/{S}/operation/{O}`, `smithy-protocol: rpc-v2-cbor`, CBOR bodies), or
+  jsonRpc2 (single `POST /`, `{"jsonrpc":"2.0","method":…,"params":…,"id":1}` envelopes).
 - `@idempotencyToken` members are auto-filled with a UUIDv4 when unset; caller-provided values
   pass through untouched.
 - HTTP 4xx/5xx map to `smithy::ErrorKind::kModeled` with the sanitized error code
-  (`ns#Shape` → `Shape`, simpleRestJson also reads the `x-error-type` header); `@retryable`
-  errors and 5xx responses are marked retryable.
+  (`ns#Shape` → `Shape`, simpleRestJson also reads the `x-error-type` header; jsonRpc2 errors
+  arrive as JSON-RPC error objects on HTTP 200, discriminated by `error.data.__type`);
+  `@retryable` errors and 5xx responses (jsonRpc2: `error.code >= 500`) are marked retryable.
 - **Typed errors**: when the code matches an error the operation declares, the deserialized
   error structure rides along as the error's detail —
   `if (const auto* e = outcome.error().detail<OrderNotFound>()) use(e->orderId);`

@@ -605,8 +605,20 @@ in the error body, (3) client status-code fallback.
   `{"jsonrpc":"2.0","result":<output>,"id":…}` / `{"error":{code,message,data}}` response over the
   `smithy::Document` JSON pivot; JSON-RPC error objects map to modeled errors (`data` carries the
   shape). We author its protocol-test model (no external suite exists).
+  ✅ Done — `JsonRpc2Protocol` (client + server; the single-endpoint dispatch overrides the new
+  `ProtocolGenerator.writeServerRoutes` hook), authored conformance suite under
+  `protocol-tests/jsonrpc2` (request/response/error/malformed cases, all green). Wire contract:
+  every JSON-RPC envelope travels as HTTP 200; modeled errors carry their `@httpError` status as
+  the application `error.code` with the fully qualified shape id in `data.__type`; the reserved
+  codes cover envelope-level failures (-32700/-32600/-32601/-32602); validation mirrors rpcv2Cbor
+  (`smithy.framework#ValidationException` + `fieldList`, code 400). The normative definition lives
+  on `JsonRpc2Protocol`'s class docs.
 - **Migrate fixtures/examples**: weather + roundtrip REST move to `simpleRestJson`; add a `jsonRpc2`
   fixture. Consumer example overlays become `simplerestjson` / `rpcv2cbor` / `jsonrpc2`.
+  ✅ Done — `RoundTripJsonRpc` serves the kitchen sink over JSON-RPC (generated integration suite
+  green), `examples/jsonrpc2` adds a classic calculator service with a hand-rolled-peer interop
+  wire test (foreign string ids, raw envelopes both directions), and the out-of-tree consumer
+  gained the `jsonrpc2` overlay + a third integration-test leg.
 
 **Sequencing:** lands after Phase 7d fuzzing/benchmarks and before the 0.1.0 tag — no point
 cutting a release on a protocol surface we are about to replace. Release engineering (versioning,

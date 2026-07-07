@@ -44,6 +44,26 @@ smithy_cpp_server_library(
     service = "acme.todo#Todo",
 )
 
+smithy_cpp_client_library(
+    name = "todo_jsonrpc_client",
+    srcs = [
+        "model/bindings/jsonrpc2.smithy",
+        "model/todo.smithy",
+    ],
+    namespace = "acme::todo::jsonrpc",
+    service = "acme.todo#Todo",
+)
+
+smithy_cpp_server_library(
+    name = "todo_jsonrpc_server",
+    srcs = [
+        "model/bindings/jsonrpc2.smithy",
+        "model/todo.smithy",
+    ],
+    namespace = "acme::todo::jsonrpc",
+    service = "acme.todo#Todo",
+)
+
 # The generated client integration-tests the generated server (the Phase 5
 # pattern): loopback and a real socket on an ephemeral port.
 cc_test(
@@ -54,6 +74,8 @@ cc_test(
         ":todo_cbor_client",
         ":todo_cbor_server",
         ":todo_client",
+        ":todo_jsonrpc_client",
+        ":todo_jsonrpc_server",
         ":todo_server",
         "@googletest//:gtest_main",
         "@smithy_cpp//runtime:client",

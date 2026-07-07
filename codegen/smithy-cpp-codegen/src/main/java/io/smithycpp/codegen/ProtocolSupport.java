@@ -18,11 +18,8 @@ final class ProtocolSupport {
 
   private ProtocolSupport() {}
 
-  /**
-   * Emits the protocol's shared error-parsing helpers (SanitizeErrorCode, ParsedError, ParseError,
-   * GenericError); only the wire decode and the code-carrying header differ per protocol.
-   */
-  static void writeErrorSupport(CppWriter w, String decodeStatement, String errorTypeHeader) {
+  /** Emits SanitizeErrorCode: strips URI qualifiers and namespaces off wire error codes. */
+  static void writeSanitizeErrorCode(CppWriter w) {
     w.write("// The error shape name arrives namespaced (\"ns#Shape\") and possibly");
     w.write("// URI-qualified; modeled error codes keep only the shape name.");
     w.openBlock("std::string SanitizeErrorCode(std::string_view raw) {");
@@ -35,6 +32,10 @@ final class ProtocolSupport {
     w.write("return std::string(raw);");
     w.closeBlock("}");
     w.write("");
+  }
+
+  /** Emits the ParsedError struct the Make&lt;Error&gt;Error deserializers consume. */
+  static void writeParsedErrorStruct(CppWriter w) {
     w.openBlock("struct ParsedError {");
     w.write("int status = 0;");
     w.write("std::string code = \"UnknownError\";");
@@ -42,6 +43,31 @@ final class ProtocolSupport {
     w.write("smithy::Document doc;");
     w.closeBlock("};");
     w.write("");
+  }
+
+  /** Emits GenericError: the fallback smithy::Error for unrecognized wire errors. */
+  static void writeGenericError(CppWriter w) {
+    w.openBlock("smithy::Error GenericError(ParsedError parsed) {");
+    w.write("const bool retryable = parsed.status >= 500;");
+    w.write(
+        "if (parsed.code == \"UnknownError\") return smithy::Error(smithy::ErrorKind::kUnknown, "
+            + "std::move(parsed.code), std::move(parsed.message), retryable);");
+    w.write(
+        "return smithy::Error::Modeled(std::move(parsed.code), std::move(parsed.message), "
+            + "retryable);");
+    w.closeBlock("}");
+    w.write("");
+  }
+
+  /**
+   * Emits the protocol's shared error-parsing helpers (SanitizeErrorCode, ParsedError, ParseError,
+   * GenericError); only the wire decode and the code-carrying header differ per protocol. Protocols
+   * whose error identity is not header/body-top-level shaped (jsonRpc2) compose the pieces
+   * themselves and write their own ParseError.
+   */
+  static void writeErrorSupport(CppWriter w, String decodeStatement, String errorTypeHeader) {
+    writeSanitizeErrorCode(w);
+    writeParsedErrorStruct(w);
     w.openBlock("ParsedError ParseError(const smithy::http::HttpResponse& response) {");
     w.write("ParsedError parsed;");
     w.write("parsed.status = response.status;");
@@ -64,16 +90,7 @@ final class ProtocolSupport {
     w.write("return parsed;");
     w.closeBlock("}");
     w.write("");
-    w.openBlock("smithy::Error GenericError(ParsedError parsed) {");
-    w.write("const bool retryable = parsed.status >= 500;");
-    w.write(
-        "if (parsed.code == \"UnknownError\") return smithy::Error(smithy::ErrorKind::kUnknown, "
-            + "std::move(parsed.code), std::move(parsed.message), retryable);");
-    w.write(
-        "return smithy::Error::Modeled(std::move(parsed.code), std::move(parsed.message), "
-            + "retryable);");
-    w.closeBlock("}");
-    w.write("");
+    writeGenericError(w);
   }
 
   /** Text-to-number helpers used for header/label/query bindings. */
@@ -220,6 +237,25 @@ final class ProtocolSupport {
       List<OperationShape> operations,
       String errorBodyFn,
       String errortypeHeader) {
+    writeServerErrorToResponse(
+        w, context, service, operations, errorBodyFn, errortypeHeader, "", "");
+  }
+
+  /**
+   * Variant threading extra context through ErrorToResponse into {@code errorBodyFn}: {@code
+   * extraParams} is appended to the signature (e.g. ", const smithy::Document& id") and {@code
+   * extraArgs} to every {@code errorBodyFn} call (e.g. ", id"). jsonRpc2 uses this to echo the
+   * request id into error envelopes.
+   */
+  static void writeServerErrorToResponse(
+      CppWriter w,
+      CppContext context,
+      ServiceShape service,
+      List<OperationShape> operations,
+      String errorBodyFn,
+      String errortypeHeader,
+      String extraParams,
+      String extraArgs) {
     Map<String, StructureShape> errorShapes = new TreeMap<>();
     for (OperationShape operation : operations) {
       for (ShapeId errorId : operation.getErrors(service)) {
@@ -228,7 +264,8 @@ final class ProtocolSupport {
         errorShapes.put(context.cppSymbols().toSymbol(shape).getName(), shape);
       }
     }
-    w.openBlock("smithy::http::HttpResponse ErrorToResponse(const smithy::Error& error) {");
+    w.openBlock(
+        "smithy::http::HttpResponse ErrorToResponse(const smithy::Error& error$L) {", extraParams);
     if (!errortypeHeader.isEmpty()) {
       w.write("std::vector<std::pair<std::string, std::string>> header_values;");
       w.write("(void)header_values;");
@@ -276,24 +313,26 @@ final class ProtocolSupport {
           w.closeBlock("}");
         }
         w.write(
-            "auto response = $L($L, \"\", \"\", std::move(body));",
+            "auto response = $L($L, \"\", \"\", std::move(body)$L);",
             errorBodyFn,
-            errorStatus(shape));
+            errorStatus(shape),
+            extraArgs);
         w.write("response.headers.Set($S, error.code());", errortypeHeader);
         w.write(
             "for (const auto& [name, value] : header_values) response.headers.Set(name, value);");
         w.write("return response;");
       } else {
-        // rpcv2Cbor: __type carries the fully qualified shape id in the body.
+        // rpcv2Cbor/jsonRpc2: __type carries the fully qualified shape id.
         w.write(
-            "return $L($L, $S, \"\", std::move(body));",
+            "return $L($L, $S, \"\", std::move(body)$L);",
             errorBodyFn,
             errorStatus(shape),
-            shape.getId().toString());
+            shape.getId().toString(),
+            extraArgs);
       }
       w.closeBlock("}");
     }
-    w.write("return $L(400, error.code(), error.message(), {});", errorBodyFn);
+    w.write("return $L(400, error.code(), error.message(), {}$L);", errorBodyFn, extraArgs);
     w.closeBlock("}");
     if (!errortypeHeader.isEmpty()) {
       // restJson1: parse failures answer 400 with the SerializationException
@@ -301,7 +340,7 @@ final class ProtocolSupport {
       w.openBlock(
           "if (error.kind() == smithy::ErrorKind::kValidation || error.kind() == "
               + "smithy::ErrorKind::kSerialization) {");
-      w.write("auto response = $L(400, \"\", error.message(), {});", errorBodyFn);
+      w.write("auto response = $L(400, \"\", error.message(), {}$L);", errorBodyFn, extraArgs);
       w.write("response.headers.Set($S, \"SerializationException\");", errortypeHeader);
       w.write("return response;");
       w.closeBlock("}");
@@ -309,11 +348,13 @@ final class ProtocolSupport {
       w.write(
           "if (error.kind() == smithy::ErrorKind::kValidation || error.kind() == "
               + "smithy::ErrorKind::kSerialization) return $L(400, \"SerializationException\", "
-              + "error.message(), {});",
-          errorBodyFn);
+              + "error.message(), {}$L);",
+          errorBodyFn,
+          extraArgs);
     }
     w.write("// Never leak internal detail on unexpected failures.");
-    w.write("return $L(500, \"InternalFailure\", \"internal failure\", {});", errorBodyFn);
+    w.write(
+        "return $L(500, \"InternalFailure\", \"internal failure\", {}$L);", errorBodyFn, extraArgs);
     w.closeBlock("}");
     w.write("");
   }

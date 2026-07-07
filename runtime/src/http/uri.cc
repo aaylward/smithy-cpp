@@ -142,14 +142,20 @@ Outcome<RequestTarget> ParseRequestTarget(std::string_view target) {
 Outcome<Endpoint> ParseEndpoint(std::string_view url) {
   Endpoint endpoint;
   constexpr std::string_view kHttp = "http://";
-  if (url.substr(0, kHttp.size()) != kHttp) {
+  constexpr std::string_view kHttps = "https://";
+  std::string_view rest;
+  if (url.substr(0, kHttp.size()) == kHttp) {
+    endpoint.scheme = "http";
+    endpoint.port = 80;
+    rest = url.substr(kHttp.size());
+  } else if (url.substr(0, kHttps.size()) == kHttps) {
+    endpoint.scheme = "https";
+    endpoint.port = 443;
+    rest = url.substr(kHttps.size());
+  } else {
     return Error::Validation(
-        "endpoint: only http:// endpoints are supported by the built-in "
-        "transport (got: " +
-        std::string(url) + ")");
+        "endpoint: expected an http:// or https:// URL (got: " + std::string(url) + ")");
   }
-  endpoint.scheme = "http";
-  std::string_view rest = url.substr(kHttp.size());
   const auto path_start = rest.find('/');
   std::string_view authority =
       path_start == std::string_view::npos ? rest : rest.substr(0, path_start);

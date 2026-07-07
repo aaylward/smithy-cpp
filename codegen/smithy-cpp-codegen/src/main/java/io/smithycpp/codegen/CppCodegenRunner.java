@@ -34,7 +34,7 @@ public final class CppCodegenRunner {
   private CppCodegenRunner() {}
 
   public static void main(String[] args) {
-    String modelPath = null;
+    List<String> modelPaths = new ArrayList<>();
     String service = null;
     String namespace = null;
     String runtimeTarget = "@smithy_cpp//runtime:core";
@@ -47,7 +47,7 @@ public final class CppCodegenRunner {
     List<String> omitOperations = new ArrayList<>();
     for (int i = 0; i + 1 < args.length; i += 2) {
       switch (args[i]) {
-        case "--model" -> modelPath = args[i + 1];
+        case "--model" -> modelPaths.add(args[i + 1]);
         case "--service" -> service = args[i + 1];
         case "--namespace" -> namespace = args[i + 1];
         case "--runtime-target" -> runtimeTarget = args[i + 1];
@@ -67,7 +67,7 @@ public final class CppCodegenRunner {
     }
 
     var assembler = Model.assembler().discoverModels(CppCodegenRunner.class.getClassLoader());
-    if (modelPath != null) {
+    for (String modelPath : modelPaths) {
       assembler.addImport(Paths.get(modelPath));
     }
     Model model = assembler.assemble().unwrap();

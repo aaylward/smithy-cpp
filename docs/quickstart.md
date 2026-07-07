@@ -41,30 +41,52 @@ common --tool_java_runtime_version=remotejdk_17
 
 ## 2. Write a model
 
-`model/todo.smithy` — a service, an operation or two, a modeled error. The service's protocol
-comes from its trait: `aws.protocols#restJson1` or `smithy.protocols#rpcv2Cbor`.
+`model/todo.smithy` — a service, an operation or two, a modeled error. Keep the model
+protocol-agnostic, the upstream Smithy way: `@http` traits describe HTTP semantics without
+picking a wire protocol. Bind a concrete protocol in a small overlay file with `apply`:
+
+```smithy
+// model/bindings/restjson1.smithy
+$version: "2.0"
+namespace acme.todo
+use aws.protocols#restJson1
+apply Todo @restJson1
+```
+
+(Applying the trait directly on the service works too, if you only ever want one protocol.)
 
 ## 3. Declare the generated libraries
 
-`BUILD.bazel`:
+`BUILD.bazel` — pass the base model plus the overlay that picks the protocol:
 
 ```starlark
 load("@smithy_cpp//bazel:defs.bzl", "smithy_cpp_client_library", "smithy_cpp_server_library")
 
 smithy_cpp_client_library(
     name = "todo_client",
-    srcs = ["model/todo.smithy"],
+    srcs = [
+        "model/bindings/restjson1.smithy",
+        "model/todo.smithy",
+    ],
     namespace = "acme::todo",
     service = "acme.todo#Todo",
 )
 
 smithy_cpp_server_library(
     name = "todo_server",
-    srcs = ["model/todo.smithy"],
+    srcs = [
+        "model/bindings/restjson1.smithy",
+        "model/todo.smithy",
+    ],
     namespace = "acme::todo",
     service = "acme.todo#Todo",
 )
 ```
+
+Because the protocol lives in the overlay, the same model generates for another protocol by
+swapping the overlay — the consumer example binds `acme.todo#Todo` to **both** restJson1 and
+rpcv2Cbor side by side (different `namespace` per binding keeps the headers apart); see
+[`examples/bazel-consumer/BUILD.bazel`](../examples/bazel-consumer/BUILD.bazel).
 
 Generation runs inside the build graph as a hermetic action — correct caching, no scripts, no
 Gradle. Each target is an ordinary `cc_library`: depend on it, `#include "acme/todo/client.h"`,

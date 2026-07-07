@@ -62,6 +62,28 @@ TEST(SocketTransportTest, HandlesSequentialRequestsAndLargeBodies) {
   server.Stop();
 }
 
+TEST(SocketTransportTest, PeerCloseMidSendIsAnErrorNotSigpipe) {
+  SocketHttpServer server;
+  ASSERT_TRUE(server.Start([](const HttpRequest&) { return HttpResponse{200, {}, "ok"}; }).ok());
+  SocketHttpClient client("127.0.0.1", server.port());
+
+  // Over the server's 64 MiB body cap: it rejects on content-length and
+  // closes while the client is still writing. That must surface as a
+  // transport error (or an HTTP error status), never a SIGPIPE that kills
+  // the process.
+  HttpRequest request;
+  request.method = "POST";
+  request.target = "/";
+  request.body = std::string((std::size_t{64} << 20) + 1024, 'x');
+  const auto response = client.Send(request);
+  if (response.ok()) {
+    EXPECT_GE(response->status, 400);
+  } else {
+    EXPECT_EQ(response.error().kind(), ErrorKind::kTransport);
+  }
+  server.Stop();
+}
+
 TEST(SocketTransportTest, ReportsConnectionFailure) {
   SocketHttpServer throwaway;
   ASSERT_TRUE(throwaway.Start([](const HttpRequest&) { return HttpResponse{}; }).ok());

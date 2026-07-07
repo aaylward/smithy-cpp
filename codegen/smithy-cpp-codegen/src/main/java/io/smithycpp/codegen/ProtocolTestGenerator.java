@@ -219,7 +219,10 @@ final class ProtocolTestGenerator {
     if (body.isEmpty()) {
       return "  EXPECT_TRUE(request.body.empty()) << request.body;\n";
     }
-    String type = mediaType.orElse("");
+    // When the test omits bodyMediaType, compare under the protocol's own body
+    // format: JSON object key order is not significant, so a raw string EXPECT_EQ
+    // would spuriously fail (e.g. alloy's RoundTrip response).
+    String type = mediaType.orElse(protocol.contentType());
     if (type.equals("application/json") || type.endsWith("+json")) {
       return "  EXPECT_TRUE(smithy::testing::JsonBodyEquals("
           + CppLiterals.stringLiteral(body)
@@ -713,12 +716,9 @@ final class ProtocolTestGenerator {
       String field = "input." + context.cppSymbols().toMemberName(binding.getMember());
       switch (target.getType()) {
         case STRING -> overrides.add(field + " = \"smoke\";");
-        case ENUM ->
-            overrides.add(
-                field
-                    + " = "
-                    + context.cppSymbols().toSymbol(target).getName()
-                    + "::FromString(\"smoke\");");
+        // Enums: the minimal value already picks a real (non-empty, constraint-
+        // valid) member, so no override — forcing "smoke" would fail enum
+        // validation on constrained enums.
         default -> {}
       }
     }
@@ -779,7 +779,7 @@ final class ProtocolTestGenerator {
     }
     String body = testCase.getBody().orElse(null);
     if (body != null && !body.isEmpty()) {
-      String mediaType = testCase.getBodyMediaType().orElse("");
+      String mediaType = testCase.getBodyMediaType().orElse(protocol.contentType());
       if (mediaType.equals("application/json") || mediaType.endsWith("+json")) {
         t.append("  EXPECT_TRUE(smithy::testing::JsonBodyEquals(")
             .append(CppLiterals.stringLiteral(body))

@@ -19,11 +19,9 @@ namespace smithy::protocoltests::simplerestjson {
 // produced is compared against the test definition.
 //
 // Excluded cases (protocol-test-exclusions.txt; the list must only shrink):
-//   GetEnumOutput (server-response) — under investigation (task #63): enum output server-side 400
 //   OpenUnionsUnknownTaggedUnionCase (server-response) — alloy open/discriminated unions are not implemented
 //   OpenUnionsKnownDiscriminatedUnionCase (server-response) — alloy open/discriminated unions are not implemented
 //   OpenUnionsUnknownDiscriminatedUnionCase (server-response) — alloy open/discriminated unions are not implemented
-//   RoundTripDataResponse (server-response) — under investigation (task #63): mixed label/query/body echo
 
 namespace {
 
@@ -214,6 +212,21 @@ smithy::http::HttpRequest MinimalRequestForCustomCode() {
   return transport->last_request;
 }
 
+smithy::http::HttpRequest MinimalRequestForGetEnum() {
+  auto transport = std::make_shared<smithy::testing::CapturingTransport>();
+  smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
+  config.http_client = transport;
+  auto client = *PizzaAdminServiceClient::Create(std::move(config));
+    GetEnumInput input = [] {
+    GetEnumInput v{};
+    v.aa = TheEnum::FromString("v1");
+    return v;
+  }();
+  (void)client.GetEnum(input);
+  return transport->last_request;
+}
+
 smithy::http::HttpRequest MinimalRequestForGetIntEnum() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
@@ -300,6 +313,21 @@ smithy::http::HttpRequest MinimalRequestForOpenUnions() {
   return transport->last_request;
 }
 
+smithy::http::HttpRequest MinimalRequestForRoundTrip() {
+  auto transport = std::make_shared<smithy::testing::CapturingTransport>();
+  smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
+  config.http_client = transport;
+  auto client = *PizzaAdminServiceClient::Create(std::move(config));
+    RoundTripInput input = [] {
+    RoundTripInput v{};
+    return v;
+  }();
+  input.label = "smoke";
+  (void)client.RoundTrip(input);
+  return transport->last_request;
+}
+
 smithy::http::HttpRequest MinimalRequestForVersion() {
   auto transport = std::make_shared<smithy::testing::CapturingTransport>();
   smithy::ClientConfig config;
@@ -354,7 +382,25 @@ TEST(PizzaAdminServiceServerResponseTest, CustomCodeOutput) {
   PizzaAdminServiceServer server(std::make_shared<Handler>());
   const smithy::http::HttpResponse response = server.Handler()(MinimalRequestForCustomCode());
   EXPECT_EQ(response.status, 399);
-  EXPECT_EQ(response.body, "{}");
+  EXPECT_TRUE(smithy::testing::JsonBodyEquals("{}", response.body));
+}
+
+TEST(PizzaAdminServiceServerResponseTest, GetEnumOutput) {
+  class Handler final : public RecordingHandler {
+   public:
+    smithy::Outcome<GetEnumOutput> GetEnum(const GetEnumInput& input) override {
+      (void)input;
+      return [] {
+  GetEnumOutput v{};
+  v.result = "v1";
+  return v;
+}();
+    }
+  };
+  PizzaAdminServiceServer server(std::make_shared<Handler>());
+  const smithy::http::HttpResponse response = server.Handler()(MinimalRequestForGetEnum());
+  EXPECT_EQ(response.status, 200);
+  EXPECT_TRUE(smithy::testing::JsonBodyEquals("{\"result\":\"v1\"}", response.body));
 }
 
 TEST(PizzaAdminServiceServerResponseTest, GetIntEnumOutput) {
@@ -372,7 +418,7 @@ TEST(PizzaAdminServiceServerResponseTest, GetIntEnumOutput) {
   PizzaAdminServiceServer server(std::make_shared<Handler>());
   const smithy::http::HttpResponse response = server.Handler()(MinimalRequestForGetIntEnum());
   EXPECT_EQ(response.status, 200);
-  EXPECT_EQ(response.body, "{\"result\":1}");
+  EXPECT_TRUE(smithy::testing::JsonBodyEquals("{\"result\":1}", response.body));
 }
 
 TEST(PizzaAdminServiceServerResponseTest, GetMenuResponse) {
@@ -525,6 +571,28 @@ TEST(PizzaAdminServiceServerResponseTest, OpenUnionsKnownTaggedUnionCase) {
   EXPECT_TRUE(smithy::testing::JsonBodyEquals("{\"tagged\": {\"str\": \"string value\"}}", response.body));
 }
 
+TEST(PizzaAdminServiceServerResponseTest, RoundTripDataResponse) {
+  class Handler final : public RecordingHandler {
+   public:
+    smithy::Outcome<RoundTripOutput> RoundTrip(const RoundTripInput& input) override {
+      (void)input;
+      return [] {
+  RoundTripOutput v{};
+  v.label = "thelabel";
+  v.header = "the header";
+  v.query = "the query";
+  v.body = "the body";
+  return v;
+}();
+    }
+  };
+  PizzaAdminServiceServer server(std::make_shared<Handler>());
+  const smithy::http::HttpResponse response = server.Handler()(MinimalRequestForRoundTrip());
+  EXPECT_EQ(response.status, 200);
+  EXPECT_EQ(response.headers.Get("HEADER").value_or("<missing>"), "the header");
+  EXPECT_TRUE(smithy::testing::JsonBodyEquals("{\"label\":\"thelabel\",\"query\":\"the query\",\"body\":\"the body\"}", response.body));
+}
+
 TEST(PizzaAdminServiceServerResponseTest, VersionOutput) {
   class Handler final : public RecordingHandler {
    public:
@@ -540,7 +608,7 @@ TEST(PizzaAdminServiceServerResponseTest, VersionOutput) {
   PizzaAdminServiceServer server(std::make_shared<Handler>());
   const smithy::http::HttpResponse response = server.Handler()(MinimalRequestForVersion());
   EXPECT_EQ(response.status, 200);
-  EXPECT_EQ(response.body, "\"1.0\"");
+  EXPECT_TRUE(smithy::testing::JsonBodyEquals("\"1.0\"", response.body));
 }
 
 TEST(PizzaAdminServiceServerErrorTest, NotFoundError) {

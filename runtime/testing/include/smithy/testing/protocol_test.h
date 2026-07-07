@@ -22,6 +22,7 @@
 #include "smithy/core/outcome.h"
 #include "smithy/http/message.h"
 #include "smithy/http/transport.h"
+#include "smithy/http/uri.h"
 #include "smithy/json/json.h"
 
 namespace smithy::testing {
@@ -83,12 +84,25 @@ inline std::string QueryKey(std::string_view entry) {
   return std::string(entry.substr(0, entry.find('=')));
 }
 
+// Percent-decodes an entry so comparisons ignore encoding differences: a test
+// definition may write "query=the query" while the wire (correctly) carries
+// "query=the%20query". Falls back to the raw text if the escapes are malformed.
+inline std::string DecodeQueryEntry(const std::string& entry) {
+  auto decoded = smithy::http::PercentDecode(entry);
+  return decoded.ok() ? *decoded : entry;
+}
+
 // Every expected entry must appear in the target's query string, counting
 // duplicates (multiset containment); extra actual entries are allowed.
+// Comparison is done on percent-decoded entries so encoding is not significant.
 inline ::testing::AssertionResult QueryContains(const std::string& target,
                                                 const std::vector<std::string>& expected) {
-  std::vector<std::string> actual = QueryEntries(target);
-  for (const std::string& entry : expected) {
+  std::vector<std::string> actual;
+  for (const std::string& entry : QueryEntries(target)) {
+    actual.push_back(DecodeQueryEntry(entry));
+  }
+  for (const std::string& raw : expected) {
+    const std::string entry = DecodeQueryEntry(raw);
     const auto it = std::find(actual.begin(), actual.end(), entry);
     if (it == actual.end()) {
       return ::testing::AssertionFailure()

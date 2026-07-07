@@ -18,11 +18,9 @@ namespace smithy::protocoltests::simplerestjson {
 //
 // Excluded cases (protocol-test-exclusions.txt; the list must only shrink):
 //   CustomCodeOutput (response) — 3xx @httpResponseCode is not treated as a success status
-//   GetEnumOutput (response) — under investigation (task #63): enum output server-side 400
 //   OpenUnionsUnknownTaggedUnionCase (response) — alloy open/discriminated unions are not implemented
 //   OpenUnionsKnownDiscriminatedUnionCase (response) — alloy open/discriminated unions are not implemented
 //   OpenUnionsUnknownDiscriminatedUnionCase (response) — alloy open/discriminated unions are not implemented
-//   RoundTripDataResponse (response) — under investigation (task #63): mixed label/query/body echo
 
 namespace {
 
@@ -57,6 +55,20 @@ TEST(PizzaAdminServiceResponseTest, AddMenuItemResult) {
   AddMenuItemOutput v{};
   v.itemId = "1";
   v.added = smithy::Timestamp::FromEpochMilliseconds(1576540098000LL);
+  return v;
+}();
+  EXPECT_EQ(*outcome, expected);
+}
+
+TEST(PizzaAdminServiceResponseTest, GetEnumOutput) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 200;
+  fixture.transport->next_response.body = "{\"result\":\"v1\"}";
+  const auto outcome = fixture.client.GetEnum(GetEnumInput{});
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  const GetEnumOutput expected = [] {
+  GetEnumOutput v{};
+  v.result = "v1";
   return v;
 }();
   EXPECT_EQ(*outcome, expected);
@@ -196,6 +208,24 @@ TEST(PizzaAdminServiceResponseTest, OpenUnionsKnownTaggedUnionCase) {
   const OpenUnionsOutput expected = [] {
   OpenUnionsOutput v{};
   v.data = OpenUnionsPayload::FromTagged(OpenTaggedUnion::FromStr("string value"));
+  return v;
+}();
+  EXPECT_EQ(*outcome, expected);
+}
+
+TEST(PizzaAdminServiceResponseTest, RoundTripDataResponse) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 200;
+  fixture.transport->next_response.headers.Set("HEADER", "the header");
+  fixture.transport->next_response.body = "{\"label\":\"thelabel\",\"query\":\"the query\",\"body\":\"the body\"}";
+  const auto outcome = fixture.client.RoundTrip(RoundTripInput{});
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  const RoundTripOutput expected = [] {
+  RoundTripOutput v{};
+  v.label = "thelabel";
+  v.header = "the header";
+  v.query = "the query";
+  v.body = "the body";
   return v;
 }();
   EXPECT_EQ(*outcome, expected);

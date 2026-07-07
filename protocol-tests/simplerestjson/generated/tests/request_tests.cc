@@ -19,7 +19,6 @@ namespace smithy::protocoltests::simplerestjson {
 //   OpenUnionsUnknownTaggedUnionCase (request) — alloy open/discriminated unions are not implemented
 //   OpenUnionsKnownDiscriminatedUnionCase (request) — alloy open/discriminated unions are not implemented
 //   OpenUnionsUnknownDiscriminatedUnionCase (request) — alloy open/discriminated unions are not implemented
-//   RoundTripRequest (request) — under investigation (task #63): mixed label/query/body echo
 
 namespace {
 
@@ -238,6 +237,25 @@ TEST(PizzaAdminServiceRequestTest, OpenUnionsKnownTaggedUnionCase) {
   EXPECT_EQ(request.headers.Get("Content-Type").value_or("<missing>"), "application/json");
   EXPECT_TRUE(request.headers.Has("Content-Length"));
   EXPECT_TRUE(smithy::testing::JsonBodyEquals("{\"tagged\": {\"str\": \"string value\"}}", request.body));
+}
+
+TEST(PizzaAdminServiceRequestTest, RoundTripRequest) {
+  Fixture fixture = MakeFixture();
+  const RoundTripInput input = [] {
+  RoundTripInput v{};
+  v.label = "thelabel";
+  v.header = "the header";
+  v.query = "the query";
+  v.body = "the body";
+  return v;
+}();
+  (void)fixture.client.RoundTrip(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "POST");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/roundTrip/thelabel");
+  EXPECT_TRUE(smithy::testing::QueryContains(request.target, {"query=the query"}));
+  EXPECT_EQ(request.headers.Get("HEADER").value_or("<missing>"), "the header");
+  EXPECT_TRUE(smithy::testing::JsonBodyEquals("{\"body\":\"the body\"}", request.body));
 }
 
 }  // namespace smithy::protocoltests::simplerestjson

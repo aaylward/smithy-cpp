@@ -297,7 +297,9 @@ struct ClientConnection {
   std::unique_ptr<beast::tcp_stream> plain;
   std::unique_ptr<asio::ssl::stream<beast::tcp_stream>> tls;
 
-  beast::tcp_stream& lowest() { return tls != nullptr ? beast::get_lowest_layer(*tls) : *plain; }
+  beast::tcp_stream& lowest() const {
+    return tls != nullptr ? beast::get_lowest_layer(*tls) : *plain;
+  }
 
   // Runs the handlers queued so far to completion, then rearms for reuse.
   void Run() {

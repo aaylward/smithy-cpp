@@ -19,9 +19,15 @@
 #define BOOST_ASIO_SOURCE
 
 #include <boost/asio/detail/config.hpp>
-#include <boost/asio/ssl/detail/impl/engine.ipp>
-#include <boost/asio/ssl/detail/impl/openssl_init.ipp>
+
+// clang-format off: upstream's order is load-bearing — context.ipp reaches
+// socket_types.hpp (winsock/windows.h) first, which the later .ipp files'
+// Windows static-mutex code needs already included.
 #include <boost/asio/ssl/impl/context.ipp>
 #include <boost/asio/ssl/impl/error.ipp>
+#include <boost/asio/ssl/detail/impl/engine.ipp>
+#include <boost/asio/ssl/detail/impl/openssl_init.ipp>
 #include <boost/asio/ssl/impl/host_name_verification.ipp>
+// clang-format on
+
 #include <boost/beast/src.hpp>

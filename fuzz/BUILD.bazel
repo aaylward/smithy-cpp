@@ -1,0 +1,42 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_test")
+
+# Each harness builds two ways: as an ordinary test through the deterministic
+# driver (runs in every CI matrix job, including ASan/UBSan), and as a real
+# libFuzzer binary under --config=fuzz (the dedicated CI fuzz job; `manual`
+# keeps the binaries out of plain //... builds, which have no fuzzer runtime).
+
+FUZZ_TARGETS = {
+    "json_decode": ["//runtime:json"],
+    "cbor_decode": [
+        "//runtime:cbor",
+        "//runtime:core",
+    ],
+    "uri": ["//runtime:http"],
+    "server_dispatch": [
+        "//examples/weather/generated:server",
+        "//runtime:http",
+    ],
+}
+
+[
+    cc_test(
+        name = name + "_fuzz_smoke",
+        size = "small",
+        srcs = [
+            "fuzz_driver_main.cc",
+            name + "_fuzz.cc",
+        ],
+        deps = deps,
+    )
+    for name, deps in FUZZ_TARGETS.items()
+]
+
+[
+    cc_binary(
+        name = name + "_fuzz",
+        srcs = [name + "_fuzz.cc"],
+        tags = ["manual"],
+        deps = deps,
+    )
+    for name, deps in FUZZ_TARGETS.items()
+]

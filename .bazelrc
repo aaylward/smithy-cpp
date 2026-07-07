@@ -26,6 +26,12 @@ build:ubsan --linkopt=-fsanitize=undefined
 build:ubsan --linkopt=-fno-sanitize-recover=all
 build:ubsan --linkopt=-fsanitize-link-c++-runtime
 
+# libFuzzer: CC=clang bazel build --config=fuzz //fuzz:json_decode_fuzz
+build:fuzz --copt=-fsanitize=fuzzer,address
+build:fuzz --linkopt=-fsanitize=fuzzer,address
+build:fuzz --strip=never
+build:fuzz --copt=-g
+
 # CI settings.
 build:ci --announce_rc --verbose_failures
 

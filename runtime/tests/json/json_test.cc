@@ -66,6 +66,27 @@ TEST(JsonTest, RejectsMalformedText) {
   }
 }
 
+// Regression (fuzzer-found): a string carrying invalid UTF-8 — raw bytes can
+// reach Encode via @httpLabel segments, headers, or blobs echoed into a
+// response — must not throw (nlohmann's strict dump would terminate the
+// server). Invalid sequences become U+FFFD and the output stays valid JSON
+// that round-trips.
+TEST(JsonTest, EncodeReplacesInvalidUtf8InsteadOfThrowing) {
+  for (const std::string raw : {
+           std::string("\xe1"),        // lone 3-byte lead
+           std::string("\xff\xfe"),    // never-valid bytes
+           std::string("a\x80\x80z"),  // stray continuation bytes
+           std::string("ok\xc3"),      // truncated 2-byte sequence
+       }) {
+    const std::string encoded = Encode(Document(raw));
+    const auto reparsed = Decode(encoded);
+    ASSERT_TRUE(reparsed.ok()) << "did not round-trip: " << encoded;
+    EXPECT_TRUE(reparsed->is_string());
+  }
+  // Valid UTF-8 (including multibyte) passes through untouched.
+  EXPECT_EQ(Encode(Document(std::string("caf\xc3\xa9"))), "\"caf\xc3\xa9\"");
+}
+
 TEST(JsonTest, DecodesNestedLists) {
   const auto doc = Decode(R"([1,[2,"three"],null])");
   ASSERT_TRUE(doc.ok());

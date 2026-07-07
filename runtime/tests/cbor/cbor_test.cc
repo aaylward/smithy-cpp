@@ -175,6 +175,18 @@ TEST(CborTest, RejectsMalformedInput) {
   }
 }
 
+// Regression (fuzzer-found): a text/byte string whose declared length is near
+// 2^64 must be rejected as truncated, not fed to string::assign. The old
+// bounds check `pos + length > size` overflowed and wrapped past the guard.
+TEST(CborTest, RejectsHugeStringLengthWithoutOverflow) {
+  // 0x7b = text string, 8-byte length; 0xff...ff = 2^64 - 1 bytes claimed.
+  EXPECT_FALSE(Decode(FromHex("7bffffffffffffffff")).ok());
+  // 0x5b = byte string, same trick.
+  EXPECT_FALSE(Decode(FromHex("5bffffffffffffffff")).ok());
+  // Indefinite text string with a giant chunk length.
+  EXPECT_FALSE(Decode(FromHex("7f7bffffffffffffffff")).ok());
+}
+
 TEST(CborTest, RejectsExcessiveNesting) {
   std::string hex;
   for (int i = 0; i < 100; ++i) hex += "81";  // 100 nested single-element arrays

@@ -88,7 +88,15 @@ Outcome<Document> FromBackend(const nlohmann::json& value) {
 
 }  // namespace
 
-std::string Encode(const Document& doc) { return ToBackend(doc).dump(); }
+std::string Encode(const Document& doc) {
+  // error_handler_t::replace: substitute U+FFFD for invalid UTF-8 instead of
+  // throwing (nlohmann's default). Strings can carry raw bytes from @httpLabel
+  // segments, headers, or blobs echoed into a response; a strict dump would
+  // throw type_error.316 uncaught and terminate the server. Replacement keeps
+  // the output valid JSON and the process alive.
+  return ToBackend(doc).dump(/*indent=*/-1, /*indent_char=*/' ',
+                             /*ensure_ascii=*/false, nlohmann::json::error_handler_t::replace);
+}
 
 Outcome<Document> Decode(std::string_view text) {
   const nlohmann::json parsed = nlohmann::json::parse(text, /*cb=*/nullptr,

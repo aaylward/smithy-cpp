@@ -114,6 +114,14 @@ jobs:
       - name: bazel test (out-of-tree module)
         working-directory: examples/bazel-consumer
         run: bazelisk test //... --verbose_failures
+      # The day-2 model-evolution loop (docs/model-evolution.md): an additive
+      # member rebuilds handlers and tests untouched; a new operation fails
+      # compilation until handlers implement it. The properties are
+      # platform-independent, so one OS suffices.
+      - name: model evolution loop
+        if: matrix.os == 'ubuntu-24.04'
+        working-directory: examples/bazel-consumer
+        run: ./model-evolution-check.sh
 
   codegen:
     name: codegen (gradle)

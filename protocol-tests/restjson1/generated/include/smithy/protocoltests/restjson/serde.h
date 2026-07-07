@@ -244,6 +244,12 @@ smithy::Outcome<HttpRequestWithRegexLiteralInput> DeserializeHttpRequestWithRege
 smithy::Document SerializeHttpRequestWithRegexLiteralOutput(const HttpRequestWithRegexLiteralOutput& value);
 smithy::Outcome<HttpRequestWithRegexLiteralOutput> DeserializeHttpRequestWithRegexLiteralOutput(const smithy::Document& doc);
 
+smithy::Document SerializeHttpResponseCodeInput(const HttpResponseCodeInput& value);
+smithy::Outcome<HttpResponseCodeInput> DeserializeHttpResponseCodeInput(const smithy::Document& doc);
+
+smithy::Document SerializeHttpResponseCodeOutput(const HttpResponseCodeOutput& value);
+smithy::Outcome<HttpResponseCodeOutput> DeserializeHttpResponseCodeOutput(const smithy::Document& doc);
+
 smithy::Document SerializeIgnoreQueryParamsInResponseInput(const IgnoreQueryParamsInResponseInput& value);
 smithy::Outcome<IgnoreQueryParamsInResponseInput> DeserializeIgnoreQueryParamsInResponseInput(const smithy::Document& doc);
 
@@ -597,6 +603,12 @@ smithy::Outcome<ResponseCodeHttpFallbackInput> DeserializeResponseCodeHttpFallba
 
 smithy::Document SerializeResponseCodeHttpFallbackOutput(const ResponseCodeHttpFallbackOutput& value);
 smithy::Outcome<ResponseCodeHttpFallbackOutput> DeserializeResponseCodeHttpFallbackOutput(const smithy::Document& doc);
+
+smithy::Document SerializeResponseCodeRequiredInput(const ResponseCodeRequiredInput& value);
+smithy::Outcome<ResponseCodeRequiredInput> DeserializeResponseCodeRequiredInput(const smithy::Document& doc);
+
+smithy::Document SerializeResponseCodeRequiredOutput(const ResponseCodeRequiredOutput& value);
+smithy::Outcome<ResponseCodeRequiredOutput> DeserializeResponseCodeRequiredOutput(const smithy::Document& doc);
 
 smithy::Document SerializeSimpleScalarPropertiesInput(const SimpleScalarPropertiesInput& value);
 smithy::Outcome<SimpleScalarPropertiesInput> DeserializeSimpleScalarPropertiesInput(const smithy::Document& doc);

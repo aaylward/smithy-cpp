@@ -35,10 +35,48 @@ final class ServerGenerator {
   }
 
   void run() {
+    rejectRouteConflicts();
     context
         .writerDelegator()
         .useFileWriter(context.settings().serverHeaderFile(), this::writeHeader);
     context.writerDelegator().useFileWriter("src/server.cc", this::writeSource);
+  }
+
+  /**
+   * Two operations whose method + URI pattern shape coincide (labels are interchangeable for
+   * matching purposes) could never be routed apart; fail generation instead of emitting a server
+   * that silently drops one of them.
+   */
+  private void rejectRouteConflicts() {
+    java.util.Map<String, OperationShape> seen = new java.util.HashMap<>();
+    for (OperationShape operation : operations) {
+      var http = operation.getTrait(software.amazon.smithy.model.traits.HttpTrait.class);
+      if (http.isEmpty()) {
+        continue; // rpcv2Cbor routes are keyed by operation name and cannot collide.
+      }
+      StringBuilder shape = new StringBuilder(http.get().getMethod());
+      for (var segment : http.get().getUri().getSegments()) {
+        shape.append('/');
+        if (segment.isGreedyLabel()) {
+          shape.append("{+}");
+        } else if (segment.isLabel()) {
+          shape.append("{}");
+        } else {
+          shape.append(segment.getContent());
+        }
+      }
+      OperationShape existing = seen.putIfAbsent(shape.toString(), operation);
+      if (existing != null) {
+        throw new software.amazon.smithy.codegen.core.CodegenException(
+            "cpp-codegen: ambiguous routes: "
+                + existing.getId()
+                + " and "
+                + operation.getId()
+                + " share the route shape '"
+                + shape
+                + "'");
+      }
+    }
   }
 
   private void writeHeader(CppWriter w) {

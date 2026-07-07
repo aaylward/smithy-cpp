@@ -4,6 +4,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "smithy/cbor/cbor.h"
 #include "smithy/core/blob.h"
@@ -16,7 +17,7 @@ namespace smithy::protocoltests::rpcv2cbor {
 namespace {
 
 smithy::http::HttpResponse CborError(int status, const std::string& code, const std::string& message, smithy::DocumentMap body) {
-  body.insert_or_assign("__type", smithy::Document(code));
+  if (!code.empty()) body.insert_or_assign("__type", smithy::Document(code));
   if (!message.empty()) body.insert_or_assign("message", smithy::Document(message));
   smithy::http::HttpResponse response;
   response.status = status;
@@ -33,21 +34,36 @@ smithy::http::HttpResponse ErrorToResponse(const smithy::Error& error) {
       if (const auto* detail = error.detail<ComplexError>()) {
         body = SerializeComplexError(*detail).as_map();
       }
-      return CborError(400, error.code(), error.message(), std::move(body));
+      // The typed detail's own message member wins over the generic one.
+      const bool has_message = body.count("message") != 0 || body.count("Message") != 0;
+      if (!has_message && !error.message().empty()) {
+        body.emplace("message", smithy::Document(error.message()));
+      }
+      return CborError(400, "smithy.protocoltests.rpcv2Cbor#ComplexError", "", std::move(body));
     }
     if (error.code() == "InvalidGreeting") {
       smithy::DocumentMap body;
       if (const auto* detail = error.detail<InvalidGreeting>()) {
         body = SerializeInvalidGreeting(*detail).as_map();
       }
-      return CborError(400, error.code(), error.message(), std::move(body));
+      // The typed detail's own message member wins over the generic one.
+      const bool has_message = body.count("message") != 0 || body.count("Message") != 0;
+      if (!has_message && !error.message().empty()) {
+        body.emplace("message", smithy::Document(error.message()));
+      }
+      return CborError(400, "smithy.protocoltests.rpcv2Cbor#InvalidGreeting", "", std::move(body));
     }
     if (error.code() == "ValidationException") {
       smithy::DocumentMap body;
       if (const auto* detail = error.detail<ValidationException>()) {
         body = SerializeValidationException(*detail).as_map();
       }
-      return CborError(400, error.code(), error.message(), std::move(body));
+      // The typed detail's own message member wins over the generic one.
+      const bool has_message = body.count("message") != 0 || body.count("Message") != 0;
+      if (!has_message && !error.message().empty()) {
+        body.emplace("message", smithy::Document(error.message()));
+      }
+      return CborError(400, "smithy.framework#ValidationException", "", std::move(body));
     }
     return CborError(400, error.code(), error.message(), {});
   }
@@ -66,6 +82,11 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
   (void)router_->Add("POST", "/service/RpcV2Protocol/operation/EmptyInputOutput", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
+    }
+    // Content-Type validation per the rpcv2Cbor spec: a present header must
+    // carry application/cbor (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/cbor") {
+      return CborError(415, "UnsupportedMediaTypeException", "expected content-type: application/cbor", {});
     }
     EmptyInputOutputInput input{};
     // An absent body deserializes like an empty CBOR map.
@@ -90,6 +111,11 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
     }
+    // Content-Type validation per the rpcv2Cbor spec: a present header must
+    // carry application/cbor (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/cbor") {
+      return CborError(415, "UnsupportedMediaTypeException", "expected content-type: application/cbor", {});
+    }
     Float16Input input{};
     // An absent body deserializes like an empty CBOR map.
     smithy::Document body_doc{smithy::DocumentMap{}};
@@ -112,6 +138,11 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
   (void)router_->Add("POST", "/service/RpcV2Protocol/operation/FractionalSeconds", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
+    }
+    // Content-Type validation per the rpcv2Cbor spec: a present header must
+    // carry application/cbor (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/cbor") {
+      return CborError(415, "UnsupportedMediaTypeException", "expected content-type: application/cbor", {});
     }
     FractionalSecondsInput input{};
     // An absent body deserializes like an empty CBOR map.
@@ -136,6 +167,11 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
     }
+    // Content-Type validation per the rpcv2Cbor spec: a present header must
+    // carry application/cbor (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/cbor") {
+      return CborError(415, "UnsupportedMediaTypeException", "expected content-type: application/cbor", {});
+    }
     GreetingWithErrorsInput input{};
     // An absent body deserializes like an empty CBOR map.
     smithy::Document body_doc{smithy::DocumentMap{}};
@@ -158,6 +194,11 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
   (void)router_->Add("POST", "/service/RpcV2Protocol/operation/NoInputOutput", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
+    }
+    // Content-Type validation per the rpcv2Cbor spec: a present header must
+    // carry application/cbor (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/cbor") {
+      return CborError(415, "UnsupportedMediaTypeException", "expected content-type: application/cbor", {});
     }
     NoInputOutputInput input{};
     // An absent body deserializes like an empty CBOR map.
@@ -182,6 +223,11 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
     }
+    // Content-Type validation per the rpcv2Cbor spec: a present header must
+    // carry application/cbor (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/cbor") {
+      return CborError(415, "UnsupportedMediaTypeException", "expected content-type: application/cbor", {});
+    }
     OperationWithDefaultsInput input{};
     // An absent body deserializes like an empty CBOR map.
     smithy::Document body_doc{smithy::DocumentMap{}};
@@ -204,6 +250,11 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
   (void)router_->Add("POST", "/service/RpcV2Protocol/operation/OptionalInputOutput", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
+    }
+    // Content-Type validation per the rpcv2Cbor spec: a present header must
+    // carry application/cbor (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/cbor") {
+      return CborError(415, "UnsupportedMediaTypeException", "expected content-type: application/cbor", {});
     }
     OptionalInputOutputInput input{};
     // An absent body deserializes like an empty CBOR map.
@@ -228,6 +279,11 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
     }
+    // Content-Type validation per the rpcv2Cbor spec: a present header must
+    // carry application/cbor (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/cbor") {
+      return CborError(415, "UnsupportedMediaTypeException", "expected content-type: application/cbor", {});
+    }
     RpcV2CborDenseMapsInput input{};
     // An absent body deserializes like an empty CBOR map.
     smithy::Document body_doc{smithy::DocumentMap{}};
@@ -250,6 +306,11 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
   (void)router_->Add("POST", "/service/RpcV2Protocol/operation/RpcV2CborLists", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
+    }
+    // Content-Type validation per the rpcv2Cbor spec: a present header must
+    // carry application/cbor (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/cbor") {
+      return CborError(415, "UnsupportedMediaTypeException", "expected content-type: application/cbor", {});
     }
     RpcV2CborListsInput input{};
     // An absent body deserializes like an empty CBOR map.
@@ -274,6 +335,11 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
     }
+    // Content-Type validation per the rpcv2Cbor spec: a present header must
+    // carry application/cbor (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/cbor") {
+      return CborError(415, "UnsupportedMediaTypeException", "expected content-type: application/cbor", {});
+    }
     RpcV2CborSparseMapsInput input{};
     // An absent body deserializes like an empty CBOR map.
     smithy::Document body_doc{smithy::DocumentMap{}};
@@ -297,6 +363,11 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
     }
+    // Content-Type validation per the rpcv2Cbor spec: a present header must
+    // carry application/cbor (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/cbor") {
+      return CborError(415, "UnsupportedMediaTypeException", "expected content-type: application/cbor", {});
+    }
     SimpleScalarPropertiesInput input{};
     // An absent body deserializes like an empty CBOR map.
     smithy::Document body_doc{smithy::DocumentMap{}};
@@ -319,6 +390,11 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
   (void)router_->Add("POST", "/service/RpcV2Protocol/operation/SparseNullsOperation", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
+    }
+    // Content-Type validation per the rpcv2Cbor spec: a present header must
+    // carry application/cbor (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/cbor") {
+      return CborError(415, "UnsupportedMediaTypeException", "expected content-type: application/cbor", {});
     }
     SparseNullsOperationInput input{};
     // An absent body deserializes like an empty CBOR map.

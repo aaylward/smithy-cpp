@@ -4,6 +4,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "example/cafe/serde.h"
 #include "example/cafe/server.h"
@@ -16,7 +17,7 @@ namespace example::cafe {
 namespace {
 
 smithy::http::HttpResponse CborError(int status, const std::string& code, const std::string& message, smithy::DocumentMap body) {
-  body.insert_or_assign("__type", smithy::Document(code));
+  if (!code.empty()) body.insert_or_assign("__type", smithy::Document(code));
   if (!message.empty()) body.insert_or_assign("message", smithy::Document(message));
   smithy::http::HttpResponse response;
   response.status = status;
@@ -33,14 +34,24 @@ smithy::http::HttpResponse ErrorToResponse(const smithy::Error& error) {
       if (const auto* detail = error.detail<OrderNotFound>()) {
         body = SerializeOrderNotFound(*detail).as_map();
       }
-      return CborError(400, error.code(), error.message(), std::move(body));
+      // The typed detail's own message member wins over the generic one.
+      const bool has_message = body.count("message") != 0 || body.count("Message") != 0;
+      if (!has_message && !error.message().empty()) {
+        body.emplace("message", smithy::Document(error.message()));
+      }
+      return CborError(400, "example.cafe#OrderNotFound", "", std::move(body));
     }
     if (error.code() == "OutOfBeans") {
       smithy::DocumentMap body;
       if (const auto* detail = error.detail<OutOfBeans>()) {
         body = SerializeOutOfBeans(*detail).as_map();
       }
-      return CborError(500, error.code(), error.message(), std::move(body));
+      // The typed detail's own message member wins over the generic one.
+      const bool has_message = body.count("message") != 0 || body.count("Message") != 0;
+      if (!has_message && !error.message().empty()) {
+        body.emplace("message", smithy::Document(error.message()));
+      }
+      return CborError(500, "example.cafe#OutOfBeans", "", std::move(body));
     }
     return CborError(400, error.code(), error.message(), {});
   }
@@ -59,6 +70,11 @@ CafeServer::CafeServer(std::shared_ptr<CafeHandler> handler)
   (void)router_->Add("POST", "/service/Cafe/operation/GetOrder", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
+    }
+    // Content-Type validation per the rpcv2Cbor spec: a present header must
+    // carry application/cbor (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/cbor") {
+      return CborError(415, "UnsupportedMediaTypeException", "expected content-type: application/cbor", {});
     }
     GetOrderInput input{};
     // An absent body deserializes like an empty CBOR map.
@@ -82,6 +98,11 @@ CafeServer::CafeServer(std::shared_ptr<CafeHandler> handler)
   (void)router_->Add("POST", "/service/Cafe/operation/OrderCoffee", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
+    }
+    // Content-Type validation per the rpcv2Cbor spec: a present header must
+    // carry application/cbor (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/cbor") {
+      return CborError(415, "UnsupportedMediaTypeException", "expected content-type: application/cbor", {});
     }
     OrderCoffeeInput input{};
     // An absent body deserializes like an empty CBOR map.

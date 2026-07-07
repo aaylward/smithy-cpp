@@ -55,9 +55,12 @@ in; Phases 3–5 extend it to clients, servers, and the integration harness.
 
 `gradle generateProtocolTests` regenerates `protocol-tests/{restjson1,rpcv2cbor}/generated` from
 the published `smithy-aws-protocol-tests` / `smithy-protocol-tests` models: a normal generated
-module (types/serde/client) plus `tests/{request,response}_tests.cc` GoogleTest suites derived
-from the `httpRequestTests`/`httpResponseTests` traits (~240 cases green in CI). Two must-shrink
-escape hatches, both with reasons in-repo:
+module (types/serde/client/server) plus GoogleTest suites derived from the
+`httpRequestTests`/`httpResponseTests` traits: `tests/{request,response}_tests.cc` run the
+generated client against the wire (client cases), and
+`tests/server_{request,response}_tests.cc` feed wire requests into the generated server and
+check parsed inputs / serialized responses (server cases) — ~466 cases green in CI. Two
+must-shrink escape hatches, both with reasons in-repo:
 
 - **Pruned operations** (`build.gradle.kts` task args): operations using bindings the generator
   does not implement yet (`@httpPayload`, `@httpPrefixHeaders`, `@httpResponseCode`, recursion,

@@ -7,6 +7,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "smithy/core/base64.h"
 #include "smithy/core/blob.h"
@@ -35,7 +36,7 @@ namespace {
 }
 
 smithy::http::HttpResponse JsonError(int status, const std::string& code, const std::string& message, smithy::DocumentMap body) {
-  body.insert_or_assign("__type", smithy::Document(code));
+  if (!code.empty()) body.insert_or_assign("__type", smithy::Document(code));
   if (!message.empty()) body.insert_or_assign("message", smithy::Document(message));
   smithy::http::HttpResponse response;
   response.status = status;
@@ -45,27 +46,57 @@ smithy::http::HttpResponse JsonError(int status, const std::string& code, const 
 }
 
 smithy::http::HttpResponse ErrorToResponse(const smithy::Error& error) {
+  std::vector<std::pair<std::string, std::string>> header_values;
+  (void)header_values;
   if (error.kind() == smithy::ErrorKind::kModeled) {
     if (error.code() == "ComplexError") {
       smithy::DocumentMap body;
       if (const auto* detail = error.detail<ComplexError>()) {
         body = SerializeComplexError(*detail).as_map();
       }
-      return JsonError(403, error.code(), error.message(), std::move(body));
+      // The typed detail's own message member wins over the generic one.
+      const bool has_message = body.count("message") != 0 || body.count("Message") != 0;
+      if (!has_message && !error.message().empty()) {
+        body.emplace("message", smithy::Document(error.message()));
+      }
+      if (auto it = body.find("Header"); it != body.end()) {
+        if (it->second.is_string()) header_values.emplace_back("X-Header", it->second.as_string());
+        body.erase(it);
+      }
+      auto response = JsonError(403, "", "", std::move(body));
+      response.headers.Set("x-amzn-errortype", error.code());
+      for (const auto& [name, value] : header_values) response.headers.Set(name, value);
+      return response;
     }
     if (error.code() == "FooError") {
       smithy::DocumentMap body;
       if (const auto* detail = error.detail<FooError>()) {
         body = SerializeFooError(*detail).as_map();
       }
-      return JsonError(500, error.code(), error.message(), std::move(body));
+      // The typed detail's own message member wins over the generic one.
+      const bool has_message = body.count("message") != 0 || body.count("Message") != 0;
+      if (!has_message && !error.message().empty()) {
+        body.emplace("message", smithy::Document(error.message()));
+      }
+      auto response = JsonError(500, "", "", std::move(body));
+      response.headers.Set("x-amzn-errortype", error.code());
+      for (const auto& [name, value] : header_values) response.headers.Set(name, value);
+      return response;
     }
     if (error.code() == "InvalidGreeting") {
       smithy::DocumentMap body;
       if (const auto* detail = error.detail<InvalidGreeting>()) {
         body = SerializeInvalidGreeting(*detail).as_map();
       }
-      return JsonError(400, error.code(), error.message(), std::move(body));
+      // The typed detail's own message member wins over the generic one.
+      const bool has_message = body.count("message") != 0 || body.count("Message") != 0;
+      if (!has_message && !error.message().empty()) {
+        body.emplace("message", smithy::Document(error.message()));
+      }
+      auto response = JsonError(400, "", "", std::move(body));
+      response.headers.Set("x-amzn-errortype", error.code());
+      for (const auto& [name, value] : header_values) response.headers.Set(name, value);
+      return response;
     }
     return JsonError(400, error.code(), error.message(), {});
   }
@@ -172,6 +203,10 @@ smithy::Outcome<AllQueryStringTypesInput> ParseAllQueryStringTypesInput(const sm
       (*input.queryTimestampList).push_back(*std::move(parsed_ts));
       continue;
     }
+  }
+  // Servers put every query parameter in the @httpQueryParams map,
+  // including ones bound to other members.
+  for (const auto& [key, value] : context.query_params) {
     if (!input.queryParamsMapOfStringList.has_value()) input.queryParamsMapOfStringList.emplace();
     (*input.queryParamsMapOfStringList)[key].push_back(value);
   }
@@ -182,6 +217,9 @@ smithy::http::HttpResponse SerializeAllQueryStringTypesResponse(const AllQuerySt
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -206,6 +244,9 @@ smithy::http::HttpResponse SerializeConstantAndVariableQueryStringResponse(const
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -224,6 +265,9 @@ smithy::http::HttpResponse SerializeConstantQueryStringResponse(const ConstantQu
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -250,6 +294,9 @@ smithy::http::HttpResponse SerializeContentTypeParametersResponse(const ContentT
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -362,6 +409,9 @@ smithy::http::HttpResponse SerializeEmptyInputAndEmptyOutputResponse(const Empty
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -376,6 +426,9 @@ smithy::http::HttpResponse SerializeEndpointOperationResponse(const EndpointOper
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -399,6 +452,9 @@ smithy::http::HttpResponse SerializeEndpointWithHostLabelOperationResponse(const
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -436,6 +492,9 @@ smithy::http::HttpResponse SerializeGreetingWithErrorsResponse(const GreetingWit
   if (output.greeting.has_value()) {
     response.headers.Set("X-Greeting", (*output.greeting));
   }
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -450,6 +509,9 @@ smithy::http::HttpResponse SerializeHostWithPathOperationResponse(const HostWith
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -504,6 +566,9 @@ smithy::http::HttpResponse SerializeHttpRequestWithFloatLabelsResponse(const Htt
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -526,6 +591,9 @@ smithy::http::HttpResponse SerializeHttpRequestWithGreedyLabelInPathResponse(con
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -574,6 +642,9 @@ smithy::http::HttpResponse SerializeHttpRequestWithLabelsResponse(const HttpRequ
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -630,6 +701,9 @@ smithy::http::HttpResponse SerializeHttpRequestWithLabelsAndTimestampFormatRespo
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -648,6 +722,27 @@ smithy::http::HttpResponse SerializeHttpRequestWithRegexLiteralResponse(const Ht
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
+  return response;
+}
+
+smithy::Outcome<HttpResponseCodeInput> ParseHttpResponseCodeInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) {
+  (void)request;
+  (void)context;
+  HttpResponseCodeInput input{};
+  return input;
+}
+
+smithy::http::HttpResponse SerializeHttpResponseCodeResponse(const HttpResponseCodeOutput& output) {
+  (void)output;
+  smithy::http::HttpResponse response;
+  response.status = 200;
+  if (output.Status.has_value()) response.status = static_cast<int>(*output.Status);
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -869,6 +964,9 @@ smithy::http::HttpResponse SerializeInputAndOutputWithHeadersResponse(const Inpu
       response.headers.Set("X-TimestampList", joined);
     }
   }
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -1565,6 +1663,9 @@ smithy::http::HttpResponse SerializeMalformedBlobResponse(const MalformedBlobOut
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -1604,6 +1705,9 @@ smithy::http::HttpResponse SerializeMalformedBooleanResponse(const MalformedBool
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -1643,6 +1747,9 @@ smithy::http::HttpResponse SerializeMalformedByteResponse(const MalformedByteOut
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -1669,6 +1776,9 @@ smithy::http::HttpResponse SerializeMalformedContentTypeWithBodyResponse(const M
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -1683,6 +1793,9 @@ smithy::http::HttpResponse SerializeMalformedContentTypeWithoutBodyResponse(cons
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -1700,6 +1813,9 @@ smithy::http::HttpResponse SerializeMalformedContentTypeWithoutBodyEmptyInputRes
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -1742,6 +1858,9 @@ smithy::http::HttpResponse SerializeMalformedDoubleResponse(const MalformedDoubl
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -1784,6 +1903,9 @@ smithy::http::HttpResponse SerializeMalformedFloatResponse(const MalformedFloatO
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -1823,6 +1945,9 @@ smithy::http::HttpResponse SerializeMalformedIntegerResponse(const MalformedInte
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -1852,6 +1977,9 @@ smithy::http::HttpResponse SerializeMalformedListResponse(const MalformedListOut
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -1891,6 +2019,9 @@ smithy::http::HttpResponse SerializeMalformedLongResponse(const MalformedLongOut
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -1920,6 +2051,9 @@ smithy::http::HttpResponse SerializeMalformedMapResponse(const MalformedMapOutpu
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -1958,6 +2092,9 @@ smithy::http::HttpResponse SerializeMalformedRequestBodyResponse(const Malformed
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -1997,6 +2134,9 @@ smithy::http::HttpResponse SerializeMalformedShortResponse(const MalformedShortO
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -2016,6 +2156,9 @@ smithy::http::HttpResponse SerializeMalformedStringResponse(const MalformedStrin
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -2042,6 +2185,9 @@ smithy::http::HttpResponse SerializeMalformedTimestampBodyDateTimeResponse(const
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -2068,6 +2214,9 @@ smithy::http::HttpResponse SerializeMalformedTimestampBodyDefaultResponse(const 
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -2094,6 +2243,9 @@ smithy::http::HttpResponse SerializeMalformedTimestampBodyHttpDateResponse(const
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -2113,6 +2265,9 @@ smithy::http::HttpResponse SerializeMalformedTimestampHeaderDateTimeResponse(con
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -2132,6 +2287,9 @@ smithy::http::HttpResponse SerializeMalformedTimestampHeaderDefaultResponse(cons
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -2151,6 +2309,9 @@ smithy::http::HttpResponse SerializeMalformedTimestampHeaderEpochResponse(const 
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -2171,6 +2332,9 @@ smithy::http::HttpResponse SerializeMalformedTimestampPathDefaultResponse(const 
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -2191,6 +2355,9 @@ smithy::http::HttpResponse SerializeMalformedTimestampPathEpochResponse(const Ma
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -2211,6 +2378,9 @@ smithy::http::HttpResponse SerializeMalformedTimestampPathHttpDateResponse(const
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -2233,6 +2403,9 @@ smithy::http::HttpResponse SerializeMalformedTimestampQueryDefaultResponse(const
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -2255,6 +2428,9 @@ smithy::http::HttpResponse SerializeMalformedTimestampQueryEpochResponse(const M
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -2277,6 +2453,9 @@ smithy::http::HttpResponse SerializeMalformedTimestampQueryHttpDateResponse(cons
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -2306,6 +2485,9 @@ smithy::http::HttpResponse SerializeMalformedUnionResponse(const MalformedUnionO
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -2328,6 +2510,9 @@ smithy::http::HttpResponse SerializeMediaTypeHeaderResponse(const MediaTypeHeade
   if (output.json.has_value()) {
     response.headers.Set("X-Json", smithy::Base64Encode(smithy::Blob::FromString((*output.json))));
   }
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -2342,6 +2527,9 @@ smithy::http::HttpResponse SerializeNoInputAndNoOutputResponse(const NoInputAndN
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -2356,6 +2544,9 @@ smithy::http::HttpResponse SerializeNoInputAndOutputResponse(const NoInputAndOut
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -2399,6 +2590,9 @@ smithy::http::HttpResponse SerializeNullAndEmptyHeadersClientResponse(const Null
       response.headers.Set("X-C", joined);
     }
   }
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -2442,6 +2636,9 @@ smithy::http::HttpResponse SerializeNullAndEmptyHeadersServerResponse(const Null
       response.headers.Set("X-C", joined);
     }
   }
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -2466,6 +2663,9 @@ smithy::http::HttpResponse SerializeOmitsNullSerializesEmptyStringResponse(const
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -2519,6 +2719,9 @@ smithy::http::HttpResponse SerializeOmitsSerializingEmptyListsResponse(const Omi
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -2796,6 +2999,9 @@ smithy::http::HttpResponse SerializePutWithContentEncodingResponse(const PutWith
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -2816,6 +3022,9 @@ smithy::http::HttpResponse SerializeQueryIdempotencyTokenAutoFillResponse(const 
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -2828,6 +3037,10 @@ smithy::Outcome<QueryParamsAsStringListMapInput> ParseQueryParamsAsStringListMap
       input.qux = value;
       continue;
     }
+  }
+  // Servers put every query parameter in the @httpQueryParams map,
+  // including ones bound to other members.
+  for (const auto& [key, value] : context.query_params) {
     if (!input.foo.has_value()) input.foo.emplace();
     (*input.foo)[key].push_back(value);
   }
@@ -2838,6 +3051,9 @@ smithy::http::HttpResponse SerializeQueryParamsAsStringListMapResponse(const Que
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -2850,6 +3066,10 @@ smithy::Outcome<QueryPrecedenceInput> ParseQueryPrecedenceInput(const smithy::ht
       input.foo = value;
       continue;
     }
+  }
+  // Servers put every query parameter in the @httpQueryParams map,
+  // including ones bound to other members.
+  for (const auto& [key, value] : context.query_params) {
     if (!input.baz.has_value()) input.baz.emplace();
     (*input.baz).emplace(key, value);
   }
@@ -2860,6 +3080,9 @@ smithy::http::HttpResponse SerializeQueryPrecedenceResponse(const QueryPrecedenc
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -2874,6 +3097,27 @@ smithy::http::HttpResponse SerializeResponseCodeHttpFallbackResponse(const Respo
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 201;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
+  return response;
+}
+
+smithy::Outcome<ResponseCodeRequiredInput> ParseResponseCodeRequiredInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) {
+  (void)request;
+  (void)context;
+  ResponseCodeRequiredInput input{};
+  return input;
+}
+
+smithy::http::HttpResponse SerializeResponseCodeRequiredResponse(const ResponseCodeRequiredOutput& output) {
+  (void)output;
+  smithy::http::HttpResponse response;
+  response.status = 200;
+  response.status = static_cast<int>(output.responseCode);
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -3217,6 +3461,9 @@ smithy::http::HttpResponse SerializeTestGetNoInputNoPayloadResponse(const TestGe
   if (output.testId.has_value()) {
     response.headers.Set("X-Amz-Test-Id", (*output.testId));
   }
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -3237,6 +3484,9 @@ smithy::http::HttpResponse SerializeTestGetNoPayloadResponse(const TestGetNoPayl
   if (output.testId.has_value()) {
     response.headers.Set("X-Amz-Test-Id", (*output.testId));
   }
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -3254,6 +3504,9 @@ smithy::http::HttpResponse SerializeTestPostNoInputNoPayloadResponse(const TestP
   if (output.testId.has_value()) {
     response.headers.Set("X-Amz-Test-Id", (*output.testId));
   }
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -3274,6 +3527,9 @@ smithy::http::HttpResponse SerializeTestPostNoPayloadResponse(const TestPostNoPa
   if (output.testId.has_value()) {
     response.headers.Set("X-Amz-Test-Id", (*output.testId));
   }
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -3344,6 +3600,9 @@ smithy::http::HttpResponse SerializeTimestampFormatHeadersResponse(const Timesta
   if (output.targetHttpDate.has_value()) {
     response.headers.Set("X-targetHttpDate", (*output.targetHttpDate).Format(smithy::TimestampFormat::kHttpDate));
   }
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -3358,6 +3617,9 @@ smithy::http::HttpResponse SerializeUnitInputAndOutputResponse(const UnitInputAn
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
+  smithy::DocumentMap body_map;
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   return response;
 }
 
@@ -3390,6 +3652,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeConstantQueryStringResponse(*outcome);
   });
   (void)router_->Add("POST", "/ContentTypeParameters", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseContentTypeParametersInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->ContentTypeParameters(*input);
@@ -3404,6 +3671,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeDatetimeOffsetsResponse(*outcome);
   });
   (void)router_->Add("PUT", "/DocumentType", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseDocumentTypeInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->DocumentType(*input);
@@ -3411,6 +3683,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeDocumentTypeResponse(*outcome);
   });
   (void)router_->Add("PUT", "/DocumentTypeAsMapValue", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseDocumentTypeAsMapValueInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->DocumentTypeAsMapValue(*input);
@@ -3432,6 +3709,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeEndpointOperationResponse(*outcome);
   });
   (void)router_->Add("POST", "/EndpointWithHostLabelOperation", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseEndpointWithHostLabelOperationInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->EndpointWithHostLabelOperation(*input);
@@ -3460,6 +3742,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeHostWithPathOperationResponse(*outcome);
   });
   (void)router_->Add("POST", "/HttpChecksumRequired", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseHttpChecksumRequiredInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->HttpChecksumRequired(*input);
@@ -3501,6 +3788,13 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeHttpRequestWithRegexLiteralResponse(*outcome);
   });
+  (void)router_->Add("PUT", "/HttpResponseCode", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    auto input = ParseHttpResponseCodeInput(request, context);
+    if (!input) return ErrorToResponse(input.error());
+    auto outcome = handler->HttpResponseCode(*input);
+    if (!outcome) return ErrorToResponse(outcome.error());
+    return SerializeHttpResponseCodeResponse(*outcome);
+  });
   (void)router_->Add("GET", "/IgnoreQueryParamsInResponse", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     auto input = ParseIgnoreQueryParamsInResponseInput(request, context);
     if (!input) return ErrorToResponse(input.error());
@@ -3516,6 +3810,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeInputAndOutputWithHeadersResponse(*outcome);
   });
   (void)router_->Add("POST", "/JsonBlobs", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseJsonBlobsInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->JsonBlobs(*input);
@@ -3523,6 +3822,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeJsonBlobsResponse(*outcome);
   });
   (void)router_->Add("PUT", "/JsonEnums", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseJsonEnumsInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->JsonEnums(*input);
@@ -3530,6 +3834,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeJsonEnumsResponse(*outcome);
   });
   (void)router_->Add("PUT", "/JsonIntEnums", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseJsonIntEnumsInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->JsonIntEnums(*input);
@@ -3537,6 +3846,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeJsonIntEnumsResponse(*outcome);
   });
   (void)router_->Add("PUT", "/JsonLists", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseJsonListsInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->JsonLists(*input);
@@ -3544,6 +3858,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeJsonListsResponse(*outcome);
   });
   (void)router_->Add("POST", "/JsonMaps", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseJsonMapsInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->JsonMaps(*input);
@@ -3551,6 +3870,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeJsonMapsResponse(*outcome);
   });
   (void)router_->Add("POST", "/JsonTimestamps", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseJsonTimestampsInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->JsonTimestamps(*input);
@@ -3558,6 +3882,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeJsonTimestampsResponse(*outcome);
   });
   (void)router_->Add("PUT", "/JsonUnions", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseJsonUnionsInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->JsonUnions(*input);
@@ -3572,6 +3901,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeMalformedAcceptWithBodyResponse(*outcome);
   });
   (void)router_->Add("POST", "/MalformedBlob", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseMalformedBlobInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->MalformedBlob(*input);
@@ -3579,6 +3913,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeMalformedBlobResponse(*outcome);
   });
   (void)router_->Add("POST", "/MalformedBoolean/{booleanInPath}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseMalformedBooleanInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->MalformedBoolean(*input);
@@ -3586,6 +3925,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeMalformedBooleanResponse(*outcome);
   });
   (void)router_->Add("POST", "/MalformedByte/{byteInPath}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseMalformedByteInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->MalformedByte(*input);
@@ -3593,6 +3937,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeMalformedByteResponse(*outcome);
   });
   (void)router_->Add("POST", "/MalformedContentTypeWithBody", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseMalformedContentTypeWithBodyInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->MalformedContentTypeWithBody(*input);
@@ -3614,6 +3963,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeMalformedContentTypeWithoutBodyEmptyInputResponse(*outcome);
   });
   (void)router_->Add("POST", "/MalformedDouble/{doubleInPath}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseMalformedDoubleInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->MalformedDouble(*input);
@@ -3621,6 +3975,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeMalformedDoubleResponse(*outcome);
   });
   (void)router_->Add("POST", "/MalformedFloat/{floatInPath}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseMalformedFloatInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->MalformedFloat(*input);
@@ -3628,6 +3987,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeMalformedFloatResponse(*outcome);
   });
   (void)router_->Add("POST", "/MalformedInteger/{integerInPath}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseMalformedIntegerInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->MalformedInteger(*input);
@@ -3635,6 +3999,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeMalformedIntegerResponse(*outcome);
   });
   (void)router_->Add("POST", "/MalformedList", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseMalformedListInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->MalformedList(*input);
@@ -3642,6 +4011,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeMalformedListResponse(*outcome);
   });
   (void)router_->Add("POST", "/MalformedLong/{longInPath}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseMalformedLongInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->MalformedLong(*input);
@@ -3649,6 +4023,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeMalformedLongResponse(*outcome);
   });
   (void)router_->Add("POST", "/MalformedMap", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseMalformedMapInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->MalformedMap(*input);
@@ -3656,6 +4035,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeMalformedMapResponse(*outcome);
   });
   (void)router_->Add("POST", "/MalformedRequestBody", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseMalformedRequestBodyInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->MalformedRequestBody(*input);
@@ -3663,6 +4047,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeMalformedRequestBodyResponse(*outcome);
   });
   (void)router_->Add("POST", "/MalformedShort/{shortInPath}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseMalformedShortInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->MalformedShort(*input);
@@ -3677,6 +4066,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeMalformedStringResponse(*outcome);
   });
   (void)router_->Add("POST", "/MalformedTimestampBodyDateTime", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseMalformedTimestampBodyDateTimeInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->MalformedTimestampBodyDateTime(*input);
@@ -3684,6 +4078,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeMalformedTimestampBodyDateTimeResponse(*outcome);
   });
   (void)router_->Add("POST", "/MalformedTimestampBodyDefault", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseMalformedTimestampBodyDefaultInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->MalformedTimestampBodyDefault(*input);
@@ -3691,6 +4090,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeMalformedTimestampBodyDefaultResponse(*outcome);
   });
   (void)router_->Add("POST", "/MalformedTimestampBodyHttpDate", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseMalformedTimestampBodyHttpDateInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->MalformedTimestampBodyHttpDate(*input);
@@ -3761,6 +4165,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeMalformedTimestampQueryHttpDateResponse(*outcome);
   });
   (void)router_->Add("POST", "/MalformedUnion", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseMalformedUnionInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->MalformedUnion(*input);
@@ -3817,6 +4226,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeOmitsSerializingEmptyListsResponse(*outcome);
   });
   (void)router_->Add("POST", "/OperationWithDefaults", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseOperationWithDefaultsInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->OperationWithDefaults(*input);
@@ -3824,6 +4238,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeOperationWithDefaultsResponse(*outcome);
   });
   (void)router_->Add("POST", "/OperationWithNestedStructure", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseOperationWithNestedStructureInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->OperationWithNestedStructure(*input);
@@ -3831,6 +4250,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeOperationWithNestedStructureResponse(*outcome);
   });
   (void)router_->Add("POST", "/PostPlayerAction", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParsePostPlayerActionInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->PostPlayerAction(*input);
@@ -3838,6 +4262,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializePostPlayerActionResponse(*outcome);
   });
   (void)router_->Add("POST", "/PostUnionWithJsonName", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParsePostUnionWithJsonNameInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->PostUnionWithJsonName(*input);
@@ -3845,6 +4274,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializePostUnionWithJsonNameResponse(*outcome);
   });
   (void)router_->Add("POST", "/requestcompression/putcontentwithencoding", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParsePutWithContentEncodingInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->PutWithContentEncoding(*input);
@@ -3879,7 +4313,19 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     if (!outcome) return ErrorToResponse(outcome.error());
     return SerializeResponseCodeHttpFallbackResponse(*outcome);
   });
+  (void)router_->Add("GET", "/responseCodeRequired", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    auto input = ParseResponseCodeRequiredInput(request, context);
+    if (!input) return ErrorToResponse(input.error());
+    auto outcome = handler->ResponseCodeRequired(*input);
+    if (!outcome) return ErrorToResponse(outcome.error());
+    return SerializeResponseCodeRequiredResponse(*outcome);
+  });
   (void)router_->Add("PUT", "/SimpleScalarProperties", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseSimpleScalarPropertiesInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->SimpleScalarProperties(*input);
@@ -3887,6 +4333,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeSimpleScalarPropertiesResponse(*outcome);
   });
   (void)router_->Add("PUT", "/SparseJsonLists", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseSparseJsonListsInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->SparseJsonLists(*input);
@@ -3894,6 +4345,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeSparseJsonListsResponse(*outcome);
   });
   (void)router_->Add("POST", "/SparseJsonMaps", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseSparseJsonMapsInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->SparseJsonMaps(*input);
@@ -3901,6 +4357,11 @@ RestJsonServer::RestJsonServer(std::shared_ptr<RestJsonHandler> handler)
     return SerializeSparseJsonMapsResponse(*outcome);
   });
   (void)router_->Add("POST", "/body", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec: a present header
+    // must carry the protocol's media type (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonError(415, "UnsupportedMediaTypeException", "expected content-type: application/json", {});
+    }
     auto input = ParseTestBodyStructureInput(request, context);
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->TestBodyStructure(*input);

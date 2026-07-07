@@ -56,7 +56,7 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
     w.openBlock(
         "smithy::http::HttpResponse CborError(int status, const std::string& code, "
             + "const std::string& message, smithy::DocumentMap body) {");
-    w.write("body.insert_or_assign(\"__type\", smithy::Document(code));");
+    w.write("if (!code.empty()) body.insert_or_assign(\"__type\", smithy::Document(code));");
     w.write(
         "if (!message.empty()) body.insert_or_assign(\"message\", "
             + "smithy::Document(message));");
@@ -68,7 +68,8 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
     w.write("return response;");
     w.closeBlock("}");
     w.write("");
-    ProtocolSupport.writeServerErrorToResponse(w, context, service, operations, "CborError");
+    ProtocolSupport.writeServerErrorToResponse(
+        w, context, service, operations, "CborError", /* errortypeHeader= */ false);
   }
 
   @Override
@@ -90,6 +91,16 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
     w.write(
         "return CborError(400, \"SerializationException\", "
             + "\"expected smithy-protocol: rpc-v2-cbor\", {});");
+    w.closeBlock("}");
+    w.write("// Content-Type validation per the rpcv2Cbor spec: a present header must");
+    w.write("// carry application/cbor (parameters ignored); 415 otherwise.");
+    w.openBlock(
+        "if (const auto content_type = request.headers.Get(\"content-type\"); "
+            + "content_type.has_value() && "
+            + "smithy::http::MediaTypeOf(*content_type) != \"application/cbor\") {");
+    w.write(
+        "return CborError(415, \"UnsupportedMediaTypeException\", "
+            + "\"expected content-type: application/cbor\", {});");
     w.closeBlock("}");
     w.write("$L input{};", inputType);
     if (!input.getId().toString().equals("smithy.api#Unit")) {

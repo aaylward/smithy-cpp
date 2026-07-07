@@ -7,6 +7,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "example/weather/serde.h"
 #include "example/weather/server.h"
@@ -35,7 +36,7 @@ namespace {
 }
 
 smithy::http::HttpResponse JsonError(int status, const std::string& code, const std::string& message, smithy::DocumentMap body) {
-  body.insert_or_assign("__type", smithy::Document(code));
+  if (!code.empty()) body.insert_or_assign("__type", smithy::Document(code));
   if (!message.empty()) body.insert_or_assign("message", smithy::Document(message));
   smithy::http::HttpResponse response;
   response.status = status;
@@ -45,13 +46,23 @@ smithy::http::HttpResponse JsonError(int status, const std::string& code, const 
 }
 
 smithy::http::HttpResponse ErrorToResponse(const smithy::Error& error) {
+  std::vector<std::pair<std::string, std::string>> header_values;
+  (void)header_values;
   if (error.kind() == smithy::ErrorKind::kModeled) {
     if (error.code() == "NoSuchResource") {
       smithy::DocumentMap body;
       if (const auto* detail = error.detail<NoSuchResource>()) {
         body = SerializeNoSuchResource(*detail).as_map();
       }
-      return JsonError(404, error.code(), error.message(), std::move(body));
+      // The typed detail's own message member wins over the generic one.
+      const bool has_message = body.count("message") != 0 || body.count("Message") != 0;
+      if (!has_message && !error.message().empty()) {
+        body.emplace("message", smithy::Document(error.message()));
+      }
+      auto response = JsonError(404, "", "", std::move(body));
+      response.headers.Set("x-amzn-errortype", error.code());
+      for (const auto& [name, value] : header_values) response.headers.Set(name, value);
+      return response;
     }
     return JsonError(400, error.code(), error.message(), {});
   }

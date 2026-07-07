@@ -67,6 +67,13 @@ TEST(HeadersTest, SplitHeaderListValues) {
   EXPECT_EQ(SplitHeaderListValues(""), (std::vector<std::string>{""}));
 }
 
+TEST(HeadersTest, MediaTypeOfStripsParametersAndCase) {
+  EXPECT_EQ(MediaTypeOf("application/json"), "application/json");
+  EXPECT_EQ(MediaTypeOf("Application/JSON; charset=utf-8"), "application/json");
+  EXPECT_EQ(MediaTypeOf("  text/plain ; q=1"), "text/plain");
+  EXPECT_EQ(MediaTypeOf(""), "");
+}
+
 TEST(HeadersTest, SplitHttpDateHeaderValues) {
   EXPECT_EQ(
       SplitHttpDateHeaderValues("Mon, 16 Dec 2019 23:48:18 GMT, Mon, 16 Dec 2019 23:48:18 GMT"),

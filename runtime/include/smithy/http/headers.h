@@ -39,6 +39,11 @@ bool HeaderNameEquals(std::string_view a, std::string_view b);
 // returned verbatim, quotes included — unescaping is the caller's concern.
 std::vector<std::string> SplitHeaderListValues(std::string_view value);
 
+// The media type of a Content-Type value: parameters and surrounding
+// whitespace stripped, lowercased ("Application/JSON; charset=utf-8" ->
+// "application/json").
+std::string MediaTypeOf(std::string_view content_type);
+
 // Splits a list-valued header of HTTP-dates, which themselves contain one
 // comma ("Mon, 16 Dec 2019 23:48:18 GMT, Tue, 17 Dec ..."): consecutive
 // comma-separated tokens are re-joined two at a time.

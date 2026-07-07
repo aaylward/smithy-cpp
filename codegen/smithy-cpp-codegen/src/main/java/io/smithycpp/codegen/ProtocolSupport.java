@@ -113,7 +113,8 @@ final class ProtocolSupport {
       CppContext context,
       ServiceShape service,
       List<OperationShape> operations,
-      String errorBodyFn) {
+      String errorBodyFn,
+      boolean errortypeHeader) {
     Map<String, StructureShape> errorShapes = new TreeMap<>();
     for (OperationShape operation : operations) {
       for (ShapeId errorId : operation.getErrors(service)) {
@@ -123,6 +124,10 @@ final class ProtocolSupport {
       }
     }
     w.openBlock("smithy::http::HttpResponse ErrorToResponse(const smithy::Error& error) {");
+    if (errortypeHeader) {
+      w.write("std::vector<std::pair<std::string, std::string>> header_values;");
+      w.write("(void)header_values;");
+    }
     w.openBlock("if (error.kind() == smithy::ErrorKind::kModeled) {");
     for (StructureShape shape : errorShapes.values()) {
       String type = context.cppSymbols().toSymbol(shape).getName();
@@ -133,10 +138,54 @@ final class ProtocolSupport {
           "body = Serialize$L(*detail).as_map();",
           SerdeCodeGen.serdeFunctionSuffix(context, shape));
       w.closeBlock("}");
+      w.write("// The typed detail's own message member wins over the generic one.");
       w.write(
-          "return $L($L, error.code(), error.message(), std::move(body));",
-          errorBodyFn,
-          errorStatus(shape));
+          "const bool has_message = body.count(\"message\") != 0 || "
+              + "body.count(\"Message\") != 0;");
+      w.openBlock("if (!has_message && !error.message().empty()) {");
+      w.write("body.emplace(\"message\", smithy::Document(error.message()));");
+      w.closeBlock("}");
+      if (errortypeHeader) {
+        // restJson1: @httpHeader-bound error members travel as headers, and the
+        // error shape name in X-Amzn-Errortype rather than the body.
+        var index = software.amazon.smithy.model.knowledge.HttpBindingIndex.of(context.model());
+        for (var binding : new TreeMap<>(index.getResponseBindings(shape)).values()) {
+          if (binding.getLocation()
+              != software.amazon.smithy.model.knowledge.HttpBinding.Location.HEADER) {
+            continue;
+          }
+          Shape target = context.model().expectShape(binding.getMember().getTarget());
+          if (!target.isStringShape()
+              || target.hasTrait(software.amazon.smithy.model.traits.MediaTypeTrait.class)) {
+            // Non-string error headers are not serialized yet (exclusions document this).
+            continue;
+          }
+          w.openBlock(
+              "if (auto it = body.find($S); it != body.end()) {",
+              binding.getMember().getMemberName());
+          w.write(
+              "if (it->second.is_string()) header_values.emplace_back($S, "
+                  + "it->second.as_string());",
+              binding.getLocationName());
+          w.write("body.erase(it);");
+          w.closeBlock("}");
+        }
+        w.write(
+            "auto response = $L($L, \"\", \"\", std::move(body));",
+            errorBodyFn,
+            errorStatus(shape));
+        w.write("response.headers.Set(\"x-amzn-errortype\", error.code());");
+        w.write(
+            "for (const auto& [name, value] : header_values) response.headers.Set(name, value);");
+        w.write("return response;");
+      } else {
+        // rpcv2Cbor: __type carries the fully qualified shape id in the body.
+        w.write(
+            "return $L($L, $S, \"\", std::move(body));",
+            errorBodyFn,
+            errorStatus(shape),
+            shape.getId().toString());
+      }
       w.closeBlock("}");
     }
     w.write("return $L(400, error.code(), error.message(), {});", errorBodyFn);
@@ -158,6 +207,8 @@ final class ProtocolSupport {
         "\"" + context.settings().includePrefix() + "/serde.h\"",
         "\"smithy/server/router.h\"",
         "<memory>",
+        "<utility>",
+        "<vector>",
         "<string>",
         "<string_view>",
         "<utility>");

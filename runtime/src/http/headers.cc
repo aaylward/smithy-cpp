@@ -1,6 +1,7 @@
 #include "smithy/http/headers.h"
 
 #include <algorithm>
+#include <cctype>
 
 namespace smithy::http {
 namespace {
@@ -60,6 +61,21 @@ std::vector<std::string> SplitHeaderListValues(std::string_view value) {
     out.emplace_back(part);
     if (comma == std::string_view::npos) break;
     start = comma + 1;
+  }
+  return out;
+}
+
+std::string MediaTypeOf(std::string_view content_type) {
+  std::string_view media = content_type.substr(0, content_type.find(';'));
+  while (!media.empty() && (media.front() == ' ' || media.front() == '\t')) {
+    media.remove_prefix(1);
+  }
+  while (!media.empty() && (media.back() == ' ' || media.back() == '\t')) {
+    media.remove_suffix(1);
+  }
+  std::string out(media);
+  for (char& c : out) {
+    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
   }
   return out;
 }

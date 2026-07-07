@@ -71,6 +71,7 @@ class RestJsonClient {
     /// URI path.
     smithy::Outcome<HttpRequestWithLabelsAndTimestampFormatOutput> HttpRequestWithLabelsAndTimestampFormat(const HttpRequestWithLabelsAndTimestampFormatInput& input) const;
     smithy::Outcome<HttpRequestWithRegexLiteralOutput> HttpRequestWithRegexLiteral(const HttpRequestWithRegexLiteralInput& input) const;
+    smithy::Outcome<HttpResponseCodeOutput> HttpResponseCode(const HttpResponseCodeInput& input = {}) const;
     /// This example ensures that query string bound request parameters are
     /// serialized in the body of responses if the structure is used in both
     /// the request and response.
@@ -162,6 +163,7 @@ class RestJsonClient {
     smithy::Outcome<QueryParamsAsStringListMapOutput> QueryParamsAsStringListMap(const QueryParamsAsStringListMapInput& input) const;
     smithy::Outcome<QueryPrecedenceOutput> QueryPrecedence(const QueryPrecedenceInput& input) const;
     smithy::Outcome<ResponseCodeHttpFallbackOutput> ResponseCodeHttpFallback(const ResponseCodeHttpFallbackInput& input = {}) const;
+    smithy::Outcome<ResponseCodeRequiredOutput> ResponseCodeRequired(const ResponseCodeRequiredInput& input = {}) const;
     smithy::Outcome<SimpleScalarPropertiesOutput> SimpleScalarProperties(const SimpleScalarPropertiesInput& input) const;
     smithy::Outcome<SparseJsonListsOutput> SparseJsonLists(const SparseJsonListsInput& input) const;
     /// This example tests sparse map serialization.

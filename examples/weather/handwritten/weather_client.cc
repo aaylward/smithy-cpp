@@ -12,15 +12,19 @@ using smithy::Document;
 using smithy::Error;
 using smithy::Outcome;
 
-// restJson1 error deserialization (prototype): code from the "__type" or
-// "code" field, message from "message".
+// restJson1 error deserialization (prototype): code from the
+// x-amzn-errortype header (how generated servers send it), else the "__type"
+// or "code" body field; message from "message".
 Error DeserializeError(const smithy::http::HttpResponse& response) {
   std::string code = "UnknownError";
   std::string message = "HTTP " + std::to_string(response.status);
+  if (const auto header = response.headers.Get("x-amzn-errortype"); header.has_value()) {
+    code = *header;
+  }
   if (const auto doc = smithy::json::Decode(response.body); doc.ok() && doc->is_map()) {
     const Document* type = doc->Find("__type");
     if (type == nullptr) type = doc->Find("code");
-    if (type != nullptr && type->is_string()) code = type->as_string();
+    if (code == "UnknownError" && type != nullptr && type->is_string()) code = type->as_string();
     if (const Document* text = doc->Find("message"); text != nullptr && text->is_string()) {
       message = text->as_string();
     }

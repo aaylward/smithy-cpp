@@ -485,6 +485,18 @@ struct HttpRequestWithRegexLiteralOutput {
 };
 
 
+struct HttpResponseCodeInput {
+  friend bool operator==(const HttpResponseCodeInput&, const HttpResponseCodeInput&) = default;
+};
+
+
+struct HttpResponseCodeOutput {
+  std::optional<std::int32_t> Status{};
+
+  friend bool operator==(const HttpResponseCodeOutput&, const HttpResponseCodeOutput&) = default;
+};
+
+
 struct IgnoreQueryParamsInResponseInput {
   friend bool operator==(const IgnoreQueryParamsInResponseInput&, const IgnoreQueryParamsInResponseInput&) = default;
 };
@@ -1525,6 +1537,18 @@ struct ResponseCodeHttpFallbackInput {
 
 struct ResponseCodeHttpFallbackOutput {
   friend bool operator==(const ResponseCodeHttpFallbackOutput&, const ResponseCodeHttpFallbackOutput&) = default;
+};
+
+
+struct ResponseCodeRequiredInput {
+  friend bool operator==(const ResponseCodeRequiredInput&, const ResponseCodeRequiredInput&) = default;
+};
+
+
+struct ResponseCodeRequiredOutput {
+  std::int32_t responseCode{};
+
+  friend bool operator==(const ResponseCodeRequiredOutput&, const ResponseCodeRequiredOutput&) = default;
 };
 
 

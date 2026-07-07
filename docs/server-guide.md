@@ -25,8 +25,11 @@ class MyHandler final : public example::weather::WeatherHandler {
 
 - **Modeled errors**: return `smithy::Error::Modeled("<ErrorShapeName>", message)`. The server
   maps the code to the shape's `@httpError` status (else 400/`@error("server")` → 500) and the
-  protocol's error body (`__type` + `message`); attach the typed structure with `set_detail()`
-  to serialize its members too.
+  protocol's error identity — restJson1 sets the `X-Amzn-Errortype` header and serializes the
+  detail as the body; rpcv2Cbor writes the fully qualified shape id as `__type` in the CBOR
+  body. Attach the typed structure with `set_detail()` to serialize its members (restJson1
+  `@httpHeader`-bound error members become response headers); the generic message is added
+  only when the detail carries no message member of its own.
 - **Validation/serialization errors** (including malformed request input the framework catches
   before your handler runs) map to 400; any other failure is a non-leaking 500
   `InternalFailure`.
@@ -57,9 +60,17 @@ Every generated module ships `tests/smoke_test.cc` (target `:smoke_test` in the 
 — every operation round-trips a minimal valid value and one test proves modeled-error mapping.
 It passes out of the box and is the natural place to start testing a real handler.
 
-## Not yet generated (Phase 4b+)
+## Conformance
+
+Generated servers pass the official server-mode `httpRequestTests`/`httpResponseTests` suites
+(220 cases across restJson1 and rpcv2Cbor, with a documented must-shrink exclusion list): wire
+requests parse into the exact modeled inputs, and handler outputs/errors serialize to the exact
+wire responses — including `@httpResponseCode`, 415 Content-Type enforcement (parameters like
+`; charset=utf-8` accepted), and all-query-params `@httpQueryParams` maps. Ambiguous route
+tables fail at generation time.
+
+## Not yet generated (Phase 4c+)
 
 Constraint validation from traits (`@length`, `@range`, `@pattern`, ... → 400
-`ValidationException` before the handler runs), server-side protocol conformance tests
-(`httpMalformedRequestTests`), Content-Type enforcement (415), and the bindings the client also
-lacks (`@httpPayload`, `@httpPrefixHeaders`, `@httpResponseCode`).
+`ValidationException` before the handler runs), the `httpMalformedRequestTests` suite, and the
+bindings the client also lacks (`@httpPayload`, `@httpPrefixHeaders`).

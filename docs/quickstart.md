@@ -46,11 +46,11 @@ protocol-agnostic, the upstream Smithy way: `@http` traits describe HTTP semanti
 picking a wire protocol. Bind a concrete protocol in a small overlay file with `apply`:
 
 ```smithy
-// model/bindings/restjson1.smithy
+// model/bindings/simplerestjson.smithy
 $version: "2.0"
 namespace acme.todo
-use aws.protocols#restJson1
-apply Todo @restJson1
+use alloy#simpleRestJson
+apply Todo @simpleRestJson
 ```
 
 (Applying the trait directly on the service works too, if you only ever want one protocol.)
@@ -65,7 +65,7 @@ load("@smithy_cpp//bazel:defs.bzl", "smithy_cpp_client_library", "smithy_cpp_ser
 smithy_cpp_client_library(
     name = "todo_client",
     srcs = [
-        "model/bindings/restjson1.smithy",
+        "model/bindings/simplerestjson.smithy",
         "model/todo.smithy",
     ],
     namespace = "acme::todo",
@@ -75,7 +75,7 @@ smithy_cpp_client_library(
 smithy_cpp_server_library(
     name = "todo_server",
     srcs = [
-        "model/bindings/restjson1.smithy",
+        "model/bindings/simplerestjson.smithy",
         "model/todo.smithy",
     ],
     namespace = "acme::todo",
@@ -84,7 +84,7 @@ smithy_cpp_server_library(
 ```
 
 Because the protocol lives in the overlay, the same model generates for another protocol by
-swapping the overlay — the consumer example binds `acme.todo#Todo` to **both** restJson1 and
+swapping the overlay — the consumer example binds `acme.todo#Todo` to **both** simpleRestJson and
 rpcv2Cbor side by side (different `namespace` per binding keeps the headers apart); see
 [`examples/bazel-consumer/BUILD.bazel`](../examples/bazel-consumer/BUILD.bazel).
 

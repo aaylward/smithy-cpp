@@ -16,9 +16,9 @@ import software.amazon.smithy.model.traits.HttpTrait;
 
 /**
  * Shared HTTP + JSON binding generator: HTTP method/URI from @http, labels, query, headers, and
- * JSON request/response bodies. Concrete protocols (currently only the vendor-neutral
- * {@link SimpleRestJsonProtocol}) supply the service name, trait id, and error-identity header via
- * {@link #errorTypeHeaderName()}.
+ * JSON request/response bodies. Concrete protocols (currently only the vendor-neutral {@link
+ * SimpleRestJsonProtocol}) supply the service name, trait id, and error-identity header via {@link
+ * #errorTypeHeaderName()}.
  */
 abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
 

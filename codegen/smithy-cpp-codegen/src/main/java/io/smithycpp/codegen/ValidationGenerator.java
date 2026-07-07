@@ -150,6 +150,21 @@ final class ValidationGenerator {
    */
   static void writeValidationErrorResponse(
       CppWriter w, String errorFn, String errorCode, String errortypeHeader) {
+    writeValidationErrorResponse(w, errorFn, errorCode, errortypeHeader, "", "");
+  }
+
+  /**
+   * Variant threading extra context through ValidationErrorResponse into {@code errorFn}: {@code
+   * extraParams} is appended to the signature and {@code extraArgs} to the {@code errorFn} call.
+   * jsonRpc2 uses this to echo the request id into the error envelope.
+   */
+  static void writeValidationErrorResponse(
+      CppWriter w,
+      String errorFn,
+      String errorCode,
+      String errortypeHeader,
+      String extraParams,
+      String extraArgs) {
     w.addInclude("<cstddef>");
     w.addInclude("<string>");
     w.addInclude("<utility>");
@@ -157,7 +172,8 @@ final class ValidationGenerator {
     w.addInclude("\"smithy/core/document.h\"");
     w.openBlock(
         "smithy::http::HttpResponse ValidationErrorResponse("
-            + "const std::vector<smithy::server::ValidationFailure>& failures) {");
+            + "const std::vector<smithy::server::ValidationFailure>& failures$L) {",
+        extraParams);
     w.write(
         "std::string summary = std::to_string(failures.size()) + \" validation error\" + "
             + "(failures.size() == 1 ? \"\" : \"s\") + \" detected. \";");
@@ -173,9 +189,10 @@ final class ValidationGenerator {
     w.write("smithy::DocumentMap body;");
     w.write("body.emplace(\"fieldList\", smithy::Document(std::move(field_list)));");
     w.write(
-        "smithy::http::HttpResponse response = $L(400, $S, summary, std::move(body));",
+        "smithy::http::HttpResponse response = $L(400, $S, summary, std::move(body)$L);",
         errorFn,
-        errorCode);
+        errorCode,
+        extraArgs);
     if (!errortypeHeader.isEmpty()) {
       w.write("response.headers.Set($S, \"ValidationException\");", errortypeHeader);
     }

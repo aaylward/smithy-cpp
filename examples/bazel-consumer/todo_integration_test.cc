@@ -11,6 +11,8 @@
 #include "acme/todo/cbor/client.h"
 #include "acme/todo/cbor/server.h"
 #include "acme/todo/client.h"
+#include "acme/todo/jsonrpc/client.h"
+#include "acme/todo/jsonrpc/server.h"
 #include "acme/todo/server.h"
 #include "smithy/client/config.h"
 #include "smithy/http/loopback.h"
@@ -144,6 +146,43 @@ TEST(TodoCborTest, SameModelServesRpcv2Cbor) {
   const auto missing = client->GetTask(acme::todo::cbor::GetTaskInput{.taskId = "nope"});
   ASSERT_FALSE(missing.ok());
   EXPECT_EQ(missing.error().code(), "NoSuchTask");
+}
+
+// And a third overlay (model/bindings/jsonrpc2.smithy) binds the same model
+// to JSON-RPC 2.0: a single POST / endpoint dispatching on the envelope's
+// method member.
+TEST(TodoJsonRpcTest, SameModelServesJsonRpc2) {
+  class JsonRpcHandler final : public acme::todo::jsonrpc::TodoHandler {
+   public:
+    smithy::Outcome<acme::todo::jsonrpc::AddTaskOutput> AddTask(
+        const acme::todo::jsonrpc::AddTaskInput& input) override {
+      return acme::todo::jsonrpc::AddTaskOutput{.taskId = "task-1", .title = input.title};
+    }
+    smithy::Outcome<acme::todo::jsonrpc::GetTaskOutput> GetTask(
+        const acme::todo::jsonrpc::GetTaskInput& input) override {
+      smithy::Error error = smithy::Error::Modeled("NoSuchTask", "no task: " + input.taskId);
+      error.set_detail(acme::todo::jsonrpc::NoSuchTask{.message = "no task: " + input.taskId});
+      return error;
+    }
+  };
+
+  acme::todo::jsonrpc::TodoServer server(std::make_shared<JsonRpcHandler>());
+  auto loopback = std::make_shared<smithy::http::Loopback>();
+  ASSERT_TRUE(loopback->Start(server.Handler()).ok());
+  smithy::ClientConfig config;
+  config.http_client = loopback;
+  auto client = acme::todo::jsonrpc::TodoClient::Create(std::move(config));
+  ASSERT_TRUE(client.ok()) << client.error().message();
+
+  const auto added = client->AddTask(acme::todo::jsonrpc::AddTaskInput{.title = "ship it"});
+  ASSERT_TRUE(added.ok()) << added.error().message();
+  EXPECT_EQ(added->taskId, "task-1");
+  EXPECT_EQ(added->title, "ship it");
+
+  const auto missing = client->GetTask(acme::todo::jsonrpc::GetTaskInput{.taskId = "nope"});
+  ASSERT_FALSE(missing.ok());
+  EXPECT_EQ(missing.error().code(), "NoSuchTask");
+  ASSERT_NE(missing.error().detail<acme::todo::jsonrpc::NoSuchTask>(), nullptr);
 }
 
 }  // namespace

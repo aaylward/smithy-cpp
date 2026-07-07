@@ -131,6 +131,9 @@ public final class DirectedCppCodegen
     if (service.hasTrait(software.amazon.smithy.protocol.traits.Rpcv2CborTrait.class)) {
       return new Rpcv2CborProtocol();
     }
+    if (service.hasTrait(JsonRpc2Protocol.TRAIT)) {
+      return new JsonRpc2Protocol();
+    }
     return null;
   }
 

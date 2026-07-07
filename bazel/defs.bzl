@@ -14,7 +14,7 @@ Usage (from any Bazel 8/9 module that depends on smithy_cpp):
 Each macro runs the generator as a hermetic Java action (no Gradle, no scripts)
 and wraps the generated sources in an ordinary cc_library that consumers depend
 on like any other target. The service's protocol comes from the model itself
-(aws.protocols#restJson1 or smithy.protocols#rpcv2Cbor).
+(alloy#simpleRestJson, smithy.protocols#rpcv2Cbor, or smithy.cpp.protocols#jsonRpc2).
 """
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")

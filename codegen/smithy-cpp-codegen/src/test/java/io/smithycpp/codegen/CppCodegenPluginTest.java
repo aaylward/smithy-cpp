@@ -93,6 +93,47 @@ class CppCodegenPluginTest {
   }
 
   @Test
+  void generatesTheJsonRpc2ProtocolFromItsTrait() {
+    Path model =
+        Paths.get(
+            System.getProperty("smithycpp.repoRoot"), "examples/jsonrpc2/model/calculator.smithy");
+    MockManifest manifest = new MockManifest();
+    PluginContext context =
+        PluginContext.builder()
+            .fileManifest(manifest)
+            .model(
+                Model.assembler()
+                    .discoverModels(CppCodegenPluginTest.class.getClassLoader())
+                    .addImport(model)
+                    .assemble()
+                    .unwrap())
+            .settings(
+                Node.objectNodeBuilder()
+                    .withMember("service", "example.calculator#Calculator")
+                    .withMember("namespace", "example::calculator")
+                    .withMember("runtimeTarget", "//runtime:core")
+                    .build())
+            .build();
+    new CppCodegenPlugin().execute(context);
+
+    String client = manifest.expectFileString("/src/client.cc");
+    assertTrue(client.contains("envelope.emplace(\"jsonrpc\", smithy::Document(\"2.0\"));"));
+    assertTrue(client.contains("envelope.emplace(\"method\", smithy::Document(\"Add\"));"));
+    assertTrue(client.contains("request.target = path_prefix_ + \"/\";"));
+
+    // One route for the whole service, dispatching on the envelope's method.
+    String server = manifest.expectFileString("/src/server.cc");
+    assertEquals(1, server.split("router_->Add\\(", -1).length - 1);
+    assertTrue(server.contains("if (method_name == \"Divide\")"));
+    assertTrue(server.contains("return JsonRpcError(-32601, \"UnknownOperationException\""));
+    // Modeled errors: @httpError status as the code, fq shape id in __type.
+    assertTrue(
+        server.contains(
+            "return JsonRpcError(422, \"example.calculator#DivisionByZero\", \"\","
+                + " std::move(body), id);"));
+  }
+
+  @Test
   void rejectsRecursiveShapes() {
     Model model =
         Model.assembler()

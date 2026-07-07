@@ -1,0 +1,16 @@
+load("@rules_cc//cc:defs.bzl", "cc_test")
+
+cc_test(
+    name = "interop_wire_test",
+    size = "small",
+    srcs = ["interop_wire_test.cc"],
+    deps = [
+        "//examples/jsonrpc2/generated:client",
+        "//examples/jsonrpc2/generated:server",
+        "//runtime:client",
+        "//runtime:core",
+        "//runtime:http",
+        "//runtime:json",
+        "@googletest//:gtest_main",
+    ],
+)

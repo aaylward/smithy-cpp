@@ -84,8 +84,8 @@ smithy_cpp_server_library(
 ```
 
 Because the protocol lives in the overlay, the same model generates for another protocol by
-swapping the overlay — the consumer example binds `acme.todo#Todo` to **both** simpleRestJson and
-rpcv2Cbor side by side (different `namespace` per binding keeps the headers apart); see
+swapping the overlay — the consumer example binds `acme.todo#Todo` to simpleRestJson, rpcv2Cbor,
+**and** jsonRpc2 side by side (different `namespace` per binding keeps the headers apart); see
 [`examples/bazel-consumer/BUILD.bazel`](../examples/bazel-consumer/BUILD.bazel).
 
 Generation runs inside the build graph as a hermetic action — correct caching, no scripts, no

@@ -27,7 +27,8 @@ class MyHandler final : public example::weather::WeatherHandler {
   maps the code to the shape's `@httpError` status (else 400/`@error("server")` → 500) and the
   protocol's error identity — simpleRestJson sets the neutral `X-Error-Type` header and serializes the
   detail as the body; rpcv2Cbor writes the fully qualified shape id as `__type` in the CBOR
-  body. Attach the typed structure with `set_detail()` to serialize its members (simpleRestJson
+  body; jsonRpc2 answers a JSON-RPC error object whose `code` is the `@httpError` status and
+  whose `data` carries the members plus `__type`. Attach the typed structure with `set_detail()` to serialize its members (simpleRestJson
   `@httpHeader`-bound error members become response headers); the generic message is added
   only when the detail carries no message member of its own.
 - **Validation/serialization errors** (including malformed request input the framework catches
@@ -56,7 +57,11 @@ Routing (method + URI pattern from `@http`, greedy labels, 404/405 with `Allow`)
 request-binding deserialization (labels, query incl. `@httpQueryParams`, headers, JSON/CBOR
 bodies), and response serialization (status, headers, body) are all generated; rpcv2Cbor
 services check the `smithy-protocol` header and dispatch on the fixed
-`/service/{Service}/operation/{Operation}` form.
+`/service/{Service}/operation/{Operation}` form. jsonRpc2 services register a single `POST /`
+route and dispatch on the request envelope's `method` member, answering every well-formed
+JSON-RPC call — success or error — as an HTTP 200 envelope (envelope-level failures use the
+reserved JSON-RPC codes: -32700 parse, -32600 invalid request, -32601 method not found,
+-32602 invalid params).
 
 ## Generated smoke tests
 

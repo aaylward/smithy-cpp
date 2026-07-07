@@ -70,6 +70,23 @@ val generateRoundTripRpcFixture = registerFixtureTask(
     "examples/roundtrip/rpc/generated",
 )
 
+// jsonRpc2 showcase example: a classic single-endpoint JSON-RPC calculator.
+val generateCalculatorFixture = registerFixtureTask(
+    "generateCalculatorFixture",
+    "examples/jsonrpc2/model/calculator.smithy",
+    "example.calculator#Calculator",
+    "example::calculator",
+    "examples/jsonrpc2/generated",
+)
+
+val generateRoundTripJsonRpcFixture = registerFixtureTask(
+    "generateRoundTripJsonRpcFixture",
+    "examples/roundtrip/model/roundtrip.smithy",
+    "example.roundtrip#RoundTripJsonRpc",
+    "example::roundtrip::jsonrpc",
+    "examples/roundtrip/jsonrpc/generated",
+)
+
 // The official protocol-test suite models, kept off the main runtime classpath
 // so ordinary fixture generation doesn't assemble them.
 val protocolTestModels: Configuration by configurations.creating
@@ -81,9 +98,12 @@ fun registerProtocolTestTask(
     outputPath: String,
     omitOperations: List<String> = emptyList(),
     malformedTests: Boolean = false,
+    // Authored suites (jsonRpc2 has no published jar) load from a local model
+    // file instead of the protocolTestModels classpath.
+    modelPath: String? = null,
 ) = tasks.register<JavaExec>(taskName) {
     group = "smithy-cpp"
-    description = "Regenerates $outputPath from the official protocol test suite for $service"
+    description = "Regenerates $outputPath from the protocol test suite for $service"
     classpath = sourceSets["main"].runtimeClasspath + protocolTestModels
     mainClass = "io.smithycpp.codegen.CppCodegenRunner"
     args = listOf(
@@ -92,7 +112,8 @@ fun registerProtocolTestTask(
         "--runtime-target", "//runtime:core",
         "--output", File(repoRoot, outputPath).absolutePath,
         "--tests-package", "//" + outputPath,
-    ) + omitOperations.flatMap { listOf("--omit-operation", it) } +
+    ) + (modelPath?.let { listOf("--model", File(repoRoot, it).absolutePath) } ?: emptyList()) +
+        omitOperations.flatMap { listOf("--omit-operation", it) } +
         (if (malformedTests) listOf("--malformed-tests", "true") else emptyList())
     doFirst {
         project.delete(File(repoRoot, outputPath))
@@ -129,12 +150,25 @@ val generateRpcv2CborProtocolTests = registerProtocolTestTask(
     ),
 )
 
+// jsonRpc2 conformance: our authored suite (JSON-RPC 2.0 is an open standard
+// with no published Smithy protocol tests), checked in next to the generated
+// module. Standard httpRequestTests/httpResponseTests/httpMalformedRequestTests.
+val generateJsonRpc2ProtocolTests = registerProtocolTestTask(
+    "generateJsonRpc2ProtocolTests",
+    "smithy.cpp.protocoltests.jsonrpc2#JsonRpc2Protocol",
+    "smithy::protocoltests::jsonrpc2",
+    "protocol-tests/jsonrpc2/generated",
+    malformedTests = true,
+    modelPath = "protocol-tests/jsonrpc2/model/jsonrpc2.smithy",
+)
+
 tasks.register("generateProtocolTests") {
     group = "smithy-cpp"
     description = "Regenerates the checked-in protocol conformance suites under protocol-tests/"
     dependsOn(
         generateSimpleRestJsonProtocolTests,
         generateRpcv2CborProtocolTests,
+        generateJsonRpc2ProtocolTests,
     )
 }
 
@@ -147,6 +181,8 @@ tasks.register("generateFixtures") {
         generateBookstoreFixture,
         generateRoundTripRestFixture,
         generateRoundTripRpcFixture,
+        generateRoundTripJsonRpcFixture,
+        generateCalculatorFixture,
     )
 }
 

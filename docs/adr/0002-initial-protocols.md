@@ -7,7 +7,10 @@
 > vendor-neutrality goal. The REST protocol is now **`alloy#simpleRestJson`** (the neutral
 > protocol smithy4s uses; from `com.disneystreaming.alloy:alloy-core`), conformance-tested with
 > `alloy-protocol-tests`. `rpcv2Cbor` (this ADR's RPC choice, already neutral) is unchanged. No
-> `aws.*` remains on the generator classpath. See docs/PLAN.md §"Phase 7e".
+> `aws.*` remains on the generator classpath. Phase 7e also added the third protocol,
+> **`smithy.cpp.protocols#jsonRpc2`** (JSON-RPC 2.0 over a single POST endpoint; homegrown trait
+> since neither alloy nor core Smithy covers it, with an authored conformance suite under
+> `protocol-tests/jsonrpc2`). See docs/PLAN.md §"Phase 7e".
 
 ## Context
 
@@ -35,6 +38,7 @@ from.
 
 - The runtime carries both a JSON and a CBOR serde module behind one reader/writer interface
   (Phase 1).
-- Further protocols (e.g. JSON-RPC 2.0, restXml) slot in behind the same `ProtocolGenerator`
-  interface later, added on demand.
+- Further protocols slot in behind the same `ProtocolGenerator` interface later, added on
+  demand (JSON-RPC 2.0 landed in Phase 7e as `smithy.cpp.protocols#jsonRpc2`; restXml remains
+  a candidate).
 - smithy-cpp stays vendor-neutral: no AWS traits, auth, endpoint logic, or SDK behaviors (PLAN §2).

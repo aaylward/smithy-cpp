@@ -53,7 +53,21 @@ interface ProtocolGenerator {
   void writeServerHelpers(
       CppWriter w, CppContext context, ServiceShape service, List<OperationShape> operations);
 
+  /**
+   * Emits the constructor statements registering the service's routes. The default registers one
+   * route per operation via {@link #writeServerRoute}; single-endpoint protocols (jsonRpc2, which
+   * dispatches on the request body's {@code method} member) override this instead.
+   */
+  default void writeServerRoutes(
+      CppWriter w, CppContext context, ServiceShape service, List<OperationShape> operations) {
+    for (OperationShape operation : operations) {
+      writeServerRoute(w, context, service, operation);
+    }
+  }
+
   /** Emits the constructor statements registering one operation's route. */
-  void writeServerRoute(
-      CppWriter w, CppContext context, ServiceShape service, OperationShape operation);
+  default void writeServerRoute(
+      CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
+    throw new UnsupportedOperationException(name() + " does not emit per-operation routes");
+  }
 }

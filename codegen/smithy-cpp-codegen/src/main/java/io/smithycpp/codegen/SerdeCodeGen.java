@@ -65,8 +65,11 @@ final class SerdeCodeGen {
       case TIMESTAMP ->
           "smithy::Document::FromTimestamp(" + valueExpr + ", " + timestampFormat(member) + ")";
       case DOCUMENT -> valueExpr;
+      // Boxed (recursive) members dereference through the smithy::Boxed.
       case STRUCTURE, UNION, LIST, MAP ->
-          "Serialize" + serdeFunctionSuffix(context, shape) + "(" + valueExpr + ")";
+          context.cppSymbols().recursion().isBoxed(member)
+              ? "Serialize" + serdeFunctionSuffix(context, shape) + "(*(" + valueExpr + "))"
+              : "Serialize" + serdeFunctionSuffix(context, shape) + "(" + valueExpr + ")";
       default ->
           throw new CodegenException(
               "cpp-codegen: cannot serialize member targeting " + shape.getId());

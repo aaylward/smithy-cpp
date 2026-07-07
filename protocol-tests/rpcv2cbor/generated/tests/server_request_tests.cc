@@ -73,6 +73,13 @@ OptionalInputOutputOutput MinimalOptionalInputOutputOutput() {
   }();
 }
 
+RecursiveShapesOutput MinimalRecursiveShapesOutput() {
+    return [] {
+    RecursiveShapesOutput v{};
+    return v;
+  }();
+}
+
 RpcV2CborDenseMapsOutput MinimalRpcV2CborDenseMapsOutput() {
     return [] {
     RpcV2CborDenseMapsOutput v{};
@@ -145,6 +152,11 @@ class RecordingHandler : public RpcV2ProtocolHandler {
       return MinimalOptionalInputOutputOutput();
     }
     std::optional<OptionalInputOutputInput> lastOptionalInputOutput;
+    smithy::Outcome<RecursiveShapesOutput> RecursiveShapes(const RecursiveShapesInput& input) override {
+      lastRecursiveShapes = input;
+      return MinimalRecursiveShapesOutput();
+    }
+    std::optional<RecursiveShapesInput> lastRecursiveShapes;
     smithy::Outcome<RpcV2CborDenseMapsOutput> RpcV2CborDenseMaps(const RpcV2CborDenseMapsInput& input) override {
       lastRpcV2CborDenseMaps = input;
       return MinimalRpcV2CborDenseMapsOutput();
@@ -309,6 +321,46 @@ TEST(RpcV2ProtocolServerRequestTest, optional_input) {
   return v;
 }();
   EXPECT_EQ(*handler->lastOptionalInputOutput, expected);
+}
+
+// Serializes recursive structures
+TEST(RpcV2ProtocolServerRequestTest, RpcV2CborRecursiveShapes) {
+  auto handler = std::make_shared<RecordingHandler>();
+  RpcV2ProtocolServer server(handler);
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = "/service/RpcV2Protocol/operation/RecursiveShapes";
+  request.headers.Set("Accept", "application/cbor");
+  request.headers.Set("Content-Type", "application/cbor");
+  request.headers.Set("smithy-protocol", "rpc-v2-cbor");
+  request.body = smithy::testing::FromBase64("v2ZuZXN0ZWS/Y2Zvb2RGb28xZm5lc3RlZL9jYmFyZEJhcjFvcmVjdXJzaXZlTWVtYmVyv2Nmb29kRm9vMmZuZXN0ZWS/Y2JhcmRCYXIy//////8=");
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  ASSERT_TRUE(handler->lastRecursiveShapes.has_value()) << response.status << " " << response.body;
+  const RecursiveShapesInput expected = [] {
+  RecursiveShapesInput v{};
+  v.nested = [] {
+  RecursiveShapesInputOutputNested1 v{};
+  v.foo = "Foo1";
+  v.nested = [] {
+  RecursiveShapesInputOutputNested2 v{};
+  v.bar = "Bar1";
+  v.recursiveMember = [] {
+  RecursiveShapesInputOutputNested1 v{};
+  v.foo = "Foo2";
+  v.nested = [] {
+  RecursiveShapesInputOutputNested2 v{};
+  v.bar = "Bar2";
+  return v;
+}();
+  return v;
+}();
+  return v;
+}();
+  return v;
+}();
+  return v;
+}();
+  EXPECT_EQ(*handler->lastRecursiveShapes, expected);
 }
 
 // Serializes maps

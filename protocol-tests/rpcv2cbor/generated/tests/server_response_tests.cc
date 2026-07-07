@@ -72,6 +72,13 @@ OptionalInputOutputOutput MinimalOptionalInputOutputOutput() {
   }();
 }
 
+RecursiveShapesOutput MinimalRecursiveShapesOutput() {
+    return [] {
+    RecursiveShapesOutput v{};
+    return v;
+  }();
+}
+
 RpcV2CborDenseMapsOutput MinimalRpcV2CborDenseMapsOutput() {
     return [] {
     RpcV2CborDenseMapsOutput v{};
@@ -144,6 +151,11 @@ class RecordingHandler : public RpcV2ProtocolHandler {
       return MinimalOptionalInputOutputOutput();
     }
     std::optional<OptionalInputOutputInput> lastOptionalInputOutput;
+    smithy::Outcome<RecursiveShapesOutput> RecursiveShapes(const RecursiveShapesInput& input) override {
+      lastRecursiveShapes = input;
+      return MinimalRecursiveShapesOutput();
+    }
+    std::optional<RecursiveShapesInput> lastRecursiveShapes;
     smithy::Outcome<RpcV2CborDenseMapsOutput> RpcV2CborDenseMaps(const RpcV2CborDenseMapsInput& input) override {
       lastRpcV2CborDenseMaps = input;
       return MinimalRpcV2CborDenseMapsOutput();
@@ -210,6 +222,20 @@ smithy::http::HttpRequest MinimalRequestForOptionalInputOutput() {
     return v;
   }();
   (void)client.OptionalInputOutput(input);
+  return transport->last_request;
+}
+
+smithy::http::HttpRequest MinimalRequestForRecursiveShapes() {
+  auto transport = std::make_shared<smithy::testing::CapturingTransport>();
+  smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
+  config.http_client = transport;
+  auto client = *RpcV2ProtocolClient::Create(std::move(config));
+    RecursiveShapesInput input = [] {
+    RecursiveShapesInput v{};
+    return v;
+  }();
+  (void)client.RecursiveShapes(input);
   return transport->last_request;
 }
 
@@ -355,6 +381,46 @@ TEST(RpcV2ProtocolServerResponseTest, optional_output) {
   EXPECT_EQ(response.headers.Get("Content-Type").value_or("<missing>"), "application/cbor");
   EXPECT_EQ(response.headers.Get("smithy-protocol").value_or("<missing>"), "rpc-v2-cbor");
   EXPECT_TRUE(smithy::testing::CborBodyEqualsBase64("v/8=", response.body));
+}
+
+// Serializes recursive structures
+TEST(RpcV2ProtocolServerResponseTest, RpcV2CborRecursiveShapes) {
+  class Handler final : public RecordingHandler {
+   public:
+    smithy::Outcome<RecursiveShapesOutput> RecursiveShapes(const RecursiveShapesInput& input) override {
+      (void)input;
+      return [] {
+  RecursiveShapesOutput v{};
+  v.nested = [] {
+  RecursiveShapesInputOutputNested1 v{};
+  v.foo = "Foo1";
+  v.nested = [] {
+  RecursiveShapesInputOutputNested2 v{};
+  v.bar = "Bar1";
+  v.recursiveMember = [] {
+  RecursiveShapesInputOutputNested1 v{};
+  v.foo = "Foo2";
+  v.nested = [] {
+  RecursiveShapesInputOutputNested2 v{};
+  v.bar = "Bar2";
+  return v;
+}();
+  return v;
+}();
+  return v;
+}();
+  return v;
+}();
+  return v;
+}();
+    }
+  };
+  RpcV2ProtocolServer server(std::make_shared<Handler>());
+  const smithy::http::HttpResponse response = server.Handler()(MinimalRequestForRecursiveShapes());
+  EXPECT_EQ(response.status, 200);
+  EXPECT_EQ(response.headers.Get("Content-Type").value_or("<missing>"), "application/cbor");
+  EXPECT_EQ(response.headers.Get("smithy-protocol").value_or("<missing>"), "rpc-v2-cbor");
+  EXPECT_TRUE(smithy::testing::CborBodyEqualsBase64("v2ZuZXN0ZWS/Y2Zvb2RGb28xZm5lc3RlZL9jYmFyZEJhcjFvcmVjdXJzaXZlTWVtYmVyv2Nmb29kRm9vMmZuZXN0ZWS/Y2JhcmRCYXIy//////8=", response.body));
 }
 
 // Deserializes maps

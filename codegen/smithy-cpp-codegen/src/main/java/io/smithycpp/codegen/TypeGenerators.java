@@ -47,8 +47,51 @@ final class TypeGenerators {
     return "k" + CaseUtils.toPascalCase(memberName.toLowerCase().replace('-', '_'));
   }
 
+  /**
+   * Forward declarations for recursive member targets: on a cycle, the target's definition may come
+   * later in types.h. Boxed members and std::vector elements only need the name declared; duplicate
+   * declarations are harmless.
+   */
+  private void writeForwardDeclarations(StructureShape shape) {
+    RecursionIndex recursion = symbols().recursion();
+    if (!recursion.inCycle(shape.getId())) {
+      return;
+    }
+    java.util.Set<String> declared = new java.util.TreeSet<>();
+    for (MemberShape member : shape.members()) {
+      collectCyclicStructNames(shape, member, declared);
+    }
+    for (String name : declared) {
+      writer.write("struct $L;", name);
+    }
+    if (!declared.isEmpty()) {
+      writer.write("");
+    }
+  }
+
+  /** Struct names the member's type text references from the containing shape's cycle. */
+  private void collectCyclicStructNames(
+      StructureShape container, MemberShape member, java.util.Set<String> out) {
+    RecursionIndex recursion = symbols().recursion();
+    Shape target = context.model().expectShape(member.getTarget());
+    if (target.isStructureShape()) {
+      if (recursion.inCycle(target.getId()) && recursion.inCycle(container.getId())) {
+        out.add(typeName(target));
+      }
+      return;
+    }
+    // Lists/maps inline their element type (std::vector<T> / std::map<K, T>),
+    // so a cyclic element still appears in this struct's member text.
+    if (target.isListShape()) {
+      collectCyclicStructNames(container, target.asListShape().orElseThrow().getMember(), out);
+    } else if (target.isMapShape()) {
+      collectCyclicStructNames(container, target.asMapShape().orElseThrow().getValue(), out);
+    }
+  }
+
   void generateStructure(StructureShape shape) {
     String name = typeName(shape);
+    writeForwardDeclarations(shape);
     writeDocs(shape);
     writer.openBlock("struct $L {", name);
     for (MemberShape member : shape.members()) {

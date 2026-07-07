@@ -22,7 +22,7 @@ compatibility contract: changes to it are breaking for consumers of generated co
 | `intEnum` | `enum class X : std::int32_t` | |
 | `smithy.api#Unit` | `smithy::Unit` | Never declared; maps to the runtime type |
 | `bigInteger` / `bigDecimal` | — | Rejected with a clear error (planned) |
-| recursive structures/unions | — | Rejected with a clear error (boxed recursion planned) |
+| recursive structures | `smithy::Boxed<T>` member indirection | Deep copy/equality; list cycles ride `std::vector` directly. Cycles through union members or map values are still rejected with a clear error |
 
 ## Conventions
 

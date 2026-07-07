@@ -48,18 +48,32 @@ final class SerdeGenerator {
             .walkShapes(context.model().expectShape(context.settings().service()));
     List<Shape> ordered = new ArrayList<>();
     for (Shape shape : TopologicalIndex.of(context.model()).getOrderedShapes()) {
-      if (!closure.contains(shape) || shape.getId().toString().equals("smithy.api#Unit")) {
-        continue;
-      }
-      if (shape.isStructureShape()
-          || shape.isUnionShape()
-          || shape.isListShape()
-          || shape.isMapShape()) {
+      if (serdeShape(closure, shape)) {
         ordered.add(shape);
       }
     }
-    // Recursive-shape rejection guarantees the topological index covered everything.
+    // Shapes on recursion cycles are not topologically orderable; they come
+    // last, in stable id order. Serde functions are all declared in serde.h
+    // (mutual recursion is fine) and types.h forward-declares cycle members.
+    List<Shape> recursive = new ArrayList<>();
+    for (Shape shape : TopologicalIndex.of(context.model()).getRecursiveShapes()) {
+      if (serdeShape(closure, shape)) {
+        recursive.add(shape);
+      }
+    }
+    recursive.sort(java.util.Comparator.comparing(Shape::getId));
+    ordered.addAll(recursive);
     return ordered;
+  }
+
+  private static boolean serdeShape(Set<Shape> closure, Shape shape) {
+    if (!closure.contains(shape) || shape.getId().toString().equals("smithy.api#Unit")) {
+      return false;
+    }
+    return shape.isStructureShape()
+        || shape.isUnionShape()
+        || shape.isListShape()
+        || shape.isMapShape();
   }
 
   void run() {

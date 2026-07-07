@@ -198,6 +198,44 @@ TEST(RpcV2ProtocolRequestTest, optional_input) {
   EXPECT_TRUE(smithy::testing::CborBodyEqualsBase64("v/8=", request.body));
 }
 
+// Serializes recursive structures
+TEST(RpcV2ProtocolRequestTest, RpcV2CborRecursiveShapes) {
+  Fixture fixture = MakeFixture();
+  const RecursiveShapesInput input = [] {
+  RecursiveShapesInput v{};
+  v.nested = [] {
+  RecursiveShapesInputOutputNested1 v{};
+  v.foo = "Foo1";
+  v.nested = [] {
+  RecursiveShapesInputOutputNested2 v{};
+  v.bar = "Bar1";
+  v.recursiveMember = [] {
+  RecursiveShapesInputOutputNested1 v{};
+  v.foo = "Foo2";
+  v.nested = [] {
+  RecursiveShapesInputOutputNested2 v{};
+  v.bar = "Bar2";
+  return v;
+}();
+  return v;
+}();
+  return v;
+}();
+  return v;
+}();
+  return v;
+}();
+  (void)fixture.client.RecursiveShapes(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "POST");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/service/RpcV2Protocol/operation/RecursiveShapes");
+  EXPECT_EQ(request.headers.Get("Accept").value_or("<missing>"), "application/cbor");
+  EXPECT_EQ(request.headers.Get("Content-Type").value_or("<missing>"), "application/cbor");
+  EXPECT_EQ(request.headers.Get("smithy-protocol").value_or("<missing>"), "rpc-v2-cbor");
+  EXPECT_TRUE(request.headers.Has("Content-Length"));
+  EXPECT_TRUE(smithy::testing::CborBodyEqualsBase64("v2ZuZXN0ZWS/Y2Zvb2RGb28xZm5lc3RlZL9jYmFyZEJhcjFvcmVjdXJzaXZlTWVtYmVyv2Nmb29kRm9vMmZuZXN0ZWS/Y2JhcmRCYXIy//////8=", request.body));
+}
+
 // Serializes maps
 TEST(RpcV2ProtocolRequestTest, RpcV2CborMaps) {
   Fixture fixture = MakeFixture();

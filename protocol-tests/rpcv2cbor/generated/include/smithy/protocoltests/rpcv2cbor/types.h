@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "smithy/core/blob.h"
+#include "smithy/core/boxed.h"
 #include "smithy/core/timestamp.h"
 
 namespace smithy::protocoltests::rpcv2cbor {
@@ -444,6 +445,40 @@ struct SparseNullsOperationOutput {
   std::optional<std::map<std::string, std::optional<std::string>>> sparseStringMap{};
 
   friend bool operator==(const SparseNullsOperationOutput&, const SparseNullsOperationOutput&) = default;
+};
+
+
+struct RecursiveShapesInputOutputNested2;
+
+struct RecursiveShapesInputOutputNested1 {
+  std::optional<std::string> foo{};
+  std::optional<smithy::Boxed<RecursiveShapesInputOutputNested2>> nested{};
+
+  friend bool operator==(const RecursiveShapesInputOutputNested1&, const RecursiveShapesInputOutputNested1&) = default;
+};
+
+
+struct RecursiveShapesInputOutputNested1;
+
+struct RecursiveShapesInputOutputNested2 {
+  std::optional<std::string> bar{};
+  std::optional<smithy::Boxed<RecursiveShapesInputOutputNested1>> recursiveMember{};
+
+  friend bool operator==(const RecursiveShapesInputOutputNested2&, const RecursiveShapesInputOutputNested2&) = default;
+};
+
+
+struct RecursiveShapesInput {
+  std::optional<RecursiveShapesInputOutputNested1> nested{};
+
+  friend bool operator==(const RecursiveShapesInput&, const RecursiveShapesInput&) = default;
+};
+
+
+struct RecursiveShapesOutput {
+  std::optional<RecursiveShapesInputOutputNested1> nested{};
+
+  friend bool operator==(const RecursiveShapesOutput&, const RecursiveShapesOutput&) = default;
 };
 
 }  // namespace smithy::protocoltests::rpcv2cbor

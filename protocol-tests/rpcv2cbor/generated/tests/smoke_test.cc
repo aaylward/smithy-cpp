@@ -67,6 +67,13 @@ OptionalInputOutputOutput MinimalOptionalInputOutputOutput() {
   }();
 }
 
+RecursiveShapesOutput MinimalRecursiveShapesOutput() {
+    return [] {
+    RecursiveShapesOutput v{};
+    return v;
+  }();
+}
+
 RpcV2CborDenseMapsOutput MinimalRpcV2CborDenseMapsOutput() {
     return [] {
     RpcV2CborDenseMapsOutput v{};
@@ -131,6 +138,10 @@ class SmokeHandler : public RpcV2ProtocolHandler {
     smithy::Outcome<OptionalInputOutputOutput> OptionalInputOutput(const OptionalInputOutputInput& input) override {
       (void)input;
       return MinimalOptionalInputOutputOutput();
+    }
+    smithy::Outcome<RecursiveShapesOutput> RecursiveShapes(const RecursiveShapesInput& input) override {
+      (void)input;
+      return MinimalRecursiveShapesOutput();
     }
     smithy::Outcome<RpcV2CborDenseMapsOutput> RpcV2CborDenseMaps(const RpcV2CborDenseMapsInput& input) override {
       (void)input;
@@ -242,6 +253,17 @@ TEST(RpcV2ProtocolSmokeTest, OptionalInputOutputRoundTrips) {
   const auto outcome = client.OptionalInputOutput(input);
   ASSERT_TRUE(outcome.ok()) << outcome.error().message();
   EXPECT_EQ(*outcome, MinimalOptionalInputOutputOutput());
+}
+
+TEST(RpcV2ProtocolSmokeTest, RecursiveShapesRoundTrips) {
+  RpcV2ProtocolClient client = MakeClient(std::make_shared<SmokeHandler>());
+    const RecursiveShapesInput input = [] {
+    RecursiveShapesInput v{};
+    return v;
+  }();
+  const auto outcome = client.RecursiveShapes(input);
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  EXPECT_EQ(*outcome, MinimalRecursiveShapesOutput());
 }
 
 TEST(RpcV2ProtocolSmokeTest, RpcV2CborDenseMapsRoundTrips) {

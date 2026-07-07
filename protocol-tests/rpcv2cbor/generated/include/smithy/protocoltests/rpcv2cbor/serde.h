@@ -191,4 +191,16 @@ smithy::Outcome<SparseNullsOperationInput> DeserializeSparseNullsOperationInput(
 smithy::Document SerializeSparseNullsOperationOutput(const SparseNullsOperationOutput& value);
 smithy::Outcome<SparseNullsOperationOutput> DeserializeSparseNullsOperationOutput(const smithy::Document& doc);
 
+smithy::Document SerializeRecursiveShapesInput(const RecursiveShapesInput& value);
+smithy::Outcome<RecursiveShapesInput> DeserializeRecursiveShapesInput(const smithy::Document& doc);
+
+smithy::Document SerializeRecursiveShapesInputOutputNested1(const RecursiveShapesInputOutputNested1& value);
+smithy::Outcome<RecursiveShapesInputOutputNested1> DeserializeRecursiveShapesInputOutputNested1(const smithy::Document& doc);
+
+smithy::Document SerializeRecursiveShapesInputOutputNested2(const RecursiveShapesInputOutputNested2& value);
+smithy::Outcome<RecursiveShapesInputOutputNested2> DeserializeRecursiveShapesInputOutputNested2(const smithy::Document& doc);
+
+smithy::Document SerializeRecursiveShapesOutput(const RecursiveShapesOutput& value);
+smithy::Outcome<RecursiveShapesOutput> DeserializeRecursiveShapesOutput(const smithy::Document& doc);
+
 }  // namespace smithy::protocoltests::rpcv2cbor

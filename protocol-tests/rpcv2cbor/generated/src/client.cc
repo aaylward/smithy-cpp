@@ -258,6 +258,22 @@ smithy::Outcome<OptionalInputOutputOutput> RpcV2ProtocolClient::OptionalInputOut
   return DeserializeOptionalInputOutputOutput(*body_doc);
 }
 
+smithy::Outcome<RecursiveShapesOutput> RpcV2ProtocolClient::RecursiveShapes(const RecursiveShapesInput& input) const {
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = path_prefix_ + "/service/RpcV2Protocol/operation/RecursiveShapes";
+  request.headers.Set("smithy-protocol", "rpc-v2-cbor");
+  request.headers.Set("content-type", "application/cbor");
+  request.body = smithy::cbor::Encode(SerializeRecursiveShapesInput(input)).ToString();
+  auto response = Send(std::move(request));
+  if (!response) return std::move(response).error();
+  if (response->status != 200) return GenericError(ParseError(*response));
+  if (response->body.empty()) return RecursiveShapesOutput{};
+  auto body_doc = smithy::cbor::Decode(smithy::Blob::FromString(response->body));
+  if (!body_doc) return std::move(body_doc).error();
+  return DeserializeRecursiveShapesOutput(*body_doc);
+}
+
 smithy::Outcome<RpcV2CborDenseMapsOutput> RpcV2ProtocolClient::RpcV2CborDenseMaps(const RpcV2CborDenseMapsInput& input) const {
   smithy::http::HttpRequest request;
   request.method = "POST";

@@ -2808,4 +2808,132 @@ smithy::Outcome<SparseNullsOperationOutput> DeserializeSparseNullsOperationOutpu
   return out;
 }
 
+smithy::Document SerializeRecursiveShapesInput(const RecursiveShapesInput& value) {
+  smithy::DocumentMap map;
+  if (value.nested.has_value()) {
+    map.emplace("nested", SerializeRecursiveShapesInputOutputNested1((*value.nested)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<RecursiveShapesInput> DeserializeRecursiveShapesInput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("RecursiveShapesInput: expected a map on the wire");
+  RecursiveShapesInput out;
+  {
+    const smithy::Document* member = doc.Find("nested");
+    if (member != nullptr && !member->is_null()) {
+      RecursiveShapesInputOutputNested1 parsed_member{};
+      {
+        auto parsed = DeserializeRecursiveShapesInputOutputNested1(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.nested = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeRecursiveShapesInputOutputNested1(const RecursiveShapesInputOutputNested1& value) {
+  smithy::DocumentMap map;
+  if (value.foo.has_value()) {
+    map.emplace("foo", smithy::Document((*value.foo)));
+  }
+  if (value.nested.has_value()) {
+    map.emplace("nested", SerializeRecursiveShapesInputOutputNested2(*((*value.nested))));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<RecursiveShapesInputOutputNested1> DeserializeRecursiveShapesInputOutputNested1(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("RecursiveShapesInputOutputNested1: expected a map on the wire");
+  RecursiveShapesInputOutputNested1 out;
+  {
+    const smithy::Document* member = doc.Find("foo");
+    if (member != nullptr && !member->is_null()) {
+      std::string parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("RecursiveShapesInputOutputNested1.foo: unexpected type on the wire");
+      parsed_member = member->as_string();
+      out.foo = std::move(parsed_member);
+    }
+  }
+  {
+    const smithy::Document* member = doc.Find("nested");
+    if (member != nullptr && !member->is_null()) {
+      RecursiveShapesInputOutputNested2 parsed_member{};
+      {
+        auto parsed = DeserializeRecursiveShapesInputOutputNested2(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.nested = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeRecursiveShapesInputOutputNested2(const RecursiveShapesInputOutputNested2& value) {
+  smithy::DocumentMap map;
+  if (value.bar.has_value()) {
+    map.emplace("bar", smithy::Document((*value.bar)));
+  }
+  if (value.recursiveMember.has_value()) {
+    map.emplace("recursiveMember", SerializeRecursiveShapesInputOutputNested1(*((*value.recursiveMember))));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<RecursiveShapesInputOutputNested2> DeserializeRecursiveShapesInputOutputNested2(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("RecursiveShapesInputOutputNested2: expected a map on the wire");
+  RecursiveShapesInputOutputNested2 out;
+  {
+    const smithy::Document* member = doc.Find("bar");
+    if (member != nullptr && !member->is_null()) {
+      std::string parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("RecursiveShapesInputOutputNested2.bar: unexpected type on the wire");
+      parsed_member = member->as_string();
+      out.bar = std::move(parsed_member);
+    }
+  }
+  {
+    const smithy::Document* member = doc.Find("recursiveMember");
+    if (member != nullptr && !member->is_null()) {
+      RecursiveShapesInputOutputNested1 parsed_member{};
+      {
+        auto parsed = DeserializeRecursiveShapesInputOutputNested1(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.recursiveMember = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeRecursiveShapesOutput(const RecursiveShapesOutput& value) {
+  smithy::DocumentMap map;
+  if (value.nested.has_value()) {
+    map.emplace("nested", SerializeRecursiveShapesInputOutputNested1((*value.nested)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<RecursiveShapesOutput> DeserializeRecursiveShapesOutput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("RecursiveShapesOutput: expected a map on the wire");
+  RecursiveShapesOutput out;
+  {
+    const smithy::Document* member = doc.Find("nested");
+    if (member != nullptr && !member->is_null()) {
+      RecursiveShapesInputOutputNested1 parsed_member{};
+      {
+        auto parsed = DeserializeRecursiveShapesInputOutputNested1(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.nested = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
 }  // namespace smithy::protocoltests::rpcv2cbor

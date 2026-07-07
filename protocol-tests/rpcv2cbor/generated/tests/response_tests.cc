@@ -245,6 +245,78 @@ TEST(RpcV2ProtocolResponseTest, optional_output) {
   EXPECT_EQ(*outcome, expected);
 }
 
+// Serializes recursive structures
+TEST(RpcV2ProtocolResponseTest, RpcV2CborRecursiveShapes) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 200;
+  fixture.transport->next_response.headers.Set("Content-Type", "application/cbor");
+  fixture.transport->next_response.headers.Set("smithy-protocol", "rpc-v2-cbor");
+  fixture.transport->next_response.body = smithy::testing::FromBase64("v2ZuZXN0ZWS/Y2Zvb2RGb28xZm5lc3RlZL9jYmFyZEJhcjFvcmVjdXJzaXZlTWVtYmVyv2Nmb29kRm9vMmZuZXN0ZWS/Y2JhcmRCYXIy//////8=");
+  const auto outcome = fixture.client.RecursiveShapes(RecursiveShapesInput{});
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  const RecursiveShapesOutput expected = [] {
+  RecursiveShapesOutput v{};
+  v.nested = [] {
+  RecursiveShapesInputOutputNested1 v{};
+  v.foo = "Foo1";
+  v.nested = [] {
+  RecursiveShapesInputOutputNested2 v{};
+  v.bar = "Bar1";
+  v.recursiveMember = [] {
+  RecursiveShapesInputOutputNested1 v{};
+  v.foo = "Foo2";
+  v.nested = [] {
+  RecursiveShapesInputOutputNested2 v{};
+  v.bar = "Bar2";
+  return v;
+}();
+  return v;
+}();
+  return v;
+}();
+  return v;
+}();
+  return v;
+}();
+  EXPECT_EQ(*outcome, expected);
+}
+
+// Deserializes recursive structures encoded using a map with definite length
+TEST(RpcV2ProtocolResponseTest, RpcV2CborRecursiveShapesUsingDefiniteLength) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 200;
+  fixture.transport->next_response.headers.Set("Content-Type", "application/cbor");
+  fixture.transport->next_response.headers.Set("smithy-protocol", "rpc-v2-cbor");
+  fixture.transport->next_response.body = smithy::testing::FromBase64("oWZuZXN0ZWSiY2Zvb2RGb28xZm5lc3RlZKJjYmFyZEJhcjFvcmVjdXJzaXZlTWVtYmVyomNmb29kRm9vMmZuZXN0ZWShY2JhcmRCYXIy");
+  const auto outcome = fixture.client.RecursiveShapes(RecursiveShapesInput{});
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  const RecursiveShapesOutput expected = [] {
+  RecursiveShapesOutput v{};
+  v.nested = [] {
+  RecursiveShapesInputOutputNested1 v{};
+  v.foo = "Foo1";
+  v.nested = [] {
+  RecursiveShapesInputOutputNested2 v{};
+  v.bar = "Bar1";
+  v.recursiveMember = [] {
+  RecursiveShapesInputOutputNested1 v{};
+  v.foo = "Foo2";
+  v.nested = [] {
+  RecursiveShapesInputOutputNested2 v{};
+  v.bar = "Bar2";
+  return v;
+}();
+  return v;
+}();
+  return v;
+}();
+  return v;
+}();
+  return v;
+}();
+  EXPECT_EQ(*outcome, expected);
+}
+
 // Deserializes maps
 TEST(RpcV2ProtocolResponseTest, RpcV2CborMaps) {
   Fixture fixture = MakeFixture();

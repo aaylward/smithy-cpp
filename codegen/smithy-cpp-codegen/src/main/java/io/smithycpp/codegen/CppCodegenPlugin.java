@@ -1,7 +1,5 @@
 package io.smithycpp.codegen;
 
-import java.util.HashSet;
-import java.util.Set;
 import software.amazon.smithy.build.PluginContext;
 import software.amazon.smithy.build.SmithyBuildPlugin;
 import software.amazon.smithy.codegen.core.CodegenException;
@@ -25,7 +23,7 @@ public final class CppCodegenPlugin implements SmithyBuildPlugin {
   @Override
   public void execute(PluginContext context) {
     CppSettings settings = CppSettings.fromNode(context.getSettings());
-    rejectRecursiveShapes(context.getModel(), settings.service());
+    rejectUnsupportedRecursion(context.getModel(), settings.service());
 
     CodegenDirector<CppWriter, CppIntegration, CppContext, CppSettings> runner =
         new CodegenDirector<>();
@@ -44,43 +42,20 @@ public final class CppCodegenPlugin implements SmithyBuildPlugin {
   }
 
   /**
-   * Recursive shapes need pointer indirection (planned; PLAN Phase 2 note); until that exists, fail
-   * generation with a clear message instead of emitting non-compiling code.
+   * Recursive structure members are supported via smithy::Boxed (and lists via std::vector's
+   * incomplete-element support), but cycles through union members or map values still need
+   * representation work; fail generation with a clear message instead of emitting non-compiling
+   * code.
    */
-  private static void rejectRecursiveShapes(Model model, ShapeId service) {
+  private static void rejectUnsupportedRecursion(Model model, ShapeId service) {
+    RecursionIndex recursion = new RecursionIndex(model);
     Walker walker = new Walker(model);
-    for (Shape start : walker.walkShapes(model.expectShape(service))) {
-      if (!start.isStructureShape() && !start.isUnionShape()) {
-        continue;
-      }
-      findCycle(model, start.getId(), start.getId(), new HashSet<>());
-    }
-  }
-
-  private static void findCycle(
-      Model model, ShapeId origin, ShapeId current, Set<ShapeId> visited) {
-    if (!visited.add(current)) {
-      return;
-    }
-    Shape shape = model.expectShape(current);
-    for (var member : shape.members()) {
-      ShapeId target = member.getTarget();
-      if (target.equals(origin)) {
-        throw new CodegenException(
-            "cpp-codegen: recursive shapes are not supported yet: "
-                + origin
-                + " refers back to itself via "
-                + current
-                + "$"
-                + member.getMemberName()
-                + ". Break the cycle or wait for boxed-recursion support.");
-      }
-      Shape targetShape = model.expectShape(target);
-      if (targetShape.isStructureShape()
-          || targetShape.isUnionShape()
-          || targetShape.isListShape()
-          || targetShape.isMapShape()) {
-        findCycle(model, origin, target, visited);
+    for (Shape shape : walker.walkShapes(model.expectShape(service))) {
+      for (var member : shape.members()) {
+        String reason = recursion.unsupportedCycleMember(member);
+        if (reason != null) {
+          throw new CodegenException("cpp-codegen: " + reason);
+        }
       }
     }
   }

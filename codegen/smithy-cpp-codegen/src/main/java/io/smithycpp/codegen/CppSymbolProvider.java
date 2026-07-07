@@ -47,11 +47,18 @@ final class CppSymbolProvider implements SymbolProvider {
   private final Model model;
   private final CppSettings settings;
   private final Visitor visitor;
+  private final RecursionIndex recursion;
 
   CppSymbolProvider(Model model, CppSettings settings) {
     this.model = model;
     this.settings = settings;
     this.visitor = new Visitor();
+    this.recursion = new RecursionIndex(model);
+  }
+
+  /** The model's recursion cycles (boxed members, forward declarations). */
+  RecursionIndex recursion() {
+    return recursion;
   }
 
   @Override
@@ -64,15 +71,25 @@ final class CppSymbolProvider implements SymbolProvider {
     return CppReservedWords.escape(member.getMemberName());
   }
 
-  /** Full member type text: the target type, wrapped in std::optional unless @required. */
+  /**
+   * Full member type text: the target type, wrapped in smithy::Boxed for recursive structure
+   * members and in std::optional unless @required.
+   */
   Symbol toMemberSymbol(MemberShape member) {
     Symbol target = toSymbol(model.expectShape(member.getTarget()));
-    if (member.isRequired()) {
+    String name = target.getName();
+    Set<String> headers = new TreeSet<>(headersOf(target));
+    if (recursion.isBoxed(member)) {
+      name = "smithy::Boxed<" + name + ">";
+      headers.add("\"smithy/core/boxed.h\"");
+    } else if (member.isRequired()) {
       return target;
     }
-    Set<String> headers = new TreeSet<>(headersOf(target));
+    if (member.isRequired()) {
+      return builder(name, headers).build();
+    }
     headers.add("<optional>");
-    return builder("std::optional<" + target.getName() + ">", headers).build();
+    return builder("std::optional<" + name + ">", headers).build();
   }
 
   @SuppressWarnings("unchecked")

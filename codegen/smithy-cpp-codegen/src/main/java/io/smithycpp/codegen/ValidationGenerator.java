@@ -210,6 +210,24 @@ final class ValidationGenerator {
     w.addInclude("<string>");
     w.addInclude("<vector>");
     SerdeGenerator ordering = new SerdeGenerator(context, false);
+    // Constrained shapes on recursion cycles validate mutually; declare those
+    // validators up front so definition order doesn't matter.
+    RecursionIndex recursion = context.cppSymbols().recursion();
+    boolean declared = false;
+    for (Shape shape : ordering.serdeShapes()) {
+      if (!constrained.contains(shape.getId()) || !recursion.inCycle(shape.getId())) {
+        continue;
+      }
+      w.write(
+          "void $L(const $L& value, const std::string& path, "
+              + "std::vector<smithy::server::ValidationFailure>* failures);",
+          validatorName(shape),
+          context.cppSymbols().toSymbol(shape).getName());
+      declared = true;
+    }
+    if (declared) {
+      w.write("");
+    }
     for (Shape shape : ordering.serdeShapes()) {
       if (!constrained.contains(shape.getId())) {
         continue;

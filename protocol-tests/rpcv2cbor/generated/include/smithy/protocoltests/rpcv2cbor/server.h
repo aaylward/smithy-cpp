@@ -33,6 +33,7 @@ class RpcV2ProtocolHandler {
     virtual smithy::Outcome<NoInputOutputOutput> NoInputOutput(const NoInputOutputInput& input) = 0;
     virtual smithy::Outcome<OperationWithDefaultsOutput> OperationWithDefaults(const OperationWithDefaultsInput& input) = 0;
     virtual smithy::Outcome<OptionalInputOutputOutput> OptionalInputOutput(const OptionalInputOutputInput& input) = 0;
+    virtual smithy::Outcome<RecursiveShapesOutput> RecursiveShapes(const RecursiveShapesInput& input) = 0;
     /// The example tests basic map serialization.
     virtual smithy::Outcome<RpcV2CborDenseMapsOutput> RpcV2CborDenseMaps(const RpcV2CborDenseMapsInput& input) = 0;
     /// This test case serializes JSON lists for the following cases for both

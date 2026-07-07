@@ -17,12 +17,6 @@ namespace smithy::protocoltests::simplerestjson {
 // Generated from smithy.test#httpResponseTests (server cases): a stub
 // handler returns the expected params and the wire response the server
 // produced is compared against the test definition.
-//
-// Excluded cases (protocol-test-exclusions.txt; the list must only shrink):
-//   OpenUnionsUnknownTaggedUnionCase (server-response) — alloy open/discriminated unions are not implemented
-//   OpenUnionsKnownDiscriminatedUnionCase (server-response) — alloy open/discriminated unions are not implemented
-//   OpenUnionsUnknownDiscriminatedUnionCase (server-response) — alloy open/discriminated unions are not implemented
-
 namespace {
 
 AddMenuItemOutput MinimalAddMenuItemOutput() {
@@ -569,6 +563,83 @@ TEST(PizzaAdminServiceServerResponseTest, OpenUnionsKnownTaggedUnionCase) {
   EXPECT_EQ(response.status, 200);
   EXPECT_EQ(response.headers.Get("Content-Type").value_or("<missing>"), "application/json");
   EXPECT_TRUE(smithy::testing::JsonBodyEquals("{\"tagged\": {\"str\": \"string value\"}}", response.body));
+}
+
+// Return an unknown tagged union value in an open union
+TEST(PizzaAdminServiceServerResponseTest, OpenUnionsUnknownTaggedUnionCase) {
+  class Handler final : public RecordingHandler {
+   public:
+    smithy::Outcome<OpenUnionsOutput> OpenUnions(const OpenUnionsInput& input) override {
+      (void)input;
+      return [] {
+  OpenUnionsOutput v{};
+  v.data = OpenUnionsPayload::FromTagged(OpenTaggedUnion::FromOther([] {
+  smithy::DocumentMap map;
+  map.emplace("whatisthis", [] {
+  smithy::DocumentMap map;
+  map.emplace("nested", smithy::Document(std::string("something different")));
+  return smithy::Document(std::move(map));
+}());
+  return smithy::Document(std::move(map));
+}()));
+  return v;
+}();
+    }
+  };
+  PizzaAdminServiceServer server(std::make_shared<Handler>());
+  const smithy::http::HttpResponse response = server.Handler()(MinimalRequestForOpenUnions());
+  EXPECT_EQ(response.status, 200);
+  EXPECT_EQ(response.headers.Get("Content-Type").value_or("<missing>"), "application/json");
+  EXPECT_TRUE(smithy::testing::JsonBodyEquals("{\"tagged\": {\"whatisthis\": {\"nested\": \"something different\"}}}", response.body));
+}
+
+// Return a known discriminated union value in an open union
+TEST(PizzaAdminServiceServerResponseTest, OpenUnionsKnownDiscriminatedUnionCase) {
+  class Handler final : public RecordingHandler {
+   public:
+    smithy::Outcome<OpenUnionsOutput> OpenUnions(const OpenUnionsInput& input) override {
+      (void)input;
+      return [] {
+  OpenUnionsOutput v{};
+  v.data = OpenUnionsPayload::FromDiscriminated(OpenDiscriminatedUnion::FromSmol([] {
+  SmallStruct v{};
+  v.content = "some string";
+  return v;
+}()));
+  return v;
+}();
+    }
+  };
+  PizzaAdminServiceServer server(std::make_shared<Handler>());
+  const smithy::http::HttpResponse response = server.Handler()(MinimalRequestForOpenUnions());
+  EXPECT_EQ(response.status, 200);
+  EXPECT_EQ(response.headers.Get("Content-Type").value_or("<missing>"), "application/json");
+  EXPECT_TRUE(smithy::testing::JsonBodyEquals("{\"discriminated\": {\"key\": \"smol\", \"content\": \"some string\"}}", response.body));
+}
+
+// Return an unknown discriminated union value in an open union
+TEST(PizzaAdminServiceServerResponseTest, OpenUnionsUnknownDiscriminatedUnionCase) {
+  class Handler final : public RecordingHandler {
+   public:
+    smithy::Outcome<OpenUnionsOutput> OpenUnions(const OpenUnionsInput& input) override {
+      (void)input;
+      return [] {
+  OpenUnionsOutput v{};
+  v.data = OpenUnionsPayload::FromDiscriminated(OpenDiscriminatedUnion::FromOther([] {
+  smithy::DocumentMap map;
+  map.emplace("key", smithy::Document(std::string("mysterious_and_important")));
+  map.emplace("extras", smithy::Document(std::int64_t{42}));
+  return smithy::Document(std::move(map));
+}()));
+  return v;
+}();
+    }
+  };
+  PizzaAdminServiceServer server(std::make_shared<Handler>());
+  const smithy::http::HttpResponse response = server.Handler()(MinimalRequestForOpenUnions());
+  EXPECT_EQ(response.status, 200);
+  EXPECT_EQ(response.headers.Get("Content-Type").value_or("<missing>"), "application/json");
+  EXPECT_TRUE(smithy::testing::JsonBodyEquals("{\"discriminated\": {\"key\": \"mysterious_and_important\", \"extras\": 42}}", response.body));
 }
 
 TEST(PizzaAdminServiceServerResponseTest, RoundTripDataResponse) {

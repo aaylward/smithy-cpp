@@ -18,9 +18,6 @@ namespace smithy::protocoltests::simplerestjson {
 //
 // Excluded cases (protocol-test-exclusions.txt; the list must only shrink):
 //   CustomCodeOutput (response) — 3xx @httpResponseCode is not treated as a success status
-//   OpenUnionsUnknownTaggedUnionCase (response) — alloy open/discriminated unions are not implemented
-//   OpenUnionsKnownDiscriminatedUnionCase (response) — alloy open/discriminated unions are not implemented
-//   OpenUnionsUnknownDiscriminatedUnionCase (response) — alloy open/discriminated unions are not implemented
 
 namespace {
 
@@ -208,6 +205,71 @@ TEST(PizzaAdminServiceResponseTest, OpenUnionsKnownTaggedUnionCase) {
   const OpenUnionsOutput expected = [] {
   OpenUnionsOutput v{};
   v.data = OpenUnionsPayload::FromTagged(OpenTaggedUnion::FromStr("string value"));
+  return v;
+}();
+  EXPECT_EQ(*outcome, expected);
+}
+
+// Return an unknown tagged union value in an open union
+TEST(PizzaAdminServiceResponseTest, OpenUnionsUnknownTaggedUnionCase) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 200;
+  fixture.transport->next_response.headers.Set("Content-Type", "application/json");
+  fixture.transport->next_response.body = "{\"tagged\": {\"whatisthis\": {\"nested\": \"something different\"}}}";
+  const auto outcome = fixture.client.OpenUnions(OpenUnionsInput{});
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  const OpenUnionsOutput expected = [] {
+  OpenUnionsOutput v{};
+  v.data = OpenUnionsPayload::FromTagged(OpenTaggedUnion::FromOther([] {
+  smithy::DocumentMap map;
+  map.emplace("whatisthis", [] {
+  smithy::DocumentMap map;
+  map.emplace("nested", smithy::Document(std::string("something different")));
+  return smithy::Document(std::move(map));
+}());
+  return smithy::Document(std::move(map));
+}()));
+  return v;
+}();
+  EXPECT_EQ(*outcome, expected);
+}
+
+// Return a known discriminated union value in an open union
+TEST(PizzaAdminServiceResponseTest, OpenUnionsKnownDiscriminatedUnionCase) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 200;
+  fixture.transport->next_response.headers.Set("Content-Type", "application/json");
+  fixture.transport->next_response.body = "{\"discriminated\": {\"key\": \"smol\", \"content\": \"some string\"}}";
+  const auto outcome = fixture.client.OpenUnions(OpenUnionsInput{});
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  const OpenUnionsOutput expected = [] {
+  OpenUnionsOutput v{};
+  v.data = OpenUnionsPayload::FromDiscriminated(OpenDiscriminatedUnion::FromSmol([] {
+  SmallStruct v{};
+  v.content = "some string";
+  return v;
+}()));
+  return v;
+}();
+  EXPECT_EQ(*outcome, expected);
+}
+
+// Return an unknown discriminated union value in an open union
+TEST(PizzaAdminServiceResponseTest, OpenUnionsUnknownDiscriminatedUnionCase) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 200;
+  fixture.transport->next_response.headers.Set("Content-Type", "application/json");
+  fixture.transport->next_response.body = "{\"discriminated\": {\"key\": \"mysterious_and_important\", \"extras\": 42}}";
+  const auto outcome = fixture.client.OpenUnions(OpenUnionsInput{});
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  const OpenUnionsOutput expected = [] {
+  OpenUnionsOutput v{};
+  v.data = OpenUnionsPayload::FromDiscriminated(OpenDiscriminatedUnion::FromOther([] {
+  smithy::DocumentMap map;
+  map.emplace("key", smithy::Document(std::string("mysterious_and_important")));
+  map.emplace("extras", smithy::Document(std::int64_t{42}));
+  return smithy::Document(std::move(map));
+}()));
   return v;
 }();
   EXPECT_EQ(*outcome, expected);

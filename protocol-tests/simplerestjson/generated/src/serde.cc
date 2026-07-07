@@ -856,34 +856,30 @@ smithy::Outcome<SmallStruct> DeserializeSmallStruct(const smithy::Document& doc)
 }
 
 smithy::Document SerializeOpenDiscriminatedUnion(const OpenDiscriminatedUnion& value) {
-  smithy::DocumentMap map;
   if (value.is_smol()) {
-    map.emplace("smol", SerializeSmallStruct(value.as_smol()));
+    smithy::Document member_doc = SerializeSmallStruct(value.as_smol());
+    member_doc.as_map().insert_or_assign("key", smithy::Document(std::string("smol")));
+    return member_doc;
   }
-  if (value.is_other()) {
-    map.emplace("other", value.as_other());
-  }
-  return smithy::Document(std::move(map));
+  if (value.is_other()) return value.as_other();
+  return smithy::Document(smithy::DocumentMap{});
 }
 
 smithy::Outcome<OpenDiscriminatedUnion> DeserializeOpenDiscriminatedUnion(const smithy::Document& doc) {
   if (!doc.is_map()) return smithy::Error::Serialization("OpenDiscriminatedUnion: expected a map on the wire");
-  if (doc.as_map().size() - (doc.Find("__type") != nullptr ? 1 : 0) != 1) return smithy::Error::Serialization("OpenDiscriminatedUnion: expected exactly one union member");
-  if (const smithy::Document* member = doc.Find("smol"); member != nullptr && !member->is_null()) {
-    SmallStruct parsed_member{};
-    {
-      auto parsed = DeserializeSmallStruct(*member);
-      if (!parsed) return std::move(parsed).error();
-      parsed_member = std::move(*parsed);
+  if (const smithy::Document* discriminator = doc.Find("key"); discriminator != nullptr && discriminator->is_string()) {
+    if (discriminator->as_string() == "smol") {
+      const smithy::Document* member = &doc;
+      SmallStruct parsed_member{};
+      {
+        auto parsed = DeserializeSmallStruct(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      return OpenDiscriminatedUnion::FromSmol(std::move(parsed_member));
     }
-    return OpenDiscriminatedUnion::FromSmol(std::move(parsed_member));
   }
-  if (const smithy::Document* member = doc.Find("other"); member != nullptr && !member->is_null()) {
-    smithy::Document parsed_member{};
-    parsed_member = *member;
-    return OpenDiscriminatedUnion::FromOther(std::move(parsed_member));
-  }
-  return smithy::Error::Serialization("OpenDiscriminatedUnion: unknown or missing union member");
+  return OpenDiscriminatedUnion::FromOther(doc);
 }
 
 smithy::Document SerializeOpenTaggedUnion(const OpenTaggedUnion& value) {
@@ -891,27 +887,21 @@ smithy::Document SerializeOpenTaggedUnion(const OpenTaggedUnion& value) {
   if (value.is_str()) {
     map.emplace("str", smithy::Document(value.as_str()));
   }
-  if (value.is_other()) {
-    map.emplace("other", value.as_other());
-  }
+  if (value.is_other()) return value.as_other();
   return smithy::Document(std::move(map));
 }
 
 smithy::Outcome<OpenTaggedUnion> DeserializeOpenTaggedUnion(const smithy::Document& doc) {
   if (!doc.is_map()) return smithy::Error::Serialization("OpenTaggedUnion: expected a map on the wire");
-  if (doc.as_map().size() - (doc.Find("__type") != nullptr ? 1 : 0) != 1) return smithy::Error::Serialization("OpenTaggedUnion: expected exactly one union member");
-  if (const smithy::Document* member = doc.Find("str"); member != nullptr && !member->is_null()) {
-    std::string parsed_member{};
-    if (!member->is_string()) return smithy::Error::Serialization("OpenTaggedUnion.str: unexpected type on the wire");
-    parsed_member = member->as_string();
-    return OpenTaggedUnion::FromStr(std::move(parsed_member));
+  if (doc.as_map().size() - (doc.Find("__type") != nullptr ? 1 : 0) == 1) {
+    if (const smithy::Document* member = doc.Find("str"); member != nullptr && !member->is_null()) {
+      std::string parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("OpenTaggedUnion.str: unexpected type on the wire");
+      parsed_member = member->as_string();
+      return OpenTaggedUnion::FromStr(std::move(parsed_member));
+    }
   }
-  if (const smithy::Document* member = doc.Find("other"); member != nullptr && !member->is_null()) {
-    smithy::Document parsed_member{};
-    parsed_member = *member;
-    return OpenTaggedUnion::FromOther(std::move(parsed_member));
-  }
-  return smithy::Error::Serialization("OpenTaggedUnion: unknown or missing union member");
+  return OpenTaggedUnion::FromOther(doc);
 }
 
 smithy::Document SerializeOpenUnionsPayload(const OpenUnionsPayload& value) {

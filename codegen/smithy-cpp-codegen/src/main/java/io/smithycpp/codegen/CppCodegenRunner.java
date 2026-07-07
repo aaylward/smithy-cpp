@@ -41,6 +41,7 @@ public final class CppCodegenRunner {
     String output = null;
     String testsPackage = null;
     boolean malformedTests = false;
+    boolean integrationTests = false;
     List<String> omitOperations = new ArrayList<>();
     for (int i = 0; i + 1 < args.length; i += 2) {
       switch (args[i]) {
@@ -52,6 +53,7 @@ public final class CppCodegenRunner {
         case "--tests-package" -> testsPackage = args[i + 1];
         case "--omit-operation" -> omitOperations.add(args[i + 1]);
         case "--malformed-tests" -> malformedTests = Boolean.parseBoolean(args[i + 1]);
+        case "--integration-tests" -> integrationTests = Boolean.parseBoolean(args[i + 1]);
         default -> throw new IllegalArgumentException("unknown argument: " + args[i]);
       }
     }
@@ -86,6 +88,9 @@ public final class CppCodegenRunner {
     }
     if (malformedTests) {
       settings.withMember("malformedTests", true);
+    }
+    if (integrationTests) {
+      settings.withMember("integrationTests", true);
     }
 
     PluginContext context =

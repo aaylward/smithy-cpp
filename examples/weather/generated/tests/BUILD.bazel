@@ -14,3 +14,16 @@ cc_test(
         "@googletest//:gtest_main",
     ],
 )
+
+cc_test(
+    name = "integration_test",
+    size = "small",
+    srcs = ["integration_test.cc"],
+    deps = [
+        "//examples/weather/generated:client",
+        "//examples/weather/generated:server",
+        "//runtime:http",
+        "//runtime:protocol_test_support",
+        "@googletest//:gtest_main",
+    ],
+)

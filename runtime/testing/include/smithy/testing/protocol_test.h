@@ -9,6 +9,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
+#include <memory>
 #include <regex>
 #include <string>
 #include <string_view>
@@ -36,6 +38,27 @@ class CapturingTransport final : public smithy::http::HttpClient {
 
   smithy::http::HttpRequest last_request;
   smithy::http::HttpResponse next_response{200, {}, ""};
+};
+
+// Wraps a transport and mutates successful responses in flight — e.g. the
+// integration tests inject unknown body members that clients must ignore.
+class MutatingTransport final : public smithy::http::HttpClient {
+ public:
+  using Mutator = std::function<void(smithy::http::HttpResponse&)>;
+
+  MutatingTransport(std::shared_ptr<smithy::http::HttpClient> inner, Mutator mutate)
+      : inner_(std::move(inner)), mutate_(std::move(mutate)) {}
+
+  smithy::Outcome<smithy::http::HttpResponse> Send(
+      const smithy::http::HttpRequest& request) override {
+    auto response = inner_->Send(request);
+    if (response.ok()) mutate_(*response);
+    return response;
+  }
+
+ private:
+  std::shared_ptr<smithy::http::HttpClient> inner_;
+  Mutator mutate_;
 };
 
 // Path portion of an origin-form request target ("/a/b?c=d" -> "/a/b").

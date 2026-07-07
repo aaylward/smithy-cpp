@@ -22,18 +22,21 @@ public final class CppSettings {
   private final String runtimeTarget;
   private final String testsPackage;
   private final boolean malformedTests;
+  private final boolean integrationTests;
 
   private CppSettings(
       ShapeId service,
       String namespace,
       String runtimeTarget,
       String testsPackage,
-      boolean malformedTests) {
+      boolean malformedTests,
+      boolean integrationTests) {
     this.service = service;
     this.namespace = namespace;
     this.runtimeTarget = runtimeTarget;
     this.testsPackage = testsPackage;
     this.malformedTests = malformedTests;
+    this.integrationTests = integrationTests;
   }
 
   public static CppSettings fromNode(ObjectNode node) {
@@ -43,11 +46,13 @@ public final class CppSettings {
         node.getStringMemberOrDefault("runtimeTarget", "@smithy_cpp//runtime:core");
     String testsPackage = node.getStringMemberOrDefault("testsPackage", null);
     boolean malformedTests = node.getBooleanMemberOrDefault("malformedTests", false);
+    boolean integrationTests = node.getBooleanMemberOrDefault("integrationTests", false);
     if (!namespace.matches("[A-Za-z_][A-Za-z0-9_]*(::[A-Za-z_][A-Za-z0-9_]*)*")) {
       throw new IllegalArgumentException(
           "cpp-codegen: 'namespace' must be a C++ namespace like a::b, got: " + namespace);
     }
-    return new CppSettings(service, namespace, runtimeTarget, testsPackage, malformedTests);
+    return new CppSettings(
+        service, namespace, runtimeTarget, testsPackage, malformedTests, integrationTests);
   }
 
   public ShapeId service() {
@@ -110,6 +115,15 @@ public final class CppSettings {
     return malformedTests;
   }
 
+  /**
+   * Whether to generate tests/integration_test.cc: generated client vs generated server over
+   * loopback and real sockets with random round-trips (PLAN Phase 5). Per-module, like the
+   * conformance suites.
+   */
+  public boolean integrationTests() {
+    return integrationTests;
+  }
+
   @Override
   public boolean equals(Object other) {
     if (!(other instanceof CppSettings that)) {
@@ -119,11 +133,13 @@ public final class CppSettings {
         && namespace.equals(that.namespace)
         && runtimeTarget.equals(that.runtimeTarget)
         && Objects.equals(testsPackage, that.testsPackage)
-        && malformedTests == that.malformedTests;
+        && malformedTests == that.malformedTests
+        && integrationTests == that.integrationTests;
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(service, namespace, runtimeTarget, testsPackage, malformedTests);
+    return Objects.hash(
+        service, namespace, runtimeTarget, testsPackage, malformedTests, integrationTests);
   }
 }

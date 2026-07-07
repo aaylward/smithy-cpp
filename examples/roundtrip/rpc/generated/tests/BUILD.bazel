@@ -7,8 +7,8 @@ cc_test(
     size = "small",
     srcs = ["smoke_test.cc"],
     deps = [
-        "//examples/cafe/generated:client",
-        "//examples/cafe/generated:server",
+        "//examples/roundtrip/rpc/generated:client",
+        "//examples/roundtrip/rpc/generated:server",
         "//runtime:client",
         "//runtime:http",
         "@googletest//:gtest_main",
@@ -20,8 +20,8 @@ cc_test(
     size = "small",
     srcs = ["integration_test.cc"],
     deps = [
-        "//examples/cafe/generated:client",
-        "//examples/cafe/generated:server",
+        "//examples/roundtrip/rpc/generated:client",
+        "//examples/roundtrip/rpc/generated:server",
         "//runtime:http",
         "//runtime:protocol_test_support",
         "@googletest//:gtest_main",

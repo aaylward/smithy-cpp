@@ -52,6 +52,15 @@ val generateBookstoreFixture = registerFixtureTask(
     "examples/simplerestjson/generated",
 )
 
+// jsonRpc2 fixture: the vendor-neutral JSON-RPC 2.0 protocol.
+val generateKeyValueFixture = registerFixtureTask(
+    "generateKeyValueFixture",
+    "examples/jsonrpc/model/keyvalue.smithy",
+    "example.keyvalue#KeyValue",
+    "example::keyvalue",
+    "examples/jsonrpc/generated",
+)
+
 // The kitchen-sink round-trip fixture: one model, two protocol variants, so the
 // Phase 5 integration matrix covers REST and RPC with the same shapes.
 val generateRoundTripRestFixture = registerFixtureTask(
@@ -145,6 +154,7 @@ tasks.register("generateFixtures") {
         generateWeatherFixture,
         generateCafeFixture,
         generateBookstoreFixture,
+        generateKeyValueFixture,
         generateRoundTripRestFixture,
         generateRoundTripRpcFixture,
     )

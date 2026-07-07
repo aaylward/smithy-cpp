@@ -1,0 +1,16 @@
+load("@rules_cc//cc:defs.bzl", "cc_test")
+
+# End-to-end test for the generated JSON-RPC 2.0 client + server.
+cc_test(
+    name = "e2e_test",
+    size = "small",
+    srcs = ["e2e_test.cc"],
+    deps = [
+        "//examples/jsonrpc/generated:client",
+        "//examples/jsonrpc/generated:server",
+        "//runtime:client",
+        "//runtime:http",
+        "//runtime:json",
+        "@googletest//:gtest_main",
+    ],
+)

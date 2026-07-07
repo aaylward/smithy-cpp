@@ -599,7 +599,7 @@ in the error body, (3) client status-code fallback.
   protocol-test module the same way as the restjson1/rpcv2cbor suites; drive to green.
 - **Remove `restJson1`**: delete from `resolveProtocol`, drop `smithy-aws-traits` +
   `smithy-aws-protocol-tests` — no `aws.*` on the classpath.
-- **`jsonRpc2` protocol** (homegrown; JSON-RPC 2.0 is an open standard, alloy has no equivalent):
+- **`jsonRpc2` protocol** (done; homegrown — JSON-RPC 2.0 is an open standard, alloy has no equivalent):
   `@protocolDefinition` trait `smithy.cpp.protocols#jsonRpc2`; single POST endpoint,
   `{"jsonrpc":"2.0","method":<operation>,"params":<input>,"id":…}` request and
   `{"jsonrpc":"2.0","result":<output>,"id":…}` / `{"error":{code,message,data}}` response over the

@@ -56,4 +56,17 @@ interface ProtocolGenerator {
   /** Emits the constructor statements registering one operation's route. */
   void writeServerRoute(
       CppWriter w, CppContext context, ServiceShape service, OperationShape operation);
+
+  /**
+   * Emits the constructor statements registering the service's routes. The default fans out to
+   * {@link #writeServerRoute} per operation — correct for path-dispatched protocols (HTTP, one
+   * route per operation). Single-endpoint protocols (jsonRpc2: every operation POSTs to one URL,
+   * dispatched by a body field) override this to register a single combined route.
+   */
+  default void writeServerRoutes(
+      CppWriter w, CppContext context, ServiceShape service, List<OperationShape> operations) {
+    for (OperationShape operation : operations) {
+      writeServerRoute(w, context, service, operation);
+    }
+  }
 }

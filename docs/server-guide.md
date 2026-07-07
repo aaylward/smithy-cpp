@@ -56,7 +56,8 @@ Routing (method + URI pattern from `@http`, greedy labels, 404/405 with `Allow`)
 request-binding deserialization (labels, query incl. `@httpQueryParams`, headers, JSON/CBOR
 bodies), and response serialization (status, headers, body) are all generated; rpcv2Cbor
 services check the `smithy-protocol` header and dispatch on the fixed
-`/service/{Service}/operation/{Operation}` form.
+`/service/{Service}/operation/{Operation}` form. jsonRpc2 services register a single
+`POST /` route and dispatch on the JSON-RPC `method` field.
 
 ## Generated smoke tests
 

@@ -7,8 +7,8 @@ cc_test(
     size = "small",
     srcs = ["smoke_test.cc"],
     deps = [
-        "//protocol-tests/restjson1/generated:client",
-        "//protocol-tests/restjson1/generated:server",
+        "//protocol-tests/simplerestjson/generated:client",
+        "//protocol-tests/simplerestjson/generated:server",
         "//runtime:client",
         "//runtime:http",
         "@googletest//:gtest_main",
@@ -20,7 +20,7 @@ cc_test(
     size = "small",
     srcs = ["request_tests.cc"],
     deps = [
-        "//protocol-tests/restjson1/generated:client",
+        "//protocol-tests/simplerestjson/generated:client",
         "//runtime:protocol_test_support",
         "@googletest//:gtest_main",
     ],
@@ -31,7 +31,7 @@ cc_test(
     size = "small",
     srcs = ["response_tests.cc"],
     deps = [
-        "//protocol-tests/restjson1/generated:client",
+        "//protocol-tests/simplerestjson/generated:client",
         "//runtime:protocol_test_support",
         "@googletest//:gtest_main",
     ],
@@ -42,8 +42,8 @@ cc_test(
     size = "small",
     srcs = ["server_request_tests.cc"],
     deps = [
-        "//protocol-tests/restjson1/generated:client",
-        "//protocol-tests/restjson1/generated:server",
+        "//protocol-tests/simplerestjson/generated:client",
+        "//protocol-tests/simplerestjson/generated:server",
         "//runtime:protocol_test_support",
         "@googletest//:gtest_main",
     ],
@@ -54,20 +54,8 @@ cc_test(
     size = "small",
     srcs = ["server_response_tests.cc"],
     deps = [
-        "//protocol-tests/restjson1/generated:client",
-        "//protocol-tests/restjson1/generated:server",
-        "//runtime:protocol_test_support",
-        "@googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "server_malformed_tests",
-    size = "small",
-    srcs = ["server_malformed_tests.cc"],
-    deps = [
-        "//protocol-tests/restjson1/generated:client",
-        "//protocol-tests/restjson1/generated:server",
+        "//protocol-tests/simplerestjson/generated:client",
+        "//protocol-tests/simplerestjson/generated:server",
         "//runtime:protocol_test_support",
         "@googletest//:gtest_main",
     ],

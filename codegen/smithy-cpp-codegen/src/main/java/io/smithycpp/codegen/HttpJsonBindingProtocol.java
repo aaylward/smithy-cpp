@@ -15,12 +15,12 @@ import software.amazon.smithy.model.shapes.StructureShape;
 import software.amazon.smithy.model.traits.HttpTrait;
 
 /**
- * HTTP + JSON binding generator: HTTP method/URI from @http, labels, query, headers, JSON bodies.
- * Shared base for the vendor-neutral {@link SimpleRestJsonProtocol} (the 0.1.0 REST protocol) and,
- * during the Phase 7e transition, {@code restJson1} itself — the two differ only in error identity,
- * exposed via {@link #errorTypeHeaderName()}.
+ * Shared HTTP + JSON binding generator: HTTP method/URI from @http, labels, query, headers, and
+ * JSON request/response bodies. Concrete protocols (currently only the vendor-neutral
+ * {@link SimpleRestJsonProtocol}) supply the service name, trait id, and error-identity header via
+ * {@link #errorTypeHeaderName()}.
  */
-class RestJson1Protocol implements ProtocolGenerator {
+abstract class HttpJsonBindingProtocol implements ProtocolGenerator {
 
   /** Set up by writeServerHelpers (always called before the routes are emitted). */
   private ValidationGenerator validation;
@@ -30,28 +30,15 @@ class RestJson1Protocol implements ProtocolGenerator {
 
   /**
    * The response header carrying modeled-error identity (the error shape name), or "" when the
-   * protocol carries no error header. restJson1 uses {@code x-amzn-errortype}; the neutral
-   * simpleRestJson uses {@code x-error-type}.
+   * protocol carries no error header (rpcv2Cbor). simpleRestJson uses {@code x-error-type}.
    */
-  protected String errorTypeHeaderName() {
-    return "x-amzn-errortype";
-  }
+  protected abstract String errorTypeHeaderName();
 
   /** Emits the error-type header set; a no-op when the protocol has no error header. */
   private void writeErrorTypeHeader(CppWriter w, String variable, String errorType) {
     if (!errorTypeHeaderName().isEmpty()) {
       w.write("$L.headers.Set($S, $S);", variable, errorTypeHeaderName(), errorType);
     }
-  }
-
-  @Override
-  public String name() {
-    return "restJson1";
-  }
-
-  @Override
-  public software.amazon.smithy.model.shapes.ShapeId traitId() {
-    return software.amazon.smithy.aws.traits.protocols.RestJson1Trait.ID;
   }
 
   @Override
@@ -152,7 +139,7 @@ class RestJson1Protocol implements ProtocolGenerator {
             .orElseThrow(
                 () ->
                     new CodegenException(
-                        "cpp-codegen: restJson1 operation missing @http: " + operation.getId()));
+                        "cpp-codegen: HTTP+JSON operation missing @http: " + operation.getId()));
     HttpBindingIndex index = HttpBindingIndex.of(context.model());
     StructureShape input = ProtocolSupport.inputShape(context, operation);
     StructureShape output = ProtocolSupport.outputShape(context, operation);
@@ -176,7 +163,7 @@ class RestJson1Protocol implements ProtocolGenerator {
         case PREFIX_HEADERS -> prefixHeaders = binding;
         default ->
             throw new CodegenException(
-                "cpp-codegen: restJson1 input binding "
+                "cpp-codegen: HTTP+JSON input binding "
                     + binding.getLocation()
                     + " is not supported yet ("
                     + operation.getId()
@@ -205,7 +192,7 @@ class RestJson1Protocol implements ProtocolGenerator {
         }
         default ->
             throw new CodegenException(
-                "cpp-codegen: restJson1 output binding "
+                "cpp-codegen: HTTP+JSON output binding "
                     + binding.getLocation()
                     + " is not supported yet ("
                     + operation.getId()
@@ -949,7 +936,7 @@ class RestJson1Protocol implements ProtocolGenerator {
         case PREFIX_HEADERS -> prefixHeaders = binding;
         default ->
             throw new CodegenException(
-                "cpp-codegen: restJson1 server binding "
+                "cpp-codegen: HTTP+JSON server binding "
                     + binding.getLocation()
                     + " is not supported yet ("
                     + operation.getId()
@@ -1229,7 +1216,7 @@ class RestJson1Protocol implements ProtocolGenerator {
         case HEADER -> responseHeaders.put(binding.getLocationName(), binding);
         default ->
             throw new CodegenException(
-                "cpp-codegen: restJson1 server output binding "
+                "cpp-codegen: HTTP+JSON server output binding "
                     + binding.getLocation()
                     + " is not supported yet ("
                     + operation.getId()

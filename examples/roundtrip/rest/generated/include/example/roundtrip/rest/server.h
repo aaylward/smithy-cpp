@@ -27,7 +27,7 @@ class RoundTripRestHandler {
     virtual smithy::Outcome<UploadAttachmentOutput> UploadAttachment(const UploadAttachmentInput& input) = 0;
 };
 
-/// restJson1 server for example.roundtrip#RoundTripRest: routing, deserialization, handler dispatch,
+/// simpleRestJson server for example.roundtrip#RoundTripRest: routing, deserialization, handler dispatch,
 /// response serialization, and modeled-error mapping. Pass Handler() to any
 /// smithy::http::HttpServerTransport.
 class RoundTripRestServer {

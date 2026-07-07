@@ -128,9 +128,6 @@ public final class DirectedCppCodegen
     if (service.hasTrait(SimpleRestJsonProtocol.TRAIT)) {
       return new SimpleRestJsonProtocol();
     }
-    if (service.hasTrait(software.amazon.smithy.aws.traits.protocols.RestJson1Trait.class)) {
-      return new RestJson1Protocol();
-    }
     if (service.hasTrait(software.amazon.smithy.protocol.traits.Rpcv2CborTrait.class)) {
       return new Rpcv2CborProtocol();
     }

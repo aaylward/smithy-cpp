@@ -2,14 +2,14 @@ $version: "2.0"
 
 namespace example.weather
 
-use aws.protocols#restJson1
+use alloy#simpleRestJson
 
 /// Provides weather forecasts for cities.
 ///
 /// REST fixture model: exercises HTTP bindings (labels, query params, headers),
 /// resources, pagination, and modeled errors. Used by codegen golden tests and
 /// the client<->server integration harness (docs/PLAN.md, Phases 2-5).
-@restJson1
+@simpleRestJson
 @title("Weather Service")
 @paginated(inputToken: "nextToken", outputToken: "nextToken", pageSize: "pageSize")
 @httpBearerAuth

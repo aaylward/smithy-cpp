@@ -16,7 +16,7 @@ namespace example::weather {
 
 class ListCitiesPaginator;
 
-/// restJson1 client for example.weather#Weather.
+/// simpleRestJson client for example.weather#Weather.
 /// Modeled service errors surface as smithy::Error with kind kModeled,
 /// code() set to the error shape name, and the deserialized error
 /// structure attached: error.detail<TheErrorShape>().

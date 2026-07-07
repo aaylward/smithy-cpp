@@ -9,7 +9,7 @@ import software.amazon.smithy.model.shapes.ShapeId;
  * discriminated by the neutral {@code X-Error-Type} response header (the error shape name), with
  * status-code fallback, rather than the AWS {@code X-Amzn-Errortype} header.
  */
-final class SimpleRestJsonProtocol extends RestJson1Protocol {
+final class SimpleRestJsonProtocol extends HttpJsonBindingProtocol {
 
   static final ShapeId TRAIT = ShapeId.from("alloy#simpleRestJson");
 

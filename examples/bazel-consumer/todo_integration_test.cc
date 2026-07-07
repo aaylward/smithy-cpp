@@ -8,10 +8,10 @@
 #include <string>
 #include <utility>
 
-#include "acme/todo/client.h"
-#include "acme/todo/server.h"
 #include "acme/todo/cbor/client.h"
 #include "acme/todo/cbor/server.h"
+#include "acme/todo/client.h"
+#include "acme/todo/server.h"
 #include "smithy/client/config.h"
 #include "smithy/http/loopback.h"
 #include "smithy/http/socket_transport.h"

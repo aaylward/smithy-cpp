@@ -3,6 +3,7 @@
 // always produce a response; the malformed-request corpus's job, unbounded.
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <string>
 
@@ -65,6 +66,6 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     request.body = all.substr(newline + 1);
   }
   const auto response = Handler()(request);
-  if (response.status < 100 || response.status > 599) __builtin_trap();
+  if (response.status < 100 || response.status > 599) std::abort();
   return 0;
 }

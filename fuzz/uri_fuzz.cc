@@ -3,6 +3,7 @@
 // accept arbitrary bytes.
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <string_view>
 
 #include "smithy/http/uri.h"
@@ -13,7 +14,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
   if (decoded.ok()) {
     auto reencoded = smithy::http::EncodeQueryComponent(*decoded);
     auto redecoded = smithy::http::PercentDecode(reencoded);
-    if (!redecoded.ok() || *redecoded != *decoded) __builtin_trap();
+    if (!redecoded.ok() || *redecoded != *decoded) std::abort();
   }
   (void)smithy::http::EncodePathSegment(text);
   (void)smithy::http::EncodeGreedyPathSegment(text);

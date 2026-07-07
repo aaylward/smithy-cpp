@@ -11,7 +11,7 @@ java_library(
     srcs = glob(["smithy-cpp-codegen/src/main/java/**/*.java"]),
     resources = glob(["smithy-cpp-codegen/src/main/resources/**"]),
     deps = [
-        "@smithy_cpp_codegen_maven//:software_amazon_smithy_smithy_aws_traits",
+        "@smithy_cpp_codegen_maven//:com_disneystreaming_alloy_alloy_core",
         "@smithy_cpp_codegen_maven//:software_amazon_smithy_smithy_build",
         "@smithy_cpp_codegen_maven//:software_amazon_smithy_smithy_codegen_core",
         "@smithy_cpp_codegen_maven//:software_amazon_smithy_smithy_model",

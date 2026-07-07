@@ -65,14 +65,12 @@ final class SmokeTestGenerator {
       String field = "input." + context.cppSymbols().toMemberName(member);
       switch (target.getType()) {
         case STRING -> overrides.add(field + " = \"smoke\";");
-        case ENUM ->
-            overrides.add(
-                field
-                    + " = "
-                    + context.cppSymbols().toSymbol(target).getName()
-                    + "::FromString(\"smoke\");");
+        // Enums: the minimal value already picks a real (non-empty, constraint-
+        // valid) member, so no override — forcing "smoke" would fail enum
+        // validation on constrained enums.
         default -> {
-          // Numbers, booleans, and timestamps format to non-empty text already.
+          // Numbers, booleans, timestamps, and enums format to non-empty text
+          // already.
         }
       }
     }

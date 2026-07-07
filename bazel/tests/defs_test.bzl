@@ -38,7 +38,7 @@ def _client_outputs_impl(env, target):
         "--model",
         "bazel/tests/greeter.smithy",
         "--model",
-        "bazel/tests/greeter_restjson1.smithy",
+        "bazel/tests/greeter_simplerestjson.smithy",
     ])
 
 def _server_outputs_impl(env, target):

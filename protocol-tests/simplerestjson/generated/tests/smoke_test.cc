@@ -173,13 +173,11 @@ TEST(PizzaAdminServiceSmokeTest, CustomCodeRoundTrips) {
 
 TEST(PizzaAdminServiceSmokeTest, GetEnumRoundTrips) {
   PizzaAdminServiceClient client = MakeClient(std::make_shared<SmokeHandler>());
-    GetEnumInput input = [] {
+    const GetEnumInput input = [] {
     GetEnumInput v{};
     v.aa = TheEnum::FromString("v1");
     return v;
   }();
-  // @httpLabel members must be non-empty to route.
-  input.aa = TheEnum::FromString("smoke");
   const auto outcome = client.GetEnum(input);
   ASSERT_TRUE(outcome.ok()) << outcome.error().message();
   EXPECT_EQ(*outcome, MinimalGetEnumOutput());

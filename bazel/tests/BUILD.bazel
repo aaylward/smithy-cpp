@@ -8,7 +8,7 @@ smithy_cpp_client_library(
     name = "greeter_client",
     srcs = [
         "greeter.smithy",
-        "greeter_restjson1.smithy",
+        "greeter_simplerestjson.smithy",
     ],
     namespace = "smithy::cpp::ruletest",
     service = "smithy.cpp.ruletest#Greeter",
@@ -18,7 +18,7 @@ smithy_cpp_server_library(
     name = "greeter_server",
     srcs = [
         "greeter.smithy",
-        "greeter_restjson1.smithy",
+        "greeter_simplerestjson.smithy",
     ],
     namespace = "smithy::cpp::ruletest",
     service = "smithy.cpp.ruletest#Greeter",
@@ -28,7 +28,7 @@ smithy_cpp_types_library(
     name = "greeter_types",
     srcs = [
         "greeter.smithy",
-        "greeter_restjson1.smithy",
+        "greeter_simplerestjson.smithy",
     ],
     namespace = "smithy::cpp::ruletest",
     service = "smithy.cpp.ruletest#Greeter",

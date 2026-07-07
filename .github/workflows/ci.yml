@@ -112,6 +112,18 @@ jobs:
           (cd codegen && gradle generateFixtures generateProtocolTests)
           git diff --exit-code -- examples protocol-tests
 
+  # Informational (PLAN Phase 7): publish numbers, no pass/fail threshold yet.
+  benchmarks:
+    name: benchmarks (informational)
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: serde benchmarks
+        run: bazel run -c opt //benchmarks:serde_benchmark -- --benchmark_min_time=0.2s
+      - name: request benchmarks
+        run: bazel run -c opt //benchmarks:request_benchmark -- --benchmark_min_time=0.2s
+
   lint:
     name: lint
     runs-on: ubuntu-24.04

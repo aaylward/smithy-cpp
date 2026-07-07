@@ -7,7 +7,7 @@ namespace {
 
 TEST(VersionTest, ReturnsSemanticVersion) {
   EXPECT_FALSE(Version().empty());
-  EXPECT_EQ(Version(), "0.0.0-dev");
+  EXPECT_EQ(Version(), "0.1.0");
 }
 
 }  // namespace

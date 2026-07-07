@@ -26,6 +26,16 @@ bazel test //... --config=asan --config=ubsan
 cd codegen && gradle build spotlessCheck
 ```
 
+## Benchmarks
+
+```sh
+bazel run -c opt //benchmarks:serde_benchmark      # Document pivot + JSON/CBOR codecs
+bazel run -c opt //benchmarks:request_benchmark    # per-protocol client<->server round trips
+```
+
+CI runs both as an informational job (no pass/fail threshold yet — the
+numbers establish the baseline; see PLAN Phase 7).
+
 ## Formatting and linting
 
 ```sh

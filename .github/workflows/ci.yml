@@ -57,7 +57,7 @@ jobs:
       # bazel/defs.bzl — generation runs inside the consumer's build graph.
       - name: bazel test (out-of-tree module)
         working-directory: examples/bazel-consumer
-        run: bazelisk test //... --config=ci
+        run: bazelisk test //... --verbose_failures
 
   codegen:
     name: codegen (gradle)

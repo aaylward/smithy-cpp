@@ -16,22 +16,40 @@ experience assumed. Day 2 (evolving the model) is
 - **Bazel-native:** Bazel 9 is the sole supported build system for the repo and consumers.
 - **Client tests server:** generated clients integration-test generated servers in CI.
 
-See [`docs/PLAN.md`](docs/PLAN.md) for the full phased plan and
-[`docs/adr/`](docs/adr/) for architecture decisions.
+## What works today (v0.1.0)
 
-## Status
+- **Clients and servers for all three protocols**, each green against a conformance suite in CI
+  (the official alloy and rpcv2Cbor suites, an authored one for jsonRpc2) with documented,
+  must-shrink exclusion lists.
+- **The full generated surface:** typed structs/unions/enums, serde, HTTP bindings, constraint
+  validation with suite-exact `ValidationException` output (ReDoS-safe `@pattern`), typed
+  modeled errors, paginators, idempotency tokens, and gzip request compression.
+- **In-graph generation:** `smithy_cpp_{types,client,server}_library` run the generator
+  hermetically inside the Bazel build graph — no scripts, no JVM to install. An out-of-tree
+  consumer module is CI-tested on Linux/macOS/Windows, plus a CLI for generating elsewhere.
+- **Production serving and calling** over Boost.Beast with TLS in both directions, retries with
+  jittered backoff, client interceptors, server middleware, and bearer/API-key auth wiring.
+- **Hardening in CI:** sanitizer jobs, libFuzzer harnesses, hostile-input test banks, and every
+  fixture's generated client integration-testing its generated server.
 
-| Phase | Scope | Status |
-|---|---|---|
-| 0 | Foundations: Bazel 9 workspace, codegen skeleton, CI, ADRs, fixture models | ✅ Done |
-| 1 | C++ runtime library (`smithy/core`, `json`, `cbor`, `http`, `client`, `server`) | ✅ Done ([docs/runtime.md](docs/runtime.md)) incl. Boost.Beast production server transport (ADR-0006) |
-| 2 | Codegen plugin + type generation | ✅ Done — types generated for both fixtures, golden+compile+behavior tested ([docs/design/codegen-architecture.md](docs/design/codegen-architecture.md)) |
-| 3 | Client generation (simpleRestJson + rpcv2Cbor) | ✅ Done — serde + clients for both protocols with typed errors ([docs/generated-types.md](docs/generated-types.md)); official conformance suites green (documented exclusions) |
-| 4 | Server generation (simpleRestJson + rpcv2Cbor) | ✅ Done — handlers, routing, serde, all HTTP bindings incl. `@httpPayload`/`@httpPrefixHeaders`, constraint validation, parser strictness, content negotiation; official conformance suites green ([docs/server-guide.md](docs/server-guide.md)) |
-| 5 | Generated-client ↔ generated-server integration harness | ✅ Done — every fixture ships a generated integration suite: seeded random round-trips over loopback and real sockets, per-error mapping, unknown-member tolerance, mutation-checked ([docs/design/integration-testing.md](docs/design/integration-testing.md)) |
-| 6 | Bazel rules, CLI, packaging (BCR + Maven Central), docs site | 🔨 In progress — `smithy_cpp_{types,client,server}_library` rules run the generator hermetically inside the build graph, out-of-tree consumer module tested in CI, CLI via `bazel run //codegen:generator` ([docs/quickstart.md](docs/quickstart.md)); model-evolution loop documented and exercised in CI ([docs/model-evolution.md](docs/model-evolution.md)); BCR/Maven publishing deferred until production validation; docs site pending |
-| 7 | Hardening, fuzzing, v0.1.0 | ✅ Done — retries with full-jitter exponential backoff, gzip `@requestCompression` (client + server), client interceptors + server middleware (auth/logging/metrics seams), `@httpBearerAuth`/`@httpApiKeyAuth` credential wiring, generated `@paginated` paginators, Beast graceful drain + header limits, consumer CI across linux/macos/windows ([docs/production-guide.md](docs/production-guide.md)); **BeastHttpClient** production client transport with TLS both directions (ADR-0007); Google Benchmark suite (informational CI job); release engineering — [CHANGELOG](CHANGELOG.md), [versioning/compatibility policy](docs/versioning.md), **v0.1.0**; **protocol realignment to vendor-neutral** — dropped AWS `restJson1` for `alloy#simpleRestJson` + its conformance suite, Smithy 1.58, no `aws.*` on the generator classpath; **`smithy.cpp.protocols#jsonRpc2`** — JSON-RPC 2.0 over a single POST endpoint with an authored conformance suite, a calculator example with hand-rolled-peer interop tests, and a consumer overlay |
-| 8 | Bidirectional streaming (event streams, WebSockets) | Not started |
+Not yet: bidirectional streaming (event streams/WebSockets) and Bazel Central Registry / Maven
+publishing — consumers pin a git commit for now. Roadmap and per-phase status live in
+[`docs/PLAN.md`](docs/PLAN.md).
+
+## Documentation
+
+| Doc | What it covers |
+|---|---|
+| [quickstart.md](docs/quickstart.md) | Model → generated client + server, from an empty directory |
+| [model-evolution.md](docs/model-evolution.md) | Day 2: changing the model, regeneration, drift detection |
+| [generated-types.md](docs/generated-types.md) | The Smithy → C++ mapping contract |
+| [server-guide.md](docs/server-guide.md) | What the generated server does before/after your handler |
+| [production-guide.md](docs/production-guide.md) | Real transports, TLS, retries, auth, middleware |
+| [runtime.md](docs/runtime.md) | The `smithy-cpp-runtime` library, module by module |
+| [development.md](docs/development.md) | Building, testing, and linting this repo |
+| [versioning.md](docs/versioning.md) | Compatibility policy; [CHANGELOG.md](CHANGELOG.md) has releases |
+| [PLAN.md](docs/PLAN.md) | The phased roadmap; [adr/](docs/adr) records architecture decisions |
+| [design/](docs/design) | Internals: codegen architecture, the integration-test harness; [fuzzing.md](docs/fuzzing.md) covers the fuzz setup |
 
 ## Building
 

@@ -1,6 +1,7 @@
 package io.smithycpp.codegen;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -255,5 +256,177 @@ class CppCodegenPluginTest {
         assertThrows(CodegenException.class, () -> new CppCodegenPlugin().execute(context));
     assertTrue(error.getMessage().contains("union member"));
     assertTrue(error.getMessage().contains("TreeValue"));
+  }
+
+  // A jsonRpc2 server generated from an inline model; returns the manifest so a
+  // test can assert on the emitted C++.
+  private static MockManifest generateJsonRpc2(String filename, String modelText, String service) {
+    Model model =
+        Model.assembler()
+            .discoverModels(CppCodegenPluginTest.class.getClassLoader())
+            .addUnparsedModel(filename, modelText)
+            .assemble()
+            .unwrap();
+    MockManifest manifest = new MockManifest();
+    new CppCodegenPlugin()
+        .execute(
+            PluginContext.builder()
+                .fileManifest(manifest)
+                .model(model)
+                .settings(
+                    Node.objectNodeBuilder()
+                        .withMember("service", service)
+                        .withMember("namespace", "test::gen")
+                        .build())
+                .build());
+    return manifest;
+  }
+
+  private static CodegenException assertJsonRpc2Rejected(
+      String filename, String modelText, String service) {
+    Model model =
+        Model.assembler()
+            .discoverModels(CppCodegenPluginTest.class.getClassLoader())
+            .addUnparsedModel(filename, modelText)
+            .assemble()
+            .unwrap();
+    PluginContext context =
+        PluginContext.builder()
+            .fileManifest(new MockManifest())
+            .model(model)
+            .settings(
+                Node.objectNodeBuilder()
+                    .withMember("service", service)
+                    .withMember("namespace", "test::gen")
+                    .build())
+            .build();
+    return assertThrows(CodegenException.class, () -> new CppCodegenPlugin().execute(context));
+  }
+
+  @Test
+  void escapesEnumValueSetInTheValidationMessage() {
+    // An enum wire value containing a quote/backslash must be escaped in the
+    // generated value-set message, not emitted raw (which would not compile).
+    MockManifest manifest =
+        generateJsonRpc2(
+            "enum-escape.smithy",
+            """
+            $version: "2.0"
+            namespace test.gen
+            use smithy.cpp.protocols#jsonRpc2
+
+            @jsonRpc2
+            service Svc { version: "1", operations: [Op] }
+            operation Op { input := { grade: Grade } }
+            enum Grade {
+                TRICKY = "a\\"b\\\\c"
+                PLAIN = "plain"
+            }
+            """,
+            "test.gen#Svc");
+    String server = manifest.expectFileString("/src/server.cc");
+    assertTrue(server.contains("enum value set:"));
+    // The quote and backslash are escaped; the raw form never appears.
+    assertTrue(server.contains("a\\\"b\\\\c"));
+    assertFalse(server.contains("[a\"b"));
+  }
+
+  @Test
+  void rejectsPatternContainingTheRawStringDelimiter() {
+    // A valid regex (balanced group) that nonetheless contains the raw-string
+    // closing sequence )__smithy" — emitting it verbatim would break the literal.
+    CodegenException error =
+        assertJsonRpc2Rejected(
+            "delim.smithy",
+            """
+            $version: "2.0"
+            namespace test.gen
+            use smithy.cpp.protocols#jsonRpc2
+
+            @jsonRpc2
+            service Svc { version: "1", operations: [Op] }
+            operation Op { input := { @pattern("(a)__smithy\\".*") s: String } }
+            """,
+            "test.gen#Svc");
+    assertTrue(error.getMessage().contains("raw-string delimiter"));
+  }
+
+  @Test
+  void rejectsEnumMemberNameCollision() {
+    CodegenException error =
+        assertJsonRpc2Rejected(
+            "enum-collide.smithy",
+            """
+            $version: "2.0"
+            namespace test.gen
+            use smithy.cpp.protocols#jsonRpc2
+
+            @jsonRpc2
+            service Svc { version: "1", operations: [Op] }
+            operation Op { input := { e: E } }
+            enum E {
+                foo_bar = "1"
+                foo__bar = "2"
+            }
+            """,
+            "test.gen#Svc");
+    assertTrue(error.getMessage().contains("generated name"));
+    assertTrue(error.getMessage().contains("foo_bar"));
+    assertTrue(error.getMessage().contains("foo__bar"));
+  }
+
+  @Test
+  void rejectsEnumMemberCollidingWithTheUnknownSentinel() {
+    CodegenException error =
+        assertJsonRpc2Rejected(
+            "enum-unknown.smithy",
+            """
+            $version: "2.0"
+            namespace test.gen
+            use smithy.cpp.protocols#jsonRpc2
+
+            @jsonRpc2
+            service Svc { version: "1", operations: [Op] }
+            operation Op { input := { e: E } }
+            enum E {
+                unknown = "1"
+                known = "2"
+            }
+            """,
+            "test.gen#Svc");
+    assertTrue(error.getMessage().contains("reserved generated name"));
+    assertTrue(error.getMessage().contains("kUnknown"));
+  }
+
+  @Test
+  void emitsInt64MinRangeBoundAndDefaultWithoutOverflow() {
+    // -9223372036854775808 is not a writable C++ decimal literal; it must be
+    // emitted via the INT64_MIN idiom in both the @range comparison and the
+    // @default initializer.
+    MockManifest manifest =
+        generateJsonRpc2(
+            "int64min.smithy",
+            """
+            $version: "2.0"
+            namespace test.gen
+            use smithy.cpp.protocols#jsonRpc2
+
+            @jsonRpc2
+            service Svc { version: "1", operations: [Op] }
+            operation Op {
+                input := {
+                    @range(min: -9223372036854775808)
+                    bounded: Long
+
+                    @default(-9223372036854775808)
+                    defaulted: Long
+                }
+            }
+            """,
+            "test.gen#Svc");
+    String server = manifest.expectFileString("/src/server.cc");
+    assertTrue(server.contains("(-9223372036854775807LL - 1)"));
+    // The comparison must not emit the bare, ill-formed decimal literal.
+    assertFalse(server.contains("< -9223372036854775808"));
   }
 }

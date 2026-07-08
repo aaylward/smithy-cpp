@@ -48,6 +48,53 @@ final class TypeGenerators {
   }
 
   /**
+   * Fails generation when two members of the same shape fold to one C++ name, or a member collides
+   * with a reserved synthetic name. Enum-constant and union-factory naming lower-case, strip
+   * separators, or PascalCase the member name, so distinct Smithy members ({@code fooBar} and
+   * {@code foo_bar}, or a member literally named {@code unknown}) can produce a duplicate
+   * enumerator/method that no longer compiles. Catching it here names both members and the fix
+   * instead of surfacing a C++ redefinition error in the generated output.
+   */
+  private static void requireDistinctNames(
+      String kind,
+      Object shapeId,
+      java.util.LinkedHashMap<String, String> foldedByMember,
+      java.util.Set<String> reserved) {
+    java.util.Map<String, String> owner = new java.util.HashMap<>();
+    for (var entry : foldedByMember.entrySet()) {
+      String member = entry.getKey();
+      String folded = entry.getValue();
+      if (reserved.contains(folded)) {
+        throw new software.amazon.smithy.codegen.core.CodegenException(
+            "cpp-codegen: "
+                + kind
+                + " "
+                + shapeId
+                + " member '"
+                + member
+                + "' maps to the reserved generated name '"
+                + folded
+                + "'; rename the member");
+      }
+      String prior = owner.putIfAbsent(folded, member);
+      if (prior != null) {
+        throw new software.amazon.smithy.codegen.core.CodegenException(
+            "cpp-codegen: "
+                + kind
+                + " "
+                + shapeId
+                + " members '"
+                + prior
+                + "' and '"
+                + member
+                + "' both map to the generated name '"
+                + folded
+                + "'; rename one so their generated names differ");
+      }
+    }
+  }
+
+  /**
    * Forward declarations for recursive member targets: on a cycle, the target's definition may come
    * later in types.h. Boxed members and std::vector elements only need the name declared; duplicate
    * declarations are harmless.
@@ -121,6 +168,11 @@ final class TypeGenerators {
   void generateEnum(EnumShape shape) {
     String name = typeName(shape);
     Map<String, String> values = shape.getEnumValues();
+    java.util.LinkedHashMap<String, String> folded = new java.util.LinkedHashMap<>();
+    for (String memberName : values.keySet()) {
+      folded.put(memberName, enumConstant(memberName));
+    }
+    requireDistinctNames("enum", shape.getId(), folded, java.util.Set.of("kUnknown"));
     writer.addInclude("<string>").addInclude("<string_view>");
 
     writeDocs(shape);
@@ -179,6 +231,11 @@ final class TypeGenerators {
 
   void generateIntEnum(IntEnumShape shape) {
     String name = typeName(shape);
+    java.util.LinkedHashMap<String, String> folded = new java.util.LinkedHashMap<>();
+    for (String memberName : shape.getEnumValues().keySet()) {
+      folded.put(memberName, enumConstant(memberName));
+    }
+    requireDistinctNames("intEnum", shape.getId(), folded, java.util.Set.of());
     writer.addInclude("<cstdint>");
     writeDocs(shape);
     writer.openBlock("enum class $L : std::int32_t {", name);
@@ -192,6 +249,12 @@ final class TypeGenerators {
   void generateUnion(UnionShape shape) {
     String name = typeName(shape);
     List<MemberShape> members = List.copyOf(shape.members());
+    java.util.LinkedHashMap<String, String> folded = new java.util.LinkedHashMap<>();
+    for (MemberShape member : members) {
+      folded.put(
+          member.getMemberName(), "From" + CaseUtils.toPascalCase(symbols().toMemberName(member)));
+    }
+    requireDistinctNames("union", shape.getId(), folded, java.util.Set.of());
     writer.addInclude("<utility>").addInclude("<variant>");
 
     writeDocs(shape);

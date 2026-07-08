@@ -85,8 +85,8 @@ final class MemberDefaults {
               + CppLiterals.stringLiteral(value.expectStringNode().getValue())
               + ")";
       case BOOLEAN -> value.expectBooleanNode().getValue() ? "true" : "false";
-      case BYTE, SHORT, INTEGER, LONG ->
-          String.valueOf(value.expectNumberNode().getValue().longValue());
+      case BYTE, SHORT, INTEGER -> String.valueOf(value.expectNumberNode().getValue().longValue());
+      case LONG -> CppLiterals.int64Literal(value.expectNumberNode().getValue().longValue());
       case INT_ENUM ->
           "static_cast<" + type + ">(" + value.expectNumberNode().getValue().longValue() + ")";
       case FLOAT -> "static_cast<float>(" + value.expectNumberNode().getValue().doubleValue() + ")";

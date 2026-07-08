@@ -64,6 +64,14 @@ fuzz-smoke:
 consumer:
 	cd examples/bazel-consumer && $(BAZEL) test //... && ./model-evolution-check.sh
 
+# Line coverage for the runtime; the combined lcov report path prints at the
+# end (render with genhtml, or read the CI job's artifact).
+.PHONY: coverage
+coverage:
+	$(BAZEL) coverage //... --combined_report=lcov \
+		--instrumentation_filter='//runtime[/:]'
+	@echo "combined report: $$($(BAZEL) info output_path)/_coverage/_coverage_report.dat"
+
 # Informational, never gates (PLAN Phase 7).
 .PHONY: benchmarks
 benchmarks:

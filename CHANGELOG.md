@@ -93,5 +93,16 @@ via `git_override` until then.
   content-type/method/route) the way jsonrpc2's generated suite always did —
   including the previously-unasserted simpleRestJson `@pattern`-violation
   wire message.
+- **Union x protocol conformance cells filled** (`protocol-tests/unions/`):
+  the cbor and jsonRpc2 union cells — previously reliant on coin-flip random
+  integration tests that only prove serde self-consistency — now pin the
+  wire subdocument for every union variant deterministically in all four
+  directions (client encode/decode, server decode/echo), plus the reject
+  cells (empty, multi-member, unknown-member, null-member) and the `__type`
+  discriminator tolerance.
+- **Code-coverage tooling**: a `coverage` CI job runs
+  `bazel coverage --combined_report=lcov` over the runtime, prints the
+  per-module summary, and uploads the rendered HTML report as an artifact;
+  `make coverage` runs the same locally. Measurement only — no gate yet.
 
 [Unreleased]: https://github.com/aaylward/smithy-cpp/commits/main

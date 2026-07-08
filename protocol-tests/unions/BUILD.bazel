@@ -1,0 +1,40 @@
+load("@rules_cc//cc:defs.bzl", "cc_test")
+
+# Union x protocol conformance cells (issue #48): union round-tripping was
+# only pinned for simpleRestJson; the cbor and jsonRpc2 cells relied on
+# seeded random integration tests that flip a coin on whether the union
+# appears and can only prove serde self-consistency. These suites pin the
+# wire subdocument for every SinkChoice variant deterministically — client
+# encode/decode and server decode/echo — plus the reject cells and the
+# __type discriminator tolerance. Hand-written (not generated), so they
+# live outside the golden generated/ trees.
+
+cc_test(
+    name = "union_cbor_test",
+    size = "small",
+    srcs = ["union_cbor_test.cc"],
+    deps = [
+        "//examples/roundtrip/rpc/generated:client",
+        "//examples/roundtrip/rpc/generated:server",
+        "//runtime:cbor",
+        "//runtime:client",
+        "//runtime:http",
+        "//runtime:protocol_test_support",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "union_jsonrpc2_test",
+    size = "small",
+    srcs = ["union_jsonrpc2_test.cc"],
+    deps = [
+        "//examples/roundtrip/jsonrpc/generated:client",
+        "//examples/roundtrip/jsonrpc/generated:server",
+        "//runtime:client",
+        "//runtime:http",
+        "//runtime:json",
+        "//runtime:protocol_test_support",
+        "@googletest//:gtest_main",
+    ],
+)

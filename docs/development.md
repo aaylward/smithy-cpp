@@ -24,8 +24,9 @@ make verify-full   # + sanitizers, fuzzer smoke runs, the consumer module, clang
 ```
 
 Each aggregate is also callable piecemeal (`make test codegen goldens lint
-sanitize fuzz-smoke consumer tidy benchmarks format`); the recipes mirror
-`.github/workflows/ci.yml`, one target per job. The underlying commands:
+sanitize fuzz-smoke consumer tidy coverage benchmarks format`); the recipes
+mirror `.github/workflows/ci.yml`, one target per job. The underlying
+commands:
 
 ```sh
 # C++ runtime: build + run all tests

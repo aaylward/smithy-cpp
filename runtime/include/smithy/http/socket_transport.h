@@ -49,7 +49,7 @@ class SocketHttpServer : public HttpServerTransport {
 
   int requested_port_ = 0;
   int bound_port_ = 0;
-  std::intptr_t listener_ = -1;  // platform socket handle
+  std::intptr_t listener_ = -1;  // POSIX socket fd (wide type kept for ABI stability)
   RequestHandler handler_;
   std::atomic<bool> stopping_{false};
   std::thread accept_thread_;

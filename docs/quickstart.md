@@ -71,7 +71,6 @@ so you never install or invoke Java yourself):
 common --enable_platform_specific_config
 build:linux --cxxopt=-std=c++20 --host_cxxopt=-std=c++20
 build:macos --cxxopt=-std=c++20 --host_cxxopt=-std=c++20
-build:windows --cxxopt=/std:c++20 --host_cxxopt=/std:c++20
 common --java_language_version=17
 common --tool_java_language_version=17
 common --java_runtime_version=remotejdk_17

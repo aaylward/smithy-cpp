@@ -15,23 +15,14 @@ namespace {
 
 bool GmTime(std::int64_t epoch_seconds, std::tm* out) {
   const auto time = static_cast<std::time_t>(epoch_seconds);
-#ifdef _WIN32
-  return _gmtime64_s(out, &time) == 0;
-#else
   return gmtime_r(&time, out) != nullptr;
-#endif
 }
 
 TEST(TimestampDifferentialTest, DateTimeMatchesGmtimeOverRandomEpochs) {
   std::mt19937_64 rng(20260706);
-#ifdef _WIN32
-  // Windows _gmtime64_s only covers 1970..3000.
-  std::uniform_int_distribution<std::int64_t> epochs(0, 30'000'000'000LL);
-#else
   // Year ~68 CE .. ~2920 CE: RFC 3339 date-time only defines four-digit years
   // (0000-9999), and this range keeps every sample inside it.
   std::uniform_int_distribution<std::int64_t> epochs(-60'000'000'000LL, 30'000'000'000LL);
-#endif
   for (int i = 0; i < 2000; ++i) {
     const std::int64_t seconds = epochs(rng);
     std::tm reference{};

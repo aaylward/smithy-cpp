@@ -39,7 +39,7 @@ via `git_override` until then.
   constraint validation with suite-exact `ValidationException` output.
 - Consumer Bazel rules (`smithy_cpp_{types,client,server}_library`) run the
   generator hermetically inside the build graph; out-of-tree consumer module
-  tested in CI on Linux/macOS/Windows.
+  tested in CI on Linux/macOS.
 
 ### Runtime
 
@@ -59,6 +59,15 @@ via `git_override` until then.
 - CBOR decoder rejects additional-information 31 on integers and tags
   (RFC 8949 §3.3 not-well-formed encodings previously decoded as 0 / -1 /
   an ignored tag), found by the hostile corpus below.
+
+### Removed
+
+- **Windows support** (ADR-0008, issue #58). Linux and macOS are the
+  supported platforms, both sanitizer-covered in CI. The socket transport is
+  POSIX-only (no winsock/WSAStartup fabric), the Bazel rules carry no
+  Windows `select()`s or `build:windows` config, and the Windows CI jobs are
+  gone. Re-adding Windows would be a port driven by a concrete consumer, not
+  a revert.
 
 ### Testing & CI (issue #48)
 
@@ -113,8 +122,8 @@ via `git_override` until then.
   docs/generated-types.md as the serde contract.
 - **Sanitizers run on macOS too**: the asan+ubsan CI job is now a
   linux/clang + macos/apple-clang matrix, covering the transport layer's
-  Apple-specific paths (SO_NOSIGPIPE, libc++). MSVC ASan remains future
-  work.
+  Apple-specific paths (SO_NOSIGPIPE, libc++) — every supported platform is
+  now sanitizer-covered.
 - **Golden self-ratification closed** (`GoldenProtocolTestAuditTest`): the
   byte-identical regeneration check validates the goldens against the same
   generator that produced them, so a generator bug that dropped or rewrote

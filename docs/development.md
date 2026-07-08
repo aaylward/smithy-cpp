@@ -81,7 +81,11 @@ cd codegen && gradle spotlessApply
   codegen and the client↔server integration harness (PLAN Phases 2–5).
 - Generated output under `examples/*/generated/` and `protocol-tests/*/generated/` is checked
   in as goldens: regenerate with `cd codegen && gradle generateFixtures generateProtocolTests`
-  and commit model + output together — CI fails on drift. The full loop (including the
+  and commit model + output together — CI fails on drift. The drift check alone would let a
+  generator bug ratify itself (both sides of the diff come from the same generator), so
+  `GoldenProtocolTestAuditTest` additionally cross-checks the protocol-test goldens against the
+  upstream suite definitions: every upstream case must be generated or excluded, wire facts must
+  match, and exclusions must name real cases. The full loop (including the
   consumer-side story) is in [model-evolution.md](model-evolution.md).
 - Machine-specific Bazel flags go in `.bazelrc.user` (gitignored), e.g. a
   `--downloader_config` when working behind a proxy that blocks GitHub downloads.

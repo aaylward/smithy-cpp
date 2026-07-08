@@ -115,6 +115,17 @@ via `git_override` until then.
   linux/clang + macos/apple-clang matrix, covering the transport layer's
   Apple-specific paths (SO_NOSIGPIPE, libc++). MSVC ASan remains future
   work.
+- **Golden self-ratification closed** (`GoldenProtocolTestAuditTest`): the
+  byte-identical regeneration check validates the goldens against the same
+  generator that produced them, so a generator bug that dropped or rewrote
+  conformance vectors could ratify itself. A new audit enumerates the test
+  cases from the upstream suite definitions (the alloy and Smithy
+  conformance jars, and the authored jsonRpc2 model) using only the
+  upstream smithy-model API and asserts every case is either in the
+  committed golden test sources or in the must-shrink exclusion list — plus
+  per-case wire facts (method/status), no phantom tests, and no exclusion
+  naming a nonexistent upstream case. Together with the generator's
+  stale-exclusion guard, the seam is now watched from both sides.
 - **Generator-class unit tests**: direct Java suites for the previously
   untested generator internals — CppLiterals (the issue-#43 escaping
   chokepoint: octal escapes, int64-min idiom, float literal typing),

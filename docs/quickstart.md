@@ -50,11 +50,14 @@ module(name = "my_service", version = "0.0.0")
 bazel_dep(name = "smithy_cpp", version = "0.0.0")
 
 # Until smithy_cpp is published to the Bazel Central Registry (deferred until
-# the project is production-validated), consume it by path or git override:
+# the project is production-validated), consume it by git override. No release
+# is tagged yet, so pin a specific commit on main (copy the full SHA from
+# https://github.com/aaylward/smithy-cpp/commits/main). The `version` above is
+# ignored while an override is in effect.
 git_override(
     module_name = "smithy_cpp",
     remote = "https://github.com/aaylward/smithy-cpp.git",
-    commit = "<pin a commit>",
+    commit = "0000000000000000000000000000000000000000",  # replace with a real commit SHA
 )
 
 bazel_dep(name = "googletest", version = "1.17.0.bcr.2")

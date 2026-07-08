@@ -4,11 +4,14 @@ All notable changes to smithy-cpp are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow the
 policy in [docs/versioning.md](docs/versioning.md).
 
-## [0.1.0] - 2026-07-07
+## [Unreleased]
 
-The first tagged release: a vendor-neutral Smithy → C++ code generator, the
-runtime it targets, and Bazel-native consumption — with every generated
-surface conformance-tested and integration-tested in CI.
+The 0.1.0 milestone: a vendor-neutral Smithy → C++ code generator, the runtime
+it targets, and Bazel-native consumption — with every generated surface
+conformance-tested and integration-tested in CI. Developed on `main` and
+**not yet tagged**; the runtime reports `0.1.0-dev` until the first signed
+release (see [docs/versioning.md](docs/versioning.md)). Consumers pin a commit
+via `git_override` until then.
 
 ### Protocols
 
@@ -54,4 +57,4 @@ surface conformance-tested and integration-tested in CI.
   suite (serde, codecs, per-protocol request round trips, real-TCP transport
   round trips incl. Beast and Beast TLS) run in CI.
 
-[0.1.0]: https://github.com/aaylward/smithy-cpp/releases/tag/v0.1.0
+[Unreleased]: https://github.com/aaylward/smithy-cpp/commits/main

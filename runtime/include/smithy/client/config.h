@@ -23,7 +23,9 @@ namespace smithy {
 struct ClientConfig {
   std::string endpoint;
   int request_timeout_ms = 30000;
-  std::string user_agent = "smithy-cpp/0.0.0-dev";
+  // Mirrors smithy::Version() (runtime/src/core/version.cc), the single source
+  // of truth for the product version.
+  std::string user_agent = "smithy-cpp/0.1.0-dev";
 
   // Full-jitter exponential backoff for transport failures and transient
   // statuses (429/5xx); retry.max_attempts = 1 disables retries.

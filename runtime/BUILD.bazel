@@ -2,13 +2,10 @@ load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
-COPTS = select({
-    "@platforms//os:windows": [],
-    "//conditions:default": [
-        "-Wall",
-        "-Wextra",
-    ],
-})
+COPTS = [
+    "-Wall",
+    "-Wextra",
+]
 
 cc_library(
     name = "core",
@@ -83,10 +80,6 @@ cc_library(
     ],
     copts = COPTS,
     includes = ["include"],
-    linkopts = select({
-        "@platforms//os:windows": ["ws2_32.lib"],
-        "//conditions:default": [],
-    }),
     deps = [":core"],
 )
 
@@ -154,8 +147,8 @@ cc_test(
     ],
 )
 
-# Pure-parser twin of socket_transport_hostile_test: no sockets, so it runs
-# byte-exact on every platform including Windows.
+# Pure-parser twin of socket_transport_hostile_test: no sockets, so it is
+# byte-exact and timeout-free.
 cc_test(
     name = "http1_hostile_test",
     size = "small",
@@ -189,10 +182,6 @@ cc_library(
     ],
     hdrs = ["include/smithy/http/beast_transport.h"],
     copts = COPTS,
-    defines = select({
-        "@platforms//os:windows": ["_WIN32_WINNT=0x0A00"],
-        "//conditions:default": [],
-    }),
     includes = ["include"],
     # Static only: Bazel's dynamic test linking would put the asio/beast
     # implementation (beast_src.cc) in a .so whose vague-linkage typeinfo
@@ -429,13 +418,6 @@ cc_test(
     ],
     copts = COPTS,
     data = glob(["tests/json/jsontestsuite/test_parsing/*.json"]),
-    # The JSON parser is platform-independent; run the corpus on POSIX and skip
-    # the runfiles/genrule-bash portability surface on Windows for no added
-    # coverage.
-    target_compatible_with = select({
-        "@platforms//os:windows": ["@platforms//:incompatible"],
-        "//conditions:default": [],
-    }),
     deps = [
         ":json",
         "@bazel_tools//tools/cpp/runfiles",

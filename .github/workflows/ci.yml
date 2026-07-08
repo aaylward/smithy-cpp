@@ -31,8 +31,6 @@ jobs:
             cxx: clang++
           - name: macos-clang
             os: macos-14
-          - name: windows-msvc
-            os: windows-2022
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -49,7 +47,7 @@ jobs:
 
   # Linux catches most UB, but the transport/socket layer has Apple-specific
   # paths (SO_NOSIGPIPE, libc++) that linux/clang never exercises under a
-  # sanitizer (issue #48). MSVC ASan under Bazel remains future work.
+  # sanitizer (issue #48).
   sanitizers:
     name: bazel (asan + ubsan, ${{ matrix.os }})
     strategy:
@@ -105,7 +103,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-14, windows-2022]
+        os: [ubuntu-24.04, macos-14]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7

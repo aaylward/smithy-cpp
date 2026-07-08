@@ -4,11 +4,6 @@
 // controls: request-smuggling framing, malformed content-lengths, header
 // floods, truncation. The invariant is that the server never crashes, never
 // hangs, and never mis-parses ambiguous framing as a successful request.
-//
-// POSIX only: the parser under test is platform-independent, and a portable
-// raw-socket client would drag in winsock scaffolding for no extra coverage.
-
-#ifndef _WIN32
 
 #include <arpa/inet.h>
 #include <gtest/gtest.h>
@@ -182,5 +177,3 @@ TEST(HostileFramingResponseTest, ServerEmitsExactlyOneContentLength) {
 
 }  // namespace
 }  // namespace smithy::http
-
-#endif  // _WIN32

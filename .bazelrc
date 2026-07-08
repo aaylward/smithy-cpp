@@ -1,10 +1,9 @@
-# Platform-specific configs (build:linux / build:macos / build:windows) apply automatically.
+# Platform-specific configs (build:linux / build:macos) apply automatically.
 common --enable_platform_specific_config
 
 # C++20 everywhere (ADR-0003 baseline; see docs/PLAN.md §2).
 build:linux --cxxopt=-std=c++20 --host_cxxopt=-std=c++20
 build:macos --cxxopt=-std=c++20 --host_cxxopt=-std=c++20
-build:windows --cxxopt=/std:c++20 --host_cxxopt=/std:c++20
 
 test --test_output=errors
 

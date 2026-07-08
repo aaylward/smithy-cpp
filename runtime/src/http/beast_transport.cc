@@ -202,14 +202,9 @@ Outcome<Unit> BeastServerTransport::Start(RequestHandler handler) {
   }
   const asio::ip::tcp::endpoint endpoint(address, static_cast<unsigned short>(options_.port));
   (void)state->acceptor.open(endpoint.protocol(), ec);
-#ifndef _WIN32
-  // Not set on Windows: SO_REUSEADDR there lets a second socket bind a port
-  // that is already in use (port hijacking), so conflicting Start()s would
-  // silently succeed.
   if (!ec) {
     (void)state->acceptor.set_option(asio::socket_base::reuse_address(true), ec);
   }
-#endif
   if (!ec) {
     (void)state->acceptor.bind(endpoint, ec);
   }

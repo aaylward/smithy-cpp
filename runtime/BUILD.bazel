@@ -64,6 +64,7 @@ cc_library(
     name = "http",
     srcs = [
         "src/http/headers.cc",
+        "src/http/http1.cc",
         "src/http/server_dispatch.cc",
         "src/http/socket_transport.cc",
         "src/http/trace_context.cc",
@@ -71,6 +72,7 @@ cc_library(
     ],
     hdrs = [
         "include/smithy/http/headers.h",
+        "include/smithy/http/http1.h",
         "include/smithy/http/loopback.h",
         "include/smithy/http/message.h",
         "include/smithy/http/server_dispatch.h",
@@ -146,6 +148,19 @@ cc_test(
     srcs = ["tests/http/socket_transport_test.cc"],
     copts = COPTS,
     tags = ["requires-network"],
+    deps = [
+        ":http",
+        "@googletest//:gtest_main",
+    ],
+)
+
+# Pure-parser twin of socket_transport_hostile_test: no sockets, so it runs
+# byte-exact on every platform including Windows.
+cc_test(
+    name = "http1_hostile_test",
+    size = "small",
+    srcs = ["tests/http/http1_hostile_test.cc"],
+    copts = COPTS,
     deps = [
         ":http",
         "@googletest//:gtest_main",

@@ -321,6 +321,14 @@ operation PutConstrained {
 
         @range(min: 1, max: 100)
         limit: Integer
+
+        @pattern("^[a-z0-9-]+$")
+        slug: String
+
+        // Catastrophic under a backtracking engine (ReDoS); the generated
+        // validator must evaluate it in linear time.
+        @pattern("^([0-9]+)+$")
+        evilDigits: String
     }
 
     output := {
@@ -349,6 +357,52 @@ apply PutConstrained @httpMalformedRequestTests([
                 assertion: {
                     contents: """
                         {"jsonrpc":"2.0","error":{"code":400,"message":"1 validation error detected. Value with length 0 at '/name' failed to satisfy constraint: Member must have length between 1 and 8, inclusive","data":{"__type":"smithy.framework#ValidationException","fieldList":[{"message":"Value with length 0 at '/name' failed to satisfy constraint: Member must have length between 1 and 8, inclusive","path":"/name"}]}},"id":9}"""
+                }
+            }
+        }
+    }
+    {
+        id: "JsonRpc2PatternMismatch"
+        documentation: "@pattern violations report the suite-exact message with the pattern text."
+        protocol: jsonRpc2
+        request: {
+            method: "POST"
+            uri: "/"
+            body: """
+                {"jsonrpc":"2.0","method":"PutConstrained","params":{"name":"ok","slug":"Not Valid!"},"id":10}"""
+            headers: { "content-type": "application/json" }
+        }
+        response: {
+            code: 200
+            headers: { "content-type": "application/json" }
+            body: {
+                mediaType: "application/json"
+                assertion: {
+                    contents: """
+                        {"jsonrpc":"2.0","error":{"code":400,"message":"1 validation error detected. Value at '/slug' failed to satisfy constraint: Member must satisfy regular expression pattern: ^[a-z0-9-]+$","data":{"__type":"smithy.framework#ValidationException","fieldList":[{"message":"Value at '/slug' failed to satisfy constraint: Member must satisfy regular expression pattern: ^[a-z0-9-]+$","path":"/slug"}]}},"id":10}"""
+                }
+            }
+        }
+    }
+    {
+        id: "JsonRpc2PatternReDoSInput"
+        documentation: "When the pattern is susceptible to catastrophic backtracking, the server answers promptly instead of hanging while evaluating it (linear-time engine)."
+        protocol: jsonRpc2
+        request: {
+            method: "POST"
+            uri: "/"
+            body: """
+                {"jsonrpc":"2.0","method":"PutConstrained","params":{"name":"ok","evilDigits":"00000000000000000000000000000000000000000000000000!"},"id":11}"""
+            headers: { "content-type": "application/json" }
+        }
+        response: {
+            code: 200
+            headers: { "content-type": "application/json" }
+            body: {
+                mediaType: "application/json"
+                assertion: {
+                    contents: """
+                        {"jsonrpc":"2.0","error":{"code":400,"message":"1 validation error detected. Value at '/evilDigits' failed to satisfy constraint: Member must satisfy regular expression pattern: ^([0-9]+)+$","data":{"__type":"smithy.framework#ValidationException","fieldList":[{"message":"Value at '/evilDigits' failed to satisfy constraint: Member must satisfy regular expression pattern: ^([0-9]+)+$","path":"/evilDigits"}]}},"id":11}"""
                 }
             }
         }

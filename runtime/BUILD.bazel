@@ -15,6 +15,7 @@ cc_library(
     srcs = [
         "src/core/base64.cc",
         "src/core/document_serde.cc",
+        "src/core/regex.cc",
         "src/core/text.cc",
         "src/core/timestamp.cc",
         "src/core/uuid.cc",
@@ -28,6 +29,7 @@ cc_library(
         "include/smithy/core/document_serde.h",
         "include/smithy/core/error.h",
         "include/smithy/core/outcome.h",
+        "include/smithy/core/regex.h",
         "include/smithy/core/text.h",
         "include/smithy/core/timestamp.h",
         "include/smithy/core/uuid.h",
@@ -427,6 +429,7 @@ cc_test(
         "tests/core/boxed_test.cc",
         "tests/core/core_test.cc",
         "tests/core/document_serde_test.cc",
+        "tests/core/regex_test.cc",
         "tests/core/timestamp_differential_test.cc",
         "tests/core/timestamp_test.cc",
         "tests/core/version_test.cc",

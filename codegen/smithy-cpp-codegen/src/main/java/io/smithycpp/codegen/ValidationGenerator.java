@@ -461,15 +461,20 @@ final class ValidationGenerator {
 
   private void writePatternCheck(
       CppWriter w, PatternTrait pattern, String valueExpr, String pathVar) {
+    rejectUnsupportedPattern(pattern);
     String variable = "kPattern" + patternCounter++;
-    w.addInclude("<regex>");
-    // Raw string literal keeps the regex byte-exact; the failure message needs
-    // C++ escaping instead.
+    w.addInclude("\"smithy/core/regex.h\"");
+    // smithy::Regex is a linear-time engine, so no pattern/input combination
+    // can backtrack catastrophically (ReDoS). The raw string literal keeps
+    // the regex byte-exact; the failure message needs C++ escaping instead.
+    // Compile failure (impossible for generator-accepted patterns) fails
+    // closed: every value is rejected rather than skipping the check.
     w.write(
-        "static const std::regex $L{R\"__smithy($L)__smithy\", std::regex::ECMAScript};",
+        "static const smithy::Outcome<smithy::Regex> $L ="
+            + " smithy::Regex::Compile(R\"__smithy($L)__smithy\");",
         variable,
         pattern.getValue());
-    w.openBlock("if (!std::regex_search($L, $L)) {", valueExpr, variable);
+    w.openBlock("if (!$L.ok() || !$L->Search($L)) {", variable, variable, valueExpr);
     w.write(
         "AddValidationFailure(failures, $L, \"Value at '\" + $L + \"' failed to satisfy "
             + "constraint: Member must satisfy regular expression pattern: \" + "
@@ -478,6 +483,60 @@ final class ValidationGenerator {
         pathVar,
         CppLiterals.stringLiteral(pattern.getValue()));
     w.closeBlock("}");
+  }
+
+  /**
+   * Rejects @pattern regexes the linear-time runtime engine cannot support — backreferences and
+   * lookaround are inherently backtracking constructs. Everything else ECMA-262 offers (classes,
+   * anchors, quantifiers, groups, alternation) compiles to the NFA. Failing here keeps the contract
+   * visible at generation time instead of surfacing as an always-failing validator.
+   */
+  private static void rejectUnsupportedPattern(PatternTrait pattern) {
+    String value = pattern.getValue();
+    boolean inClass = false;
+    for (int i = 0; i < value.length(); i++) {
+      char c = value.charAt(i);
+      if (c == '\\') {
+        char next = i + 1 < value.length() ? value.charAt(i + 1) : '\0';
+        if (!inClass && next >= '1' && next <= '9') {
+          throw new software.amazon.smithy.codegen.core.CodegenException(
+              "@pattern "
+                  + value
+                  + " (at "
+                  + pattern.getSourceLocation()
+                  + ") uses a backreference (\\"
+                  + next
+                  + "), which the linear-time ReDoS-safe engine cannot support; rewrite the"
+                  + " pattern to repeat the group instead of referencing its capture");
+        }
+        i++; // Skip the escaped character.
+        continue;
+      }
+      if (inClass) {
+        inClass = c != ']';
+        continue;
+      }
+      if (c == '[') {
+        inClass = true;
+        continue;
+      }
+      if (c == '(' && i + 1 < value.length() && value.charAt(i + 1) == '?') {
+        char kind = i + 2 < value.length() ? value.charAt(i + 2) : '\0';
+        boolean lookbehind =
+            kind == '<'
+                && i + 3 < value.length()
+                && (value.charAt(i + 3) == '=' || value.charAt(i + 3) == '!');
+        if (kind == '=' || kind == '!' || lookbehind) {
+          throw new software.amazon.smithy.codegen.core.CodegenException(
+              "@pattern "
+                  + value
+                  + " (at "
+                  + pattern.getSourceLocation()
+                  + ") uses lookaround, which the linear-time ReDoS-safe engine cannot support;"
+                  + " rewrite the pattern to match the text directly");
+        }
+      }
+    }
   }
 
   private void writeUniqueItemsCheck(CppWriter w, String valueExpr, String pathVar) {

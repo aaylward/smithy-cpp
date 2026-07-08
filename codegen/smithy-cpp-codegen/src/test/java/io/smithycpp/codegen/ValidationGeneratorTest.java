@@ -9,8 +9,11 @@ import software.amazon.smithy.model.Model;
 import software.amazon.smithy.model.node.Node;
 
 /**
- * Direct assertions on ValidationGenerator's emitted constraint checks. The messages must stay
- * suite-exact (smithy.framework#ValidationException conformance) and the numeric bounds must use
+ * Direct assertions on ValidationGenerator's emitted constraint checks. The message expectations
+ * are NOT derived from this generator's output: they are the exact texts of the official Smithy
+ * validation conformance suite (smithy-lang/smithy, smithy-aws-protocol-tests
+ * model/restJson1/validation/malformed-*.smithy), so a generator that drifts from the upstream
+ * convention fails here even though it agrees with itself. The numeric bounds must additionally use
  * compilable spellings — the int64-min literal was one of issue #43's compile breaks.
  */
 class ValidationGeneratorTest {
@@ -111,7 +114,10 @@ class ValidationGeneratorTest {
   void lengthCountsCodePointsForStringsAndElementsForCollections() {
     String server = generateServer(CONSTRAINED_MODEL);
     // Strings measure UTF-8 code points, not bytes; collections measure
-    // elements. A min-only @length reports the one-sided message.
+    // elements. A min-only @length reports the one-sided message — the
+    // upstream suite's exact form ("Member must have length greater than or
+    // equal to N", malformed-length.smithy), not a synthesized
+    // between-1-and-int64max range.
     assertTrue(server.contains("smithy::Utf8CodePointCount(value.name)"), server);
     assertTrue(server.contains("(*value.tags).size()"), server);
     assertTrue(server.contains("Member must have length greater than or equal to 1"), server);

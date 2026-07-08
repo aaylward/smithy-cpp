@@ -3,6 +3,11 @@
 Smithy code generators for C++ — generate idiomatic C++ clients and servers from
 [Smithy](https://smithy.io) models, plus the shared C++ runtime they build on.
 
+**Start here → [docs/quickstart.md](docs/quickstart.md):** empty directory to a generated C++
+client integration-testing a generated C++ server, in one Bazel module — no prior Smithy
+experience assumed. Day 2 (evolving the model) is
+[docs/model-evolution.md](docs/model-evolution.md).
+
 - **Vendor-neutral:** implements Smithy and its protocol specs; nothing AWS-specific. The REST
   protocol is [`alloy#simpleRestJson`](https://disneystreaming.github.io/smithy4s/docs/protocols/simple-rest-json/overview/)
   (the neutral protocol smithy4s uses — so smithy-cpp clients and smithy4s services interoperate).

@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "smithy/core/document.h"
+#include "smithy/core/regex.h"
 #include "smithy/core/text.h"
 #include "smithy/http/headers.h"
 #include "smithy/json/json.h"
@@ -94,6 +95,20 @@ void ValidatePutConstrainedInput(const PutConstrainedInput& value, const std::st
     const std::string member_path = path + "/limit";
     if ((*value.limit) < 1 || (*value.limit) > 100) {
       AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must be between 1 and 100, inclusive");
+    }
+  }
+  if (value.slug.has_value()) {
+    const std::string member_path = path + "/slug";
+    static const smithy::Outcome<smithy::Regex> kPattern0 = smithy::Regex::Compile(R"__smithy(^[a-z0-9-]+$)__smithy");
+    if (!kPattern0.ok() || !kPattern0->Search((*value.slug))) {
+      AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy regular expression pattern: " + std::string("^[a-z0-9-]+$"));
+    }
+  }
+  if (value.evilDigits.has_value()) {
+    const std::string member_path = path + "/evilDigits";
+    static const smithy::Outcome<smithy::Regex> kPattern1 = smithy::Regex::Compile(R"__smithy(^([0-9]+)+$)__smithy");
+    if (!kPattern1.ok() || !kPattern1->Search((*value.evilDigits))) {
+      AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy regular expression pattern: " + std::string("^([0-9]+)+$"));
     }
   }
 }

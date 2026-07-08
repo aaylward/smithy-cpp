@@ -81,6 +81,13 @@ responds with the standard 400 `ValidationException` wire shape (`message` summa
 the exact message formats the official validation conformance suite pins. `@internal` enum
 members stay accepted on the wire but are omitted from the advertised value set.
 
+`@pattern` evaluates on a linear-time NFA engine (`smithy/core/regex.h`), so no pattern/input
+combination can backtrack catastrophically — the classic ReDoS pattern `^([0-9]+)+$` validates
+request-sized inputs in microseconds instead of hanging the dispatch thread. The engine covers
+the ECMA-262 subset Smithy patterns use; backreferences and lookaround (inherently
+backtracking constructs) are rejected at generation time with an error naming the shape and
+the fix.
+
 ## Conformance
 
 Generated servers pass the official server-mode `httpRequestTests`/`httpResponseTests` suites
@@ -101,5 +108,4 @@ serialization error) — see [production-guide.md](production-guide.md).
 
 Nested `@required` absences as `fieldList` entries and a server-strict serde variant (clients
 must skip null dense-map values and accept UTC-offset timestamps in responses; servers share
-that serde today), ReDoS-safe `@pattern` matching (`std::regex` backtracks, so the suite's
-deliberately catastrophic pattern is excluded), and `@streaming` payloads (Phase 8).
+that serde today), and `@streaming` payloads (Phase 8).

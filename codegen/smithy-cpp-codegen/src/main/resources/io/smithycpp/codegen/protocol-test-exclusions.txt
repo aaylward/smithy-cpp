@@ -26,9 +26,6 @@ smithy.protocoltests.rpcv2Cbor#RpcV2Protocol server-request RpcV2CborSupportsNaN
 
 # Absent query list params deserialize as unset members, not engaged empty lists.
 
-# std::regex is a backtracking engine, so the deliberately catastrophic
-# pattern ^([0-9]+)+$ hangs; ReDoS-safe @pattern matching needs a linear-time
-# regex engine (tracked in PLAN).
 
 # Nested @required absences (inside collections/structures) surface as strict
 # deserialization errors without JSON-pointer paths; reporting them as fieldList

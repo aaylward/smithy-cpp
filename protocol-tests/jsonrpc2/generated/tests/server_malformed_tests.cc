@@ -173,4 +173,32 @@ TEST(JsonRpc2ProtocolServerMalformedTest, JsonRpc2ValidationFailure) {
   EXPECT_TRUE(smithy::testing::JsonBodyEquals("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":400,\"message\":\"1 validation error detected. Value with length 0 at '/name' failed to satisfy constraint: Member must have length between 1 and 8, inclusive\",\"data\":{\"__type\":\"smithy.framework#ValidationException\",\"fieldList\":[{\"message\":\"Value with length 0 at '/name' failed to satisfy constraint: Member must have length between 1 and 8, inclusive\",\"path\":\"/name\"}]}},\"id\":9}", response.body)) << response.body;
 }
 
+// @pattern violations report the suite-exact message with the pattern text.
+TEST(JsonRpc2ProtocolServerMalformedTest, JsonRpc2PatternMismatch) {
+  JsonRpc2ProtocolServer server(std::make_shared<RecordingHandler>());
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = "/";
+  request.headers.Set("content-type", "application/json");
+  request.body = "{\"jsonrpc\":\"2.0\",\"method\":\"PutConstrained\",\"params\":{\"name\":\"ok\",\"slug\":\"Not Valid!\"},\"id\":10}";
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  EXPECT_EQ(response.status, 200) << response.body;
+  EXPECT_EQ(response.headers.Get("content-type").value_or("<missing>"), "application/json");
+  EXPECT_TRUE(smithy::testing::JsonBodyEquals("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":400,\"message\":\"1 validation error detected. Value at '/slug' failed to satisfy constraint: Member must satisfy regular expression pattern: ^[a-z0-9-]+$\",\"data\":{\"__type\":\"smithy.framework#ValidationException\",\"fieldList\":[{\"message\":\"Value at '/slug' failed to satisfy constraint: Member must satisfy regular expression pattern: ^[a-z0-9-]+$\",\"path\":\"/slug\"}]}},\"id\":10}", response.body)) << response.body;
+}
+
+// When the pattern is susceptible to catastrophic backtracking, the server answers promptly instead of hanging while evaluating it (linear-time engine).
+TEST(JsonRpc2ProtocolServerMalformedTest, JsonRpc2PatternReDoSInput) {
+  JsonRpc2ProtocolServer server(std::make_shared<RecordingHandler>());
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = "/";
+  request.headers.Set("content-type", "application/json");
+  request.body = "{\"jsonrpc\":\"2.0\",\"method\":\"PutConstrained\",\"params\":{\"name\":\"ok\",\"evilDigits\":\"00000000000000000000000000000000000000000000000000!\"},\"id\":11}";
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  EXPECT_EQ(response.status, 200) << response.body;
+  EXPECT_EQ(response.headers.Get("content-type").value_or("<missing>"), "application/json");
+  EXPECT_TRUE(smithy::testing::JsonBodyEquals("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":400,\"message\":\"1 validation error detected. Value at '/evilDigits' failed to satisfy constraint: Member must satisfy regular expression pattern: ^([0-9]+)+$\",\"data\":{\"__type\":\"smithy.framework#ValidationException\",\"fieldList\":[{\"message\":\"Value at '/evilDigits' failed to satisfy constraint: Member must satisfy regular expression pattern: ^([0-9]+)+$\",\"path\":\"/evilDigits\"}]}},\"id\":11}", response.body)) << response.body;
+}
+
 }  // namespace smithy::protocoltests::jsonrpc2

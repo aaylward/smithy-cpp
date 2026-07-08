@@ -73,6 +73,8 @@ struct NoArgsOutput {
 struct PutConstrainedInput {
   std::string name{};
   std::optional<std::int32_t> limit{};
+  std::optional<std::string> slug{};
+  std::optional<std::string> evilDigits{};
 
   friend bool operator==(const PutConstrainedInput&, const PutConstrainedInput&) = default;
 };

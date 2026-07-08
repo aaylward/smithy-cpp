@@ -11,6 +11,7 @@ FUZZ_TARGETS = {
         "//runtime:cbor",
         "//runtime:core",
     ],
+    "regex": ["//runtime:core"],
     "uri": ["//runtime:http"],
     "server_dispatch": [
         "//examples/weather/generated:server",

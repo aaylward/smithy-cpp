@@ -178,6 +178,47 @@ class CppCodegenPluginTest {
   }
 
   @Test
+  void rejectsBacktrackingOnlyPatterns() {
+    // Backreferences and lookaround need a backtracking engine; the
+    // linear-time ReDoS-safe matcher refuses them at generation time.
+    Model model =
+        Model.assembler()
+            .discoverModels(CppCodegenPluginTest.class.getClassLoader())
+            .addUnparsedModel(
+                "backref.smithy",
+                """
+                $version: "2.0"
+                namespace test.redos
+                use smithy.cpp.protocols#jsonRpc2
+
+                @jsonRpc2
+                service Svc { version: "1", operations: [Op] }
+                operation Op {
+                    input := {
+                        @pattern("^(a+)\\\\1$")
+                        doubled: String
+                    }
+                }
+                """)
+            .assemble()
+            .unwrap();
+    PluginContext context =
+        PluginContext.builder()
+            .fileManifest(new MockManifest())
+            .model(model)
+            .settings(
+                Node.objectNodeBuilder()
+                    .withMember("service", "test.redos#Svc")
+                    .withMember("namespace", "test::redos")
+                    .build())
+            .build();
+    CodegenException error =
+        assertThrows(CodegenException.class, () -> new CppCodegenPlugin().execute(context));
+    assertTrue(error.getMessage().contains("backreference"));
+    assertTrue(error.getMessage().contains("^(a+)\\1$"));
+  }
+
+  @Test
   void rejectsRecursionThroughUnionMembers() {
     Model model =
         Model.assembler()

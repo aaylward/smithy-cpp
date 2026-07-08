@@ -372,6 +372,12 @@ smithy::Document SerializePutConstrainedInput(const PutConstrainedInput& value) 
   if (value.limit.has_value()) {
     map.emplace("limit", smithy::Document(static_cast<std::int64_t>((*value.limit))));
   }
+  if (value.slug.has_value()) {
+    map.emplace("slug", smithy::Document((*value.slug)));
+  }
+  if (value.evilDigits.has_value()) {
+    map.emplace("evilDigits", smithy::Document((*value.evilDigits)));
+  }
   return smithy::Document(std::move(map));
 }
 
@@ -394,6 +400,24 @@ smithy::Outcome<PutConstrainedInput> DeserializePutConstrainedInput(const smithy
       if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("PutConstrainedInput.limit: value out of range");
       parsed_member = static_cast<std::int32_t>(member->as_int());
       out.limit = std::move(parsed_member);
+    }
+  }
+  {
+    const smithy::Document* member = doc.Find("slug");
+    if (member != nullptr && !member->is_null()) {
+      std::string parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("PutConstrainedInput.slug: unexpected type on the wire");
+      parsed_member = member->as_string();
+      out.slug = std::move(parsed_member);
+    }
+  }
+  {
+    const smithy::Document* member = doc.Find("evilDigits");
+    if (member != nullptr && !member->is_null()) {
+      std::string parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("PutConstrainedInput.evilDigits: unexpected type on the wire");
+      parsed_member = member->as_string();
+      out.evilDigits = std::move(parsed_member);
     }
   }
   return out;

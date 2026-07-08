@@ -64,6 +64,7 @@ cc_library(
     name = "http",
     srcs = [
         "src/http/headers.cc",
+        "src/http/server_dispatch.cc",
         "src/http/socket_transport.cc",
         "src/http/trace_context.cc",
         "src/http/uri.cc",
@@ -72,6 +73,7 @@ cc_library(
         "include/smithy/http/headers.h",
         "include/smithy/http/loopback.h",
         "include/smithy/http/message.h",
+        "include/smithy/http/server_dispatch.h",
         "include/smithy/http/socket_transport.h",
         "include/smithy/http/trace_context.h",
         "include/smithy/http/transport.h",
@@ -127,7 +129,10 @@ cc_test(
 cc_test(
     name = "http_test",
     size = "small",
-    srcs = ["tests/http/http_test.cc"],
+    srcs = [
+        "tests/http/http_test.cc",
+        "tests/http/server_dispatch_test.cc",
+    ],
     copts = COPTS,
     deps = [
         ":http",

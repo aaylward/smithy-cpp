@@ -3,6 +3,7 @@
 
 #include <utility>
 
+#include "smithy/http/server_dispatch.h"
 #include "smithy/http/transport.h"
 
 namespace smithy::http {
@@ -23,7 +24,7 @@ class Loopback : public HttpClient, public HttpServerTransport {
   // HttpClient:
   Outcome<HttpResponse> Send(const HttpRequest& request) override {
     if (!handler_) return Error::Transport("loopback: no handler installed", /*retryable=*/false);
-    return handler_(request);
+    return InvokeHandlerGuarded(handler_, request);
   }
 
  private:

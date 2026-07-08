@@ -19,6 +19,8 @@
 #include <unistd.h>
 #endif
 
+#include "smithy/http/server_dispatch.h"
+
 namespace smithy::http {
 namespace {
 
@@ -297,7 +299,7 @@ void SocketHttpServer::AcceptLoop() {
         request.target = line.substr(first + 1, second - first - 1);
         request.headers = std::move(message->headers);
         request.body = std::move(message->body);
-        response = handler_(request);
+        response = InvokeHandlerGuarded(handler_, request);
       }
     } else {
       response = HttpResponse{400, {}, message.error().message()};

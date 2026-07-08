@@ -86,6 +86,19 @@ TEST(CborTest, DecodesTag1Timestamps) {
   EXPECT_EQ(fractional->as_timestamp().value.epoch_milliseconds(), 1363896240500);
 }
 
+// A ~9-byte tag-1 payload whose integer seconds, scaled to milliseconds, would
+// overflow int64 (the old `as_int() * 1000` was undefined behavior). Likewise a
+// tag-1 double far outside the representable range. Both must be a clean
+// decode error, not UB.
+TEST(CborTest, RejectsOutOfRangeTag1TimestampsWithoutOverflow) {
+  // c1 1b 7fffffffffffffff = tag 1 + uint64 9223372036854775807 seconds.
+  EXPECT_FALSE(Decode(FromHex("c11b7fffffffffffffff")).ok());
+  // c1 3b 7fffffffffffffff = tag 1 + a huge negative integer.
+  EXPECT_FALSE(Decode(FromHex("c13b7fffffffffffffff")).ok());
+  // c1 fb 7fe0000000000000 = tag 1 + double ~1.8e308 (near DBL_MAX).
+  EXPECT_FALSE(Decode(FromHex("c1fb7fe0000000000000")).ok());
+}
+
 TEST(CborTest, RoundTripsComplexDocument) {
   DocumentMap map;
   map.emplace("null", Document(nullptr));

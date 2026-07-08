@@ -19,7 +19,7 @@ Outcome<Timestamp> TimestampFromDocument(const Document& doc, TimestampFormat fo
     if (format != TimestampFormat::kEpochSeconds) {
       return Error::Serialization("timestamp: numeric value for a string-formatted timestamp");
     }
-    return Timestamp::FromEpochSeconds(doc.AsNumber());
+    return Timestamp::FromEpochSecondsChecked(doc.AsNumber());
   }
   if (doc.is_string()) {
     if (format == TimestampFormat::kEpochSeconds) {

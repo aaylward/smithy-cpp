@@ -19,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include "smithy/http/server_dispatch.h"
 #include "smithy/http/uri.h"
 
 namespace smithy::http {
@@ -137,10 +138,11 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
           self->active.fetch_add(1);
           const bool keep_alive = parser->get().keep_alive() && !self->stopping;
           const HttpRequest request = ToSmithyRequest(parser->get());
-          // Handlers are synchronous for now (ADR-0003 keeps them exception-free);
-          // they run on the pool thread that completed the read.
-          const HttpResponse response =
-              self->handler ? self->handler(request) : HttpResponse{503, {}, ""};
+          // Handlers run synchronously on the pool thread that completed the
+          // read. InvokeHandlerGuarded contains any exception the handler
+          // throws as a 500 — otherwise it would unwind out of io_context::run
+          // and terminate the process, dropping every in-flight request.
+          const HttpResponse response = InvokeHandlerGuarded(self->handler, request);
           auto wire = std::make_shared<bhttp::response<bhttp::string_body>>(
               ToWireResponse(response, keep_alive));
           auto& wire_stream = *stream;

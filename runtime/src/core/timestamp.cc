@@ -213,13 +213,46 @@ Outcome<Timestamp> ParseEpochSeconds(std::string_view text) {
   errno = 0;
   const double seconds = std::strtod(buffer.c_str(), nullptr);
   if (errno == ERANGE || !std::isfinite(seconds)) return invalid();
-  return Timestamp::FromEpochSeconds(seconds);
+  return Timestamp::FromEpochSecondsChecked(seconds);
+}
+
+// Epoch-milliseconds bounds of the RFC 3339 / IMF-fixdate representable window
+// (0000-01-01T00:00:00.000Z .. 9999-12-31T23:59:59.999Z). Instants outside it
+// both overflow the arithmetic below and format to text no conformant peer can
+// parse, so untrusted numbers beyond it are rejected rather than corrupted.
+constexpr std::int64_t kMinRepresentableMs = -62167219200000;  // year 0000-01-01
+constexpr std::int64_t kMaxRepresentableMs = 253402300799999;  // year 9999-12-31T23:59:59.999
+
+Outcome<Timestamp> CheckedFromMs(std::int64_t ms) {
+  if (ms < kMinRepresentableMs || ms > kMaxRepresentableMs) {
+    return Error::Serialization("timestamp: instant out of representable range (year 0000-9999)");
+  }
+  return Timestamp::FromEpochMilliseconds(ms);
 }
 
 }  // namespace
 
 Timestamp Timestamp::FromEpochSeconds(double seconds) {
   return Timestamp(static_cast<std::int64_t>(std::llround(seconds * 1000.0)));
+}
+
+Outcome<Timestamp> Timestamp::FromEpochSecondsChecked(double seconds) {
+  if (!std::isfinite(seconds)) {
+    return Error::Serialization("timestamp: epoch-seconds is not finite");
+  }
+  // Bound the value before scaling so neither `seconds * 1000` nor the cast to
+  // int64 can overflow; CheckedFromMs then applies the exact year window.
+  constexpr double kMaxSeconds = 253402300800.0;  // just past year 9999
+  constexpr double kMinSeconds = -62167219200.0;  // year 0000-01-01
+  if (seconds < kMinSeconds || seconds > kMaxSeconds) {
+    return Error::Serialization(
+        "timestamp: epoch-seconds out of representable range (year 0000-9999)");
+  }
+  return CheckedFromMs(static_cast<std::int64_t>(std::llround(seconds * 1000.0)));
+}
+
+Outcome<Timestamp> Timestamp::FromEpochMillisecondsChecked(std::int64_t ms) {
+  return CheckedFromMs(ms);
 }
 
 std::string Timestamp::Format(TimestampFormat format) const {

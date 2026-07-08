@@ -47,16 +47,23 @@ jobs:
           CXX: ${{ matrix.cxx }}
         run: bazelisk test //... --config=ci
 
+  # Linux catches most UB, but the transport/socket layer has Apple-specific
+  # paths (SO_NOSIGPIPE, libc++) that linux/clang never exercises under a
+  # sanitizer (issue #48). MSVC ASan under Bazel remains future work.
   sanitizers:
-    name: bazel (asan + ubsan)
-    runs-on: ubuntu-24.04
+    name: bazel (asan + ubsan, ${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
       - uses: bazel-contrib/setup-bazel@0.19.0
         with:
           bazelisk-cache: true
           repository-cache: true
-          disk-cache: asan-ubsan
+          disk-cache: asan-ubsan-${{ matrix.os }}
       - name: bazel test with sanitizers
         env:
           CC: clang

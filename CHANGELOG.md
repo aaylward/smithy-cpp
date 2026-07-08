@@ -100,6 +100,21 @@ via `git_override` until then.
   directions (client encode/decode, server decode/echo), plus the reject
   cells (empty, multi-member, unknown-member, null-member) and the `__type`
   discriminator tolerance.
+- **Union member-type gauntlet** (`protocol-tests/unions/` + issue #56):
+  a generated-in-graph UnionGauntlet service extends the union cells to
+  blob, timestamp, list, map, enum, intEnum, and recursive-struct members,
+  each pinned in four directions per protocol, with a hand-derived
+  byte-exact request vector (RFC 8949 deterministic encoding / compact
+  sorted JSON) and the error-shape cell: a modeled error whose union member
+  rides next to its `__type` discriminator, both wire-inspected and
+  round-tripped into the typed error detail. The existing reject cells now
+  pin their diagnoses (exactly-one-member, unknown-member, non-map), not
+  just the rejection; the `__type` tolerance is documented in
+  docs/generated-types.md as the serde contract.
+- **Sanitizers run on macOS too**: the asan+ubsan CI job is now a
+  linux/clang + macos/apple-clang matrix, covering the transport layer's
+  Apple-specific paths (SO_NOSIGPIPE, libc++). MSVC ASan remains future
+  work.
 - **Code-coverage tooling**: a `coverage` CI job runs
   `bazel coverage --combined_report=lcov` over the runtime, prints the
   per-module summary, and uploads the rendered HTML report as an artifact;

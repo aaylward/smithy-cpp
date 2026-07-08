@@ -1,0 +1,73 @@
+load("@rules_cc//cc:defs.bzl", "cc_test")
+load("//bazel:defs.bzl", "smithy_cpp_client_library", "smithy_cpp_server_library")
+
+# The compile-the-output harness (issue #48): run the real generator on the
+# hostile gauntlet model and *compile* what comes out, for every protocol, in
+# both client and server mode. The Java unit suite asserts on source
+# substrings; this package is what turns "the generator emitted uncompilable
+# C++" (issue #43's whole bug class) into an ordinary CI failure. It is also
+# the one place SmithyCppGenerate executes for shapes no golden fixture pins.
+
+MODEL = ["model/gauntlet.smithy"]
+
+smithy_cpp_client_library(
+    name = "gauntlet_rest_client",
+    srcs = MODEL + ["model/bindings/simplerestjson.smithy"],
+    namespace = "compile::gauntlet::rest",
+    service = "compile.gauntlet#Gauntlet",
+)
+
+smithy_cpp_server_library(
+    name = "gauntlet_rest_server",
+    srcs = MODEL + ["model/bindings/simplerestjson.smithy"],
+    namespace = "compile::gauntlet::rest",
+    service = "compile.gauntlet#Gauntlet",
+)
+
+smithy_cpp_client_library(
+    name = "gauntlet_cbor_client",
+    srcs = MODEL + ["model/bindings/rpcv2cbor.smithy"],
+    namespace = "compile::gauntlet::cbor",
+    service = "compile.gauntlet#Gauntlet",
+)
+
+smithy_cpp_server_library(
+    name = "gauntlet_cbor_server",
+    srcs = MODEL + ["model/bindings/rpcv2cbor.smithy"],
+    namespace = "compile::gauntlet::cbor",
+    service = "compile.gauntlet#Gauntlet",
+)
+
+smithy_cpp_client_library(
+    name = "gauntlet_jsonrpc_client",
+    srcs = MODEL + ["model/bindings/jsonrpc2.smithy"],
+    namespace = "compile::gauntlet::jsonrpc",
+    service = "compile.gauntlet#Gauntlet",
+)
+
+smithy_cpp_server_library(
+    name = "gauntlet_jsonrpc_server",
+    srcs = MODEL + ["model/bindings/jsonrpc2.smithy"],
+    namespace = "compile::gauntlet::jsonrpc",
+    service = "compile.gauntlet#Gauntlet",
+)
+
+# Linking the test forces every generated TU above through the compiler; the
+# assertions then spot-check the escaping contract (keyword members get a
+# trailing underscore, hostile enum values round-trip, int64-min defaults).
+cc_test(
+    name = "gauntlet_compile_test",
+    size = "small",
+    srcs = ["gauntlet_compile_test.cc"],
+    deps = [
+        ":gauntlet_cbor_client",
+        ":gauntlet_cbor_server",
+        ":gauntlet_jsonrpc_client",
+        ":gauntlet_jsonrpc_server",
+        ":gauntlet_rest_client",
+        ":gauntlet_rest_server",
+        "//runtime:client",
+        "//runtime:http",
+        "@googletest//:gtest_main",
+    ],
+)

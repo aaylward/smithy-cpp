@@ -35,6 +35,15 @@ class Regex {
   // match anywhere in text unless the pattern anchors itself with ^/$.
   bool Search(std::string_view text) const;
 
+  // Test instrumentation, not part of the supported API: Search while
+  // counting VM work (instructions processed, epsilon closures included).
+  // The stamp-based dedup runs each instruction at most once per input
+  // position, so steps <= ProgramSize() x (text.size() + 2) for every
+  // pattern/input pair — the linear-time property as a deterministic
+  // assertion instead of a wall-clock bound.
+  bool Search(std::string_view text, std::size_t* steps) const;
+  std::size_t ProgramSize() const { return program_.size(); }
+
   // Implementation detail, public only so the compiler/parser in regex.cc
   // can name it; not part of the supported API.
   struct Inst {
@@ -63,9 +72,10 @@ class Regex {
 
   // Adds pc (following epsilon transitions and pos-applicable assertions) to
   // the thread list; returns true when a kMatch instruction is reached.
+  // steps, when non-null, counts each instruction processed.
   bool AddThread(std::vector<std::uint32_t>* list, std::vector<std::uint32_t>* seen_stamp,
-                 std::uint32_t stamp, std::uint32_t pc, std::string_view text,
-                 std::size_t pos) const;
+                 std::uint32_t stamp, std::uint32_t pc, std::string_view text, std::size_t pos,
+                 std::size_t* steps) const;
 
   std::vector<Inst> program_;
   std::vector<std::bitset<256>> classes_;

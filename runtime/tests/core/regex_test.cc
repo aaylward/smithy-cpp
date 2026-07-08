@@ -2,7 +2,7 @@
 
 #include <gtest/gtest.h>
 
-#include <chrono>
+#include <cstddef>
 #include <random>
 #include <regex>
 #include <string>
@@ -127,26 +127,33 @@ TEST(RegexTest, UnsupportedConstructsFailAtCompileTime) {
 
 // The whole point: the deliberately catastrophic pattern from the protocol
 // test suites evaluates in linear time. Under a backtracking engine this
-// input takes longer than the age of the universe; here it must be
-// effectively instant (the generous bound keeps slow CI machines green).
+// input explores ~2^100000 paths; the Pike VM's stamp dedup runs each
+// instruction at most once per input position, so the step count is bounded
+// by program size x (input size + 2). Asserting on the counter keeps the
+// bound deterministic — a loaded CI runner can't flake it the way a
+// wall-clock limit could.
 TEST(RegexTest, CatastrophicPatternIsLinear) {
   auto re = smithy::Regex::Compile("^([0-9]+)+$");
   ASSERT_TRUE(re.ok());
   std::string evil(100000, '1');
   evil.push_back('!');
-  const auto start = std::chrono::steady_clock::now();
-  EXPECT_FALSE(re->Search(evil));
-  const auto elapsed = std::chrono::steady_clock::now() - start;
-  EXPECT_LT(elapsed, std::chrono::seconds(5));
+  std::size_t steps = 0;
+  EXPECT_FALSE(re->Search(evil, &steps));
+  EXPECT_LE(steps, re->ProgramSize() * (evil.size() + 2));
   std::string good(100000, '7');
   EXPECT_TRUE(re->Search(good));
 }
 
 TEST(RegexTest, MoreNestedQuantifierBombs) {
   std::string as(50000, 'a');
-  EXPECT_FALSE(Search("^(a+)+$", as + "b"));
-  EXPECT_FALSE(Search("^(a|a)+$", as + "b"));
-  EXPECT_FALSE(Search("^(a*)*$", as + "b"));
+  const std::string bomb = as + "b";
+  for (const char* pattern : {"^(a+)+$", "^(a|a)+$", "^(a*)*$"}) {
+    auto re = smithy::Regex::Compile(pattern);
+    ASSERT_TRUE(re.ok()) << pattern;
+    std::size_t steps = 0;
+    EXPECT_FALSE(re->Search(bomb, &steps)) << pattern;
+    EXPECT_LE(steps, re->ProgramSize() * (bomb.size() + 2)) << pattern;
+  }
   EXPECT_TRUE(Search("^(a+)+$", as));
 }
 

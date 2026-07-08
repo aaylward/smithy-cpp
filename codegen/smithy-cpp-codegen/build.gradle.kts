@@ -180,6 +180,11 @@ tasks.register("generateFixtures") {
 
 tasks.withType<Test>().configureEach {
     systemProperty("smithycpp.repoRoot", repoRoot.absolutePath)
+    // The golden-audit test cross-checks the checked-in protocol-test goldens
+    // against the upstream suite definitions; the suite jars stay off the test
+    // classpath (so ordinary tests don't assemble them) and are handed over as
+    // paths instead.
+    systemProperty("smithycpp.protocolTestModels", protocolTestModels.asPath)
 }
 
 dependencies {

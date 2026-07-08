@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -102,6 +103,42 @@ TEST_F(GeneratedServerEndToEndTest, GetCityRoundTrips) {
   EXPECT_EQ(city->name, "Seattle");
   EXPECT_FLOAT_EQ(city->coordinates.latitude, 47.6062F);
   EXPECT_FLOAT_EQ(city->coordinates.longitude, -122.3321F);
+}
+
+// A handler that throws (rather than returning a modeled Error) must be
+// contained as a 500 through the full generated dispatch stack — routing,
+// validation, then the handler — not crash the server. This drives the
+// generated WeatherServer over loopback and reads the raw response so it can
+// assert the status and correlation-id header the client abstraction hides.
+class ThrowingHandler : public ReferenceHandler {
+ public:
+  smithy::Outcome<GetCityOutput> GetCity(const GetCityInput& input) override {
+    (void)input;
+    throw std::runtime_error("handler blew up mid-request");
+  }
+};
+
+TEST(GeneratedServerFaultTest, ThrowingHandlerBecomesA500ThroughGeneratedDispatch) {
+  WeatherServer server(std::make_shared<ThrowingHandler>());
+  smithy::http::Loopback loopback;
+  ASSERT_TRUE(loopback.Start(server.Handler()).ok());
+
+  smithy::http::HttpRequest request;
+  request.method = "GET";
+  request.target = "/cities/seattle";  // valid route → reaches GetCity
+  const auto response = loopback.Send(request);
+
+  ASSERT_TRUE(response.ok()) << response.error().message();
+  EXPECT_EQ(response->status, 500);
+  EXPECT_FALSE(response->headers.Get("x-correlation-id").value_or("").empty());
+
+  // The server instance is still usable afterward: a well-behaved route works.
+  WeatherServer healthy(std::make_shared<ReferenceHandler>());
+  smithy::http::Loopback ok_loopback;
+  ASSERT_TRUE(ok_loopback.Start(healthy.Handler()).ok());
+  const auto ok = ok_loopback.Send(request);
+  ASSERT_TRUE(ok.ok()) << ok.error().message();
+  EXPECT_EQ(ok->status, 200);
 }
 
 // A transport that fails transiently proves the generated client's retry

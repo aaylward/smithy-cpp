@@ -115,6 +115,19 @@ via `git_override` until then.
   linux/clang + macos/apple-clang matrix, covering the transport layer's
   Apple-specific paths (SO_NOSIGPIPE, libc++). MSVC ASan remains future
   work.
+- **Generator-class unit tests**: direct Java suites for the previously
+  untested generator internals — CppLiterals (the issue-#43 escaping
+  chokepoint: octal escapes, int64-min idiom, float literal typing),
+  CppReservedWords (keyword vs macro boundary), ProtocolSupport bounds,
+  CppSettings validation, MemberDefaults (the @default/@input/@required
+  semantics matrix), RecursionIndex (boxing decisions and refused cycles),
+  plus emitted-source suites for SerdeGenerator (required-member errors,
+  dense-null rejection, union exactly-one arithmetic, @timestampFormat),
+  ValidationGenerator (suite-exact messages, compilable bounds, one-time
+  pattern compilation, code-point vs element length), and
+  BuildFileGenerator (target set per mode, runtime target wiring,
+  emitBuildFile). 43 new tests; generator unit coverage was 2 of 31
+  classes before this.
 - **Code-coverage tooling**: a `coverage` CI job runs
   `bazel coverage --combined_report=lcov` over the runtime, prints the
   per-module summary, and uploads the rendered HTML report as an artifact;

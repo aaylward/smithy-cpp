@@ -157,31 +157,36 @@ TEST_F(UnionJsonRpc2ClientTest, DecodesEachVariantFromAResultEnvelope) {
 }
 
 TEST_F(UnionJsonRpc2ClientTest, RejectsInvalidUnionsInResultEnvelopes) {
+  // Each cell pins its diagnosis, not just the rejection: a union declined
+  // for the wrong reason would mask the exactly-one-member rule.
   const struct {
     smithy::Document wire;
     const char* why;
+    const char* diagnosis;
   } cells[] = {
-      {smithy::Document(smithy::DocumentMap{}), "empty union"},
+      {smithy::Document(smithy::DocumentMap{}), "empty union", "expected exactly one union member"},
       {[] {
          smithy::DocumentMap map;
          map.emplace("text", smithy::Document("a"));
          map.emplace("count", smithy::Document(std::int64_t{1}));
          return smithy::Document(std::move(map));
        }(),
-       "two members set"},
+       "two members set", "expected exactly one union member"},
       {[] {
          smithy::DocumentMap map;
          map.emplace("futureMember", smithy::Document(std::int64_t{1}));
          return smithy::Document(std::move(map));
        }(),
-       "unknown member"},
-      {smithy::Document("not a map"), "non-map union"},
+       "unknown member", "unknown or missing union member"},
+      {smithy::Document("not a map"), "non-map union", "expected a map on the wire"},
   };
   for (const auto& cell : cells) {
     transport_->next_response =
         smithy::http::HttpResponse{200, {}, ResultEnvelope(PayloadWithChoice(cell.wire))};
     const auto outcome = client_->PutSinkRpc(InputWithChoice(SinkChoice::FromCount(0)));
-    EXPECT_FALSE(outcome.ok()) << cell.why;
+    ASSERT_FALSE(outcome.ok()) << cell.why;
+    EXPECT_NE(outcome.error().message().find(cell.diagnosis), std::string::npos)
+        << cell.why << ": " << outcome.error().message();
   }
 }
 
@@ -273,7 +278,11 @@ TEST_F(UnionJsonRpc2ServerTest, RejectsInvalidUnionsBeforeTheHandler) {
     EXPECT_EQ(response.status, 200) << response.body;
     auto body = smithy::json::Decode(response.body);
     ASSERT_TRUE(body.ok()) << response.body;
-    EXPECT_NE(body->Find("error"), nullptr) << response.body;
+    const smithy::Document* error = body->Find("error");
+    ASSERT_NE(error, nullptr) << response.body;
+    // The envelope names the union rule that was violated, so a rejection
+    // for the wrong reason cannot hide behind the error member's presence.
+    EXPECT_NE(response.body.find("union member"), std::string::npos) << response.body;
     EXPECT_FALSE(handler_->last.has_value());
   }
 }

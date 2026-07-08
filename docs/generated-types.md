@@ -94,6 +94,14 @@ smithy::Outcome<OrderCoffeeInput> DeserializeOrderCoffeeInput(const smithy::Docu
   the discriminator spliced into the same object (`{"key": "smol", ...fields}`); a
   `@jsonUnknown` member (open unions, tagged or discriminated) retains the entire wire object
   when the tag or discriminator value matches no known member.
+- **Union strictness and the `__type` exception**: a plain (tagged) union deserializes only a
+  map with **exactly one** member key — empty maps, multiple engaged members, unknown member
+  names, and explicit-null members are all `kSerialization` errors (ambiguous unions are a
+  parser-differential hazard, so they never pass silently). The single deliberate exception:
+  a `__type` key is excluded from that count, because error payloads carry the error shape's
+  fully qualified id in `__type` right next to the payload members — a union member of an
+  error structure therefore arrives with `__type` beside it. The union suites in
+  `protocol-tests/unions/` pin both the strict rules and this tolerance.
 
 ## Clients (Phase 3)
 

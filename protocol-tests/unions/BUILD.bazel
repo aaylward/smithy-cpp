@@ -1,4 +1,5 @@
 load("@rules_cc//cc:defs.bzl", "cc_test")
+load("//bazel:defs.bzl", "smithy_cpp_client_library", "smithy_cpp_server_library")
 
 # Union x protocol conformance cells (issue #48): union round-tripping was
 # only pinned for simpleRestJson; the cbor and jsonRpc2 cells relied on
@@ -31,6 +32,71 @@ cc_test(
     deps = [
         "//examples/roundtrip/jsonrpc/generated:client",
         "//examples/roundtrip/jsonrpc/generated:server",
+        "//runtime:client",
+        "//runtime:http",
+        "//runtime:json",
+        "//runtime:protocol_test_support",
+        "@googletest//:gtest_main",
+    ],
+)
+
+# The union member-type gauntlet (issue #56): generated through the same
+# in-graph path as codegen/compile-tests, so the member kinds SinkChoice
+# lacks (blob, timestamp, list, map, enum, intEnum, recursion, error-shape
+# unions) get their four-direction cells without touching any golden tree.
+
+UNION_MODEL = ["model/unions.smithy"]
+
+smithy_cpp_client_library(
+    name = "gauntlet_cbor_client",
+    srcs = UNION_MODEL + ["model/bindings/rpcv2cbor.smithy"],
+    namespace = "compile::unions::cbor",
+    service = "compile.unions#UnionGauntlet",
+)
+
+smithy_cpp_server_library(
+    name = "gauntlet_cbor_server",
+    srcs = UNION_MODEL + ["model/bindings/rpcv2cbor.smithy"],
+    namespace = "compile::unions::cbor",
+    service = "compile.unions#UnionGauntlet",
+)
+
+smithy_cpp_client_library(
+    name = "gauntlet_jsonrpc_client",
+    srcs = UNION_MODEL + ["model/bindings/jsonrpc2.smithy"],
+    namespace = "compile::unions::jsonrpc",
+    service = "compile.unions#UnionGauntlet",
+)
+
+smithy_cpp_server_library(
+    name = "gauntlet_jsonrpc_server",
+    srcs = UNION_MODEL + ["model/bindings/jsonrpc2.smithy"],
+    namespace = "compile::unions::jsonrpc",
+    service = "compile.unions#UnionGauntlet",
+)
+
+cc_test(
+    name = "union_gauntlet_cbor_test",
+    size = "small",
+    srcs = ["union_gauntlet_cbor_test.cc"],
+    deps = [
+        ":gauntlet_cbor_client",
+        ":gauntlet_cbor_server",
+        "//runtime:cbor",
+        "//runtime:client",
+        "//runtime:http",
+        "//runtime:protocol_test_support",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "union_gauntlet_jsonrpc2_test",
+    size = "small",
+    srcs = ["union_gauntlet_jsonrpc2_test.cc"],
+    deps = [
+        ":gauntlet_jsonrpc_client",
+        ":gauntlet_jsonrpc_server",
         "//runtime:client",
         "//runtime:http",
         "//runtime:json",

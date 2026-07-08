@@ -87,7 +87,7 @@ jobs:
           CXX: clang++
         run: |
           set -euo pipefail
-          for target in json_decode cbor_decode uri server_dispatch regex; do
+          for target in json_decode cbor_decode uri server_dispatch regex http1; do
             echo "== fuzzing $target"
             bazelisk build --config=fuzz "//fuzz:${target}_fuzz"
             ./bazel-bin/fuzz/${target}_fuzz -max_total_time=30 -print_final_stats=1
@@ -181,7 +181,8 @@ jobs:
       # its shape is locked by the golden diff check in the codegen job.
       - name: clang-format
         run: |
-          find runtime examples codegen/compile-tests \( -name '*.h' -o -name '*.cc' \) \
+          find runtime examples codegen/compile-tests protocol-tests \
+            \( -name '*.h' -o -name '*.cc' \) \
             ! -path '*/generated/*' | xargs clang-format --dry-run --Werror
       # Excluded from tidy: src/json/json.cc includes the nlohmann backend,
       # which only exists inside the Bazel build graph; beast_src.cc is the

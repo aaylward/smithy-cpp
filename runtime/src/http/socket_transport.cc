@@ -1,8 +1,6 @@
 #include "smithy/http/socket_transport.h"
 
-#include <array>
-#include <cstdlib>
-#include <cstring>
+#include <cstddef>
 #include <string_view>
 #include <utility>
 
@@ -19,6 +17,7 @@
 #include <unistd.h>
 #endif
 
+#include "smithy/http/http1.h"
 #include "smithy/http/server_dispatch.h"
 
 namespace smithy::http {
@@ -83,89 +82,16 @@ bool SendAll(SocketFd fd, std::string_view data) {
   return true;
 }
 
-constexpr std::size_t kMaxHeaderBytes = std::size_t{64} * 1024;
-constexpr std::size_t kMaxBodyBytes = std::size_t{64} * 1024 * 1024;
-
-struct ParsedMessage {
-  std::string start_line;
-  Headers headers;
-  std::string body;
-};
-
-// Reads one HTTP/1.1 message. For responses without Content-Length the body
-// extends to EOF (we always request/emit Connection: close).
-Outcome<ParsedMessage> ReadMessage(SocketFd fd, bool body_until_eof) {
-  std::string buffer;
-  std::size_t header_end = std::string::npos;
-  std::array<char, 8192> chunk{};
-  while (header_end == std::string::npos) {
-    if (buffer.size() > kMaxHeaderBytes) return Error::Transport("http: headers too large");
-    const auto received = recv(fd, chunk.data(), static_cast<int>(chunk.size()), 0);
-    if (received < 0) return Error::Transport("http: read failed");
-    if (received == 0) return Error::Transport("http: connection closed mid-headers");
-    buffer.append(chunk.data(), static_cast<std::size_t>(received));
-    header_end = buffer.find("\r\n\r\n");
-  }
-
-  ParsedMessage message;
-  std::string_view head(buffer.data(), header_end);
-  const auto line_end = head.find("\r\n");
-  message.start_line = std::string(head.substr(0, line_end));
-  std::string_view header_block =
-      line_end == std::string_view::npos ? std::string_view{} : head.substr(line_end + 2);
-  while (!header_block.empty()) {
-    const auto eol = header_block.find("\r\n");
-    const std::string_view line =
-        eol == std::string_view::npos ? header_block : header_block.substr(0, eol);
-    const auto colon = line.find(':');
-    if (colon == std::string_view::npos) return Error::Transport("http: malformed header line");
-    std::string_view name = line.substr(0, colon);
-    std::string_view value = line.substr(colon + 1);
-    while (!value.empty() && (value.front() == ' ' || value.front() == '\t')) {
-      value.remove_prefix(1);
-    }
-    while (!value.empty() && (value.back() == ' ' || value.back() == '\t')) {
-      value.remove_suffix(1);
-    }
-    message.headers.Add(name, value);
-    if (eol == std::string_view::npos) break;
-    header_block.remove_prefix(eol + 2);
-  }
-
-  // Reject ambiguous or unsupported framing before trusting a body length —
-  // the classic request-smuggling desync vectors. Neither transport direction
-  // implements chunked transfer, and conflicting content-lengths let a proxy
-  // and this server disagree on message boundaries.
-  if (message.headers.GetAll("content-length").size() > 1) {
-    return Error::Transport("http: conflicting content-length");
-  }
-  if (message.headers.Has("transfer-encoding")) {
-    return Error::Transport("http: transfer-encoding is not supported");
-  }
-
-  message.body = buffer.substr(header_end + 4);
-  if (const auto length_text = message.headers.Get("content-length")) {
-    char* end = nullptr;
-    const unsigned long long length = std::strtoull(length_text->c_str(), &end, 10);
-    if (end != length_text->c_str() + length_text->size() || length > kMaxBodyBytes) {
-      return Error::Transport("http: invalid content-length");
-    }
-    while (message.body.size() < length) {
-      const auto received = recv(fd, chunk.data(), static_cast<int>(chunk.size()), 0);
-      if (received <= 0) return Error::Transport("http: connection closed mid-body");
-      message.body.append(chunk.data(), static_cast<std::size_t>(received));
-    }
-    if (message.body.size() != length) return Error::Transport("http: excess body bytes");
-  } else if (body_until_eof) {
-    while (true) {
-      if (message.body.size() > kMaxBodyBytes) return Error::Transport("http: body too large");
-      const auto received = recv(fd, chunk.data(), static_cast<int>(chunk.size()), 0);
-      if (received < 0) return Error::Transport("http: read failed");
-      if (received == 0) break;
-      message.body.append(chunk.data(), static_cast<std::size_t>(received));
-    }
-  }
-  return message;
+// Reads one HTTP/1.1 message (the parser itself lives in http1.cc, where the
+// hostile-input bank and the fuzz harness exercise it without a socket). For
+// responses without Content-Length the body extends to EOF (we always
+// request/emit Connection: close).
+Outcome<Http1Message> ReadMessage(SocketFd fd, bool body_until_eof) {
+  return ReadHttp1Message(
+      [fd](char* buffer, std::size_t capacity) {
+        return static_cast<long>(recv(fd, buffer, static_cast<int>(capacity), 0));
+      },
+      body_until_eof);
 }
 
 }  // namespace
@@ -220,16 +146,10 @@ Outcome<HttpResponse> SocketHttpClient::Send(const HttpRequest& request) {
   if (!message) return std::move(message).error();
 
   // Status line: "HTTP/1.1 200 OK".
-  const std::string& line = message->start_line;
-  const auto space = line.find(' ');
-  if (space == std::string::npos || line.size() < space + 4 || line.compare(0, 5, "HTTP/") != 0) {
-    return Error::Transport("http: malformed status line: " + line);
-  }
+  auto status = ParseStatusLine(message->start_line);
+  if (!status) return std::move(status).error();
   HttpResponse response;
-  response.status = std::atoi(line.c_str() + space + 1);
-  if (response.status < 100 || response.status > 599) {
-    return Error::Transport("http: implausible status in: " + line);
-  }
+  response.status = *status;
   response.headers = std::move(message->headers);
   response.body = std::move(message->body);
   return response;
@@ -287,16 +207,10 @@ void SocketHttpServer::AcceptLoop() {
     HttpResponse response;
     if (message) {
       // Request line: "GET /target HTTP/1.1".
-      const std::string& line = message->start_line;
-      const auto first = line.find(' ');
-      const auto second =
-          first == std::string::npos ? std::string::npos : line.find(' ', first + 1);
-      if (second == std::string::npos) {
+      HttpRequest request;
+      if (!ParseRequestLine(message->start_line, &request.method, &request.target)) {
         response = HttpResponse{400, {}, "malformed request line"};
       } else {
-        HttpRequest request;
-        request.method = line.substr(0, first);
-        request.target = line.substr(first + 1, second - first - 1);
         request.headers = std::move(message->headers);
         request.body = std::move(message->body);
         response = InvokeHandlerGuarded(handler_, request);

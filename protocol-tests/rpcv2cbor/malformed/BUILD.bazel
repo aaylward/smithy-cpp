@@ -1,0 +1,21 @@
+load("@rules_cc//cc:defs.bzl", "cc_test")
+
+# Hand-written malformed-server coverage for rpcv2Cbor (issue #48): the
+# official conformance suite has no httpMalformedRequestTests for this
+# protocol, so this pins the generated server's reject paths the way
+# jsonrpc2's generated server_malformed_tests.cc does for its protocol.
+# Lives outside generated/ because that tree is a golden regenerated
+# byte-for-byte in CI.
+
+cc_test(
+    name = "server_malformed_test",
+    size = "small",
+    srcs = ["server_malformed_test.cc"],
+    deps = [
+        "//protocol-tests/rpcv2cbor/generated:server",
+        "//runtime:cbor",
+        "//runtime:core",
+        "//runtime:http",
+        "@googletest//:gtest_main",
+    ],
+)

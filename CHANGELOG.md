@@ -79,5 +79,19 @@ via `git_override` until then.
   (`Search(text, &steps)` instrumentation) instead of a wall-clock limit.
 - `make verify` / `make verify-full`: one-command local verification
   mirroring the CI jobs one-to-one.
+- **HTTP/1.1 parser extracted and fuzzed** (`smithy/http/http1.h`): the
+  socket transports' hand-rolled message reader is now a pure,
+  callback-fed function with a libFuzzer harness (`//fuzz:http1_fuzz`, in
+  the CI smoke loop) and a platform-independent hostile bank
+  (`http1_hostile_test.cc`) covering smuggling framing, hostile
+  content-lengths, truncation-everywhere, and header floods. Hardening
+  found while banking: an empty or `+`-signed Content-Length previously
+  parsed as a valid length; both now reject (digits-only per RFC 9110).
+- **Malformed-server coverage evened out**: hand-written suites pin how the
+  generated simpleRestJson and rpcv2Cbor servers reject hostile requests
+  (unparseable bodies, protocol-precondition violations, wrong
+  content-type/method/route) the way jsonrpc2's generated suite always did —
+  including the previously-unasserted simpleRestJson `@pattern`-violation
+  wire message.
 
 [Unreleased]: https://github.com/aaylward/smithy-cpp/commits/main

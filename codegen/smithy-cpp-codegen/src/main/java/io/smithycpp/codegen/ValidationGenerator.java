@@ -371,6 +371,18 @@ final class ValidationGenerator {
     return value.stripTrailingZeros().toPlainString();
   }
 
+  /**
+   * The C++ literal for a @range bound used in the *comparison* (the failure message keeps the
+   * plain decimal via {@link #plainNumber}). Identical to plainNumber except int64 min, which is
+   * not a writable decimal literal in C++.
+   */
+  private static String rangeBoundExpr(BigDecimal value) {
+    if (value.scale() <= 0 && value.compareTo(BigDecimal.valueOf(Long.MIN_VALUE)) == 0) {
+      return CppLiterals.int64Literal(Long.MIN_VALUE);
+    }
+    return plainNumber(value);
+  }
+
   private void writeLengthCheck(
       CppWriter w,
       Shape target,
@@ -429,11 +441,11 @@ final class ValidationGenerator {
       condition =
           valueExpr
               + " < "
-              + plainNumber(min.get())
+              + rangeBoundExpr(min.get())
               + " || "
               + valueExpr
               + " > "
-              + plainNumber(max.get());
+              + rangeBoundExpr(max.get());
       constraintText =
           "Member must be between "
               + plainNumber(min.get())
@@ -441,10 +453,10 @@ final class ValidationGenerator {
               + plainNumber(max.get())
               + ", inclusive";
     } else if (min.isPresent()) {
-      condition = valueExpr + " < " + plainNumber(min.get());
+      condition = valueExpr + " < " + rangeBoundExpr(min.get());
       constraintText = "Member must be greater than or equal to " + plainNumber(min.get());
     } else {
-      condition = valueExpr + " > " + plainNumber(max.get());
+      condition = valueExpr + " > " + rangeBoundExpr(max.get());
       constraintText = "Member must be less than or equal to " + plainNumber(max.get());
     }
     w.openBlock("if ($L) {", condition);
@@ -493,6 +505,18 @@ final class ValidationGenerator {
    */
   private static void rejectUnsupportedPattern(PatternTrait pattern) {
     String value = pattern.getValue();
+    // The pattern is emitted verbatim inside R"__smithy(...)__smithy". A value
+    // containing the closing sequence would terminate the raw literal early and
+    // produce uncompilable code; reject it rather than emit broken output.
+    if (value.contains(")__smithy\"")) {
+      throw new software.amazon.smithy.codegen.core.CodegenException(
+          "@pattern "
+              + value
+              + " (at "
+              + pattern.getSourceLocation()
+              + ") contains the raw-string delimiter sequence )__smithy\", which cannot be emitted"
+              + " safely; rewrite the pattern to avoid that literal sequence");
+    }
     boolean inClass = false;
     for (int i = 0; i < value.length(); i++) {
       char c = value.charAt(i);
@@ -570,7 +594,13 @@ final class ValidationGenerator {
                         .expectTrait(software.amazon.smithy.model.traits.EnumValueTrait.class)
                         .expectStringValue())
             .toList();
-    String set = String.join(", ", values);
+    // The wire values are model-controlled, so escape them for the literal — a
+    // value containing " or \ would otherwise break the emitted string. Escaping
+    // in place keeps the message byte-identical for the common (safe) case.
+    String set =
+        values.stream()
+            .map(CppLiterals::escapeStringBody)
+            .collect(java.util.stream.Collectors.joining(", "));
     String type = context.cppSymbols().toSymbol(target).getName();
     w.openBlock("if ($L.value() == $L::Value::kUnknown) {", valueExpr, type);
     w.write(

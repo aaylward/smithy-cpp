@@ -30,6 +30,14 @@ class Timestamp {
   // Rounds to the nearest millisecond.
   static Timestamp FromEpochSeconds(double seconds);
 
+  // Range-checked factories for untrusted wire input. Serde uses these so a
+  // hostile or malformed number cannot overflow the int64/double arithmetic
+  // (undefined behavior) or land on an instant that formats to unparsable
+  // text: they reject any value whose civil year falls outside the
+  // RFC 3339 / IMF-fixdate representable window (0000-9999).
+  static Outcome<Timestamp> FromEpochSecondsChecked(double seconds);
+  static Outcome<Timestamp> FromEpochMillisecondsChecked(std::int64_t ms);
+
   std::int64_t epoch_milliseconds() const { return ms_; }
   double epoch_seconds() const { return static_cast<double>(ms_) / 1000.0; }
 

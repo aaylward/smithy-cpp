@@ -2,6 +2,9 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
+#include <limits>
+
 namespace smithy {
 namespace {
 
@@ -15,6 +18,39 @@ TEST(TimestampParseTest, EpochSecondsIsStrict) {
        {"0x42", "1e3", "Infinity", "NaN", "true", "1515531081ABC", "1.", ".5", "-", "1.2.3", ""}) {
     EXPECT_FALSE(Timestamp::Parse(bad, TimestampFormat::kEpochSeconds).ok()) << bad;
   }
+}
+
+TEST(TimestampCheckedTest, AcceptsInRangeInstants) {
+  const auto a = Timestamp::FromEpochSecondsChecked(1515531081.123);
+  ASSERT_TRUE(a.ok());
+  EXPECT_EQ(a->epoch_milliseconds(), 1515531081123);
+  EXPECT_TRUE(Timestamp::FromEpochSecondsChecked(0.0).ok());
+  EXPECT_TRUE(Timestamp::FromEpochSecondsChecked(-5.0).ok());  // pre-epoch
+  EXPECT_TRUE(Timestamp::FromEpochMillisecondsChecked(0).ok());
+}
+
+TEST(TimestampCheckedTest, AcceptsTheRepresentableBoundaries) {
+  // The exact edges of the RFC 3339 window round-trip.
+  const auto max_dt = Timestamp::Parse("9999-12-31T23:59:59.999Z", TimestampFormat::kDateTime);
+  ASSERT_TRUE(max_dt.ok());
+  EXPECT_TRUE(Timestamp::FromEpochMillisecondsChecked(max_dt->epoch_milliseconds()).ok());
+  const auto min_dt = Timestamp::Parse("0000-01-01T00:00:00Z", TimestampFormat::kDateTime);
+  ASSERT_TRUE(min_dt.ok());
+  EXPECT_TRUE(Timestamp::FromEpochMillisecondsChecked(min_dt->epoch_milliseconds()).ok());
+}
+
+TEST(TimestampCheckedTest, RejectsOutOfRangeAndNonFinite) {
+  // The values the CBOR/JSON UB findings are about: a huge integer scaled to
+  // milliseconds, an out-of-range float, and non-finite doubles.
+  EXPECT_FALSE(Timestamp::FromEpochSecondsChecked(1e300).ok());
+  EXPECT_FALSE(Timestamp::FromEpochSecondsChecked(-1e300).ok());
+  EXPECT_FALSE(Timestamp::FromEpochSecondsChecked(static_cast<double>(9223372036854775LL)).ok());
+  EXPECT_FALSE(Timestamp::FromEpochSecondsChecked(std::numeric_limits<double>::infinity()).ok());
+  EXPECT_FALSE(Timestamp::FromEpochSecondsChecked(std::nan("")).ok());
+  // Just past year 9999 / before year 0000.
+  const auto past_max = Timestamp::Parse("9999-12-31T23:59:59.999Z", TimestampFormat::kDateTime);
+  ASSERT_TRUE(past_max.ok());
+  EXPECT_FALSE(Timestamp::FromEpochMillisecondsChecked(past_max->epoch_milliseconds() + 1).ok());
 }
 
 TEST(TimestampTest, FormatsDateTime) {

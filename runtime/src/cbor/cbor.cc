@@ -281,13 +281,19 @@ class Decoder {
         auto inner = DecodeValue(depth - 1);
         if (!inner) return std::move(inner).error();
         if (*tag == kTagEpochTimestamp) {
+          // Tag 1 content is epoch seconds (integer or float). Route both
+          // through the range-checked factory: a large integer would overflow
+          // int64 when scaled to milliseconds, and an out-of-range float would
+          // overflow the cast — both undefined behavior on untrusted input.
           if (inner->is_int()) {
-            return Document(TimestampValue{Timestamp::FromEpochMilliseconds(inner->as_int() * 1000),
-                                           TimestampFormat::kEpochSeconds});
+            auto ts = Timestamp::FromEpochSecondsChecked(static_cast<double>(inner->as_int()));
+            if (!ts) return std::move(ts).error();
+            return Document(TimestampValue{*ts, TimestampFormat::kEpochSeconds});
           }
           if (inner->is_double()) {
-            return Document(TimestampValue{Timestamp::FromEpochSeconds(inner->as_double()),
-                                           TimestampFormat::kEpochSeconds});
+            auto ts = Timestamp::FromEpochSecondsChecked(inner->as_double());
+            if (!ts) return std::move(ts).error();
+            return Document(TimestampValue{*ts, TimestampFormat::kEpochSeconds});
           }
           return Fail("tag 1 content is not a number");
         }

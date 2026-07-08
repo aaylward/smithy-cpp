@@ -275,6 +275,18 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "observability_test",
+    size = "small",
+    srcs = ["tests/client/observability_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":client",
+        ":http",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "server",
     srcs = [
@@ -428,6 +440,17 @@ cc_test(
 )
 
 cc_test(
+    name = "cbor_hostile_test",
+    size = "small",
+    srcs = ["tests/cbor/cbor_hostile_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":cbor",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "core_test",
     size = "small",
     srcs = [
@@ -437,6 +460,7 @@ cc_test(
         "tests/core/regex_test.cc",
         "tests/core/timestamp_differential_test.cc",
         "tests/core/timestamp_test.cc",
+        "tests/core/uuid_test.cc",
         "tests/core/version_test.cc",
     ],
     copts = COPTS,

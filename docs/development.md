@@ -15,6 +15,18 @@ Two build trees live in this repository (see PLAN §3.1):
 
 ## Building and testing
 
+One command verifies everything the CI gate checks (bazel tests, gradle
+build + format, golden freshness, lint):
+
+```sh
+make verify        # what CI gates a PR on
+make verify-full   # + sanitizers, fuzzer smoke runs, the consumer module, clang-tidy
+```
+
+Each aggregate is also callable piecemeal (`make test codegen goldens lint
+sanitize fuzz-smoke consumer tidy benchmarks format`); the recipes mirror
+`.github/workflows/ci.yml`, one target per job. The underlying commands:
+
 ```sh
 # C++ runtime: build + run all tests
 bazel test //...
@@ -25,6 +37,13 @@ bazel test //... --config=asan --config=ubsan
 # Codegen: build + unit tests + format check
 cd codegen && gradle build spotlessCheck
 ```
+
+The Java suite asserts on generated-source substrings; the compile-the-output
+harness under `codegen/compile-tests/` is what proves hostile-but-legal models
+(keyword member names, quote/backslash enum values, int64-extreme bounds —
+issue #43's class) still *compile*: it runs the generator inside the Bazel
+graph for every protocol, client and server mode both, and builds the result.
+Extend its `model/gauntlet.smithy` when adding a new escaping/naming rule.
 
 ## Benchmarks
 

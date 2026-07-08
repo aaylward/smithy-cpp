@@ -53,8 +53,31 @@ via `git_override` until then.
   size limits, graceful drain, TLS termination) and `BeastHttpClient`
   (keep-alive connection pool, per-request timeouts, TLS via BoringSSL with
   certificate + hostname verification on by default).
-- Fuzz harnesses (JSON, CBOR, URI, server dispatch) and a Google Benchmark
-  suite (serde, codecs, per-protocol request round trips, real-TCP transport
-  round trips incl. Beast and Beast TLS) run in CI.
+- Fuzz harnesses (JSON, CBOR, URI, server dispatch, regex) and a Google
+  Benchmark suite (serde, codecs, per-protocol request round trips, real-TCP
+  transport round trips incl. Beast and Beast TLS) run in CI.
+- CBOR decoder rejects additional-information 31 on integers and tags
+  (RFC 8949 §3.3 not-well-formed encodings previously decoded as 0 / -1 /
+  an ignored tag), found by the hostile corpus below.
+
+### Testing & CI (issue #48)
+
+- **Compile-the-output harness** (`codegen/compile-tests/`): the generator
+  runs inside the Bazel graph on a hostile gauntlet model — C++ keyword
+  member names, quote/backslash/newline enum values, raw-string delimiter
+  attacks, int64-extreme bounds/defaults, recursion, keyword union variants —
+  and CI compiles the result for every protocol, client and server mode both.
+  Issue #43's whole bug class now fails CI instead of a consumer's build.
+- Curated hostile CBOR corpus (`cbor_hostile_test.cc`): systematic
+  truncations, reserved encodings, indefinite-length abuse, depth bombs,
+  boundary integers/halves, and an every-strict-prefix-rejects property, as
+  the CBOR counterpart of the vendored JSONTestSuite bank.
+- Direct unit tests for `core/uuid.cc` (format, version/variant bits,
+  uniqueness, thread-local streams) and `client/observability.cc`
+  (attempt observations, trace-context propagation).
+- The regex ReDoS bound is a deterministic step-count assertion
+  (`Search(text, &steps)` instrumentation) instead of a wall-clock limit.
+- `make verify` / `make verify-full`: one-command local verification
+  mirroring the CI jobs one-to-one.
 
 [Unreleased]: https://github.com/aaylward/smithy-cpp/commits/main

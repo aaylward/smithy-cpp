@@ -582,8 +582,8 @@ class RegexCompiler {
 Outcome<Regex> Regex::Compile(std::string_view pattern) { return RegexCompiler::Compile(pattern); }
 
 bool Regex::AddThread(std::vector<std::uint32_t>* list, std::vector<std::uint32_t>* seen_stamp,
-                      std::uint32_t stamp, std::uint32_t pc, std::string_view text,
-                      std::size_t pos) const {
+                      std::uint32_t stamp, std::uint32_t pc, std::string_view text, std::size_t pos,
+                      std::size_t* steps) const {
   // Iterative epsilon closure; the explicit stack keeps deeply split
   // programs from overflowing the call stack.
   std::vector<std::uint32_t> work{pc};
@@ -592,6 +592,7 @@ bool Regex::AddThread(std::vector<std::uint32_t>* list, std::vector<std::uint32_
     work.pop_back();
     if ((*seen_stamp)[at] == stamp) continue;
     (*seen_stamp)[at] = stamp;
+    if (steps != nullptr) ++*steps;
     const Inst& inst = program_[at];
     switch (inst.op) {
       case Inst::Op::kMatch:
@@ -633,7 +634,10 @@ bool Regex::AddThread(std::vector<std::uint32_t>* list, std::vector<std::uint32_
   return false;
 }
 
-bool Regex::Search(std::string_view text) const {
+bool Regex::Search(std::string_view text) const { return Search(text, nullptr); }
+
+bool Regex::Search(std::string_view text, std::size_t* steps) const {
+  if (steps != nullptr) *steps = 0;
   if (program_.empty()) return false;
   std::vector<std::uint32_t> current;
   std::vector<std::uint32_t> next;
@@ -642,7 +646,8 @@ bool Regex::Search(std::string_view text) const {
   std::vector<std::uint32_t> seen_stamp(program_.size(), 0);
   for (std::size_t pos = 0; pos <= text.size(); ++pos) {
     // Unanchored search: a fresh attempt starts at every position.
-    if (AddThread(&current, &seen_stamp, static_cast<std::uint32_t>(pos) + 1, 0, text, pos)) {
+    if (AddThread(&current, &seen_stamp, static_cast<std::uint32_t>(pos) + 1, 0, text, pos,
+                  steps)) {
       return true;
     }
     if (pos == text.size()) break;
@@ -652,7 +657,7 @@ bool Regex::Search(std::string_view text) const {
       const Inst& inst = program_[pc];
       bool matches = inst.op == Inst::Op::kByte ? inst.byte == c : classes_[inst.arg].test(c);
       if (matches && AddThread(&next, &seen_stamp, static_cast<std::uint32_t>(pos) + 2, pc + 1,
-                               text, pos + 1)) {
+                               text, pos + 1, steps)) {
         return true;
       }
     }

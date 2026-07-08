@@ -215,6 +215,9 @@ class Decoder {
       case kUnsigned: {
         auto value = ReadArgument(info, &indefinite);
         if (!value) return std::move(value).error();
+        // RFC 8949 §3.3: additional information 31 is well-formed only for
+        // strings, arrays, and maps; an "indefinite integer" is not CBOR.
+        if (indefinite) return Fail("indefinite length on integer");
         if (*value > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
           return Fail("integer exceeds int64 range");
         }
@@ -223,6 +226,7 @@ class Decoder {
       case kNegative: {
         auto value = ReadArgument(info, &indefinite);
         if (!value) return std::move(value).error();
+        if (indefinite) return Fail("indefinite length on integer");
         if (*value > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
           return Fail("integer exceeds int64 range");
         }
@@ -278,6 +282,7 @@ class Decoder {
       case kTag: {
         auto tag = ReadArgument(info, &indefinite);
         if (!tag) return std::move(tag).error();
+        if (indefinite) return Fail("indefinite length on tag");
         auto inner = DecodeValue(depth - 1);
         if (!inner) return std::move(inner).error();
         if (*tag == kTagEpochTimestamp) {

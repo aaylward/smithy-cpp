@@ -2,6 +2,8 @@
 
 #include <cctype>
 #include <cstddef>
+#include <exception>
+#include <iostream>
 #include <optional>
 #include <ranges>
 #include <string>
@@ -33,7 +35,16 @@ Middleware Observe(std::function<void(const RequestObservation&)> callback,
       observation.trace_parent = request.headers.Get("traceparent").value_or("");
       observation.status = response.status;
       observation.duration = std::chrono::duration_cast<std::chrono::milliseconds>(now() - start);
-      callback(observation);
+      // A throwing observation sink (e.g. a metrics backend under backpressure)
+      // must not discard an already-built response or unwind into the
+      // transport thread; swallow it after logging.
+      try {
+        callback(observation);
+      } catch (const std::exception& e) {
+        std::clog << "smithy: Observe callback threw: " << e.what() << "\n";
+      } catch (...) {
+        std::clog << "smithy: Observe callback threw a non-std exception\n";
+      }
       return response;
     };
   };

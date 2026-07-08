@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <stdexcept>
 #include <string>
 
 namespace smithy::http {
@@ -38,6 +39,39 @@ TEST(SocketTransportTest, RoundTripsOverRealSockets) {
   EXPECT_EQ(response->headers.Get("x-target"), "/cities/a%20b?pageSize=10");
   EXPECT_EQ(response->headers.Get("x-probe"), "42");
   EXPECT_EQ(response->body, "echo:hello over tcp");
+
+  server.Stop();
+}
+
+TEST(SocketTransportTest, ThrowingHandlerBecomesA500NotACrash) {
+  // The exception escapes the handler on the transport's own thread; before the
+  // guard this unwound out of the accept loop and terminated the process. The
+  // server must instead answer 500 and stay up for the next request.
+  SocketHttpServer server;
+  ASSERT_TRUE(server
+                  .Start([](const HttpRequest& request) -> HttpResponse {
+                    if (request.target == "/boom") {
+                      throw std::runtime_error("handler blew up");
+                    }
+                    return HttpResponse{200, {}, "ok"};
+                  })
+                  .ok());
+  SocketHttpClient client("127.0.0.1", server.port());
+
+  HttpRequest boom;
+  boom.target = "/boom";
+  const auto failed = client.Send(boom);
+  ASSERT_TRUE(failed.ok()) << failed.error().message();
+  EXPECT_EQ(failed->status, 500);
+  EXPECT_FALSE(failed->headers.Get("x-correlation-id").value_or("").empty());
+
+  // The server survived: a subsequent request still succeeds.
+  HttpRequest fine;
+  fine.target = "/ok";
+  const auto ok = client.Send(fine);
+  ASSERT_TRUE(ok.ok()) << ok.error().message();
+  EXPECT_EQ(ok->status, 200);
+  EXPECT_EQ(ok->body, "ok");
 
   server.Stop();
 }

@@ -24,8 +24,10 @@ class HttpClient {
   }
 };
 
-// What a server transport calls for each incoming request. Handlers must not
-// throw; failures are expressed as HTTP responses.
+// What a server transport calls for each incoming request. Handlers express
+// failures as HTTP responses; a handler that nonetheless throws is contained
+// by the transport (see smithy/http/server_dispatch.h) as a 500 with a
+// correlation id rather than taking down the process.
 using RequestHandler = std::function<HttpResponse(const HttpRequest&)>;
 
 // Server-side transport: binds a listener and dispatches requests to a

@@ -34,6 +34,12 @@ class MyHandler final : public example::weather::WeatherHandler {
 - **Validation/serialization errors** (including malformed request input the framework catches
   before your handler runs) map to 400; any other failure is a non-leaking 500
   `InternalFailure`.
+- **A handler that throws** (rather than returning an `Error`) is contained by the transport
+  layer: the exception is converted into a 500 carrying an `x-correlation-id` header, and the
+  same id plus the exception's `what()` is written to `std::clog`. One throwing request fails
+  alone — it never unwinds into the transport's I/O thread and terminates the process. Prefer
+  returning `smithy::Error` for expected failures; the catch-all is a safety net, not a control
+  path.
 
 ## Running a server
 

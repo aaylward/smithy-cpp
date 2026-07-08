@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -150,6 +151,17 @@ TEST(ObserveTest, CountsEveryRequest) {
   (void)handler({});
   (void)handler({});
   EXPECT_EQ(count, 3);
+}
+
+TEST(ObserveTest, ThrowingCallbackDoesNotDiscardResponseOrPropagate) {
+  auto handler = Chain({Observe([](const RequestObservation&) {
+                         throw std::runtime_error("metrics backend down");
+                       })},
+                       [](const http::HttpRequest&) { return Ok("payload"); });
+  http::HttpResponse response;
+  EXPECT_NO_THROW(response = handler({}));
+  EXPECT_EQ(response.status, 200);
+  EXPECT_EQ(response.body, "payload");
 }
 
 }  // namespace

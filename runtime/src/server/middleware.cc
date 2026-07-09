@@ -6,7 +6,9 @@
 #include <iostream>
 #include <optional>
 #include <ranges>
+#include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace smithy::server {
@@ -19,32 +21,105 @@ http::RequestHandler Chain(std::vector<Middleware> middleware, http::RequestHand
   return handler;
 }
 
-Middleware Observe(std::function<void(const RequestObservation&)> callback,
+Middleware Guard(std::function<bool(const http::HttpRequest&)> admit,
+                 std::function<http::HttpResponse(const http::HttpRequest&)> reject) {
+  return [admit = std::move(admit), reject = std::move(reject)](http::RequestHandler next) {
+    return [admit, reject, next = std::move(next)](const http::HttpRequest& request) {
+      if (!admit(request)) {
+        return reject(request);
+      }
+      return next(request);
+    };
+  };
+}
+
+std::function<http::HttpResponse(const http::HttpRequest&)> TooManyRequests(
+    std::optional<std::chrono::seconds> retry_after) {
+  return [retry_after](const http::HttpRequest&) {
+    http::HttpResponse response;
+    response.status = 429;
+    response.headers.Set("content-type", "application/json");
+    if (retry_after.has_value()) {
+      response.headers.Set("retry-after", std::to_string(retry_after->count()));
+    }
+    response.body = R"({"error":"Too many requests"})";
+    return response;
+  };
+}
+
+Middleware HealthEndpoint(std::string path) {
+  return [path = std::move(path)](http::RequestHandler next) {
+    return [path, next = std::move(next)](const http::HttpRequest& request) {
+      const std::string_view target(request.target);
+      if ((request.method == "GET" || request.method == "HEAD") &&
+          target.substr(0, target.find('?')) == path) {
+        http::HttpResponse response;
+        response.status = 200;
+        response.headers.Set("content-type", "application/json");
+        if (request.method == "GET") {
+          response.body = R"({"status":"healthy"})";
+        }
+        return response;
+      }
+      return next(request);
+    };
+  };
+}
+
+namespace {
+
+// A throwing observation sink (e.g. a metrics backend under backpressure)
+// must not discard a response or unwind into the transport thread; swallow
+// it after logging.
+template <typename Callback, typename Observation>
+void CallContained(const Callback& callback, const Observation& observation, const char* which) {
+  try {
+    callback(observation);
+  } catch (const std::exception& e) {
+    std::clog << "smithy: " << which << " callback threw: " << e.what() << "\n";
+  } catch (...) {
+    std::clog << "smithy: " << which << " callback threw a non-std exception\n";
+  }
+}
+
+}  // namespace
+
+Middleware Observe(std::function<void(const RequestObservation&)> on_complete,
+                   std::function<void(const RequestStart&)> on_start,
                    std::function<std::chrono::steady_clock::time_point()> now) {
+  if (on_complete == nullptr) {
+    throw std::invalid_argument("smithy::server::Observe: on_complete may not be null");
+  }
   if (now == nullptr) {
     now = [] { return std::chrono::steady_clock::now(); };
   }
-  return [callback = std::move(callback), now = std::move(now)](http::RequestHandler next) {
-    return [callback, now, next = std::move(next)](const http::HttpRequest& request) {
-      const auto start = now();
-      http::HttpResponse response = next(request);
+  return [on_complete = std::move(on_complete), on_start = std::move(on_start),
+          now = std::move(now)](http::RequestHandler next) {
+    return [on_complete, on_start, now, next = std::move(next)](const http::HttpRequest& request) {
+      if (on_start != nullptr) {
+        CallContained(on_start, RequestStart{request.method, request.target}, "Observe on_start");
+      }
       RequestObservation observation;
       observation.method = request.method;
       observation.target = request.target;
-      observation.operation = response.operation;
       observation.trace_parent = request.headers.Get("traceparent").value_or("");
+      const auto start = now();
+      http::HttpResponse response;
+      try {
+        response = next(request);
+      } catch (...) {
+        // Keep start/complete paired when dispatch throws: report a 500
+        // completion, then let the exception continue to the transport's
+        // containment (server_dispatch.h).
+        observation.status = 500;
+        observation.duration = std::chrono::duration_cast<std::chrono::milliseconds>(now() - start);
+        CallContained(on_complete, observation, "Observe on_complete");
+        throw;
+      }
+      observation.operation = response.operation;
       observation.status = response.status;
       observation.duration = std::chrono::duration_cast<std::chrono::milliseconds>(now() - start);
-      // A throwing observation sink (e.g. a metrics backend under backpressure)
-      // must not discard an already-built response or unwind into the
-      // transport thread; swallow it after logging.
-      try {
-        callback(observation);
-      } catch (const std::exception& e) {
-        std::clog << "smithy: Observe callback threw: " << e.what() << "\n";
-      } catch (...) {
-        std::clog << "smithy: Observe callback threw a non-std exception\n";
-      }
+      CallContained(on_complete, observation, "Observe on_complete");
       return response;
     };
   };

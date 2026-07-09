@@ -80,5 +80,6 @@ cc_test(
         "@googletest//:gtest_main",
         "@smithy_cpp//runtime:client",
         "@smithy_cpp//runtime:http",
+        "@smithy_cpp//runtime:server",
     ],
 )

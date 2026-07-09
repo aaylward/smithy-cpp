@@ -3,6 +3,7 @@
 
 #include <chrono>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -24,6 +25,30 @@ using Middleware = std::function<http::RequestHandler(http::RequestHandler)>;
 // sees the request first and the response last.
 http::RequestHandler Chain(std::vector<Middleware> middleware, http::RequestHandler handler);
 
+// Admission control outside the router: admit(request) true passes the
+// request through, false short-circuits with reject(request). The policy —
+// a rate limiter, an IP allowlist, a maintenance switch — is the
+// application's dependency; Guard owns only the composition point and the
+// short-circuit. Neither callback may be null.
+// Both callbacks run on the transport's request thread, concurrently across
+// requests — an injected policy (e.g. a shared rate limiter) must be
+// thread-safe.
+Middleware Guard(std::function<bool(const http::HttpRequest&)> admit,
+                 std::function<http::HttpResponse(const http::HttpRequest&)> reject);
+
+// Ready-made Guard rejection for rate limiting: 429 with body
+// {"error":"Too many requests"}, plus a Retry-After header (seconds) when
+// retry_after is set.
+std::function<http::HttpResponse(const http::HttpRequest&)> TooManyRequests(
+    std::optional<std::chrono::seconds> retry_after = std::nullopt);
+
+// Static liveness endpoint: answers GET or HEAD <path> (query string
+// ignored) with 200 {"status":"healthy"} (body omitted for HEAD); every
+// other request passes through to the next handler, so a model may still
+// define other routes on the path. Readiness probing is deliberately out of
+// scope.
+Middleware HealthEndpoint(std::string path = "/health");
+
 // One served request, as seen from outside the router.
 struct RequestObservation {
   std::string method;
@@ -39,12 +64,28 @@ struct RequestObservation {
   std::chrono::milliseconds duration{0};
 };
 
-// Middleware reporting every request to a callback — the structured-logging
-// and metrics hook (count = callbacks, latency = duration). The callback runs
-// on the transport's request thread after the response is built; keep it
-// cheap or hand off. now is injectable for deterministic tests (null means
+// What on_start sees, before the router runs. The Smithy operation is not
+// yet known pre-dispatch, so start observations are labeled by method and
+// target only.
+struct RequestStart {
+  std::string method;
+  std::string target;
+};
+
+// Middleware reporting every request to callbacks — the structured-logging
+// and metrics hook. on_complete runs after the response is built (count =
+// callbacks, latency = duration); the optional on_start runs before dispatch
+// so an in-flight gauge can increment (pair it with on_complete's decrement —
+// the two always pair, even when dispatch throws: the completion then
+// reports status 500 with an empty operation before the exception continues
+// to the transport's containment). Throwing callbacks are logged and
+// swallowed. A null on_complete throws std::invalid_argument at composition
+// time (a null sink would otherwise fail silently); on_start and now may be
+// null. Callbacks run on the transport's request thread; keep them cheap or
+// hand off. now is injectable for deterministic tests (null means
 // steady_clock).
-Middleware Observe(std::function<void(const RequestObservation&)> callback,
+Middleware Observe(std::function<void(const RequestObservation&)> on_complete,
+                   std::function<void(const RequestStart&)> on_start = nullptr,
                    std::function<std::chrono::steady_clock::time_point()> now = nullptr);
 
 // 401 unless the request carries "authorization: Bearer <token>" (scheme

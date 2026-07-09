@@ -19,6 +19,32 @@ http::RequestHandler Chain(std::vector<Middleware> middleware, http::RequestHand
   return handler;
 }
 
+Middleware Guard(std::function<bool(const http::HttpRequest&)> admit,
+                 std::function<http::HttpResponse(const http::HttpRequest&)> reject) {
+  return [admit = std::move(admit), reject = std::move(reject)](http::RequestHandler next) {
+    return [admit, reject, next = std::move(next)](const http::HttpRequest& request) {
+      if (!admit(request)) {
+        return reject(request);
+      }
+      return next(request);
+    };
+  };
+}
+
+std::function<http::HttpResponse(const http::HttpRequest&)> TooManyRequests(
+    std::optional<std::chrono::seconds> retry_after) {
+  return [retry_after](const http::HttpRequest&) {
+    http::HttpResponse response;
+    response.status = 429;
+    response.headers.Set("content-type", "application/json");
+    if (retry_after.has_value()) {
+      response.headers.Set("retry-after", std::to_string(retry_after->count()));
+    }
+    response.body = R"({"error":"Too many requests"})";
+    return response;
+  };
+}
+
 Middleware Observe(std::function<void(const RequestObservation&)> callback,
                    std::function<std::chrono::steady_clock::time_point()> now) {
   if (now == nullptr) {

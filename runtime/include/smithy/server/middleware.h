@@ -3,6 +3,7 @@
 
 #include <chrono>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -23,6 +24,20 @@ using Middleware = std::function<http::RequestHandler(http::RequestHandler)>;
 // Composes middleware around a handler. The first element is outermost: it
 // sees the request first and the response last.
 http::RequestHandler Chain(std::vector<Middleware> middleware, http::RequestHandler handler);
+
+// Admission control outside the router: admit(request) true passes the
+// request through, false short-circuits with reject(request). The policy —
+// a rate limiter, an IP allowlist, a maintenance switch — is the
+// application's dependency; Guard owns only the composition point and the
+// short-circuit. Neither callback may be null.
+Middleware Guard(std::function<bool(const http::HttpRequest&)> admit,
+                 std::function<http::HttpResponse(const http::HttpRequest&)> reject);
+
+// Ready-made Guard rejection for rate limiting: 429 with body
+// {"error":"Too many requests"}, plus a Retry-After header (seconds) when
+// retry_after is set.
+std::function<http::HttpResponse(const http::HttpRequest&)> TooManyRequests(
+    std::optional<std::chrono::seconds> retry_after = std::nullopt);
 
 // One served request, as seen from outside the router.
 struct RequestObservation {

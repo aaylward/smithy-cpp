@@ -164,5 +164,65 @@ TEST(ObserveTest, ThrowingCallbackDoesNotDiscardResponseOrPropagate) {
   EXPECT_EQ(response.body, "payload");
 }
 
+TEST(GuardTest, AdmittedRequestsPassThrough) {
+  auto handler = Chain({Guard([](const http::HttpRequest&) { return true; }, TooManyRequests())},
+                       [](const http::HttpRequest&) { return Ok("served"); });
+  const auto response = handler({});
+  EXPECT_EQ(response.status, 200);
+  EXPECT_EQ(response.body, "served");
+}
+
+TEST(GuardTest, RejectedRequestsShortCircuitWithTheRejectResponse) {
+  bool reached = false;
+  auto handler = Chain({Guard([](const http::HttpRequest&) { return false; },
+                              [](const http::HttpRequest&) {
+                                http::HttpResponse response;
+                                response.status = 503;
+                                response.body = "maintenance";
+                                return response;
+                              })},
+                       [&](const http::HttpRequest&) {
+                         reached = true;
+                         return Ok("never");
+                       });
+  const auto response = handler({});
+  EXPECT_EQ(response.status, 503);
+  EXPECT_EQ(response.body, "maintenance");
+  EXPECT_FALSE(reached);
+}
+
+TEST(GuardTest, AdmitSeesTheRequest) {
+  // The rate-limiting instantiation: admit keys on a header.
+  auto handler =
+      Chain({Guard(
+                [](const http::HttpRequest& request) {
+                  return request.headers.Get("x-forwarded-for").value_or("") != "10.0.0.1";
+                },
+                TooManyRequests())},
+            [](const http::HttpRequest&) { return Ok("in"); });
+
+  http::HttpRequest allowed;
+  allowed.headers.Set("x-forwarded-for", "10.0.0.2");
+  EXPECT_EQ(handler(allowed).status, 200);
+
+  http::HttpRequest limited;
+  limited.headers.Set("x-forwarded-for", "10.0.0.1");
+  EXPECT_EQ(handler(limited).status, 429);
+}
+
+TEST(TooManyRequestsTest, ShapesThe429) {
+  const auto response = TooManyRequests()(http::HttpRequest{});
+  EXPECT_EQ(response.status, 429);
+  EXPECT_EQ(response.headers.Get("content-type").value_or(""), "application/json");
+  EXPECT_EQ(response.body, R"({"error":"Too many requests"})");
+  EXPECT_FALSE(response.headers.Has("retry-after"));
+}
+
+TEST(TooManyRequestsTest, SetsRetryAfterWhenGiven) {
+  const auto response = TooManyRequests(std::chrono::seconds(30))(http::HttpRequest{});
+  EXPECT_EQ(response.status, 429);
+  EXPECT_EQ(response.headers.Get("retry-after").value_or(""), "30");
+}
+
 }  // namespace
 }  // namespace smithy::server

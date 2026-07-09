@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <memory>
 #include <string>
 #include <utility>
@@ -17,6 +18,7 @@
 #include "smithy/client/config.h"
 #include "smithy/http/loopback.h"
 #include "smithy/http/socket_transport.h"
+#include "smithy/server/middleware.h"
 
 namespace {
 
@@ -183,6 +185,58 @@ TEST(TodoJsonRpcTest, SameModelServesJsonRpc2) {
   ASSERT_FALSE(missing.ok());
   EXPECT_EQ(missing.error().code(), "NoSuchTask");
   ASSERT_NE(missing.error().detail<acme::todo::jsonrpc::NoSuchTask>(), nullptr);
+}
+
+// The production middleware chain from the guide — Guard, then Observe, then
+// HealthEndpoint — composed around a generated server and driven by the
+// generated client.
+TEST(TodoMiddlewareTest, GuardObserveAndHealthComposeAroundTheServer) {
+  TodoServer server(std::make_shared<InMemoryHandler>());
+  int started = 0;
+  int completed = 0;
+  bool admit = true;
+  auto handler = smithy::server::Chain(
+      {smithy::server::Guard([&admit](const smithy::http::HttpRequest&) { return admit; },
+                             smithy::server::TooManyRequests(std::chrono::seconds(1))),
+       smithy::server::Observe(
+           [&completed](const smithy::server::RequestObservation&) { ++completed; },
+           [&started](const smithy::server::RequestStart&) { ++started; }),
+       smithy::server::HealthEndpoint()},
+      server.Handler());
+
+  auto loopback = std::make_shared<smithy::http::Loopback>();
+  ASSERT_TRUE(loopback->Start(handler).ok());
+
+  // Liveness answers without reaching the router, and is observed.
+  smithy::http::HttpRequest health;
+  health.method = "GET";
+  health.target = "/health";
+  const auto health_response = loopback->Send(health);
+  ASSERT_TRUE(health_response.ok());
+  EXPECT_EQ(health_response->status, 200);
+  EXPECT_EQ(health_response->body, R"({"status":"healthy"})");
+
+  // The generated client works through the chain.
+  smithy::ClientConfig config;
+  config.http_client = loopback;
+  auto created = TodoClient::Create(std::move(config));
+  ASSERT_TRUE(created.ok()) << created.error().message();
+  TodoClient client = std::move(*created);
+  const auto added = client.AddTask(AddTaskInput{.title = "compose middleware"});
+  ASSERT_TRUE(added.ok()) << added.error().message();
+
+  // Once admit flips, Guard sheds load with the shaped 429 before Observe.
+  admit = false;
+  smithy::http::HttpRequest denied;
+  denied.method = "POST";
+  denied.target = "/tasks";
+  const auto denied_response = loopback->Send(denied);
+  ASSERT_TRUE(denied_response.ok());
+  EXPECT_EQ(denied_response->status, 429);
+  EXPECT_EQ(denied_response->headers.Get("retry-after").value_or(""), "1");
+
+  EXPECT_EQ(started, 2);  // health + AddTask; the rejected request never reached Observe
+  EXPECT_EQ(completed, 2);
 }
 
 }  // namespace

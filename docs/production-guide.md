@@ -199,8 +199,8 @@ transport.Start(smithy::server::Chain(
            // gauge +1 (labeled by s.method/s.target; the operation is not
            // known until the router runs).
          }),
-     // Liveness: GET /health -> 200 {"status":"healthy"}; everything else
-     // passes through to the router.
+     // Liveness: GET or HEAD /health -> 200 {"status":"healthy"} (no body
+     // for HEAD); everything else passes through to the router.
      smithy::server::HealthEndpoint()},
     server.Handler()));
 ```

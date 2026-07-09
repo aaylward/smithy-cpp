@@ -122,8 +122,8 @@ constraint.
 - Unit tests alongside the existing middleware tests in `runtime/tests`:
   - Guard: admit passes through untouched; reject short-circuits (router never
     called); `TooManyRequests` shape with and without `Retry-After`.
-  - HealthEndpoint: GET path → 200 body; GET path?query → 200; POST path → pass
-    through; other targets → pass through.
+  - HealthEndpoint: GET path → 200 body; HEAD path → 200 empty body; GET
+    path?query → 200; POST path → pass through; other targets → pass through.
   - Observe: `on_start` receives method/target before dispatch; pairing holds
     when `next` throws; existing one-callback signature still compiles (no
     source change to existing tests); injectable clock still drives `duration`.

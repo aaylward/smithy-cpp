@@ -180,7 +180,8 @@ WeatherServer server(handler);
 auto limiter = std::make_shared<MyRateLimiter>(/* window, budget */);
 
 transport.Start(smithy::server::Chain(
-    {// Outermost: shed abusive traffic before it costs anything.
+    {// Outermost: shed abusive traffic before it costs anything. Trust
+     // x-forwarded-for only behind a proxy that sets it.
      smithy::server::Guard(
          [limiter](const smithy::http::HttpRequest& request) {
            return limiter->Allow(
@@ -205,13 +206,15 @@ transport.Start(smithy::server::Chain(
 ```
 
 The first middleware in the chain is outermost: it sees the request first and
-can short-circuit before anything below it runs. `Guard` is the generic
-admission primitive — rate limiting (above), IP allowlists, maintenance mode —
-admit/reject callbacks in, one decision point out. `Observe`'s callbacks run
-on the transport's request thread (keep them cheap or hand off) and always
-pair: when dispatch throws, `on_complete` reports a 500 completion before the
-exception reaches the transport's containment, so an in-flight gauge can never
-leak. Throwing callbacks are logged and swallowed.
+can short-circuit before anything below it runs (so `Guard`'s rejections never
+reach `Observe` — track rejection rates in the limiter itself). `Guard` is the
+generic admission primitive — rate limiting (above), IP allowlists,
+maintenance mode — admit/reject callbacks in, one decision point out.
+`Observe`'s callbacks run on the transport's request thread (keep them cheap
+or hand off) and always pair: when dispatch throws, `on_complete` reports a
+500 completion before the exception reaches the transport's containment, so
+an in-flight gauge can never leak. Throwing callbacks are logged and
+swallowed.
 
 ## Observability
 
@@ -221,7 +224,7 @@ OpenTelemetry — plugs in without the core taking a telemetry dependency.
 
 **Server:** `Observe` (above) reports, per request: `method`, `target`,
 `operation` (the Smithy operation that handled it, stamped by the generated
-router; empty for 404/405 dispatch failures), `status`, `duration`, and
+router; empty for 404/405/400 dispatch failures), `status`, `duration`, and
 `trace_parent` — the incoming W3C `traceparent` header, verbatim, for log
 correlation. An optional `on_start` callback fires before dispatch (method and
 target only), enabling in-flight gauges; start/complete always pair, even when

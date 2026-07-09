@@ -127,6 +127,18 @@ TEST(ObserveTest, PairsCompleteWithStartWhenDispatchThrows) {
   ASSERT_EQ(completions.size(), 1u);  // an in-flight gauge never leaks
   EXPECT_EQ(completions[0].status, 500);
   EXPECT_EQ(completions[0].operation, "");
+  EXPECT_EQ(completions[0].method, "GET");
+  EXPECT_EQ(completions[0].target, "/");
+}
+
+TEST(ObserveTest, DispatchThrowRethrowsOriginalEvenIfOnCompleteThrows) {
+  auto handler =
+      Chain({Observe([](const RequestObservation&) { throw std::runtime_error("metrics down"); },
+                     [](const RequestStart&) {})},
+            [](const http::HttpRequest&) -> http::HttpResponse {
+              throw std::logic_error("handler exploded");
+            });
+  EXPECT_THROW((void)handler({}), std::logic_error);  // original survives, not runtime_error
 }
 
 TEST(ObserveTest, ThrowingOnStartIsContainedAndTheRequestIsServed) {

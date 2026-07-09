@@ -175,19 +175,22 @@ TEST(GuardTest, AdmittedRequestsPassThrough) {
 TEST(GuardTest, RejectedRequestsShortCircuitWithTheRejectResponse) {
   bool reached = false;
   auto handler = Chain({Guard([](const http::HttpRequest&) { return false; },
-                              [](const http::HttpRequest&) {
+                              [](const http::HttpRequest& request) {
                                 http::HttpResponse response;
                                 response.status = 503;
-                                response.body = "maintenance";
+                                response.body = "maintenance: " +
+                                                request.headers.Get("x-request-id").value_or("");
                                 return response;
                               })},
                        [&](const http::HttpRequest&) {
                          reached = true;
                          return Ok("never");
                        });
-  const auto response = handler({});
+  http::HttpRequest request;
+  request.headers.Set("x-request-id", "r-42");
+  const auto response = handler(request);
   EXPECT_EQ(response.status, 503);
-  EXPECT_EQ(response.body, "maintenance");
+  EXPECT_EQ(response.body, "maintenance: r-42");
   EXPECT_FALSE(reached);
 }
 
@@ -222,6 +225,57 @@ TEST(TooManyRequestsTest, SetsRetryAfterWhenGiven) {
   const auto response = TooManyRequests(std::chrono::seconds(30))(http::HttpRequest{});
   EXPECT_EQ(response.status, 429);
   EXPECT_EQ(response.headers.Get("retry-after").value_or(""), "30");
+}
+
+TEST(HealthEndpointTest, AnswersGetOnThePath) {
+  bool reached = false;
+  auto handler = Chain({HealthEndpoint()}, [&](const http::HttpRequest&) {
+    reached = true;
+    return Ok("router");
+  });
+
+  http::HttpRequest request;
+  request.method = "GET";
+  request.target = "/health";
+  const auto response = handler(request);
+  EXPECT_EQ(response.status, 200);
+  EXPECT_EQ(response.headers.Get("content-type").value_or(""), "application/json");
+  EXPECT_EQ(response.body, R"({"status":"healthy"})");
+  EXPECT_FALSE(reached);
+}
+
+TEST(HealthEndpointTest, IgnoresTheQueryString) {
+  auto handler = Chain({HealthEndpoint()}, [](const http::HttpRequest&) { return Ok("router"); });
+  http::HttpRequest request;
+  request.method = "GET";
+  request.target = "/health?verbose=1";
+  EXPECT_EQ(handler(request).body, R"({"status":"healthy"})");
+}
+
+TEST(HealthEndpointTest, PassesThroughOtherMethodsAndTargets) {
+  auto handler = Chain({HealthEndpoint()}, [](const http::HttpRequest&) { return Ok("router"); });
+
+  http::HttpRequest post;
+  post.method = "POST";
+  post.target = "/health";
+  EXPECT_EQ(handler(post).body, "router");  // the router decides (404/405/route)
+
+  http::HttpRequest other;
+  other.method = "GET";
+  other.target = "/healthz";
+  EXPECT_EQ(handler(other).body, "router");
+}
+
+TEST(HealthEndpointTest, CustomPath) {
+  auto handler = Chain({HealthEndpoint("/status/live")},
+                       [](const http::HttpRequest&) { return Ok("router"); });
+  http::HttpRequest request;
+  request.method = "GET";
+  request.target = "/status/live";
+  EXPECT_EQ(handler(request).status, 200);
+
+  request.target = "/health";
+  EXPECT_EQ(handler(request).body, "router");
 }
 
 }  // namespace

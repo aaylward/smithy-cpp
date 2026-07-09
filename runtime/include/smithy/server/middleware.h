@@ -30,6 +30,9 @@ http::RequestHandler Chain(std::vector<Middleware> middleware, http::RequestHand
 // a rate limiter, an IP allowlist, a maintenance switch — is the
 // application's dependency; Guard owns only the composition point and the
 // short-circuit. Neither callback may be null.
+// Both callbacks run on the transport's request thread, concurrently across
+// requests — an injected policy (e.g. a shared rate limiter) must be
+// thread-safe.
 Middleware Guard(std::function<bool(const http::HttpRequest&)> admit,
                  std::function<http::HttpResponse(const http::HttpRequest&)> reject);
 
@@ -38,6 +41,12 @@ Middleware Guard(std::function<bool(const http::HttpRequest&)> admit,
 // retry_after is set.
 std::function<http::HttpResponse(const http::HttpRequest&)> TooManyRequests(
     std::optional<std::chrono::seconds> retry_after = std::nullopt);
+
+// Static liveness endpoint: answers GET <path> (query string ignored) with
+// 200 {"status":"healthy"}; every other request passes through to the next
+// handler, so a model may still define other routes on the path. Readiness
+// probing is deliberately out of scope.
+Middleware HealthEndpoint(std::string path = "/health");
 
 // One served request, as seen from outside the router.
 struct RequestObservation {

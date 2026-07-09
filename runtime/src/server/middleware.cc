@@ -50,11 +50,14 @@ Middleware HealthEndpoint(std::string path) {
   return [path = std::move(path)](http::RequestHandler next) {
     return [path, next = std::move(next)](const http::HttpRequest& request) {
       const std::string_view target(request.target);
-      if (request.method == "GET" && target.substr(0, target.find('?')) == path) {
+      if ((request.method == "GET" || request.method == "HEAD") &&
+          target.substr(0, target.find('?')) == path) {
         http::HttpResponse response;
         response.status = 200;
         response.headers.Set("content-type", "application/json");
-        response.body = R"({"status":"healthy"})";
+        if (request.method == "GET") {
+          response.body = R"({"status":"healthy"})";
+        }
         return response;
       }
       return next(request);

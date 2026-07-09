@@ -42,10 +42,11 @@ Middleware Guard(std::function<bool(const http::HttpRequest&)> admit,
 std::function<http::HttpResponse(const http::HttpRequest&)> TooManyRequests(
     std::optional<std::chrono::seconds> retry_after = std::nullopt);
 
-// Static liveness endpoint: answers GET <path> (query string ignored) with
-// 200 {"status":"healthy"}; every other request passes through to the next
-// handler, so a model may still define other routes on the path. Readiness
-// probing is deliberately out of scope.
+// Static liveness endpoint: answers GET or HEAD <path> (query string
+// ignored) with 200 {"status":"healthy"} (body omitted for HEAD); every
+// other request passes through to the next handler, so a model may still
+// define other routes on the path. Readiness probing is deliberately out of
+// scope.
 Middleware HealthEndpoint(std::string path = "/health");
 
 // One served request, as seen from outside the router.

@@ -339,5 +339,22 @@ TEST(HealthEndpointTest, CustomPath) {
   EXPECT_EQ(handler(request).body, "router");
 }
 
+TEST(HealthEndpointTest, AnswersHeadWithoutABody) {
+  bool reached = false;
+  auto handler = Chain({HealthEndpoint()}, [&](const http::HttpRequest&) {
+    reached = true;
+    return Ok("router");
+  });
+
+  http::HttpRequest request;
+  request.method = "HEAD";
+  request.target = "/health";
+  const auto response = handler(request);
+  EXPECT_EQ(response.status, 200);
+  EXPECT_EQ(response.headers.Get("content-type").value_or(""), "application/json");
+  EXPECT_EQ(response.body, "");
+  EXPECT_FALSE(reached);
+}
+
 }  // namespace
 }  // namespace smithy::server

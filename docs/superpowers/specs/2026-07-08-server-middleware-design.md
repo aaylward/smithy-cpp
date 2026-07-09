@@ -47,12 +47,13 @@ std::function<http::HttpResponse(const http::HttpRequest&)> TooManyRequests(
 Middleware HealthEndpoint(std::string path = "/health");
 ```
 
-- Short-circuits `GET <path>` with 200, `content-type: application/json`, body
-  `{"status":"healthy"}`. Match is exact on the path portion of `target`
-  (query string ignored).
-- Non-GET requests to the path pass through to `next` (the router 404/405s them,
-  or serves them if the model defines such a route). Any other target passes
-  through untouched.
+- Short-circuits `GET` or `HEAD <path>` with 200, `content-type:
+  application/json`, body `{"status":"healthy"}` (body omitted for HEAD, so
+  transports never emit a mismatched content-length — added in PR review).
+  Match is exact on the path portion of `target` (query string ignored).
+- Requests to the path with any other method pass through to `next` (the
+  router 404/405s them, or serves them if the model defines such a route).
+  Any other target passes through untouched.
 - Static body only — no timestamp (meerkat includes one; nothing consumes it).
   Readiness checks (dependency probes, 503 on degraded) are deliberately
   deferred; the signature can grow an optional checks parameter later without

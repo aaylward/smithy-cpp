@@ -207,14 +207,19 @@ transport.Start(smithy::server::Chain(
 
 The first middleware in the chain is outermost: it sees the request first and
 can short-circuit before anything below it runs (so `Guard`'s rejections never
-reach `Observe` — track rejection rates in the limiter itself). `Guard` is the
-generic admission primitive — rate limiting (above), IP allowlists,
-maintenance mode — admit/reject callbacks in, one decision point out.
-`Observe`'s callbacks run on the transport's request thread (keep them cheap
-or hand off) and always pair: when dispatch throws, `on_complete` reports a
-500 completion before the exception reaches the transport's containment, so
-an in-flight gauge can never leak. Throwing callbacks are logged and
-swallowed.
+reach `Observe` — track rejection rates in the limiter itself). Liveness
+probes typically arrive without `x-forwarded-for`, so under this order they
+share the empty-string key with any client hitting the service directly, and
+one such direct-connect client can exhaust that key's budget and starve
+probes into liveness failures; where that risk is real, compose
+`HealthEndpoint()` outside `Guard`, or have `admit` always accept the empty
+key. `Guard` is the generic admission primitive — rate limiting (above), IP
+allowlists, maintenance mode — admit/reject callbacks in, one decision point
+out. `Observe`'s callbacks run on the transport's request thread (keep them
+cheap or hand off) and always pair: when dispatch throws, `on_complete`
+reports a 500 completion before the exception reaches the transport's
+containment, so an in-flight gauge can never leak. Throwing callbacks are
+logged and swallowed.
 
 ## Observability
 

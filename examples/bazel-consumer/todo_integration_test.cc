@@ -198,6 +198,7 @@ TEST(TodoMiddlewareTest, GuardObserveAndHealthComposeAroundTheServer) {
   auto handler = smithy::server::Chain(
       {smithy::server::Guard([&admit](const smithy::http::HttpRequest&) { return admit; },
                              smithy::server::TooManyRequests(std::chrono::seconds(1))),
+       // Observe takes on_complete first, then the optional on_start.
        smithy::server::Observe(
            [&completed](const smithy::server::RequestObservation&) { ++completed; },
            [&started](const smithy::server::RequestStart&) { ++started; }),
@@ -224,6 +225,7 @@ TEST(TodoMiddlewareTest, GuardObserveAndHealthComposeAroundTheServer) {
   TodoClient client = std::move(*created);
   const auto added = client.AddTask(AddTaskInput{.title = "compose middleware"});
   ASSERT_TRUE(added.ok()) << added.error().message();
+  EXPECT_EQ(added->title, "compose middleware");
 
   // Once admit flips, Guard sheds load with the shaped 429 before Observe.
   admit = false;

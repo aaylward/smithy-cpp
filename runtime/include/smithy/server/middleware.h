@@ -63,12 +63,26 @@ struct RequestObservation {
   std::chrono::milliseconds duration{0};
 };
 
-// Middleware reporting every request to a callback — the structured-logging
-// and metrics hook (count = callbacks, latency = duration). The callback runs
-// on the transport's request thread after the response is built; keep it
+// What on_start sees, before the router runs. The Smithy operation is not
+// yet known pre-dispatch, so start observations are labeled by method and
+// target only.
+struct RequestStart {
+  std::string method;
+  std::string target;
+};
+
+// Middleware reporting every request to callbacks — the structured-logging
+// and metrics hook. on_complete runs after the response is built (count =
+// callbacks, latency = duration); the optional on_start runs before dispatch
+// so an in-flight gauge can increment (pair it with on_complete's decrement —
+// the two always pair, even when dispatch throws: the completion then
+// reports status 500 with an empty operation before the exception continues
+// to the transport's containment). Throwing callbacks are logged and
+// swallowed. Callbacks run on the transport's request thread; keep them
 // cheap or hand off. now is injectable for deterministic tests (null means
 // steady_clock).
-Middleware Observe(std::function<void(const RequestObservation&)> callback,
+Middleware Observe(std::function<void(const RequestObservation&)> on_complete,
+                   std::function<void(const RequestStart&)> on_start = nullptr,
                    std::function<std::chrono::steady_clock::time_point()> now = nullptr);
 
 // 401 unless the request carries "authorization: Bearer <token>" (scheme

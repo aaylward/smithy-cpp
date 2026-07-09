@@ -75,13 +75,13 @@ TEST(ObserveTest, ReportsMethodTargetStatusAndDuration) {
     return current;
   };
 
-  auto handler =
-      Chain({Observe([&](const RequestObservation& o) { observations.push_back(o); }, now)},
-            [](const http::HttpRequest&) {
-              http::HttpResponse response;
-              response.status = 404;
-              return response;
-            });
+  auto handler = Chain(
+      {Observe([&](const RequestObservation& o) { observations.push_back(o); }, nullptr, now)},
+      [](const http::HttpRequest&) {
+        http::HttpResponse response;
+        response.status = 404;
+        return response;
+      });
 
   http::HttpRequest request;
   request.method = "GET";
@@ -93,6 +93,50 @@ TEST(ObserveTest, ReportsMethodTargetStatusAndDuration) {
   EXPECT_EQ(observations[0].target, "/cities/1");
   EXPECT_EQ(observations[0].status, 404);
   EXPECT_EQ(observations[0].duration, milliseconds(7));
+}
+
+TEST(ObserveTest, OnStartFiresBeforeDispatch) {
+  std::vector<std::string> log;
+  auto handler = Chain({Observe([&](const RequestObservation&) { log.push_back("complete"); },
+                                [&](const RequestStart& s) {
+                                  log.push_back("start:" + s.method + " " + s.target);
+                                })},
+                       [&](const http::HttpRequest&) {
+                         log.push_back("handler");
+                         return Ok("done");
+                       });
+
+  http::HttpRequest request;
+  request.method = "POST";
+  request.target = "/tasks";
+  (void)handler(request);
+  EXPECT_EQ(log, (std::vector<std::string>{"start:POST /tasks", "handler", "complete"}));
+}
+
+TEST(ObserveTest, PairsCompleteWithStartWhenDispatchThrows) {
+  int started = 0;
+  std::vector<RequestObservation> completions;
+  auto handler = Chain({Observe([&](const RequestObservation& o) { completions.push_back(o); },
+                                [&](const RequestStart&) { ++started; })},
+                       [](const http::HttpRequest&) -> http::HttpResponse {
+                         throw std::runtime_error("handler exploded");
+                       });
+
+  EXPECT_THROW((void)handler({}), std::runtime_error);  // containment stays upstream
+  EXPECT_EQ(started, 1);
+  ASSERT_EQ(completions.size(), 1u);  // an in-flight gauge never leaks
+  EXPECT_EQ(completions[0].status, 500);
+  EXPECT_EQ(completions[0].operation, "");
+}
+
+TEST(ObserveTest, ThrowingOnStartIsContainedAndTheRequestIsServed) {
+  auto handler =
+      Chain({Observe([](const RequestObservation&) {},
+                     [](const RequestStart&) { throw std::runtime_error("gauge backend down"); })},
+            [](const http::HttpRequest&) { return Ok("served"); });
+  http::HttpResponse response;
+  EXPECT_NO_THROW(response = handler({}));
+  EXPECT_EQ(response.body, "served");
 }
 
 TEST(RequireBearerAuthTest, ValidatesTheBearerToken) {
@@ -264,6 +308,11 @@ TEST(HealthEndpointTest, PassesThroughOtherMethodsAndTargets) {
   other.method = "GET";
   other.target = "/healthz";
   EXPECT_EQ(handler(other).body, "router");
+
+  http::HttpRequest prefixed;
+  prefixed.method = "GET";
+  prefixed.target = "/healthx";
+  EXPECT_EQ(handler(prefixed).body, "router");
 }
 
 TEST(HealthEndpointTest, CustomPath) {

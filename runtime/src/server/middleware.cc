@@ -62,32 +62,57 @@ Middleware HealthEndpoint(std::string path) {
   };
 }
 
-Middleware Observe(std::function<void(const RequestObservation&)> callback,
+namespace {
+
+// A throwing observation sink (e.g. a metrics backend under backpressure)
+// must not discard a response or unwind into the transport thread; swallow
+// it after logging.
+template <typename Callback, typename Observation>
+void CallContained(const Callback& callback, const Observation& observation, const char* which) {
+  try {
+    callback(observation);
+  } catch (const std::exception& e) {
+    std::clog << "smithy: " << which << " callback threw: " << e.what() << "\n";
+  } catch (...) {
+    std::clog << "smithy: " << which << " callback threw a non-std exception\n";
+  }
+}
+
+}  // namespace
+
+Middleware Observe(std::function<void(const RequestObservation&)> on_complete,
+                   std::function<void(const RequestStart&)> on_start,
                    std::function<std::chrono::steady_clock::time_point()> now) {
   if (now == nullptr) {
     now = [] { return std::chrono::steady_clock::now(); };
   }
-  return [callback = std::move(callback), now = std::move(now)](http::RequestHandler next) {
-    return [callback, now, next = std::move(next)](const http::HttpRequest& request) {
-      const auto start = now();
-      http::HttpResponse response = next(request);
+  return [on_complete = std::move(on_complete), on_start = std::move(on_start),
+          now = std::move(now)](http::RequestHandler next) {
+    return [on_complete, on_start, now, next = std::move(next)](const http::HttpRequest& request) {
+      if (on_start != nullptr) {
+        CallContained(on_start, RequestStart{request.method, request.target}, "Observe on_start");
+      }
       RequestObservation observation;
       observation.method = request.method;
       observation.target = request.target;
-      observation.operation = response.operation;
       observation.trace_parent = request.headers.Get("traceparent").value_or("");
+      const auto start = now();
+      http::HttpResponse response;
+      try {
+        response = next(request);
+      } catch (...) {
+        // Keep start/complete paired when dispatch throws: report a 500
+        // completion, then let the exception continue to the transport's
+        // containment (server_dispatch.h).
+        observation.status = 500;
+        observation.duration = std::chrono::duration_cast<std::chrono::milliseconds>(now() - start);
+        CallContained(on_complete, observation, "Observe on_complete");
+        throw;
+      }
+      observation.operation = response.operation;
       observation.status = response.status;
       observation.duration = std::chrono::duration_cast<std::chrono::milliseconds>(now() - start);
-      // A throwing observation sink (e.g. a metrics backend under backpressure)
-      // must not discard an already-built response or unwind into the
-      // transport thread; swallow it after logging.
-      try {
-        callback(observation);
-      } catch (const std::exception& e) {
-        std::clog << "smithy: Observe callback threw: " << e.what() << "\n";
-      } catch (...) {
-        std::clog << "smithy: Observe callback threw a non-std exception\n";
-      }
+      CallContained(on_complete, observation, "Observe on_complete");
       return response;
     };
   };

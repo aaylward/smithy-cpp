@@ -78,9 +78,9 @@ struct RequestStart {
 // the two always pair, even when dispatch throws: the completion then
 // reports status 500 with an empty operation before the exception continues
 // to the transport's containment). Throwing callbacks are logged and
-// swallowed. Callbacks run on the transport's request thread; keep them
-// cheap or hand off. now is injectable for deterministic tests (null means
-// steady_clock).
+// swallowed. on_complete may not be null; on_start and now may be.
+// Callbacks run on the transport's request thread; keep them cheap or hand
+// off. now is injectable for deterministic tests (null means steady_clock).
 Middleware Observe(std::function<void(const RequestObservation&)> on_complete,
                    std::function<void(const RequestStart&)> on_start = nullptr,
                    std::function<std::chrono::steady_clock::time_point()> now = nullptr);

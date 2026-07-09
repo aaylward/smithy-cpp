@@ -175,26 +175,43 @@ generated code (`smithy/server/middleware.h`), with any transport:
 ```cpp
 WeatherServer server(handler);
 
-auto require_auth = [](smithy::http::RequestHandler next) {
-  return [next = std::move(next)](const smithy::http::HttpRequest& request) {
-    if (!Authorized(request)) return smithy::http::HttpResponse{401, {}, ""};
-    return next(request);
-  };
-};
+// Policy stays an application dependency (your rate limiter, your metrics
+// backend); the middleware owns only the composition point.
+auto limiter = std::make_shared<MyRateLimiter>(/* window, budget */);
 
 transport.Start(smithy::server::Chain(
-    {require_auth,
-     smithy::server::Observe([](const smithy::server::RequestObservation& o) {
-       // o.method, o.target, o.status, o.duration — log or feed metrics
-       // (count = one callback per request, latency = o.duration).
-     })},
+    {// Outermost: shed abusive traffic before it costs anything.
+     smithy::server::Guard(
+         [limiter](const smithy::http::HttpRequest& request) {
+           return limiter->Allow(
+               request.headers.Get("x-forwarded-for").value_or(""));
+         },
+         smithy::server::TooManyRequests(std::chrono::seconds(30))),
+     // Observe everything admitted — health probes included. on_start
+     // (optional) enables an in-flight gauge; on_complete carries
+     // method/target/operation/status/duration/trace_parent.
+     smithy::server::Observe(
+         [](const smithy::server::RequestObservation& o) {
+           // gauge -1; count 1; latency o.duration — feed any backend.
+         },
+         [](const smithy::server::RequestStart& s) {
+           // gauge +1 (labeled by s.method/s.target; the operation is not
+           // known until the router runs).
+         }),
+     // Liveness: GET /health -> 200 {"status":"healthy"}; everything else
+     // passes through to the router.
+     smithy::server::HealthEndpoint()},
     server.Handler()));
 ```
 
 The first middleware in the chain is outermost: it sees the request first and
-the response last, and can short-circuit before the router runs. `Observe` is
-the built-in structured-logging/metrics hook; its callback runs on the
-transport's request thread, so keep it cheap or hand off.
+can short-circuit before anything below it runs. `Guard` is the generic
+admission primitive — rate limiting (above), IP allowlists, maintenance mode —
+admit/reject callbacks in, one decision point out. `Observe`'s callbacks run
+on the transport's request thread (keep them cheap or hand off) and always
+pair: when dispatch throws, `on_complete` reports a 500 completion before the
+exception reaches the transport's containment, so an in-flight gauge can never
+leak. Throwing callbacks are logged and swallowed.
 
 ## Observability
 
@@ -206,7 +223,9 @@ OpenTelemetry — plugs in without the core taking a telemetry dependency.
 `operation` (the Smithy operation that handled it, stamped by the generated
 router; empty for 404/405 dispatch failures), `status`, `duration`, and
 `trace_parent` — the incoming W3C `traceparent` header, verbatim, for log
-correlation.
+correlation. An optional `on_start` callback fires before dispatch (method and
+target only), enabling in-flight gauges; start/complete always pair, even when
+the handler throws.
 
 **Client:** two ready-made interceptors in
 `smithy/client/observability.h`:

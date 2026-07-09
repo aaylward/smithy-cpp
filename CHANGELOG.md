@@ -53,6 +53,13 @@ via `git_override` until then.
   size limits, graceful drain, TLS termination) and `BeastHttpClient`
   (keep-alive connection pool, per-request timeouts, TLS via BoringSSL with
   certificate + hostname verification on by default).
+- Server middleware additions for production serving: `Guard` admission
+  control (rate limiting, allowlists, maintenance mode — policy stays an
+  application dependency) with a `TooManyRequests` reject factory,
+  `HealthEndpoint` static liveness, and an optional `Observe` `on_start`
+  callback for in-flight gauges with guaranteed start/complete pairing.
+  **Breaking:** `Observe(callback, now)` call sites become
+  `Observe(callback, nullptr, now)`.
 - Fuzz harnesses (JSON, CBOR, URI, server dispatch, regex) and a Google
   Benchmark suite (serde, codecs, per-protocol request round trips, real-TCP
   transport round trips incl. Beast and Beast TLS) run in CI.

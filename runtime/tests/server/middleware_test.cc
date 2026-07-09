@@ -209,6 +209,10 @@ TEST(ObserveTest, CountsEveryRequest) {
   EXPECT_EQ(count, 3);
 }
 
+TEST(ObserveTest, NullOnCompleteThrowsAtComposition) {
+  EXPECT_THROW(Observe(nullptr), std::invalid_argument);
+}
+
 TEST(ObserveTest, ThrowingCallbackDoesNotDiscardResponseOrPropagate) {
   auto handler = Chain({Observe([](const RequestObservation&) {
                          throw std::runtime_error("metrics backend down");

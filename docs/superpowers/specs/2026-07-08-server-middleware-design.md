@@ -116,6 +116,11 @@ constraint.
 - `Observe` exception pairing as above; throwing `on_start`/`on_complete`
   callbacks are logged and swallowed (the existing `Observe` containment
   behavior — a misbehaving metrics backend must never discard a response).
+  A null `on_complete` throws `std::invalid_argument` at composition time
+  (added in PR review): the containment above would otherwise swallow the
+  `bad_function_call` on every request, so a null sink would fail silently —
+  unlike `Guard`'s nulls, which fail loudly via transport containment and
+  stay a documented precondition.
 
 ## Testing
 

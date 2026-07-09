@@ -6,6 +6,7 @@
 #include <iostream>
 #include <optional>
 #include <ranges>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -86,6 +87,9 @@ void CallContained(const Callback& callback, const Observation& observation, con
 Middleware Observe(std::function<void(const RequestObservation&)> on_complete,
                    std::function<void(const RequestStart&)> on_start,
                    std::function<std::chrono::steady_clock::time_point()> now) {
+  if (on_complete == nullptr) {
+    throw std::invalid_argument("smithy::server::Observe: on_complete may not be null");
+  }
   if (now == nullptr) {
     now = [] { return std::chrono::steady_clock::now(); };
   }

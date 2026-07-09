@@ -112,8 +112,9 @@ constraint.
 
 - `Guard`'s `reject` response is returned as-is; the middleware never throws.
 - `HealthEndpoint` allocates nothing per request beyond the response struct.
-- `Observe` exception pairing as above; a throwing `on_start`/`on_complete` is a
-  bug in the app callback and propagates to the transport's containment layer.
+- `Observe` exception pairing as above; throwing `on_start`/`on_complete`
+  callbacks are logged and swallowed (the existing `Observe` containment
+  behavior — a misbehaving metrics backend must never discard a response).
 
 ## Testing
 

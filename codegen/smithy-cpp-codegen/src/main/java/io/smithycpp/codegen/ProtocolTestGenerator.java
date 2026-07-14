@@ -59,6 +59,25 @@ final class ProtocolTestGenerator {
       List<OperationShape> operations,
       boolean standardTests,
       boolean malformedTests) {
+    this(
+        context,
+        service,
+        protocol,
+        operations,
+        standardTests,
+        malformedTests,
+        loadExclusions(service.getId()));
+  }
+
+  /** Test seam: exclusions injected instead of loaded from the shared resource. */
+  ProtocolTestGenerator(
+      CppContext context,
+      ServiceShape service,
+      ProtocolGenerator protocol,
+      List<OperationShape> operations,
+      boolean standardTests,
+      boolean malformedTests,
+      Map<String, String> exclusions) {
     this.context = context;
     this.service = service;
     this.protocol = protocol;
@@ -66,7 +85,7 @@ final class ProtocolTestGenerator {
     this.standardTests = standardTests;
     this.malformedTests = malformedTests;
     this.literals = new NodeLiteralGenerator(context);
-    this.exclusions = loadExclusions(service.getId());
+    this.exclusions = exclusions;
     this.unusedExclusions = new LinkedHashMap<>(exclusions);
   }
 
@@ -80,34 +99,54 @@ final class ProtocolTestGenerator {
     if (malformedTests) {
       writeServerMalformedTests();
     }
-    if (!unusedExclusions.isEmpty()) {
+    // Staleness is only judged for entries whose generation path ran this
+    // round: a server-malformed entry is invisible to a malformedTests=false
+    // run (and an "any" entry can match in either path), so flagging those
+    // would couple the exclusion contract to which paths a task enables.
+    Map<String, String> stale = new LinkedHashMap<>(unusedExclusions);
+    stale.keySet().removeIf(key -> !pathRan(key.substring(0, key.indexOf(' '))));
+    if (!stale.isEmpty()) {
       throw new CodegenException(
           "cpp-codegen: protocol-test-exclusions.txt has entries that matched no generated test"
               + " for "
               + service.getId()
               + " (remove them): "
-              + unusedExclusions.keySet());
+              + stale.keySet());
     }
+  }
+
+  /** Whether this run executed the generation path that consults entries of {@code kind}. */
+  private boolean pathRan(String kind) {
+    return switch (kind) {
+      case "server-malformed" -> malformedTests;
+      case "any" -> standardTests && malformedTests;
+      default -> standardTests;
+    };
   }
 
   private String clientType() {
     return CppReservedWords.escape(service.getId().getName()) + "Client";
   }
 
-  private boolean excluded(String kind, String testId) {
+  /**
+   * Whether this test case is skipped here: pinned to another protocol, or named in the exclusion
+   * list. Exclusions are consulted — and their entries marked live — even for cross-protocol cases,
+   * which never generate in this suite but must not make their entries read as stale; only entries
+   * that suppress a test of this suite are listed in the generated header comment.
+   */
+  private boolean skipped(String kind, ShapeId testProtocol, String testId) {
+    boolean thisProtocol = testProtocol.equals(protocol.traitId());
     for (String key : new String[] {kind + " " + testId, "any " + testId}) {
       String reason = exclusions.get(key);
       if (reason != null) {
         unusedExclusions.remove(key);
-        excludedHere.add(testId + " (" + kind + ") — " + reason);
+        if (thisProtocol) {
+          excludedHere.add(testId + " (" + kind + ") — " + reason);
+        }
         return true;
       }
     }
-    return false;
-  }
-
-  private boolean isThisProtocol(ShapeId testProtocol) {
-    return testProtocol.equals(protocol.traitId());
+    return !thisProtocol;
   }
 
   // ---------------------------------------------------------------------
@@ -128,8 +167,7 @@ final class ProtocolTestGenerator {
                   continue;
                 }
                 for (HttpRequestTestCase testCase : trait.get().getTestCasesFor(AppliesTo.CLIENT)) {
-                  if (!isThisProtocol(testCase.getProtocol())
-                      || excluded("request", testCase.getId())) {
+                  if (skipped("request", testCase.getProtocol(), testCase.getId())) {
                     continue;
                   }
                   tests.add(requestTest(operation, testCase));
@@ -254,8 +292,7 @@ final class ProtocolTestGenerator {
                         trait -> {
                           for (HttpResponseTestCase testCase :
                               trait.getTestCasesFor(AppliesTo.CLIENT)) {
-                            if (!isThisProtocol(testCase.getProtocol())
-                                || excluded("response", testCase.getId())) {
+                            if (skipped("response", testCase.getProtocol(), testCase.getId())) {
                               continue;
                             }
                             tests.add(responseTest(operation, testCase, null));
@@ -285,8 +322,7 @@ final class ProtocolTestGenerator {
                 }
                 for (HttpResponseTestCase testCase :
                     trait.get().getTestCasesFor(AppliesTo.CLIENT)) {
-                  if (!isThisProtocol(testCase.getProtocol())
-                      || excluded("error", testCase.getId())) {
+                  if (skipped("error", testCase.getProtocol(), testCase.getId())) {
                     continue;
                   }
                   tests.add(responseTest(operation, testCase, error));
@@ -545,8 +581,7 @@ final class ProtocolTestGenerator {
                   continue;
                 }
                 for (HttpRequestTestCase testCase : trait.get().getTestCasesFor(AppliesTo.SERVER)) {
-                  if (!isThisProtocol(testCase.getProtocol())
-                      || excluded("server-request", testCase.getId())) {
+                  if (skipped("server-request", testCase.getProtocol(), testCase.getId())) {
                     continue;
                   }
                   tests.add(serverRequestTest(operation, testCase));
@@ -618,8 +653,8 @@ final class ProtocolTestGenerator {
                         trait -> {
                           for (HttpResponseTestCase testCase :
                               trait.getTestCasesFor(AppliesTo.SERVER)) {
-                            if (!isThisProtocol(testCase.getProtocol())
-                                || excluded("server-response", testCase.getId())) {
+                            if (skipped(
+                                "server-response", testCase.getProtocol(), testCase.getId())) {
                               continue;
                             }
                             needsRequest.add(operation);
@@ -648,8 +683,7 @@ final class ProtocolTestGenerator {
                 }
                 for (HttpResponseTestCase testCase :
                     trait.get().getTestCasesFor(AppliesTo.SERVER)) {
-                  if (!isThisProtocol(testCase.getProtocol())
-                      || excluded("server-error", testCase.getId())) {
+                  if (skipped("server-error", testCase.getProtocol(), testCase.getId())) {
                     continue;
                   }
                   needsRequest.add(operation);
@@ -812,8 +846,7 @@ final class ProtocolTestGenerator {
                 }
                 // getTestCases() expands testParameters into concrete cases.
                 for (HttpMalformedRequestTestCase testCase : trait.get().getTestCases()) {
-                  if (!isThisProtocol(testCase.getProtocol())
-                      || excluded("server-malformed", testCase.getId())) {
+                  if (skipped("server-malformed", testCase.getProtocol(), testCase.getId())) {
                     continue;
                   }
                   tests.add(serverMalformedTest(testCase));

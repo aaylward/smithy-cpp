@@ -31,6 +31,27 @@ final class SerdeCodeGen {
     return HttpBindingCodeGen.wireName(member, useJsonName);
   }
 
+  /**
+   * Writes one member of {@code owner} into an in-scope DocumentMap named {@code mapVar} (unset
+   * optionals are skipped). The one member-serialize skeleton — serde's whole-structure serializer
+   * and the HTTP binding body writer both ride it, so they cannot drift (issue #72).
+   */
+  void writeMemberSerialize(CppWriter w, MemberShape member, String owner, String mapVar) {
+    String field = owner + "." + context.cppSymbols().toMemberName(member);
+    // Populated @default members are plain and always serialize their value.
+    if (MemberDefaults.plain(context.model(), member)) {
+      w.write("$L.emplace($S, $L);", mapVar, wireName(member), serializeExpression(member, field));
+    } else {
+      w.openBlock("if ($L.has_value()) {", field);
+      w.write(
+          "$L.emplace($S, $L);",
+          mapVar,
+          wireName(member),
+          serializeExpression(member, "(*" + field + ")"));
+      w.closeBlock("}");
+    }
+  }
+
   private Shape target(MemberShape member) {
     return context.model().expectShape(member.getTarget());
   }

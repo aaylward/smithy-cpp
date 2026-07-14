@@ -146,18 +146,7 @@ final class SerdeGenerator {
     w.openBlock("smithy::Document Serialize$L(const $L& value) {", suffix, type);
     w.write("smithy::DocumentMap map;");
     for (MemberShape member : shape.members()) {
-      String field = "value." + context.cppSymbols().toMemberName(member);
-      // Populated @default members are plain and always serialize their value.
-      if (MemberDefaults.plain(context.model(), member)) {
-        w.write("map.emplace($S, $L);", wireName(member), serde.serializeExpression(member, field));
-      } else {
-        w.openBlock("if ($L.has_value()) {", field);
-        w.write(
-            "map.emplace($S, $L);",
-            wireName(member),
-            serde.serializeExpression(member, "(*" + field + ")"));
-        w.closeBlock("}");
-      }
+      serde.writeMemberSerialize(w, member, "value", "map");
     }
     w.write("return smithy::Document(std::move(map));");
     w.closeBlock("}");

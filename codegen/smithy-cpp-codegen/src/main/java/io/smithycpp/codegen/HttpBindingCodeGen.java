@@ -156,21 +156,7 @@ final class HttpBindingCodeGen {
   static void writeDocumentBodyMap(
       CppWriter w, CppContext context, SerdeCodeGen serde, List<HttpBinding> body, String owner) {
     for (HttpBinding binding : body) {
-      MemberShape member = binding.getMember();
-      String field = owner + "." + context.cppSymbols().toMemberName(member);
-      if (MemberDefaults.plain(context.model(), member)) {
-        w.write(
-            "body_map.emplace($S, $L);",
-            serde.wireName(member),
-            serde.serializeExpression(member, field));
-      } else {
-        w.openBlock("if ($L.has_value()) {", field);
-        w.write(
-            "body_map.emplace($S, $L);",
-            serde.wireName(member),
-            serde.serializeExpression(member, "(*" + field + ")"));
-        w.closeBlock("}");
-      }
+      serde.writeMemberSerialize(w, binding.getMember(), owner, "body_map");
     }
   }
 

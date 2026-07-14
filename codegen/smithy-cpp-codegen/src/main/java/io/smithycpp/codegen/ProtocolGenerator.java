@@ -78,6 +78,10 @@ interface ProtocolGenerator {
   /** Emits the constructor statements registering one operation's route. */
   default void writeServerRoute(
       CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
-    throw new UnsupportedOperationException(name() + " does not emit per-operation routes");
+    throw new software.amazon.smithy.codegen.core.CodegenException(
+        "cpp-codegen: "
+            + name()
+            + " does not emit per-operation routes; single-endpoint protocols override"
+            + " writeServerRoutes instead");
   }
 }

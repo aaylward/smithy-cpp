@@ -64,12 +64,17 @@ public final class CppCodegenRunner {
         case "--integration-tests" -> integrationTests = Boolean.parseBoolean(args[i + 1]);
         case "--mode" -> mode = args[i + 1];
         case "--emit-build-file" -> emitBuildFile = Boolean.parseBoolean(args[i + 1]);
-        default -> throw new IllegalArgumentException("unknown argument: " + args[i]);
+        default ->
+            throw new CodegenException(
+                "cpp-codegen: unknown argument "
+                    + args[i]
+                    + " (see the CppCodegenRunner javadoc for the accepted flags)");
       }
     }
     if (service == null || namespace == null || output == null) {
-      throw new IllegalArgumentException(
-          "required: --service <id> --namespace <ns> --output <dir> [--model <file>]");
+      throw new CodegenException(
+          "cpp-codegen: required: --service <id> --namespace <ns> --output <dir>"
+              + " [--model <file>]");
     }
 
     var assembler = Model.assembler().discoverModels(CppCodegenRunner.class.getClassLoader());

@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
+import software.amazon.smithy.codegen.core.CodegenException;
 import software.amazon.smithy.model.node.Node;
 import software.amazon.smithy.model.node.ObjectNode;
 
@@ -44,8 +45,8 @@ class CppSettingsTest {
   @Test
   void rejectsAnUnknownMode() {
     ObjectNode node = minimal().withMember("mode", "banana");
-    IllegalArgumentException thrown =
-        assertThrows(IllegalArgumentException.class, () -> CppSettings.fromNode(node));
+    CodegenException thrown =
+        assertThrows(CodegenException.class, () -> CppSettings.fromNode(node));
     assertTrue(thrown.getMessage().contains("banana"));
   }
 
@@ -59,8 +60,7 @@ class CppSettingsTest {
               .withMember("service", "example.weather#Weather")
               .withMember("namespace", bad)
               .build();
-      assertThrows(
-          IllegalArgumentException.class, () -> CppSettings.fromNode(node), "namespace: " + bad);
+      assertThrows(CodegenException.class, () -> CppSettings.fromNode(node), "namespace: " + bad);
     }
   }
 

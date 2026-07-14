@@ -56,11 +56,11 @@ public final class CppSettings {
     String mode = node.getStringMemberOrDefault("mode", "both");
     boolean emitBuildFile = node.getBooleanMemberOrDefault("emitBuildFile", true);
     if (!mode.matches("types|client|server|both")) {
-      throw new IllegalArgumentException(
+      throw new software.amazon.smithy.codegen.core.CodegenException(
           "cpp-codegen: 'mode' must be types, client, server, or both, got: " + mode);
     }
     if (!namespace.matches("[A-Za-z_][A-Za-z0-9_]*(::[A-Za-z_][A-Za-z0-9_]*)*")) {
-      throw new IllegalArgumentException(
+      throw new software.amazon.smithy.codegen.core.CodegenException(
           "cpp-codegen: 'namespace' must be a C++ namespace like a::b, got: " + namespace);
     }
     return new CppSettings(

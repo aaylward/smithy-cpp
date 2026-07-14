@@ -1,6 +1,5 @@
 package io.smithycpp.codegen;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -279,66 +278,6 @@ final class ProtocolSupport {
     w.write("return response;");
     w.closeBlock("}");
     w.write("");
-  }
-
-  /**
-   * Rejects shape names whose serde functions would be hidden by the per-operation helpers the
-   * client/server emit into their anonymous namespaces (issue #47: the free-function namespace was
-   * never collision-checked, unlike declared type names). A serde-carrying shape named {@code
-   * <Op>Error} makes serde's {@code Deserialize<Op>Error(Document)} invisible next to the client's
-   * {@code Deserialize<Op>Error(HttpResponse)} — C++ name hiding, not overloading — and {@code
-   * <Op>Response} does the same to {@code Serialize<Op>Response} in HTTP servers. Only names of
-   * helpers this run actually emits are reserved: mode=client leaves {@code <Op>Response} free,
-   * mode=server leaves {@code <Op>Error} free, and error-less operations get no error deserializer
-   * at all.
-   */
-  static void rejectHelperNameCollisions(
-      CppContext context,
-      ProtocolGenerator protocol,
-      ServiceShape service,
-      List<OperationShape> operations) {
-    Map<String, String> reserved = new HashMap<>();
-    for (OperationShape operation : operations) {
-      String opName = CppReservedWords.escape(operation.getId().getName());
-      for (ProtocolGenerator.OperationHelper helper : protocol.perOperationHelpers()) {
-        boolean emitted =
-            helper.serverSide()
-                ? context.settings().generateServer()
-                : context.settings().generateClient();
-        // Deserialize<Op>Error only exists for operations that declare errors;
-        // error-less operations return GenericError instead (errorExpression).
-        if (helper.equals(ProtocolGenerator.OperationHelper.CLIENT_ERROR)
-            && operation.getErrors(service).isEmpty()) {
-          emitted = false;
-        }
-        if (emitted) {
-          reserved.put(
-              opName + helper.suffix(),
-              helper.prefix() + opName + helper.suffix() + " (" + operation.getId() + ")");
-        }
-      }
-    }
-    if (reserved.isEmpty()) {
-      return;
-    }
-    for (Shape shape :
-        new software.amazon.smithy.model.neighbor.Walker(context.model())
-            .walkShapes(context.model().expectShape(context.settings().service()))) {
-      if (!SerdeGenerator.hasSerdeFunctions(shape)) {
-        continue;
-      }
-      String declared = context.cppSymbols().declaredName(shape);
-      String helper = reserved.get(declared);
-      if (helper != null) {
-        throw new CodegenException(
-            "cpp-codegen: shape "
-                + shape.getId()
-                + " generates serde functions named after the per-operation helper "
-                + helper
-                + ", which would hide them inside the generated client/server; rename the shape"
-                + " or the operation");
-      }
-    }
   }
 
   /**
@@ -677,8 +616,11 @@ final class ProtocolSupport {
             context.model().expectShape(errorId).asStructureShape().orElseThrow();
         sorted.put(context.cppSymbols().toSymbol(shape).getName(), shape);
       }
+      // Parse<Op>Error, not Deserialize<Op>Error: the serde functions own the
+      // Serialize/Deserialize<Shape> namespace, and a same-named file-local
+      // helper would hide them (C++ name hiding) for shapes named <Op>Error.
       w.openBlock(
-          "smithy::Error Deserialize$LError(const smithy::http::HttpResponse& response) {",
+          "smithy::Error Parse$LError(const smithy::http::HttpResponse& response) {",
           CppReservedWords.escape(operation.getId().getName()));
       w.write("ParsedError parsed = ParseError(response);");
       for (Map.Entry<String, StructureShape> entry : sorted.entrySet()) {
@@ -719,7 +661,7 @@ final class ProtocolSupport {
     if (op.getErrors(service).isEmpty()) {
       return "GenericError(ParseError(*response))";
     }
-    return "Deserialize" + CppReservedWords.escape(op.getId().getName()) + "Error(*response)";
+    return "Parse" + CppReservedWords.escape(op.getId().getName()) + "Error(*response)";
   }
 
   /**

@@ -244,7 +244,7 @@ smithy::Outcome<DescribeSinkInput> ParseDescribeSinkInput(const smithy::http::Ht
   return input;
 }
 
-smithy::http::HttpResponse SerializeDescribeSinkResponse(const DescribeSinkOutput& output) {
+smithy::http::HttpResponse BuildDescribeSinkResponse(const DescribeSinkOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -317,7 +317,7 @@ smithy::Outcome<PutSinkInput> ParsePutSinkInput(const smithy::http::HttpRequest&
   return input;
 }
 
-smithy::http::HttpResponse SerializePutSinkResponse(const PutSinkOutput& output) {
+smithy::http::HttpResponse BuildPutSinkResponse(const PutSinkOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -357,7 +357,7 @@ smithy::Outcome<UploadAttachmentInput> ParseUploadAttachmentInput(const smithy::
   return input;
 }
 
-smithy::http::HttpResponse SerializeUploadAttachmentResponse(const UploadAttachmentOutput& output) {
+smithy::http::HttpResponse BuildUploadAttachmentResponse(const UploadAttachmentOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -401,7 +401,7 @@ RoundTripRestServer::RoundTripRestServer(std::shared_ptr<RoundTripRestHandler> h
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
     auto outcome = handler->DescribeSink(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
-    return SerializeDescribeSinkResponse(*outcome);
+    return BuildDescribeSinkResponse(*outcome);
   }, "DescribeSink");
   (void)router_->Add("PUT", "/sinks/{sinkId}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -426,7 +426,7 @@ RoundTripRestServer::RoundTripRestServer(std::shared_ptr<RoundTripRestHandler> h
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
     auto outcome = handler->PutSink(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
-    return SerializePutSinkResponse(*outcome);
+    return BuildPutSinkResponse(*outcome);
   }, "PutSink");
   (void)router_->Add("POST", "/sinks/{sinkId}/attachment", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -446,7 +446,7 @@ RoundTripRestServer::RoundTripRestServer(std::shared_ptr<RoundTripRestHandler> h
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
     auto outcome = handler->UploadAttachment(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
-    return SerializeUploadAttachmentResponse(*outcome);
+    return BuildUploadAttachmentResponse(*outcome);
   }, "UploadAttachment");
 }
 

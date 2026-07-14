@@ -109,7 +109,7 @@ smithy::Error MakeBookNotFoundError(const smithy::http::HttpResponse& response, 
   return error;
 }
 
-smithy::Error DeserializeGetBookError(const smithy::http::HttpResponse& response) {
+smithy::Error ParseGetBookError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "BookNotFound") return MakeBookNotFoundError(response, std::move(parsed));
   if (parsed.code == "UnknownError" && parsed.status == 404) return MakeBookNotFoundError(response, std::move(parsed));
@@ -198,7 +198,7 @@ smithy::Outcome<GetBookOutput> BookstoreClient::GetBook(const GetBookInput& inpu
   request.target = std::move(target);
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return DeserializeGetBookError(*response);
+  if (response->status != 200) return ParseGetBookError(*response);
   auto body_doc = smithy::json::Decode(response->body);
   if (!body_doc) return std::move(body_doc).error();
   return DeserializeGetBookOutput(*body_doc);

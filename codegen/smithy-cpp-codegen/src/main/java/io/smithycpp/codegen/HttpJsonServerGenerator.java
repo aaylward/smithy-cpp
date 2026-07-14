@@ -14,8 +14,8 @@ import software.amazon.smithy.model.traits.HttpTrait;
 
 /**
  * The server half of the HTTP+JSON protocol: the JsonError/ErrorToResponse helpers, validation
- * wiring, one Parse&lt;Op&gt;Input / Serialize&lt;Op&gt;Response function pair per operation (each
- * the wire inverse of the client's request/response handling), and the per-operation route with its
+ * wiring, one Parse&lt;Op&gt;Input / Build&lt;Op&gt;Response function pair per operation (each the
+ * wire inverse of the client's request/response handling), and the per-operation route with its
  * content negotiation (415/406). Shared read/write emission lives in {@link HttpBindingCodeGen}.
  *
  * <p>Stateful: {@link #writeHelpers} builds the validation plan the routes consult, so it always
@@ -298,7 +298,11 @@ final class HttpJsonServerGenerator {
         ValidationGenerator.memberMustNotBeNull(path));
   }
 
-  /** Emits Serialize<Op>Response(output) (inverse of the client response handling). */
+  /**
+   * Emits Build<Op>Response(output) (inverse of the client response handling). Build, not
+   * Serialize: the serde functions own the Serialize/Deserialize<Shape> namespace, and a same-named
+   * file-local helper would hide them for shapes named <Op>Response.
+   */
   private void writeSerializeResponseFunction(
       CppWriter w, CppContext context, SerdeCodeGen serde, OperationShape operation) {
     HttpBindingIndex index = HttpBindingIndex.of(context.model());
@@ -315,7 +319,7 @@ final class HttpJsonServerGenerator {
     HttpBinding responsePrefixHeaders = resp.prefixHeaders();
 
     w.openBlock(
-        "smithy::http::HttpResponse Serialize$LResponse(const $L& output) {", opName, outputType);
+        "smithy::http::HttpResponse Build$LResponse(const $L& output) {", opName, outputType);
     w.write("(void)output;");
     w.write("smithy::http::HttpResponse response;");
     w.write("response.status = $L;", http.getCode());
@@ -460,7 +464,7 @@ final class HttpJsonServerGenerator {
     }
     w.write("auto outcome = handler->$L(*input);", opName);
     w.write("if (!outcome) return ErrorToResponse(outcome.error());");
-    w.write("return Serialize$LResponse(*outcome);", opName);
+    w.write("return Build$LResponse(*outcome);", opName);
     w.closeBlock("}, $S);", operation.getId().getName());
   }
 }

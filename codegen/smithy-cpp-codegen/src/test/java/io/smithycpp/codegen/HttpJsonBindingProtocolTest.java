@@ -156,7 +156,7 @@ class HttpJsonBindingProtocolTest {
     // payload-less responses (harmless — Set is idempotent — but duplicated
     // generated code); pin the single emission.
     String server = generateFiles().expectFileString("/src/server.cc");
-    assertTrue(server.contains("SerializePutFileResponse"), server);
+    assertTrue(server.contains("BuildPutFileResponse"), server);
     assertEquals(
         1, count(server, "response.headers.Set(\"x-out-\" + map_key, map_value);"), server);
   }

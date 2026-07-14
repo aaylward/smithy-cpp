@@ -78,7 +78,7 @@ smithy::Error MakeSinkQuotaExceededError(const smithy::http::HttpResponse& respo
   return error;
 }
 
-smithy::Error DeserializePutSinkRpcError(const smithy::http::HttpResponse& response) {
+smithy::Error ParsePutSinkRpcError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "SinkNotFound") return MakeSinkNotFoundError(response, std::move(parsed));
   if (parsed.code == "SinkQuotaExceeded") return MakeSinkQuotaExceededError(response, std::move(parsed));
@@ -133,7 +133,7 @@ smithy::Outcome<PutSinkRpcOutput> RoundTripRpcClient::PutSinkRpc(const PutSinkRp
   request.body = smithy::cbor::Encode(SerializePutSinkRpcInput(input)).ToString();
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return DeserializePutSinkRpcError(*response);
+  if (response->status != 200) return ParsePutSinkRpcError(*response);
   auto body_doc = smithy::cbor::Decode(smithy::Blob::FromString(response->body));
   if (!body_doc) return std::move(body_doc).error();
   return DeserializePutSinkRpcOutput(*body_doc);

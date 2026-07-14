@@ -167,7 +167,7 @@ smithy::Outcome<DeleteCityInput> ParseDeleteCityInput(const smithy::http::HttpRe
   return input;
 }
 
-smithy::http::HttpResponse SerializeDeleteCityResponse(const DeleteCityOutput& output) {
+smithy::http::HttpResponse BuildDeleteCityResponse(const DeleteCityOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 204;
@@ -186,7 +186,7 @@ smithy::Outcome<GetCityInput> ParseGetCityInput(const smithy::http::HttpRequest&
   return input;
 }
 
-smithy::http::HttpResponse SerializeGetCityResponse(const GetCityOutput& output) {
+smithy::http::HttpResponse BuildGetCityResponse(const GetCityOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -206,7 +206,7 @@ smithy::Outcome<GetCurrentTimeInput> ParseGetCurrentTimeInput(const smithy::http
   return input;
 }
 
-smithy::http::HttpResponse SerializeGetCurrentTimeResponse(const GetCurrentTimeOutput& output) {
+smithy::http::HttpResponse BuildGetCurrentTimeResponse(const GetCurrentTimeOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -229,7 +229,7 @@ smithy::Outcome<GetForecastInput> ParseGetForecastInput(const smithy::http::Http
   return input;
 }
 
-smithy::http::HttpResponse SerializeGetForecastResponse(const GetForecastOutput& output) {
+smithy::http::HttpResponse BuildGetForecastResponse(const GetForecastOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -254,7 +254,7 @@ smithy::Outcome<GetReportInput> ParseGetReportInput(const smithy::http::HttpRequ
   return input;
 }
 
-smithy::http::HttpResponse SerializeGetReportResponse(const GetReportOutput& output) {
+smithy::http::HttpResponse BuildGetReportResponse(const GetReportOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -286,7 +286,7 @@ smithy::Outcome<ListCitiesInput> ParseListCitiesInput(const smithy::http::HttpRe
   return input;
 }
 
-smithy::http::HttpResponse SerializeListCitiesResponse(const ListCitiesOutput& output) {
+smithy::http::HttpResponse BuildListCitiesResponse(const ListCitiesOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -325,7 +325,7 @@ WeatherServer::WeatherServer(std::shared_ptr<WeatherHandler> handler)
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
     auto outcome = handler->DeleteCity(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
-    return SerializeDeleteCityResponse(*outcome);
+    return BuildDeleteCityResponse(*outcome);
   }, "DeleteCity");
   (void)router_->Add("GET", "/cities/{cityId}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -350,7 +350,7 @@ WeatherServer::WeatherServer(std::shared_ptr<WeatherHandler> handler)
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
     auto outcome = handler->GetCity(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
-    return SerializeGetCityResponse(*outcome);
+    return BuildGetCityResponse(*outcome);
   }, "GetCity");
   (void)router_->Add("GET", "/current-time", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -373,7 +373,7 @@ WeatherServer::WeatherServer(std::shared_ptr<WeatherHandler> handler)
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->GetCurrentTime(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
-    return SerializeGetCurrentTimeResponse(*outcome);
+    return BuildGetCurrentTimeResponse(*outcome);
   }, "GetCurrentTime");
   (void)router_->Add("GET", "/cities/{cityId}/forecast", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -398,7 +398,7 @@ WeatherServer::WeatherServer(std::shared_ptr<WeatherHandler> handler)
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
     auto outcome = handler->GetForecast(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
-    return SerializeGetForecastResponse(*outcome);
+    return BuildGetForecastResponse(*outcome);
   }, "GetForecast");
   (void)router_->Add("GET", "/reports/{reportPath+}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -421,7 +421,7 @@ WeatherServer::WeatherServer(std::shared_ptr<WeatherHandler> handler)
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->GetReport(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
-    return SerializeGetReportResponse(*outcome);
+    return BuildGetReportResponse(*outcome);
   }, "GetReport");
   (void)router_->Add("GET", "/cities", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -444,7 +444,7 @@ WeatherServer::WeatherServer(std::shared_ptr<WeatherHandler> handler)
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->ListCities(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
-    return SerializeListCitiesResponse(*outcome);
+    return BuildListCitiesResponse(*outcome);
   }, "ListCities");
 }
 

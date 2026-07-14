@@ -90,32 +90,32 @@ smithy::Error MakeValidationExceptionError(const smithy::http::HttpResponse& res
   return error;
 }
 
-smithy::Error DeserializeGreetingWithErrorsError(const smithy::http::HttpResponse& response) {
+smithy::Error ParseGreetingWithErrorsError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "ComplexError") return MakeComplexErrorError(response, std::move(parsed));
   if (parsed.code == "InvalidGreeting") return MakeInvalidGreetingError(response, std::move(parsed));
   return GenericError(std::move(parsed));
 }
 
-smithy::Error DeserializeOperationWithDefaultsError(const smithy::http::HttpResponse& response) {
+smithy::Error ParseOperationWithDefaultsError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "ValidationException") return MakeValidationExceptionError(response, std::move(parsed));
   return GenericError(std::move(parsed));
 }
 
-smithy::Error DeserializeRpcV2CborDenseMapsError(const smithy::http::HttpResponse& response) {
+smithy::Error ParseRpcV2CborDenseMapsError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "ValidationException") return MakeValidationExceptionError(response, std::move(parsed));
   return GenericError(std::move(parsed));
 }
 
-smithy::Error DeserializeRpcV2CborListsError(const smithy::http::HttpResponse& response) {
+smithy::Error ParseRpcV2CborListsError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "ValidationException") return MakeValidationExceptionError(response, std::move(parsed));
   return GenericError(std::move(parsed));
 }
 
-smithy::Error DeserializeRpcV2CborSparseMapsError(const smithy::http::HttpResponse& response) {
+smithy::Error ParseRpcV2CborSparseMapsError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "ValidationException") return MakeValidationExceptionError(response, std::move(parsed));
   return GenericError(std::move(parsed));
@@ -212,7 +212,7 @@ smithy::Outcome<GreetingWithErrorsOutput> RpcV2ProtocolClient::GreetingWithError
   request.headers.Set("smithy-protocol", "rpc-v2-cbor");
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return DeserializeGreetingWithErrorsError(*response);
+  if (response->status != 200) return ParseGreetingWithErrorsError(*response);
   if (response->body.empty()) return GreetingWithErrorsOutput{};
   auto body_doc = smithy::cbor::Decode(smithy::Blob::FromString(response->body));
   if (!body_doc) return std::move(body_doc).error();
@@ -240,7 +240,7 @@ smithy::Outcome<OperationWithDefaultsOutput> RpcV2ProtocolClient::OperationWithD
   request.body = smithy::cbor::Encode(SerializeOperationWithDefaultsInput(input)).ToString();
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return DeserializeOperationWithDefaultsError(*response);
+  if (response->status != 200) return ParseOperationWithDefaultsError(*response);
   if (response->body.empty()) return OperationWithDefaultsOutput{};
   auto body_doc = smithy::cbor::Decode(smithy::Blob::FromString(response->body));
   if (!body_doc) return std::move(body_doc).error();
@@ -288,7 +288,7 @@ smithy::Outcome<RpcV2CborDenseMapsOutput> RpcV2ProtocolClient::RpcV2CborDenseMap
   request.body = smithy::cbor::Encode(SerializeRpcV2CborDenseMapsInput(input)).ToString();
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return DeserializeRpcV2CborDenseMapsError(*response);
+  if (response->status != 200) return ParseRpcV2CborDenseMapsError(*response);
   if (response->body.empty()) return RpcV2CborDenseMapsOutput{};
   auto body_doc = smithy::cbor::Decode(smithy::Blob::FromString(response->body));
   if (!body_doc) return std::move(body_doc).error();
@@ -304,7 +304,7 @@ smithy::Outcome<RpcV2CborListsOutput> RpcV2ProtocolClient::RpcV2CborLists(const 
   request.body = smithy::cbor::Encode(SerializeRpcV2CborListsInput(input)).ToString();
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return DeserializeRpcV2CborListsError(*response);
+  if (response->status != 200) return ParseRpcV2CborListsError(*response);
   if (response->body.empty()) return RpcV2CborListsOutput{};
   auto body_doc = smithy::cbor::Decode(smithy::Blob::FromString(response->body));
   if (!body_doc) return std::move(body_doc).error();
@@ -320,7 +320,7 @@ smithy::Outcome<RpcV2CborSparseMapsOutput> RpcV2ProtocolClient::RpcV2CborSparseM
   request.body = smithy::cbor::Encode(SerializeRpcV2CborSparseMapsInput(input)).ToString();
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return DeserializeRpcV2CborSparseMapsError(*response);
+  if (response->status != 200) return ParseRpcV2CborSparseMapsError(*response);
   if (response->body.empty()) return RpcV2CborSparseMapsOutput{};
   auto body_doc = smithy::cbor::Decode(smithy::Blob::FromString(response->body));
   if (!body_doc) return std::move(body_doc).error();

@@ -61,4 +61,22 @@ class CppLiteralsTest {
     assertTrue(big.contains(".") || big.contains("E"), big);
     assertEquals("1.5F", CppLiterals.floatLiteral(1.5));
   }
+
+  @Test
+  void nonFiniteValuesTakeTheNumericLimitsIdiomNotInvalidText() {
+    // Double.toString(NaN) is "NaN" — not a C++ literal. Previously only
+    // unreachable because NodeLiteralGenerator intercepted string-encoded
+    // non-finite params before reaching these helpers (issue #47, latent).
+    assertEquals("std::numeric_limits<double>::quiet_NaN()", CppLiterals.doubleLiteral(Double.NaN));
+    assertEquals(
+        "std::numeric_limits<double>::infinity()",
+        CppLiterals.doubleLiteral(Double.POSITIVE_INFINITY));
+    assertEquals(
+        "-std::numeric_limits<double>::infinity()",
+        CppLiterals.doubleLiteral(Double.NEGATIVE_INFINITY));
+    assertEquals("std::numeric_limits<float>::quiet_NaN()", CppLiterals.floatLiteral(Double.NaN));
+    assertEquals(
+        "-std::numeric_limits<float>::infinity()",
+        CppLiterals.floatLiteral(Double.NEGATIVE_INFINITY));
+  }
 }

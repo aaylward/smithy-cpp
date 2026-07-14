@@ -211,6 +211,7 @@ class RecordingHandler : public RoundTripRpcHandler {
     output.sink = input.sink;  // echo, so the response leg is exercised too
     return output;
   }
+  smithy::Outcome<PingOutput> Ping(const PingInput&) override { return PingOutput{}; }
   std::optional<PutSinkRpcInput> last;
 };
 

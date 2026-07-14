@@ -5,11 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
-import software.amazon.smithy.build.MockManifest;
-import software.amazon.smithy.build.PluginContext;
 import software.amazon.smithy.codegen.core.CodegenException;
-import software.amazon.smithy.model.Model;
-import software.amazon.smithy.model.node.Node;
 
 /**
  * Pins the free-function collision guard (issue #47): a serde-carrying shape named {@code
@@ -25,24 +21,8 @@ class HelperNameCollisionTest {
   }
 
   private static void generate(String modelText, String service, String mode) {
-    Model model =
-        Model.assembler()
-            .discoverModels(HelperNameCollisionTest.class.getClassLoader())
-            .addUnparsedModel("collision.smithy", modelText)
-            .assemble()
-            .unwrap();
-    new CppCodegenPlugin()
-        .execute(
-            PluginContext.builder()
-                .fileManifest(new MockManifest())
-                .model(model)
-                .settings(
-                    Node.objectNodeBuilder()
-                        .withMember("service", service)
-                        .withMember("namespace", "test::collide")
-                        .withMember("mode", mode)
-                        .build())
-                .build());
+    PluginTestHarness.generate(
+        modelText, service, "test::collide", b -> b.withMember("mode", mode));
   }
 
   private static final String ERROR_COLLISION_RPC_MODEL =

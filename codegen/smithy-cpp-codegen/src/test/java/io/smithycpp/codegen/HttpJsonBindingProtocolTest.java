@@ -6,9 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import software.amazon.smithy.build.MockManifest;
-import software.amazon.smithy.build.PluginContext;
-import software.amazon.smithy.model.Model;
-import software.amazon.smithy.model.node.Node;
 import software.amazon.smithy.model.shapes.ShapeId;
 
 /**
@@ -77,25 +74,7 @@ class HttpJsonBindingProtocolTest {
       """;
 
   private static MockManifest generateFiles() {
-    Model model =
-        Model.assembler()
-            .discoverModels(HttpJsonBindingProtocolTest.class.getClassLoader())
-            .addUnparsedModel("files.smithy", FILES_MODEL)
-            .assemble()
-            .unwrap();
-    MockManifest manifest = new MockManifest();
-    new CppCodegenPlugin()
-        .execute(
-            PluginContext.builder()
-                .fileManifest(manifest)
-                .model(model)
-                .settings(
-                    Node.objectNodeBuilder()
-                        .withMember("service", "test.rest#Files")
-                        .withMember("namespace", "test::rest")
-                        .build())
-                .build());
-    return manifest;
+    return PluginTestHarness.generate(FILES_MODEL, "test.rest#Files", "test::rest");
   }
 
   private static int count(String haystack, String needle) {

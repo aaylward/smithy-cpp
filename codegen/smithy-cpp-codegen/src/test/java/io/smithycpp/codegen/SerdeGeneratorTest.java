@@ -5,10 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
-import software.amazon.smithy.build.MockManifest;
-import software.amazon.smithy.build.PluginContext;
 import software.amazon.smithy.model.Model;
-import software.amazon.smithy.model.node.Node;
 
 /**
  * Direct assertions on the serde SerdeGenerator/SerdeCodeGen emit for a purpose-built model —
@@ -18,21 +15,8 @@ import software.amazon.smithy.model.node.Node;
 class SerdeGeneratorTest {
 
   private static String generateSerde(String modelText) {
-    Model model =
-        Model.assembler().addUnparsedModel("serde-test.smithy", modelText).assemble().unwrap();
-    MockManifest manifest = new MockManifest();
-    PluginContext context =
-        PluginContext.builder()
-            .fileManifest(manifest)
-            .model(model)
-            .settings(
-                Node.objectNodeBuilder()
-                    .withMember("service", "test.serde#Svc")
-                    .withMember("namespace", "test::serde")
-                    .build())
-            .build();
-    new CppCodegenPlugin().execute(context);
-    return manifest.expectFileString("/src/serde.cc");
+    return PluginTestHarness.generate(modelText, "test.serde#Svc", "test::serde")
+        .expectFileString("/src/serde.cc");
   }
 
   private static final String KITCHEN_MODEL =

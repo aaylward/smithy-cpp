@@ -3,10 +3,6 @@ package io.smithycpp.codegen;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
-import software.amazon.smithy.build.MockManifest;
-import software.amazon.smithy.build.PluginContext;
-import software.amazon.smithy.model.Model;
-import software.amazon.smithy.model.node.Node;
 
 /**
  * Direct assertions on ValidationGenerator's emitted constraint checks. The message expectations
@@ -19,26 +15,12 @@ import software.amazon.smithy.model.node.Node;
 class ValidationGeneratorTest {
 
   private static String generateServer(String modelText) {
-    Model model =
-        Model.assembler()
-            .discoverModels(ValidationGeneratorTest.class.getClassLoader())
-            .addUnparsedModel("validation-test.smithy", modelText)
-            .assemble()
-            .unwrap();
-    MockManifest manifest = new MockManifest();
-    PluginContext context =
-        PluginContext.builder()
-            .fileManifest(manifest)
-            .model(model)
-            .settings(
-                Node.objectNodeBuilder()
-                    .withMember("service", "test.validation#Svc")
-                    .withMember("namespace", "test::validation")
-                    .withMember("mode", "server")
-                    .build())
-            .build();
-    new CppCodegenPlugin().execute(context);
-    return manifest.expectFileString("/src/server.cc");
+    return PluginTestHarness.generate(
+            modelText,
+            "test.validation#Svc",
+            "test::validation",
+            b -> b.withMember("mode", "server"))
+        .expectFileString("/src/server.cc");
   }
 
   private static final String CONSTRAINED_MODEL =

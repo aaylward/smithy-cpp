@@ -62,12 +62,7 @@ class ProtocolTestGeneratorTest {
 
   private static Harness harness(
       boolean standardTests, boolean malformedTests, Map<String, String> exclusions) {
-    Model model =
-        Model.assembler()
-            .discoverModels(ProtocolTestGeneratorTest.class.getClassLoader())
-            .addUnparsedModel("excl.smithy", MODEL)
-            .assemble()
-            .unwrap();
+    Model model = PluginTestHarness.assembleModel(MODEL);
     CppSettings settings =
         CppSettings.fromNode(
             Node.objectNodeBuilder()

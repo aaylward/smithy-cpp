@@ -329,11 +329,6 @@ smithy::http::HttpResponse SerializePutSinkResponse(const PutSinkOutput& output)
       response.headers.Set("x-echo-" + map_key, map_value);
     }
   }
-  if (output.echoedMetadata.has_value()) {
-    for (const auto& [map_key, map_value] : (*output.echoedMetadata)) {
-      response.headers.Set("x-echo-" + map_key, map_value);
-    }
-  }
   smithy::DocumentMap body_map;
   body_map.emplace("sinkId", smithy::Document(output.sinkId));
   if (output.sink.has_value()) {

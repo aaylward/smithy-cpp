@@ -3,6 +3,8 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -394,6 +396,26 @@ TEST(HealthEndpointTest, AThrowingProbeIsAFailingCheckNotAnUnwind) {
   const auto response = handler(request);
   EXPECT_EQ(response.status, 503);
   EXPECT_EQ(response.body, R"({"status":"unhealthy","failing":["db"]})");
+}
+
+TEST(HealthEndpointTest, AThrowingProbeLogsTheCheckNameAndReason) {
+  // The exception message is the one clue to why /readyz is flapping; the
+  // 503 body names the check but containment must not discard the why.
+  auto handler = Chain(
+      {HealthEndpoint("/readyz",
+                      {{"db", []() -> bool { throw std::runtime_error("connection refused"); }}})},
+      [](const http::HttpRequest&) { return Ok("router"); });
+  http::HttpRequest request;
+  request.method = "GET";
+  request.target = "/readyz";
+
+  std::ostringstream log;
+  std::streambuf* previous = std::clog.rdbuf(log.rdbuf());
+  (void)handler(request);
+  std::clog.rdbuf(previous);
+
+  EXPECT_NE(log.str().find("readiness probe 'db'"), std::string::npos) << log.str();
+  EXPECT_NE(log.str().find("connection refused"), std::string::npos) << log.str();
 }
 
 TEST(HealthEndpointTest, NullProbeThrowsAtComposition) {

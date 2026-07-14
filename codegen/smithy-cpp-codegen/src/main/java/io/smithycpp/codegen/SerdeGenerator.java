@@ -158,44 +158,24 @@ final class SerdeGenerator {
         type + ": expected a map on the wire");
     w.write("$L out;", type);
     for (MemberShape member : shape.members()) {
-      String name = wireName(member);
-      String field = "out." + context.cppSymbols().toMemberName(member);
-      String path = type + "." + member.getMemberName();
-      w.openBlock("{");
-      w.write("const smithy::Document* member = doc.Find($S);", name);
-      if (MemberDefaults.lenientRequired(context.model(), member)) {
-        // @required + @default (the evolution pattern): absence keeps the
-        // member's default initializer instead of failing.
-        w.openBlock("if (member != nullptr && !member->is_null()) {");
-        serde.writeDeserializeInto(w, member, "member", field, path);
-        w.closeBlock("}");
-      } else if (member.isRequired()) {
-        w.openBlock("if (member == nullptr || member->is_null()) {");
-        w.write(
-            "return smithy::Error::Serialization($S);",
-            type + ": missing required member: " + name);
-        w.closeBlock("}");
-        serde.writeDeserializeInto(w, member, "member", field, path);
-      } else {
-        w.openBlock("if (member != nullptr && !member->is_null()) {");
-        Symbol targetType =
-            context.cppSymbols().toSymbol(context.model().expectShape(member.getTarget()));
-        w.write("$L parsed_member{};", targetType.getName());
-        serde.writeDeserializeInto(w, member, "member", "parsed_member", path);
-        w.write("$L = std::move(parsed_member);", field);
-        if (MemberDefaults.fillOnParse(context.model(), member)) {
-          // @input members stay client-optional, but servers (the only
-          // consumers of input deserializers) fill the default when absent.
-          w.closeBlock("} else {");
-          w.indent();
-          w.write("$L = $L;", field, MemberDefaults.literal(context, member));
-          w.dedent();
-          w.write("}");
-        } else {
-          w.closeBlock("}");
-        }
-      }
-      w.closeBlock("}");
+      serde.writeMemberRead(
+          w,
+          member,
+          "doc.",
+          "out.",
+          type,
+          /* fillDefaults= */ true,
+          (w2, m, deserializeMember) -> {
+            // Serde is strict on both wire ends: absence fails the parse with
+            // the type-qualified message (by wire name, unlike the clients'
+            // exchange-level message).
+            w2.openBlock("if (member == nullptr || member->is_null()) {");
+            w2.write(
+                "return smithy::Error::Serialization($S);",
+                type + ": missing required member: " + serde.wireName(m));
+            w2.closeBlock("}");
+            deserializeMember.run();
+          });
     }
     w.write("return out;");
     w.closeBlock("}");

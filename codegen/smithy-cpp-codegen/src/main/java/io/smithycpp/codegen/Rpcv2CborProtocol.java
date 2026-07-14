@@ -73,14 +73,18 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
     w.write("");
     ProtocolSupport.writeServerErrorToResponse(
         w, context, service, operations, "CborError", /* errortypeHeader= */ "");
-    validation = new ValidationGenerator(context, operations);
-    if (validation.hasValidators()) {
-      ValidationGenerator.writeFailureHelper(w);
-      validation.writeValidators(w);
-      // rpcv2Cbor error identity travels in the body, as the fully qualified shape id.
-      ValidationGenerator.writeValidationErrorResponse(
-          w, "CborError", "smithy.framework#ValidationException", /* errortypeHeader= */ "");
-    }
+    // rpcv2Cbor error identity travels in the body, as the fully qualified shape id.
+    validation =
+        ValidationGenerator.writeWiring(
+            w,
+            context,
+            operations,
+            /* alsoEmit= */ false,
+            "CborError",
+            "smithy.framework#ValidationException",
+            /* errortypeHeader= */ "",
+            "",
+            "");
   }
 
   @Override
@@ -91,11 +95,7 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
     String inputType = context.cppSymbols().toSymbol(input).getName();
     String opName = CppReservedWords.escape(operation.getId().getName());
 
-    boolean compressed =
-        operation
-            .getTrait(software.amazon.smithy.model.traits.RequestCompressionTrait.class)
-            .map(t -> t.getEncodings().contains("gzip"))
-            .orElse(false);
+    boolean compressed = ProtocolSupport.gzipCompressed(operation);
     w.openBlock(
         "(void)router_->Add(\"POST\", \"/service/$L/operation/$L\", "
             + "[handler](const smithy::http::HttpRequest& $L, "
@@ -143,13 +143,7 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
               + "parsed.error().message(), {});");
       w.write("input = *std::move(parsed);");
     }
-    if (validation != null && validation.validates(operation)) {
-      w.write("std::vector<smithy::server::ValidationFailure> validation_failures;");
-      w.write("$L(input, \"\", &validation_failures);", validation.validatorNameFor(operation));
-      w.write(
-          "if (!validation_failures.empty()) "
-              + "return ValidationErrorResponse(validation_failures);");
-    }
+    validation.writeRouteGuard(w, operation, "");
     w.write("auto outcome = handler->$L(input);", opName);
     w.write("if (!outcome) return ErrorToResponse(outcome.error());");
     w.write("smithy::http::HttpResponse response;");
@@ -182,13 +176,7 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
     // Operations with no modeled input (smithy.api#Unit) send no body and no
     // Content-Type, per the rpcv2Cbor spec; empty input structures still send
     // an (empty) CBOR map body.
-    boolean noModeledInput =
-        input.getId().toString().equals("smithy.api#Unit")
-            || input
-                .getTrait(software.amazon.smithy.model.traits.synthetic.OriginalShapeIdTrait.class)
-                .map(t -> t.getOriginalId().toString().equals("smithy.api#Unit"))
-                .orElse(false);
-    if (!noModeledInput) {
+    if (!ProtocolSupport.noModeledInput(input)) {
       w.write("request.headers.Set(\"content-type\", \"application/cbor\");");
       w.write(
           "request.body = smithy::cbor::Encode(Serialize$L($L)).ToString();",

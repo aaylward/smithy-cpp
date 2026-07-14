@@ -40,6 +40,50 @@ final class ValidationGenerator {
     }
   }
 
+  /**
+   * The construct-then-emit wiring every protocol's writeServerHelpers repeats: build the
+   * validators and, when the service validates anything (or {@code alsoEmit} — failures the
+   * protocol records itself, like HTTP+JSON's top-level @required bindings), emit the failure
+   * helper, the per-shape validators, and ValidationErrorResponse over {@code errorFn}. {@code
+   * extraParams}/{@code extraArgs} thread protocol-specific response arguments (jsonRpc2's envelope
+   * id).
+   */
+  static ValidationGenerator writeWiring(
+      CppWriter w,
+      CppContext context,
+      List<OperationShape> operations,
+      boolean alsoEmit,
+      String errorFn,
+      String errorCode,
+      String errortypeHeader,
+      String extraParams,
+      String extraArgs) {
+    ValidationGenerator validation = new ValidationGenerator(context, operations);
+    if (validation.hasValidators() || alsoEmit) {
+      writeFailureHelper(w);
+      validation.writeValidators(w);
+      writeValidationErrorResponse(w, errorFn, errorCode, errortypeHeader, extraParams, extraArgs);
+    }
+    return validation;
+  }
+
+  /**
+   * Emits the declare-validate-early-return guard for one operation's route (a no-op when the
+   * operation validates nothing). The RPC protocols share this shape; {@code extraArgs} threads
+   * jsonRpc2's envelope id.
+   */
+  void writeRouteGuard(CppWriter w, OperationShape operation, String extraArgs) {
+    if (!validates(operation)) {
+      return;
+    }
+    w.write("std::vector<smithy::server::ValidationFailure> validation_failures;");
+    w.write("$L(input, \"\", &validation_failures);", validatorNameFor(operation));
+    w.write(
+        "if (!validation_failures.empty()) "
+            + "return ValidationErrorResponse(validation_failures$L);",
+        extraArgs);
+  }
+
   /** Whether the operation's input needs validation at all. */
   boolean validates(OperationShape operation) {
     return constrained.contains(ProtocolSupport.inputShape(context, operation).getId());

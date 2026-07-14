@@ -159,6 +159,27 @@ final class ProtocolSupport {
     };
   }
 
+  /** Whether @requestCompression asks for gzip on this operation. */
+  static boolean gzipCompressed(software.amazon.smithy.model.shapes.OperationShape operation) {
+    return operation
+        .getTrait(software.amazon.smithy.model.traits.RequestCompressionTrait.class)
+        .map(t -> t.getEncodings().contains("gzip"))
+        .orElse(false);
+  }
+
+  /**
+   * Whether {@code input} is smithy.api#Unit — directly, or via the synthetic dedicated input shape
+   * derived from it (OriginalShapeIdTrait). Operations without modeled input send no body/params
+   * and no content type.
+   */
+  static boolean noModeledInput(StructureShape input) {
+    return input.getId().toString().equals("smithy.api#Unit")
+        || input
+            .getTrait(software.amazon.smithy.model.traits.synthetic.OriginalShapeIdTrait.class)
+            .map(t -> t.getOriginalId().toString().equals("smithy.api#Unit"))
+            .orElse(false);
+  }
+
   /**
    * Client-side @requestCompression: gzip the request body once it reaches the configured minimum
    * size, appending to any member-bound Content-Encoding header. Emitted after the body and every
@@ -166,9 +187,7 @@ final class ProtocolSupport {
    */
   static void writeRequestCompression(
       CppWriter w, software.amazon.smithy.model.shapes.OperationShape operation) {
-    var trait =
-        operation.getTrait(software.amazon.smithy.model.traits.RequestCompressionTrait.class);
-    if (trait.isEmpty() || !trait.get().getEncodings().contains("gzip")) {
+    if (!gzipCompressed(operation)) {
       return;
     }
     w.addInclude("\"smithy/compression/gzip.h\"");
@@ -196,9 +215,7 @@ final class ProtocolSupport {
       software.amazon.smithy.model.shapes.OperationShape operation,
       String errorFn,
       String errorCode) {
-    var trait =
-        operation.getTrait(software.amazon.smithy.model.traits.RequestCompressionTrait.class);
-    if (trait.isEmpty() || !trait.get().getEncodings().contains("gzip")) {
+    if (!gzipCompressed(operation)) {
       return;
     }
     w.addInclude("\"smithy/compression/gzip.h\"");

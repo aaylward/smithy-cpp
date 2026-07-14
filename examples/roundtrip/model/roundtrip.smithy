@@ -38,9 +38,13 @@ service RoundTripJsonRpc {
 }
 
 /// Every binding location at once: label, query, @httpQueryParams, headers,
-/// prefix headers, and a JSON body full of aggregate shapes.
+/// prefix headers, and a JSON body full of aggregate shapes. Compressed and
+/// carrying required query/header members so the HTTP+JSON gzip path and the
+/// required-absence validation wiring both land in a compiled golden
+/// (issue #68: conditional emissions need fixtures on both branches).
 @idempotent
 @http(method: "PUT", uri: "/sinks/{sinkId}")
+@requestCompression(encodings: ["gzip"])
 operation PutSink {
     input := {
         @required
@@ -50,12 +54,14 @@ operation PutSink {
         @httpQuery("tag")
         tag: String
 
+        @required
         @httpQuery("limit")
         limit: PageLimit
 
         @httpHeader("x-sink-priority")
         priority: Priority
 
+        @required
         @httpHeader("x-sink-created")
         created: Timestamp
 
@@ -147,7 +153,10 @@ structure DescribeSinkError {
     message: String
 }
 
-/// The RPC variant round-trips the same kitchen sink over CBOR.
+/// The RPC variant round-trips the same kitchen sink over CBOR — compressed,
+/// so the rpcv2Cbor decompress path and jsonRpc2's shared-endpoint
+/// anyCompressed branch both land in compiled goldens (issue #68).
+@requestCompression(encodings: ["gzip"])
 operation PutSinkRpc {
     input := {
         @required

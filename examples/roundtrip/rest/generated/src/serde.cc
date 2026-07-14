@@ -577,15 +577,11 @@ smithy::Document SerializePutSinkInput(const PutSinkInput& value) {
   if (value.tag.has_value()) {
     map.emplace("tag", smithy::Document((*value.tag)));
   }
-  if (value.limit.has_value()) {
-    map.emplace("limit", smithy::Document(static_cast<std::int64_t>((*value.limit))));
-  }
+  map.emplace("limit", smithy::Document(static_cast<std::int64_t>(value.limit)));
   if (value.priority.has_value()) {
     map.emplace("priority", smithy::Document(std::string((*value.priority).ToString())));
   }
-  if (value.created.has_value()) {
-    map.emplace("created", smithy::Document::FromTimestamp((*value.created), smithy::TimestampFormat::kEpochSeconds));
-  }
+  map.emplace("created", smithy::Document::FromTimestamp(value.created, smithy::TimestampFormat::kEpochSeconds));
   if (value.metadata.has_value()) {
     map.emplace("metadata", SerializeStringMap((*value.metadata)));
   }
@@ -620,13 +616,12 @@ smithy::Outcome<PutSinkInput> DeserializePutSinkInput(const smithy::Document& do
   }
   {
     const smithy::Document* member = doc.Find("limit");
-    if (member != nullptr && !member->is_null()) {
-      std::int32_t parsed_member{};
-      if (!member->is_int()) return smithy::Error::Serialization("PutSinkInput.limit: unexpected type on the wire");
-      if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("PutSinkInput.limit: value out of range");
-      parsed_member = static_cast<std::int32_t>(member->as_int());
-      out.limit = std::move(parsed_member);
+    if (member == nullptr || member->is_null()) {
+      return smithy::Error::Serialization("PutSinkInput: missing required member: limit");
     }
+    if (!member->is_int()) return smithy::Error::Serialization("PutSinkInput.limit: unexpected type on the wire");
+    if (member->as_int() < -2147483648LL || member->as_int() > 2147483647LL) return smithy::Error::Serialization("PutSinkInput.limit: value out of range");
+    out.limit = static_cast<std::int32_t>(member->as_int());
   }
   {
     const smithy::Document* member = doc.Find("priority");
@@ -639,14 +634,13 @@ smithy::Outcome<PutSinkInput> DeserializePutSinkInput(const smithy::Document& do
   }
   {
     const smithy::Document* member = doc.Find("created");
-    if (member != nullptr && !member->is_null()) {
-      smithy::Timestamp parsed_member{};
-      {
-        auto parsed = smithy::TimestampFromDocument(*member, smithy::TimestampFormat::kEpochSeconds);
-        if (!parsed) return std::move(parsed).error();
-        parsed_member = *parsed;
-      }
-      out.created = std::move(parsed_member);
+    if (member == nullptr || member->is_null()) {
+      return smithy::Error::Serialization("PutSinkInput: missing required member: created");
+    }
+    {
+      auto parsed = smithy::TimestampFromDocument(*member, smithy::TimestampFormat::kEpochSeconds);
+      if (!parsed) return std::move(parsed).error();
+      out.created = *parsed;
     }
   }
   {

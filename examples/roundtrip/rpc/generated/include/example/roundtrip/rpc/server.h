@@ -23,7 +23,9 @@ class RoundTripRpcHandler {
     /// operation (issue #68 — the upstream conformance suite carries no such
     /// case, and #67 fixed a client/server asymmetry exactly here).
     virtual smithy::Outcome<PingOutput> Ping(const PingInput& input) = 0;
-    /// The RPC variant round-trips the same kitchen sink over CBOR.
+    /// The RPC variant round-trips the same kitchen sink over CBOR — compressed,
+    /// so the rpcv2Cbor decompress path and jsonRpc2's shared-endpoint
+    /// anyCompressed branch both land in compiled goldens (issue #68).
     virtual smithy::Outcome<PutSinkRpcOutput> PutSinkRpc(const PutSinkRpcInput& input) = 0;
 };
 

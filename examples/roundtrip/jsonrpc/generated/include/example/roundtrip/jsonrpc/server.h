@@ -18,7 +18,9 @@ class RoundTripJsonRpcHandler {
   public:
     virtual ~RoundTripJsonRpcHandler() = default;
 
-    /// The RPC variant round-trips the same kitchen sink over CBOR.
+    /// The RPC variant round-trips the same kitchen sink over CBOR — compressed,
+    /// so the rpcv2Cbor decompress path and jsonRpc2's shared-endpoint
+    /// anyCompressed branch both land in compiled goldens (issue #68).
     virtual smithy::Outcome<PutSinkRpcOutput> PutSinkRpc(const PutSinkRpcInput& input) = 0;
 };
 

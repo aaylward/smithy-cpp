@@ -10,6 +10,7 @@
 #include "example/roundtrip/rpc/serde.h"
 #include "example/roundtrip/rpc/server.h"
 #include "smithy/cbor/cbor.h"
+#include "smithy/compression/gzip.h"
 #include "smithy/core/blob.h"
 #include "smithy/core/document.h"
 #include "smithy/server/router.h"
@@ -140,7 +141,16 @@ RoundTripRpcServer::RoundTripRpcServer(std::shared_ptr<RoundTripRpcHandler> hand
     response.body = smithy::cbor::Encode(SerializePingOutput(*outcome)).ToString();
     return response;
   }, "Ping");
-  (void)router_->Add("POST", "/service/RoundTripRpc/operation/PutSinkRpc", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
+  (void)router_->Add("POST", "/service/RoundTripRpc/operation/PutSinkRpc", [handler](const smithy::http::HttpRequest& raw_request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
+    smithy::http::HttpRequest request = raw_request;
+    // @requestCompression(gzip): decode before parsing.
+    if (const auto request_encoding = request.headers.Get("content-encoding"); request_encoding.has_value() && (*request_encoding == "gzip" || request_encoding->ends_with(", gzip"))) {
+      auto decompressed = smithy::GzipDecompress(request.body);
+      if (!decompressed) {
+        return CborError(400, "SerializationException", "invalid gzip request body", {});
+      }
+      request.body = *std::move(decompressed);
+    }
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
     }

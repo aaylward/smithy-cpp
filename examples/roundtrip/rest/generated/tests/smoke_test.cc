@@ -87,6 +87,7 @@ TEST(RoundTripRestSmokeTest, PutSinkRoundTrips) {
     PutSinkInput input = [] {
     PutSinkInput v{};
     v.sinkId = "0";
+    v.limit = 1;
     return v;
   }();
   // @httpLabel members must be non-empty to route.

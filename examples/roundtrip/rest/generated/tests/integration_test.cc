@@ -172,9 +172,9 @@ PutSinkInput RandomPutSinkInput(Rng& rng) {
   PutSinkInput v{};
   v.sinkId = std::string("0");
   if (rng.Coin()) v.tag = rng.Text(1, 9);
-  if (rng.Coin()) v.limit = static_cast<std::int32_t>(rng.Int(1LL, 100LL));
+  v.limit = static_cast<std::int32_t>(rng.Int(1LL, 100LL));
   if (rng.Coin()) v.priority = Priority::FromString(std::array<const char*, 3>{"low", "medium", "high"}[rng.engine() % 3]);
-  if (rng.Coin()) v.created = smithy::Timestamp::FromEpochMilliseconds(rng.Int(0, 4102444799LL) * 1000);
+  v.created = smithy::Timestamp::FromEpochMilliseconds(rng.Int(0, 4102444799LL) * 1000);
   if (rng.Coin()) v.metadata = RandomStringMap(rng);
   if (rng.Coin()) v.sink = RandomKitchenSink(rng);
   if (rng.Coin()) v.freeform = smithy::Document(smithy::DocumentMap{{"key", smithy::Document(rng.Int(0, 1000))}});

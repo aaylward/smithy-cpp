@@ -16,7 +16,7 @@ smithy-rs's `codegen-core` structure (PLAN §3.2a).
 | `TypeGenerators` | The actual C++ emission for data shapes |
 | `SerdeGenerator` / `SerdeCodeGen` | `serde.h`/`src/serde.cc`: per-shape `Serialize*`/`Deserialize*` functions over the `smithy::Document` pivot, in topological order (`TopologicalIndex`) |
 | `ProtocolGenerator` (interface) | Per-protocol request building + response/error handling emission; `resolveProtocol` picks the implementation from the service's protocol traits |
-| `HttpJsonBindingProtocol` / `SimpleRestJsonProtocol` | `alloy#simpleRestJson`: HTTP bindings via `HttpBindingIndex` (labels incl. greedy, query, headers, status), JSON bodies, neutral `X-Error-Type` error identity |
+| `HttpJsonBindingProtocol` | `alloy#simpleRestJson` (via the `simpleRestJson()` factory): HTTP bindings via `HttpBindingIndex` (labels incl. greedy, query, headers, status), JSON bodies, neutral `X-Error-Type` error identity. A thin `ProtocolGenerator` facade over `HttpJsonClientGenerator` (operation-method bodies), `HttpJsonServerGenerator` (parse/serialize functions, routes, content negotiation), and `HttpBindingCodeGen` (the header/payload/prefix-header read↔write emitters both halves share) |
 | `Rpcv2CborProtocol` | `smithy.protocols#rpcv2Cbor`: fixed `/service/{S}/operation/{O}` target, `smithy-protocol` header, CBOR bodies |
 | `JsonRpc2Protocol` | `smithy.cpp.protocols#jsonRpc2`: single `POST /` endpoint, JSON-RPC 2.0 envelopes, body-`method` dispatch (overrides `writeServerRoutes`), JSON-RPC error objects |
 | `ProtocolSupport` | Shared protocol emission: error deserialization + code sanitization, `@idempotencyToken` auto-fill, header/query to-string conversion |

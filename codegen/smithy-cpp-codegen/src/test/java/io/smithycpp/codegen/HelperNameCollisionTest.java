@@ -45,8 +45,50 @@ class HelperNameCollisionTest {
                 .build());
   }
 
+  private static final String ERROR_COLLISION_RPC_MODEL =
+      """
+      $version: "2.0"
+      namespace test.collide
+      use smithy.cpp.protocols#jsonRpc2
+
+      @jsonRpc2
+      service Svc { version: "1", operations: [Get] }
+      operation Get {
+          input := { detail: GetError }
+          errors: [Oops]
+      }
+
+      @error("client")
+      structure Oops {
+          message: String
+      }
+
+      structure GetError {
+          message: String
+      }
+      """;
+
   @Test
   void rejectsAShapeNamedAfterTheOperationErrorHelper() {
+    CodegenException error =
+        assertThrows(
+            CodegenException.class, () -> generate(ERROR_COLLISION_RPC_MODEL, "test.collide#Svc"));
+    assertTrue(error.getMessage().contains("test.collide#GetError"), error.getMessage());
+    assertTrue(error.getMessage().contains("DeserializeGetError"), error.getMessage());
+    assertTrue(error.getMessage().contains("rename"), error.getMessage());
+  }
+
+  @Test
+  void acceptsAnErrorNamedShapeWhenOnlyTheServerIsGenerated() {
+    // Deserialize<Op>Error lives in client.cc; mode=server never emits that
+    // file, so the same model must generate.
+    assertDoesNotThrow(() -> generate(ERROR_COLLISION_RPC_MODEL, "test.collide#Svc", "server"));
+  }
+
+  @Test
+  void ignoresShapesOutsideTheServiceClosure() {
+    // The guard walks the service closure: a shape nothing references is
+    // never generated, so its name cannot hide anything.
     String model =
         """
         $version: "2.0"
@@ -56,7 +98,7 @@ class HelperNameCollisionTest {
         @jsonRpc2
         service Svc { version: "1", operations: [Get] }
         operation Get {
-            input := { detail: GetError }
+            input := { name: String }
             errors: [Oops]
         }
 
@@ -69,11 +111,7 @@ class HelperNameCollisionTest {
             message: String
         }
         """;
-    CodegenException error =
-        assertThrows(CodegenException.class, () -> generate(model, "test.collide#Svc"));
-    assertTrue(error.getMessage().contains("test.collide#GetError"), error.getMessage());
-    assertTrue(error.getMessage().contains("DeserializeGetError"), error.getMessage());
-    assertTrue(error.getMessage().contains("rename"), error.getMessage());
+    assertDoesNotThrow(() -> generate(model, "test.collide#Svc"));
   }
 
   @Test
@@ -157,6 +195,15 @@ class HelperNameCollisionTest {
     // Serialize<Op>Response lives in server.cc; mode=client never emits that
     // file, so the same model must generate (it did before the guard existed).
     assertDoesNotThrow(() -> generate(RESPONSE_COLLISION_HTTP_MODEL, "test.collide#Svc", "client"));
+  }
+
+  @Test
+  void rejectsAResponseNamedShapeWhenOnlyTheServerIsGenerated() {
+    // The mode gate scopes the guard to the files being generated — it does
+    // not disable it: a server-only run still emits Serialize<Op>Response.
+    assertThrows(
+        CodegenException.class,
+        () -> generate(RESPONSE_COLLISION_HTTP_MODEL, "test.collide#Svc", "server"));
   }
 
   @Test

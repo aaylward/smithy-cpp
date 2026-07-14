@@ -1,6 +1,8 @@
 package io.smithycpp.codegen;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -73,6 +75,33 @@ class DiagnosticConventionTest {
         violations,
         "CodegenException messages must start with the literal \"cpp-codegen: \" (and, when a"
             + " shape is at fault, name the shape and the fix)");
+  }
+
+  @Test
+  void conventionPatternsClassifyRepresentativeConstructions() {
+    // Spotless wraps long throws, putting the literal on its own line — still
+    // literal-first. The inverse pattern's lookahead must own the whitespace:
+    // a trailing \s* outside the lookahead backtracks and flags these.
+    String wrappedLiteral = "throw new CodegenException(\n    \"cpp-codegen: x\");";
+    assertTrue(CODEGEN_THROW.matcher(wrappedLiteral).find());
+    assertFalse(CODEGEN_THROW_NON_LITERAL.matcher(wrappedLiteral).find());
+
+    // The fully qualified spelling is equally in scope, and the captured
+    // literal handles escaped quotes without truncating at them.
+    Matcher qualified =
+        CODEGEN_THROW.matcher(
+            "throw new software.amazon.smithy.codegen.core.CodegenException("
+                + "\"cpp-codegen: bad \\\"name\\\"\" + shape);");
+    assertTrue(qualified.find());
+    assertEquals("cpp-codegen: bad \\\"name\\\"", qualified.group(1));
+
+    // Non-literal first arguments carry no scannable prefix; the inverse
+    // pattern rejects them instead of letting them escape the audit.
+    assertTrue(CODEGEN_THROW_NON_LITERAL.matcher("throw new CodegenException(e);").find());
+    assertTrue(
+        CODEGEN_THROW_NON_LITERAL
+            .matcher("throw new CodegenException(String.format(\"cpp-codegen: %s\", id));")
+            .find());
   }
 
   @Test

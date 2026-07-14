@@ -14,8 +14,8 @@ import software.amazon.smithy.model.traits.HttpTrait;
 
 /**
  * The server half of the HTTP+JSON protocol: the JsonError/ErrorToResponse helpers, validation
- * wiring, one Parse&lt;Op&gt;Input / Serialize&lt;Op&gt;Response function pair per operation (each
- * the wire inverse of the client's request/response handling), and the per-operation route with its
+ * wiring, one Parse&lt;Op&gt;Input / Build&lt;Op&gt;Response function pair per operation (each the
+ * wire inverse of the client's request/response handling), and the per-operation route with its
  * content negotiation (415/406). Shared read/write emission lives in {@link HttpBindingCodeGen}.
  *
  * <p>Stateful: {@link #writeHelpers} builds the validation plan the routes consult, so it always
@@ -29,14 +29,18 @@ final class HttpJsonServerGenerator {
    */
   private final String errorTypeHeaderName;
 
+  /** Mirror of the owning protocol's usesJsonName() — body keys must match the serde functions. */
+  private final boolean useJsonName;
+
   /** Set up by writeHelpers (always called before the routes are emitted). */
   private ValidationGenerator validation;
 
   /** Whether the service emits ValidationErrorResponse (constraints or top-level @required). */
   private boolean emitsValidation;
 
-  HttpJsonServerGenerator(String errorTypeHeaderName) {
+  HttpJsonServerGenerator(String errorTypeHeaderName, boolean useJsonName) {
     this.errorTypeHeaderName = errorTypeHeaderName;
+    this.useJsonName = useJsonName;
   }
 
   List<String> includes() {
@@ -60,7 +64,7 @@ final class HttpJsonServerGenerator {
 
   void writeHelpers(
       CppWriter w, CppContext context, ServiceShape service, List<OperationShape> operations) {
-    SerdeCodeGen serde = new SerdeCodeGen(context);
+    SerdeCodeGen serde = new SerdeCodeGen(context, useJsonName);
     ProtocolSupport.writeNumericParseHelpers(w);
     ProtocolSupport.writeErrorBodyHelper(
         w,
@@ -81,7 +85,7 @@ final class HttpJsonServerGenerator {
     emitsValidation = validation.wiringEmitted();
     for (OperationShape operation : operations) {
       writeParseInputFunction(w, context, serde, operation);
-      writeSerializeResponseFunction(w, context, serde, operation);
+      writeBuildResponseFunction(w, context, serde, operation);
     }
   }
 
@@ -244,45 +248,28 @@ final class HttpJsonServerGenerator {
       HttpBindingCodeGen.writePayloadRead(w, context, serde, payload, "request.body", "input.");
     }
     if (!body.isEmpty()) {
-      w.write(
-          "auto body_doc = smithy::json::Decode(request.body.empty() ? \"{}\" : request.body);");
-      w.write("if (!body_doc) return std::move(body_doc).error();");
-      w.write(
-          "if (!body_doc->is_map()) return smithy::Error::Serialization($S);",
-          opName + ": expected a JSON object body");
-      for (HttpBinding binding : body) {
-        MemberShape member = binding.getMember();
-        String wireName = HttpBindingCodeGen.wireName(member);
-        String field = "input." + context.cppSymbols().toMemberName(member);
-        String path = inputType + "." + member.getMemberName();
-        w.openBlock("{");
-        w.write("const smithy::Document* member = body_doc->Find($S);", wireName);
-        if (MemberDefaults.lenientRequired(context.model(), member)) {
-          // @required + @default: absence keeps the default initializer.
-          w.openBlock("if (member != nullptr && !member->is_null()) {");
-          serde.writeDeserializeInto(w, member, "member", field, path);
-          w.closeBlock("}");
-        } else if (member.isRequired()) {
-          w.openBlock("if (member == nullptr || member->is_null()) {");
-          w.write(
-              "AddValidationFailure(validation_failures, $S, $S);",
-              "/" + member.getMemberName(),
-              ValidationGenerator.memberMustNotBeNull("/" + member.getMemberName()));
-          w.closeBlock("} else {");
-          w.indent();
-          serde.writeDeserializeInto(w, member, "member", field, path);
-          w.closeBlock("}");
-        } else {
-          w.openBlock("if (member != nullptr && !member->is_null()) {");
-          var targetType =
-              context.cppSymbols().toSymbol(context.model().expectShape(member.getTarget()));
-          w.write("$L parsed_member{};", targetType.getName());
-          serde.writeDeserializeInto(w, member, "member", "parsed_member", path);
-          w.write("$L = std::move(parsed_member);", field);
-          w.closeBlock("}");
-        }
-        w.closeBlock("}");
-      }
+      HttpBindingCodeGen.writeDocumentBodyRead(
+          w,
+          context,
+          serde,
+          body,
+          "request.body",
+          "input.",
+          inputType,
+          opName,
+          (w2, member, deserializeMember) -> {
+            // Servers record the absence and keep parsing, so one response
+            // carries every validation failure.
+            w2.openBlock("if (member == nullptr || member->is_null()) {");
+            w2.write(
+                "AddValidationFailure(validation_failures, $S, $S);",
+                "/" + member.getMemberName(),
+                ValidationGenerator.memberMustNotBeNull("/" + member.getMemberName()));
+            w2.closeBlock("} else {");
+            w2.indent();
+            deserializeMember.run();
+            w2.closeBlock("}");
+          });
     }
     // @default on @input members: clients skip them when unset, servers fill
     // the default for whatever the wire left unset (any binding location).
@@ -310,8 +297,12 @@ final class HttpJsonServerGenerator {
         ValidationGenerator.memberMustNotBeNull(path));
   }
 
-  /** Emits Serialize<Op>Response(output) (inverse of the client response handling). */
-  private void writeSerializeResponseFunction(
+  /**
+   * Emits Build<Op>Response(output) (inverse of the client response handling). Build, not
+   * Serialize: the serde functions own the Serialize/Deserialize<Shape> namespace, and a same-named
+   * file-local helper would hide them for shapes named <Op>Response.
+   */
+  private void writeBuildResponseFunction(
       CppWriter w, CppContext context, SerdeCodeGen serde, OperationShape operation) {
     HttpBindingIndex index = HttpBindingIndex.of(context.model());
     HttpTrait http = operation.expectTrait(HttpTrait.class);
@@ -327,7 +318,7 @@ final class HttpJsonServerGenerator {
     HttpBinding responsePrefixHeaders = resp.prefixHeaders();
 
     w.openBlock(
-        "smithy::http::HttpResponse Serialize$LResponse(const $L& output) {", opName, outputType);
+        "smithy::http::HttpResponse Build$LResponse(const $L& output) {", opName, outputType);
     w.write("(void)output;");
     w.write("smithy::http::HttpResponse response;");
     w.write("response.status = $L;", http.getCode());
@@ -472,7 +463,7 @@ final class HttpJsonServerGenerator {
     }
     w.write("auto outcome = handler->$L(*input);", opName);
     w.write("if (!outcome) return ErrorToResponse(outcome.error());");
-    w.write("return Serialize$LResponse(*outcome);", opName);
+    w.write("return Build$LResponse(*outcome);", opName);
     w.closeBlock("}, $S);", operation.getId().getName());
   }
 }

@@ -80,13 +80,13 @@ smithy::Error MakeOutOfBeansError(const smithy::http::HttpResponse& response, Pa
   return error;
 }
 
-smithy::Error DeserializeGetOrderError(const smithy::http::HttpResponse& response) {
+smithy::Error ParseGetOrderError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "OrderNotFound") return MakeOrderNotFoundError(response, std::move(parsed));
   return GenericError(std::move(parsed));
 }
 
-smithy::Error DeserializeOrderCoffeeError(const smithy::http::HttpResponse& response) {
+smithy::Error ParseOrderCoffeeError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "OutOfBeans") return MakeOutOfBeansError(response, std::move(parsed));
   return GenericError(std::move(parsed));
@@ -144,7 +144,7 @@ smithy::Outcome<GetOrderOutput> CafeClient::GetOrder(const GetOrderInput& input)
   request.body = smithy::cbor::Encode(SerializeGetOrderInput(input)).ToString();
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return DeserializeGetOrderError(*response);
+  if (response->status != 200) return ParseGetOrderError(*response);
   auto body_doc = smithy::cbor::Decode(smithy::Blob::FromString(response->body));
   if (!body_doc) return std::move(body_doc).error();
   return DeserializeGetOrderOutput(*body_doc);
@@ -169,7 +169,7 @@ smithy::Outcome<OrderCoffeeOutput> CafeClient::OrderCoffee(const OrderCoffeeInpu
   }
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return DeserializeOrderCoffeeError(*response);
+  if (response->status != 200) return ParseOrderCoffeeError(*response);
   auto body_doc = smithy::cbor::Decode(smithy::Blob::FromString(response->body));
   if (!body_doc) return std::move(body_doc).error();
   return DeserializeOrderCoffeeOutput(*body_doc);

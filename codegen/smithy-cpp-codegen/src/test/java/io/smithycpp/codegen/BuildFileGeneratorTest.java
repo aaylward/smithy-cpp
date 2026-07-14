@@ -5,10 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 import software.amazon.smithy.build.MockManifest;
-import software.amazon.smithy.build.PluginContext;
-import software.amazon.smithy.model.Model;
-import software.amazon.smithy.model.node.Node;
-import software.amazon.smithy.model.node.ObjectNode;
 
 /**
  * The generated BUILD.bazel is the one artifact issue #48 flagged as pinned by goldens alone: the
@@ -28,36 +24,21 @@ class BuildFileGeneratorTest {
       operation Op { input := { name: String } }
       """;
 
-  private static MockManifest generate(ObjectNode settings) {
-    return generate(MODEL, settings);
+  private static MockManifest generate(String mode) {
+    return generate(MODEL, mode);
   }
 
-  private static MockManifest generate(String modelText, ObjectNode settings) {
-    Model model =
-        Model.assembler()
-            .discoverModels(BuildFileGeneratorTest.class.getClassLoader())
-            .addUnparsedModel("build-test.smithy", modelText)
-            .assemble()
-            .unwrap();
-    MockManifest manifest = new MockManifest();
-    PluginContext context =
-        PluginContext.builder().fileManifest(manifest).model(model).settings(settings).build();
-    new CppCodegenPlugin().execute(context);
-    return manifest;
-  }
-
-  private static ObjectNode settings(String mode) {
-    return Node.objectNodeBuilder()
-        .withMember("service", "test.build#Svc")
-        .withMember("namespace", "test::build")
-        .withMember("runtimeTarget", "//runtime:core")
-        .withMember("mode", mode)
-        .build();
+  private static MockManifest generate(String modelText, String mode) {
+    return PluginTestHarness.generate(
+        modelText,
+        "test.build#Svc",
+        "test::build",
+        b -> b.withMember("runtimeTarget", "//runtime:core").withMember("mode", mode));
   }
 
   @Test
   void bothModeEmitsTypesSerdeClientAndServerTargets() {
-    String build = generate(settings("both")).expectFileString("/BUILD.bazel");
+    String build = generate("both").expectFileString("/BUILD.bazel");
     assertTrue(build.contains("name = \"types\""), build);
     assertTrue(build.contains("name = \"serde\""), build);
     assertTrue(build.contains("name = \"client\""), build);
@@ -68,14 +49,14 @@ class BuildFileGeneratorTest {
 
   @Test
   void clientModeOmitsTheServerTarget() {
-    String build = generate(settings("client")).expectFileString("/BUILD.bazel");
+    String build = generate("client").expectFileString("/BUILD.bazel");
     assertTrue(build.contains("name = \"client\""), build);
     assertFalse(build.contains("name = \"server\""), build);
   }
 
   @Test
   void typesModeEmitsOnlyTheTypesTarget() {
-    String build = generate(settings("types")).expectFileString("/BUILD.bazel");
+    String build = generate("types").expectFileString("/BUILD.bazel");
     assertTrue(build.contains("name = \"types\""), build);
     assertFalse(build.contains("name = \"client\""), build);
     assertFalse(build.contains("name = \"server\""), build);
@@ -83,28 +64,20 @@ class BuildFileGeneratorTest {
 
   @Test
   void runtimeDepsPointAtTheConfiguredTarget() {
-    String build = generate(settings("both")).expectFileString("/BUILD.bazel");
+    String build = generate("both").expectFileString("/BUILD.bazel");
     assertTrue(build.contains("\"//runtime:core\""), build);
     // The consumer default is the external-repo spelling.
     String external =
-        generate(
-                Node.objectNodeBuilder()
-                    .withMember("service", "test.build#Svc")
-                    .withMember("namespace", "test::build")
-                    .build())
+        PluginTestHarness.generate(MODEL, "test.build#Svc", "test::build")
             .expectFileString("/BUILD.bazel");
     assertTrue(external.contains("\"@smithy_cpp//runtime:core\""), external);
   }
 
   @Test
   void emitBuildFileFalseSuppressesTheFile() {
-    ObjectNode settings =
-        Node.objectNodeBuilder()
-            .withMember("service", "test.build#Svc")
-            .withMember("namespace", "test::build")
-            .withMember("emitBuildFile", false)
-            .build();
-    MockManifest manifest = generate(settings);
+    MockManifest manifest =
+        PluginTestHarness.generate(
+            MODEL, "test.build#Svc", "test::build", b -> b.withMember("emitBuildFile", false));
     assertFalse(manifest.hasFile("/BUILD.bazel"), "emitBuildFile=false must suppress BUILD");
     assertTrue(manifest.hasFile("/include/test/build/types.h"));
   }
@@ -128,10 +101,10 @@ class BuildFileGeneratorTest {
         @requestCompression(encodings: ["gzip"])
         operation Op { input := { data: String } }
         """;
-    String build = generate(compressed, settings("both")).expectFileString("/BUILD.bazel");
+    String build = generate(compressed, "both").expectFileString("/BUILD.bazel");
     assertTrue(build.contains(":compression"), build);
     // And the base model (no compression anywhere) must not link it.
-    String plain = generate(settings("both")).expectFileString("/BUILD.bazel");
+    String plain = generate("both").expectFileString("/BUILD.bazel");
     assertFalse(plain.contains(":compression"), plain);
   }
 }

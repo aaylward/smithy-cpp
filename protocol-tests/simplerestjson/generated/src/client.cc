@@ -172,7 +172,7 @@ smithy::Error MakeUnknownServerErrorError(const smithy::http::HttpResponse& resp
   return error;
 }
 
-smithy::Error DeserializeAddMenuItemError(const smithy::http::HttpResponse& response) {
+smithy::Error ParseAddMenuItemError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "GenericClientError") return MakeGenericClientErrorError(response, std::move(parsed));
   if (parsed.code == "GenericServerError") return MakeGenericServerErrorError(response, std::move(parsed));
@@ -183,7 +183,7 @@ smithy::Error DeserializeAddMenuItemError(const smithy::http::HttpResponse& resp
   return GenericError(std::move(parsed));
 }
 
-smithy::Error DeserializeCustomCodeError(const smithy::http::HttpResponse& response) {
+smithy::Error ParseCustomCodeError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "GenericClientError") return MakeGenericClientErrorError(response, std::move(parsed));
   if (parsed.code == "GenericServerError") return MakeGenericServerErrorError(response, std::move(parsed));
@@ -194,7 +194,7 @@ smithy::Error DeserializeCustomCodeError(const smithy::http::HttpResponse& respo
   return GenericError(std::move(parsed));
 }
 
-smithy::Error DeserializeGetEnumError(const smithy::http::HttpResponse& response) {
+smithy::Error ParseGetEnumError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "GenericClientError") return MakeGenericClientErrorError(response, std::move(parsed));
   if (parsed.code == "GenericServerError") return MakeGenericServerErrorError(response, std::move(parsed));
@@ -205,7 +205,7 @@ smithy::Error DeserializeGetEnumError(const smithy::http::HttpResponse& response
   return GenericError(std::move(parsed));
 }
 
-smithy::Error DeserializeGetIntEnumError(const smithy::http::HttpResponse& response) {
+smithy::Error ParseGetIntEnumError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "GenericClientError") return MakeGenericClientErrorError(response, std::move(parsed));
   if (parsed.code == "GenericServerError") return MakeGenericServerErrorError(response, std::move(parsed));
@@ -216,7 +216,7 @@ smithy::Error DeserializeGetIntEnumError(const smithy::http::HttpResponse& respo
   return GenericError(std::move(parsed));
 }
 
-smithy::Error DeserializeGetMenuError(const smithy::http::HttpResponse& response) {
+smithy::Error ParseGetMenuError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "FallbackError") return MakeFallbackErrorError(response, std::move(parsed));
   if (parsed.code == "GenericClientError") return MakeGenericClientErrorError(response, std::move(parsed));
@@ -229,7 +229,7 @@ smithy::Error DeserializeGetMenuError(const smithy::http::HttpResponse& response
   return GenericError(std::move(parsed));
 }
 
-smithy::Error DeserializeHeaderEndpointError(const smithy::http::HttpResponse& response) {
+smithy::Error ParseHeaderEndpointError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "GenericClientError") return MakeGenericClientErrorError(response, std::move(parsed));
   if (parsed.code == "GenericServerError") return MakeGenericServerErrorError(response, std::move(parsed));
@@ -238,7 +238,7 @@ smithy::Error DeserializeHeaderEndpointError(const smithy::http::HttpResponse& r
   return GenericError(std::move(parsed));
 }
 
-smithy::Error DeserializeHealthError(const smithy::http::HttpResponse& response) {
+smithy::Error ParseHealthError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "GenericClientError") return MakeGenericClientErrorError(response, std::move(parsed));
   if (parsed.code == "GenericServerError") return MakeGenericServerErrorError(response, std::move(parsed));
@@ -249,7 +249,7 @@ smithy::Error DeserializeHealthError(const smithy::http::HttpResponse& response)
   return GenericError(std::move(parsed));
 }
 
-smithy::Error DeserializeHttpPayloadRequiredWithDefaultError(const smithy::http::HttpResponse& response) {
+smithy::Error ParseHttpPayloadRequiredWithDefaultError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "GenericClientError") return MakeGenericClientErrorError(response, std::move(parsed));
   if (parsed.code == "GenericServerError") return MakeGenericServerErrorError(response, std::move(parsed));
@@ -258,7 +258,7 @@ smithy::Error DeserializeHttpPayloadRequiredWithDefaultError(const smithy::http:
   return GenericError(std::move(parsed));
 }
 
-smithy::Error DeserializeHttpPayloadWithDefaultError(const smithy::http::HttpResponse& response) {
+smithy::Error ParseHttpPayloadWithDefaultError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "GenericClientError") return MakeGenericClientErrorError(response, std::move(parsed));
   if (parsed.code == "GenericServerError") return MakeGenericServerErrorError(response, std::move(parsed));
@@ -267,7 +267,7 @@ smithy::Error DeserializeHttpPayloadWithDefaultError(const smithy::http::HttpRes
   return GenericError(std::move(parsed));
 }
 
-smithy::Error DeserializeOpenUnionsError(const smithy::http::HttpResponse& response) {
+smithy::Error ParseOpenUnionsError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "GenericClientError") return MakeGenericClientErrorError(response, std::move(parsed));
   if (parsed.code == "GenericServerError") return MakeGenericServerErrorError(response, std::move(parsed));
@@ -276,7 +276,7 @@ smithy::Error DeserializeOpenUnionsError(const smithy::http::HttpResponse& respo
   return GenericError(std::move(parsed));
 }
 
-smithy::Error DeserializeRoundTripError(const smithy::http::HttpResponse& response) {
+smithy::Error ParseRoundTripError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "GenericClientError") return MakeGenericClientErrorError(response, std::move(parsed));
   if (parsed.code == "GenericServerError") return MakeGenericServerErrorError(response, std::move(parsed));
@@ -285,7 +285,7 @@ smithy::Error DeserializeRoundTripError(const smithy::http::HttpResponse& respon
   return GenericError(std::move(parsed));
 }
 
-smithy::Error DeserializeVersionError(const smithy::http::HttpResponse& response) {
+smithy::Error ParseVersionError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "GenericClientError") return MakeGenericClientErrorError(response, std::move(parsed));
   if (parsed.code == "GenericServerError") return MakeGenericServerErrorError(response, std::move(parsed));
@@ -348,7 +348,7 @@ smithy::Outcome<AddMenuItemOutput> PizzaAdminServiceClient::AddMenuItem(const Ad
   request.headers.Set("accept", "application/json");
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 201) return DeserializeAddMenuItemError(*response);
+  if (response->status != 201) return ParseAddMenuItemError(*response);
   AddMenuItemOutput out{};
   if (!response->body.empty()) {
     auto payload_doc = smithy::json::Decode(response->body);
@@ -375,7 +375,7 @@ smithy::Outcome<CustomCodeOutput> PizzaAdminServiceClient::CustomCode(const Cust
   request.target = std::move(target);
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status < 200 || response->status > 299) return DeserializeCustomCodeError(*response);
+  if (response->status < 200 || response->status > 299) return ParseCustomCodeError(*response);
   CustomCodeOutput out{};
   out.code = static_cast<std::int32_t>(response->status);
   return out;
@@ -391,7 +391,7 @@ smithy::Outcome<GetEnumOutput> PizzaAdminServiceClient::GetEnum(const GetEnumInp
   request.target = std::move(target);
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return DeserializeGetEnumError(*response);
+  if (response->status != 200) return ParseGetEnumError(*response);
   if (response->body.empty()) return GetEnumOutput{};
   auto body_doc = smithy::json::Decode(response->body);
   if (!body_doc) return std::move(body_doc).error();
@@ -408,7 +408,7 @@ smithy::Outcome<GetIntEnumOutput> PizzaAdminServiceClient::GetIntEnum(const GetI
   request.target = std::move(target);
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return DeserializeGetIntEnumError(*response);
+  if (response->status != 200) return ParseGetIntEnumError(*response);
   auto body_doc = smithy::json::Decode(response->body);
   if (!body_doc) return std::move(body_doc).error();
   return DeserializeGetIntEnumOutput(*body_doc);
@@ -426,7 +426,7 @@ smithy::Outcome<GetMenuOutput> PizzaAdminServiceClient::GetMenu(const GetMenuInp
   request.headers.Set("accept", "application/json");
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return DeserializeGetMenuError(*response);
+  if (response->status != 200) return ParseGetMenuError(*response);
   GetMenuOutput out{};
   if (!response->body.empty()) {
     auto payload_doc = smithy::json::Decode(response->body);
@@ -461,7 +461,7 @@ smithy::Outcome<HeaderEndpointOutput> PizzaAdminServiceClient::HeaderEndpoint(co
   }
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return DeserializeHeaderEndpointError(*response);
+  if (response->status != 200) return ParseHeaderEndpointError(*response);
   HeaderEndpointOutput out{};
   if (const auto header_value = response->headers.Get("X-Capitalized-Header"); header_value.has_value()) {
     out.capitalizedHeader = (*header_value);
@@ -491,7 +491,7 @@ smithy::Outcome<HealthOutput> PizzaAdminServiceClient::Health(const HealthInput&
   request.target = std::move(target);
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return DeserializeHealthError(*response);
+  if (response->status != 200) return ParseHealthError(*response);
   auto body_doc = smithy::json::Decode(response->body);
   if (!body_doc) return std::move(body_doc).error();
   return DeserializeHealthOutput(*body_doc);
@@ -508,7 +508,7 @@ smithy::Outcome<HttpPayloadRequiredWithDefaultOutput> PizzaAdminServiceClient::H
   request.headers.Set("accept", "application/json");
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return DeserializeHttpPayloadRequiredWithDefaultError(*response);
+  if (response->status != 200) return ParseHttpPayloadRequiredWithDefaultError(*response);
   HttpPayloadRequiredWithDefaultOutput out{};
   if (!response->body.empty()) {
     auto payload_doc = smithy::json::Decode(response->body);
@@ -532,7 +532,7 @@ smithy::Outcome<HttpPayloadWithDefaultOutput> PizzaAdminServiceClient::HttpPaylo
   request.headers.Set("accept", "application/json");
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return DeserializeHttpPayloadWithDefaultError(*response);
+  if (response->status != 200) return ParseHttpPayloadWithDefaultError(*response);
   HttpPayloadWithDefaultOutput out{};
   if (!response->body.empty()) {
     auto payload_doc = smithy::json::Decode(response->body);
@@ -554,7 +554,7 @@ smithy::Outcome<OpenUnionsOutput> PizzaAdminServiceClient::OpenUnions(const Open
   request.headers.Set("accept", "application/json");
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return DeserializeOpenUnionsError(*response);
+  if (response->status != 200) return ParseOpenUnionsError(*response);
   OpenUnionsOutput out{};
   if (!response->body.empty()) {
     auto payload_doc = smithy::json::Decode(response->body);
@@ -593,7 +593,7 @@ smithy::Outcome<RoundTripOutput> PizzaAdminServiceClient::RoundTrip(const RoundT
   request.headers.Set("content-type", "application/json");
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return DeserializeRoundTripError(*response);
+  if (response->status != 200) return ParseRoundTripError(*response);
   RoundTripOutput out{};
   auto body_doc = smithy::json::Decode(response->body);
   if (!body_doc) return std::move(body_doc).error();
@@ -616,7 +616,7 @@ smithy::Outcome<VersionOutput> PizzaAdminServiceClient::Version(const VersionInp
   request.headers.Set("accept", "application/json");
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return DeserializeVersionError(*response);
+  if (response->status != 200) return ParseVersionError(*response);
   VersionOutput out{};
   if (!response->body.empty()) {
     auto payload_doc = smithy::json::Decode(response->body);

@@ -217,7 +217,7 @@ final class ClientGenerator {
     w.write("namespace {");
     w.write("");
     protocol.writeClientHelpers(w, context);
-    ProtocolSupport.writeOperationErrorDeserializers(w, context, service, protocol, operations());
+    ProtocolSupport.writeOperationErrorParsers(w, context, service, protocol, operations());
     w.write("}  // namespace");
     w.write("");
 

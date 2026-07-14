@@ -42,8 +42,10 @@ final class HttpJsonBindingProtocol implements ProtocolGenerator {
     this.name = name;
     this.traitId = traitId;
     this.errorStatusFallback = errorStatusFallback;
-    this.client = new HttpJsonClientGenerator(errorTypeHeaderName);
-    this.server = new HttpJsonServerGenerator(errorTypeHeaderName);
+    // The halves mirror usesJsonName() so binding-emitted body keys can never
+    // disagree with the serde functions, which get the flag via DirectedCppCodegen.
+    this.client = new HttpJsonClientGenerator(errorTypeHeaderName, usesJsonName());
+    this.server = new HttpJsonServerGenerator(errorTypeHeaderName, usesJsonName());
   }
 
   @Override
@@ -74,13 +76,6 @@ final class HttpJsonBindingProtocol implements ProtocolGenerator {
   @Override
   public List<String> runtimeDeps() {
     return List.of(":json");
-  }
-
-  @Override
-  public List<OperationHelper> perOperationHelpers() {
-    // Beyond every client's Deserialize<Op>Error, the HTTP server emits
-    // Serialize<Op>Response beside serde's Serialize<Type> functions.
-    return List.of(OperationHelper.CLIENT_ERROR, OperationHelper.SERVER_RESPONSE);
   }
 
   @Override

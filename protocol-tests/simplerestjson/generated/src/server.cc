@@ -301,7 +301,7 @@ smithy::Outcome<AddMenuItemInput> ParseAddMenuItemInput(const smithy::http::Http
   return input;
 }
 
-smithy::http::HttpResponse SerializeAddMenuItemResponse(const AddMenuItemOutput& output) {
+smithy::http::HttpResponse BuildAddMenuItemResponse(const AddMenuItemOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 201;
@@ -326,7 +326,7 @@ smithy::Outcome<CustomCodeInput> ParseCustomCodeInput(const smithy::http::HttpRe
   return input;
 }
 
-smithy::http::HttpResponse SerializeCustomCodeResponse(const CustomCodeOutput& output) {
+smithy::http::HttpResponse BuildCustomCodeResponse(const CustomCodeOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -349,7 +349,7 @@ smithy::Outcome<GetEnumInput> ParseGetEnumInput(const smithy::http::HttpRequest&
   return input;
 }
 
-smithy::http::HttpResponse SerializeGetEnumResponse(const GetEnumOutput& output) {
+smithy::http::HttpResponse BuildGetEnumResponse(const GetEnumOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -376,7 +376,7 @@ smithy::Outcome<GetIntEnumInput> ParseGetIntEnumInput(const smithy::http::HttpRe
   return input;
 }
 
-smithy::http::HttpResponse SerializeGetIntEnumResponse(const GetIntEnumOutput& output) {
+smithy::http::HttpResponse BuildGetIntEnumResponse(const GetIntEnumOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -399,7 +399,7 @@ smithy::Outcome<GetMenuInput> ParseGetMenuInput(const smithy::http::HttpRequest&
   return input;
 }
 
-smithy::http::HttpResponse SerializeGetMenuResponse(const GetMenuOutput& output) {
+smithy::http::HttpResponse BuildGetMenuResponse(const GetMenuOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -429,7 +429,7 @@ smithy::Outcome<HeaderEndpointInput> ParseHeaderEndpointInput(const smithy::http
   return input;
 }
 
-smithy::http::HttpResponse SerializeHeaderEndpointResponse(const HeaderEndpointOutput& output) {
+smithy::http::HttpResponse BuildHeaderEndpointResponse(const HeaderEndpointOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -465,7 +465,7 @@ smithy::Outcome<HealthInput> ParseHealthInput(const smithy::http::HttpRequest& r
   return input;
 }
 
-smithy::http::HttpResponse SerializeHealthResponse(const HealthOutput& output) {
+smithy::http::HttpResponse BuildHealthResponse(const HealthOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -490,7 +490,7 @@ smithy::Outcome<HttpPayloadRequiredWithDefaultInput> ParseHttpPayloadRequiredWit
   return input;
 }
 
-smithy::http::HttpResponse SerializeHttpPayloadRequiredWithDefaultResponse(const HttpPayloadRequiredWithDefaultOutput& output) {
+smithy::http::HttpResponse BuildHttpPayloadRequiredWithDefaultResponse(const HttpPayloadRequiredWithDefaultOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -515,7 +515,7 @@ smithy::Outcome<HttpPayloadWithDefaultInput> ParseHttpPayloadWithDefaultInput(co
   return input;
 }
 
-smithy::http::HttpResponse SerializeHttpPayloadWithDefaultResponse(const HttpPayloadWithDefaultOutput& output) {
+smithy::http::HttpResponse BuildHttpPayloadWithDefaultResponse(const HttpPayloadWithDefaultOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -543,7 +543,7 @@ smithy::Outcome<OpenUnionsInput> ParseOpenUnionsInput(const smithy::http::HttpRe
   return input;
 }
 
-smithy::http::HttpResponse SerializeOpenUnionsResponse(const OpenUnionsOutput& output) {
+smithy::http::HttpResponse BuildOpenUnionsResponse(const OpenUnionsOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -586,7 +586,7 @@ smithy::Outcome<RoundTripInput> ParseRoundTripInput(const smithy::http::HttpRequ
   return input;
 }
 
-smithy::http::HttpResponse SerializeRoundTripResponse(const RoundTripOutput& output) {
+smithy::http::HttpResponse BuildRoundTripResponse(const RoundTripOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -614,7 +614,7 @@ smithy::Outcome<VersionInput> ParseVersionInput(const smithy::http::HttpRequest&
   return input;
 }
 
-smithy::http::HttpResponse SerializeVersionResponse(const VersionOutput& output) {
+smithy::http::HttpResponse BuildVersionResponse(const VersionOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -654,7 +654,7 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
     auto outcome = handler->AddMenuItem(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
-    return SerializeAddMenuItemResponse(*outcome);
+    return BuildAddMenuItemResponse(*outcome);
   }, "AddMenuItem");
   (void)router_->Add("GET", "/custom-code/{code}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -672,7 +672,7 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->CustomCode(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
-    return SerializeCustomCodeResponse(*outcome);
+    return BuildCustomCodeResponse(*outcome);
   }, "CustomCode");
   (void)router_->Add("GET", "/get-enum/{aa}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -697,7 +697,7 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
     auto outcome = handler->GetEnum(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
-    return SerializeGetEnumResponse(*outcome);
+    return BuildGetEnumResponse(*outcome);
   }, "GetEnum");
   (void)router_->Add("GET", "/get-int-enum/{aa}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -720,7 +720,7 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->GetIntEnum(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
-    return SerializeGetIntEnumResponse(*outcome);
+    return BuildGetIntEnumResponse(*outcome);
   }, "GetIntEnum");
   (void)router_->Add("GET", "/restaurant/{restaurant}/menu", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -743,7 +743,7 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->GetMenu(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
-    return SerializeGetMenuResponse(*outcome);
+    return BuildGetMenuResponse(*outcome);
   }, "GetMenu");
   (void)router_->Add("POST", "/headers", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -761,7 +761,7 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->HeaderEndpoint(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
-    return SerializeHeaderEndpointResponse(*outcome);
+    return BuildHeaderEndpointResponse(*outcome);
   }, "HeaderEndpoint");
   (void)router_->Add("GET", "/health", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -786,7 +786,7 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
     auto outcome = handler->Health(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
-    return SerializeHealthResponse(*outcome);
+    return BuildHealthResponse(*outcome);
   }, "Health");
   (void)router_->Add("PUT", "/httpPayloadRequiredWithDefault", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -809,7 +809,7 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->HttpPayloadRequiredWithDefault(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
-    return SerializeHttpPayloadRequiredWithDefaultResponse(*outcome);
+    return BuildHttpPayloadRequiredWithDefaultResponse(*outcome);
   }, "HttpPayloadRequiredWithDefault");
   (void)router_->Add("PUT", "/httpPayloadWithDefault", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -832,7 +832,7 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->HttpPayloadWithDefault(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
-    return SerializeHttpPayloadWithDefaultResponse(*outcome);
+    return BuildHttpPayloadWithDefaultResponse(*outcome);
   }, "HttpPayloadWithDefault");
   (void)router_->Add("PUT", "/openUnions", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -855,7 +855,7 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->OpenUnions(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
-    return SerializeOpenUnionsResponse(*outcome);
+    return BuildOpenUnionsResponse(*outcome);
   }, "OpenUnions");
   (void)router_->Add("POST", "/roundTrip/{label}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -878,7 +878,7 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->RoundTrip(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
-    return SerializeRoundTripResponse(*outcome);
+    return BuildRoundTripResponse(*outcome);
   }, "RoundTrip");
   (void)router_->Add("GET", "/version", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -901,7 +901,7 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->Version(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
-    return SerializeVersionResponse(*outcome);
+    return BuildVersionResponse(*outcome);
   }, "Version");
 }
 

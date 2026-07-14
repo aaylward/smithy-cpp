@@ -153,7 +153,7 @@ smithy::Outcome<AddBookInput> ParseAddBookInput(const smithy::http::HttpRequest&
   return input;
 }
 
-smithy::http::HttpResponse SerializeAddBookResponse(const AddBookOutput& output) {
+smithy::http::HttpResponse BuildAddBookResponse(const AddBookOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 201;
@@ -183,7 +183,7 @@ smithy::Outcome<GetBookInput> ParseGetBookInput(const smithy::http::HttpRequest&
   return input;
 }
 
-smithy::http::HttpResponse SerializeGetBookResponse(const GetBookOutput& output) {
+smithy::http::HttpResponse BuildGetBookResponse(const GetBookOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -226,7 +226,7 @@ BookstoreServer::BookstoreServer(std::shared_ptr<BookstoreHandler> handler)
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->AddBook(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
-    return SerializeAddBookResponse(*outcome);
+    return BuildAddBookResponse(*outcome);
   }, "AddBook");
   (void)router_->Add("GET", "/books/{isbn}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -249,7 +249,7 @@ BookstoreServer::BookstoreServer(std::shared_ptr<BookstoreHandler> handler)
     if (!input) return ErrorToResponse(input.error());
     auto outcome = handler->GetBook(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
-    return SerializeGetBookResponse(*outcome);
+    return BuildGetBookResponse(*outcome);
   }, "GetBook");
 }
 

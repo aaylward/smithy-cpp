@@ -72,7 +72,7 @@ smithy::Error MakeDivisionByZeroError(const smithy::http::HttpResponse& response
   return error;
 }
 
-smithy::Error DeserializeDivideError(const smithy::http::HttpResponse& response) {
+smithy::Error ParseDivideError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "DivisionByZero") return MakeDivisionByZeroError(response, std::move(parsed));
   return GenericError(std::move(parsed));
@@ -159,7 +159,7 @@ smithy::Outcome<DivideOutput> CalculatorClient::Divide(const DivideInput& input)
   // Errors are JSON-RPC envelopes on HTTP 200; non-200 means the request
   // never reached the protocol layer (router 404, proxy) and parses generically.
   const bool is_error = !envelope_doc.ok() || !envelope_doc->is_map() || envelope_doc->Find("error") != nullptr;
-  if (response->status != 200 || is_error) return DeserializeDivideError(*response);
+  if (response->status != 200 || is_error) return ParseDivideError(*response);
   const smithy::Document* result = envelope_doc->Find("result");
   if (result == nullptr) return smithy::Error::Serialization("jsonRpc2: response has no result member");
   return DeserializeDivideOutput(*result);

@@ -30,8 +30,12 @@ final class HttpJsonClientGenerator {
    */
   private final String errorTypeHeaderName;
 
-  HttpJsonClientGenerator(String errorTypeHeaderName) {
+  /** Mirror of the owning protocol's usesJsonName() — body keys must match the serde functions. */
+  private final boolean useJsonName;
+
+  HttpJsonClientGenerator(String errorTypeHeaderName, boolean useJsonName) {
     this.errorTypeHeaderName = errorTypeHeaderName;
+    this.useJsonName = useJsonName;
   }
 
   List<String> includes() {
@@ -72,8 +76,8 @@ final class HttpJsonClientGenerator {
           continue;
         }
       }
-      // The document key is what the serde reads: @jsonName wins over the name.
-      String wireName = HttpBindingCodeGen.wireName(member);
+      // The document key is what the serde reads.
+      String wireName = HttpBindingCodeGen.wireName(member, useJsonName);
       w.openBlock(
           "if (const auto header_value = response.headers.Get($S); header_value.has_value()) {",
           binding.getLocationName());
@@ -124,7 +128,7 @@ final class HttpJsonClientGenerator {
     HttpBindingIndex index = HttpBindingIndex.of(context.model());
     StructureShape input = ProtocolSupport.inputShape(context, operation);
     StructureShape output = ProtocolSupport.outputShape(context, operation);
-    SerdeCodeGen serde = new SerdeCodeGen(context);
+    SerdeCodeGen serde = new SerdeCodeGen(context, useJsonName);
     HttpBindingCodeGen.RequestBindings req =
         HttpBindingCodeGen.RequestBindings.of(index, operation);
     HttpBindingCodeGen.ResponseBindings resp =
@@ -275,41 +279,23 @@ final class HttpJsonClientGenerator {
         w.closeBlock("}");
       }
     } else if (!responseBody.isEmpty()) {
-      w.write(
-          "auto body_doc = smithy::json::Decode(response->body.empty() ? \"{}\" "
-              + ": response->body);");
-      w.write("if (!body_doc) return std::move(body_doc).error();");
-      w.write(
-          "if (!body_doc->is_map()) return smithy::Error::Serialization($S);",
-          CppReservedWords.escape(operation.getId().getName()) + ": expected a JSON object body");
-      for (HttpBinding binding : responseBody) {
-        MemberShape member = binding.getMember();
-        String wireName = HttpBindingCodeGen.wireName(member);
-        String field = "out." + context.cppSymbols().toMemberName(member);
-        String path = outType + "." + member.getMemberName();
-        w.openBlock("{");
-        w.write("const smithy::Document* member = body_doc->Find($S);", wireName);
-        if (MemberDefaults.lenientRequired(context.model(), member)) {
-          w.openBlock("if (member != nullptr && !member->is_null()) {");
-          serde.writeDeserializeInto(w, member, "member", field, path);
-          w.closeBlock("}");
-        } else if (member.isRequired()) {
-          w.write(
-              "if (member == nullptr || member->is_null()) return "
-                  + "smithy::Error::Serialization($S);",
-              "missing required member: " + member.getMemberName());
-          serde.writeDeserializeInto(w, member, "member", field, path);
-        } else {
-          w.openBlock("if (member != nullptr && !member->is_null()) {");
-          var targetType =
-              context.cppSymbols().toSymbol(context.model().expectShape(member.getTarget()));
-          w.write("$L parsed_member{};", targetType.getName());
-          serde.writeDeserializeInto(w, member, "member", "parsed_member", path);
-          w.write("$L = std::move(parsed_member);", field);
-          w.closeBlock("}");
-        }
-        w.closeBlock("}");
-      }
+      HttpBindingCodeGen.writeDocumentBodyRead(
+          w,
+          context,
+          serde,
+          responseBody,
+          "response->body",
+          "out.",
+          outType,
+          CppReservedWords.escape(operation.getId().getName()),
+          (w2, member, deserializeMember) -> {
+            // Clients are strict: a missing required member fails the exchange.
+            w2.write(
+                "if (member == nullptr || member->is_null()) return "
+                    + "smithy::Error::Serialization($S);",
+                "missing required member: " + member.getMemberName());
+            deserializeMember.run();
+          });
     }
     if (responsePayload != null) {
       HttpBindingCodeGen.writePayloadRead(

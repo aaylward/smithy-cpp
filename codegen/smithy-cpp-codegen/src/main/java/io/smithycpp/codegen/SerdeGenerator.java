@@ -25,27 +25,27 @@ final class SerdeGenerator {
 
   private final CppContext context;
   private final SerdeCodeGen serde;
-  private final boolean useJsonName;
 
   SerdeGenerator(CppContext context, boolean useJsonName) {
     this.context = context;
-    this.serde = new SerdeCodeGen(context);
-    this.useJsonName = useJsonName;
+    this.serde = new SerdeCodeGen(context, useJsonName);
   }
 
-  /** The body key for a member: @jsonName when the module's protocol honors it. */
+  /** The body key for a member — the same policy the binding code applies. */
   private String wireName(MemberShape member) {
-    if (useJsonName) {
-      var trait = member.getTrait(software.amazon.smithy.model.traits.JsonNameTrait.class);
-      if (trait.isPresent()) {
-        return trait.get().getValue();
-      }
-    }
-    return member.getMemberName();
+    return serde.wireName(member);
   }
 
-  /** Aggregate shapes in the closure, topologically ordered, excluding smithy.api#Unit. */
   List<Shape> serdeShapes() {
+    return serdeShapes(context);
+  }
+
+  /**
+   * Aggregate shapes in the closure, topologically ordered, excluding smithy.api#Unit. Static so
+   * callers that only need the ordering (RandomValueGenerator, ValidationGenerator) don't have to
+   * construct a generator — and pick a wire-name policy — to get it.
+   */
+  static List<Shape> serdeShapes(CppContext context) {
     Set<Shape> closure =
         new Walker(context.model())
             .walkShapes(context.model().expectShape(context.settings().service()));

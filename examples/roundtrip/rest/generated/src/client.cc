@@ -97,6 +97,18 @@ smithy::Error GenericError(ParsedError parsed) {
   return value;
 }
 
+smithy::Error MakeDescribeSinkErrorError(const smithy::http::HttpResponse& response, ParsedError parsed) {
+  (void)response;
+  const bool retryable = parsed.status >= 500;
+  smithy::Error error = smithy::Error::Modeled("DescribeSinkError", std::move(parsed.message), retryable);
+  if (!parsed.doc.is_map()) parsed.doc = smithy::Document(smithy::DocumentMap{});
+  auto detail = DeserializeDescribeSinkError(parsed.doc);
+  if (detail.ok()) {
+    error.set_detail(*std::move(detail));
+  }
+  return error;
+}
+
 smithy::Error MakeSinkNotFoundError(const smithy::http::HttpResponse& response, ParsedError parsed) {
   (void)response;
   const bool retryable = parsed.status >= 500;
@@ -124,14 +136,16 @@ smithy::Error MakeSinkQuotaExceededError(const smithy::http::HttpResponse& respo
   return error;
 }
 
-smithy::Error DeserializeDescribeSinkError(const smithy::http::HttpResponse& response) {
+smithy::Error ParseDescribeSinkError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
+  if (parsed.code == "DescribeSinkError") return MakeDescribeSinkErrorError(response, std::move(parsed));
   if (parsed.code == "SinkNotFound") return MakeSinkNotFoundError(response, std::move(parsed));
   if (parsed.code == "UnknownError" && parsed.status == 404) return MakeSinkNotFoundError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 410) return MakeDescribeSinkErrorError(response, std::move(parsed));
   return GenericError(std::move(parsed));
 }
 
-smithy::Error DeserializePutSinkError(const smithy::http::HttpResponse& response) {
+smithy::Error ParsePutSinkError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "SinkNotFound") return MakeSinkNotFoundError(response, std::move(parsed));
   if (parsed.code == "SinkQuotaExceeded") return MakeSinkQuotaExceededError(response, std::move(parsed));
@@ -140,7 +154,7 @@ smithy::Error DeserializePutSinkError(const smithy::http::HttpResponse& response
   return GenericError(std::move(parsed));
 }
 
-smithy::Error DeserializeUploadAttachmentError(const smithy::http::HttpResponse& response) {
+smithy::Error ParseUploadAttachmentError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "SinkNotFound") return MakeSinkNotFoundError(response, std::move(parsed));
   if (parsed.code == "UnknownError" && parsed.status == 404) return MakeSinkNotFoundError(response, std::move(parsed));
@@ -201,7 +215,7 @@ smithy::Outcome<DescribeSinkOutput> RoundTripRestClient::DescribeSink(const Desc
   request.target = std::move(target);
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return DeserializeDescribeSinkError(*response);
+  if (response->status != 200) return ParseDescribeSinkError(*response);
   if (response->body.empty()) return DescribeSinkOutput{};
   auto body_doc = smithy::json::Decode(response->body);
   if (!body_doc) return std::move(body_doc).error();
@@ -246,7 +260,7 @@ smithy::Outcome<PutSinkOutput> RoundTripRestClient::PutSink(const PutSinkInput& 
   request.headers.Set("content-type", "application/json");
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return DeserializePutSinkError(*response);
+  if (response->status != 200) return ParsePutSinkError(*response);
   PutSinkOutput out{};
   auto body_doc = smithy::json::Decode(response->body);
   if (!body_doc) return std::move(body_doc).error();
@@ -285,7 +299,7 @@ smithy::Outcome<UploadAttachmentOutput> RoundTripRestClient::UploadAttachment(co
   request.headers.Set("accept", "application/json");
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return DeserializeUploadAttachmentError(*response);
+  if (response->status != 200) return ParseUploadAttachmentError(*response);
   UploadAttachmentOutput out{};
   if (!response->body.empty()) {
     auto payload_doc = smithy::json::Decode(response->body);

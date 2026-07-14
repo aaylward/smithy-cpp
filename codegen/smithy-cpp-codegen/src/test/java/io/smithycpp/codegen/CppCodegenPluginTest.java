@@ -11,12 +11,9 @@ import java.util.ServiceLoader;
 import java.util.stream.StreamSupport;
 import org.junit.jupiter.api.Test;
 import software.amazon.smithy.build.MockManifest;
-import software.amazon.smithy.build.PluginContext;
 import software.amazon.smithy.build.SmithyBuildPlugin;
 import software.amazon.smithy.codegen.core.CodegenException;
 import software.amazon.smithy.model.Model;
-import software.amazon.smithy.model.node.Node;
-import software.amazon.smithy.model.node.ObjectNode;
 
 class CppCodegenPluginTest {
 
@@ -31,24 +28,12 @@ class CppCodegenPluginTest {
         .unwrap();
   }
 
-  private static ObjectNode weatherSettings() {
-    return Node.objectNodeBuilder()
-        .withMember("service", "example.weather#Weather")
-        .withMember("namespace", "example::weather")
-        .withMember("runtimeTarget", "//runtime:core")
-        .build();
-  }
-
   private static MockManifest generateWeather() {
-    MockManifest manifest = new MockManifest();
-    PluginContext context =
-        PluginContext.builder()
-            .fileManifest(manifest)
-            .model(weatherModel())
-            .settings(weatherSettings())
-            .build();
-    new CppCodegenPlugin().execute(context);
-    return manifest;
+    return PluginTestHarness.execute(
+        weatherModel(),
+        "example.weather#Weather",
+        "example::weather",
+        b -> b.withMember("runtimeTarget", "//runtime:core"));
   }
 
   @Test
@@ -98,24 +83,16 @@ class CppCodegenPluginTest {
     Path model =
         Paths.get(
             System.getProperty("smithycpp.repoRoot"), "examples/jsonrpc2/model/calculator.smithy");
-    MockManifest manifest = new MockManifest();
-    PluginContext context =
-        PluginContext.builder()
-            .fileManifest(manifest)
-            .model(
-                Model.assembler()
-                    .discoverModels(CppCodegenPluginTest.class.getClassLoader())
-                    .addImport(model)
-                    .assemble()
-                    .unwrap())
-            .settings(
-                Node.objectNodeBuilder()
-                    .withMember("service", "example.calculator#Calculator")
-                    .withMember("namespace", "example::calculator")
-                    .withMember("runtimeTarget", "//runtime:core")
-                    .build())
-            .build();
-    new CppCodegenPlugin().execute(context);
+    MockManifest manifest =
+        PluginTestHarness.execute(
+            Model.assembler()
+                .discoverModels(CppCodegenPluginTest.class.getClassLoader())
+                .addImport(model)
+                .assemble()
+                .unwrap(),
+            "example.calculator#Calculator",
+            "example::calculator",
+            b -> b.withMember("runtimeTarget", "//runtime:core"));
 
     String client = manifest.expectFileString("/src/client.cc");
     assertTrue(client.contains("envelope.emplace(\"jsonrpc\", smithy::Document(\"2.0\"));"));
@@ -136,40 +113,26 @@ class CppCodegenPluginTest {
 
   @Test
   void generatesRecursiveShapes() {
-    Model model =
-        Model.assembler()
-            .addUnparsedModel(
-                "recursive.smithy",
-                """
-                $version: "2.0"
-                namespace test.rec
+    MockManifest manifest =
+        PluginTestHarness.generate(
+            """
+            $version: "2.0"
+            namespace test.rec
 
-                service Svc { version: "1", operations: [Op] }
-                operation Op { input := { tree: TreeNode } }
+            service Svc { version: "1", operations: [Op] }
+            operation Op { input := { tree: TreeNode } }
 
-                structure TreeNode {
-                    label: Wrapper
-                    children: TreeNodes
-                }
-                structure Wrapper {
-                    node: TreeNode
-                }
-                list TreeNodes { member: TreeNode }
-                """)
-            .assemble()
-            .unwrap();
-    MockManifest manifest = new MockManifest();
-    PluginContext context =
-        PluginContext.builder()
-            .fileManifest(manifest)
-            .model(model)
-            .settings(
-                Node.objectNodeBuilder()
-                    .withMember("service", "test.rec#Svc")
-                    .withMember("namespace", "test::rec")
-                    .build())
-            .build();
-    new CppCodegenPlugin().execute(context);
+            structure TreeNode {
+                label: Wrapper
+                children: TreeNodes
+            }
+            structure Wrapper {
+                node: TreeNode
+            }
+            list TreeNodes { member: TreeNode }
+            """,
+            "test.rec#Svc",
+            "test::rec");
     String header = manifest.expectFileString("/include/test/rec/types.h");
     // Structure-to-structure cycle edges box; list cycles ride std::vector's
     // incomplete-element support behind a forward declaration.
@@ -182,125 +145,67 @@ class CppCodegenPluginTest {
   void rejectsBacktrackingOnlyPatterns() {
     // Backreferences and lookaround need a backtracking engine; the
     // linear-time ReDoS-safe matcher refuses them at generation time.
-    Model model =
-        Model.assembler()
-            .discoverModels(CppCodegenPluginTest.class.getClassLoader())
-            .addUnparsedModel(
-                "backref.smithy",
-                """
-                $version: "2.0"
-                namespace test.redos
-                use smithy.cpp.protocols#jsonRpc2
-
-                @jsonRpc2
-                service Svc { version: "1", operations: [Op] }
-                operation Op {
-                    input := {
-                        @pattern("^(a+)\\\\1$")
-                        doubled: String
-                    }
-                }
-                """)
-            .assemble()
-            .unwrap();
-    PluginContext context =
-        PluginContext.builder()
-            .fileManifest(new MockManifest())
-            .model(model)
-            .settings(
-                Node.objectNodeBuilder()
-                    .withMember("service", "test.redos#Svc")
-                    .withMember("namespace", "test::redos")
-                    .build())
-            .build();
     CodegenException error =
-        assertThrows(CodegenException.class, () -> new CppCodegenPlugin().execute(context));
+        assertThrows(
+            CodegenException.class,
+            () ->
+                PluginTestHarness.generate(
+                    """
+                    $version: "2.0"
+                    namespace test.redos
+                    use smithy.cpp.protocols#jsonRpc2
+
+                    @jsonRpc2
+                    service Svc { version: "1", operations: [Op] }
+                    operation Op {
+                        input := {
+                            @pattern("^(a+)\\\\1$")
+                            doubled: String
+                        }
+                    }
+                    """,
+                    "test.redos#Svc",
+                    "test::redos"));
     assertTrue(error.getMessage().contains("backreference"));
     assertTrue(error.getMessage().contains("^(a+)\\1$"));
   }
 
   @Test
   void rejectsRecursionThroughUnionMembers() {
-    Model model =
-        Model.assembler()
-            .addUnparsedModel(
-                "recursive-union.smithy",
-                """
-                $version: "2.0"
-                namespace test.rec
-
-                service Svc { version: "1", operations: [Op] }
-                operation Op { input := { tree: TreeNode } }
-
-                structure TreeNode {
-                    value: TreeValue
-                }
-                union TreeValue {
-                    leaf: String
-                    node: TreeNode
-                }
-                """)
-            .assemble()
-            .unwrap();
-    PluginContext context =
-        PluginContext.builder()
-            .fileManifest(new MockManifest())
-            .model(model)
-            .settings(
-                Node.objectNodeBuilder()
-                    .withMember("service", "test.rec#Svc")
-                    .withMember("namespace", "test::rec")
-                    .build())
-            .build();
     CodegenException error =
-        assertThrows(CodegenException.class, () -> new CppCodegenPlugin().execute(context));
+        assertThrows(
+            CodegenException.class,
+            () ->
+                PluginTestHarness.generate(
+                    """
+                    $version: "2.0"
+                    namespace test.rec
+
+                    service Svc { version: "1", operations: [Op] }
+                    operation Op { input := { tree: TreeNode } }
+
+                    structure TreeNode {
+                        value: TreeValue
+                    }
+                    union TreeValue {
+                        leaf: String
+                        node: TreeNode
+                    }
+                    """,
+                    "test.rec#Svc",
+                    "test::rec"));
     assertTrue(error.getMessage().contains("union member"));
     assertTrue(error.getMessage().contains("TreeValue"));
   }
 
   // A jsonRpc2 server generated from an inline model; returns the manifest so a
   // test can assert on the emitted C++.
-  private static MockManifest generateJsonRpc2(String filename, String modelText, String service) {
-    Model model =
-        Model.assembler()
-            .discoverModels(CppCodegenPluginTest.class.getClassLoader())
-            .addUnparsedModel(filename, modelText)
-            .assemble()
-            .unwrap();
-    MockManifest manifest = new MockManifest();
-    new CppCodegenPlugin()
-        .execute(
-            PluginContext.builder()
-                .fileManifest(manifest)
-                .model(model)
-                .settings(
-                    Node.objectNodeBuilder()
-                        .withMember("service", service)
-                        .withMember("namespace", "test::gen")
-                        .build())
-                .build());
-    return manifest;
+  private static MockManifest generateJsonRpc2(String modelText, String service) {
+    return PluginTestHarness.generate(modelText, service, "test::gen");
   }
 
-  private static CodegenException assertJsonRpc2Rejected(
-      String filename, String modelText, String service) {
-    Model model =
-        Model.assembler()
-            .discoverModels(CppCodegenPluginTest.class.getClassLoader())
-            .addUnparsedModel(filename, modelText)
-            .assemble()
-            .unwrap();
-    PluginContext context =
-        PluginContext.builder()
-            .fileManifest(new MockManifest())
-            .model(model)
-            .settings(
-                Node.objectNodeBuilder()
-                    .withMember("service", service)
-                    .withMember("namespace", "test::gen")
-                    .build())
-            .build();
-    return assertThrows(CodegenException.class, () -> new CppCodegenPlugin().execute(context));
+  private static CodegenException assertJsonRpc2Rejected(String modelText, String service) {
+    return assertThrows(CodegenException.class, () -> generateJsonRpc2(modelText, service));
   }
 
   @Test
@@ -309,7 +214,6 @@ class CppCodegenPluginTest {
     // generated value-set message, not emitted raw (which would not compile).
     MockManifest manifest =
         generateJsonRpc2(
-            "enum-escape.smithy",
             """
             $version: "2.0"
             namespace test.gen
@@ -337,7 +241,6 @@ class CppCodegenPluginTest {
     // closing sequence )__smithy" — emitting it verbatim would break the literal.
     CodegenException error =
         assertJsonRpc2Rejected(
-            "delim.smithy",
             """
             $version: "2.0"
             namespace test.gen
@@ -355,7 +258,6 @@ class CppCodegenPluginTest {
   void rejectsEnumMemberNameCollision() {
     CodegenException error =
         assertJsonRpc2Rejected(
-            "enum-collide.smithy",
             """
             $version: "2.0"
             namespace test.gen
@@ -379,7 +281,6 @@ class CppCodegenPluginTest {
   void rejectsEnumMemberCollidingWithTheUnknownSentinel() {
     CodegenException error =
         assertJsonRpc2Rejected(
-            "enum-unknown.smithy",
             """
             $version: "2.0"
             namespace test.gen
@@ -405,7 +306,6 @@ class CppCodegenPluginTest {
     // @default initializer.
     MockManifest manifest =
         generateJsonRpc2(
-            "int64min.smithy",
             """
             $version: "2.0"
             namespace test.gen

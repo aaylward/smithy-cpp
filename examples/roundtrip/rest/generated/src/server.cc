@@ -76,6 +76,21 @@ smithy::http::HttpResponse ErrorToResponse(const smithy::Error& error) {
   std::vector<std::pair<std::string, std::string>> header_values;
   (void)header_values;
   if (error.kind() == smithy::ErrorKind::kModeled) {
+    if (error.code() == "DescribeSinkError") {
+      smithy::DocumentMap body;
+      if (const auto* detail = error.detail<DescribeSinkError>()) {
+        body = SerializeDescribeSinkError(*detail).as_map();
+      }
+      // The typed detail's own message member wins over the generic one.
+      const bool has_message = body.count("message") != 0 || body.count("Message") != 0;
+      if (!has_message && !error.message().empty()) {
+        body.emplace("message", smithy::Document(error.message()));
+      }
+      auto response = JsonError(410, "", "", std::move(body));
+      response.headers.Set("x-error-type", error.code());
+      for (const auto& [name, value] : header_values) response.headers.Set(name, value);
+      return response;
+    }
     if (error.code() == "SinkNotFound") {
       smithy::DocumentMap body;
       if (const auto* detail = error.detail<SinkNotFound>()) {
@@ -244,7 +259,7 @@ smithy::Outcome<DescribeSinkInput> ParseDescribeSinkInput(const smithy::http::Ht
   return input;
 }
 
-smithy::http::HttpResponse SerializeDescribeSinkResponse(const DescribeSinkOutput& output) {
+smithy::http::HttpResponse BuildDescribeSinkResponse(const DescribeSinkOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -317,7 +332,7 @@ smithy::Outcome<PutSinkInput> ParsePutSinkInput(const smithy::http::HttpRequest&
   return input;
 }
 
-smithy::http::HttpResponse SerializePutSinkResponse(const PutSinkOutput& output) {
+smithy::http::HttpResponse BuildPutSinkResponse(const PutSinkOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -333,6 +348,9 @@ smithy::http::HttpResponse SerializePutSinkResponse(const PutSinkOutput& output)
   body_map.emplace("sinkId", smithy::Document(output.sinkId));
   if (output.sink.has_value()) {
     body_map.emplace("sink", SerializeKitchenSink((*output.sink)));
+  }
+  if (output.echo.has_value()) {
+    body_map.emplace("echo", SerializePutSinkResponse((*output.echo)));
   }
   response.headers.Set("content-type", "application/json");
   response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
@@ -357,7 +375,7 @@ smithy::Outcome<UploadAttachmentInput> ParseUploadAttachmentInput(const smithy::
   return input;
 }
 
-smithy::http::HttpResponse SerializeUploadAttachmentResponse(const UploadAttachmentOutput& output) {
+smithy::http::HttpResponse BuildUploadAttachmentResponse(const UploadAttachmentOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -401,7 +419,7 @@ RoundTripRestServer::RoundTripRestServer(std::shared_ptr<RoundTripRestHandler> h
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
     auto outcome = handler->DescribeSink(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
-    return SerializeDescribeSinkResponse(*outcome);
+    return BuildDescribeSinkResponse(*outcome);
   }, "DescribeSink");
   (void)router_->Add("PUT", "/sinks/{sinkId}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -426,7 +444,7 @@ RoundTripRestServer::RoundTripRestServer(std::shared_ptr<RoundTripRestHandler> h
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
     auto outcome = handler->PutSink(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
-    return SerializePutSinkResponse(*outcome);
+    return BuildPutSinkResponse(*outcome);
   }, "PutSink");
   (void)router_->Add("POST", "/sinks/{sinkId}/attachment", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -446,7 +464,7 @@ RoundTripRestServer::RoundTripRestServer(std::shared_ptr<RoundTripRestHandler> h
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
     auto outcome = handler->UploadAttachment(*input);
     if (!outcome) return ErrorToResponse(outcome.error());
-    return SerializeUploadAttachmentResponse(*outcome);
+    return BuildUploadAttachmentResponse(*outcome);
   }, "UploadAttachment");
 }
 

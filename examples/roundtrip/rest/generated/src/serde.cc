@@ -8,6 +8,26 @@
 
 namespace example::roundtrip::rest {
 
+smithy::Document SerializeDescribeSinkError(const DescribeSinkError& value) {
+  smithy::DocumentMap map;
+  map.emplace("message", smithy::Document(value.message));
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<DescribeSinkError> DeserializeDescribeSinkError(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("DescribeSinkError: expected a map on the wire");
+  DescribeSinkError out;
+  {
+    const smithy::Document* member = doc.Find("message");
+    if (member == nullptr || member->is_null()) {
+      return smithy::Error::Serialization("DescribeSinkError: missing required member: message");
+    }
+    if (!member->is_string()) return smithy::Error::Serialization("DescribeSinkError.message: unexpected type on the wire");
+    out.message = member->as_string();
+  }
+  return out;
+}
+
 smithy::Document SerializeDescribeSinkInput(const DescribeSinkInput& value) {
   smithy::DocumentMap map;
   map.emplace("sinkId", smithy::Document(value.sinkId));
@@ -664,6 +684,29 @@ smithy::Outcome<PutSinkInput> DeserializePutSinkInput(const smithy::Document& do
   return out;
 }
 
+smithy::Document SerializePutSinkResponse(const PutSinkResponse& value) {
+  smithy::DocumentMap map;
+  if (value.note.has_value()) {
+    map.emplace("note", smithy::Document((*value.note)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<PutSinkResponse> DeserializePutSinkResponse(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("PutSinkResponse: expected a map on the wire");
+  PutSinkResponse out;
+  {
+    const smithy::Document* member = doc.Find("note");
+    if (member != nullptr && !member->is_null()) {
+      std::string parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("PutSinkResponse.note: unexpected type on the wire");
+      parsed_member = member->as_string();
+      out.note = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
 smithy::Document SerializePutSinkOutput(const PutSinkOutput& value) {
   smithy::DocumentMap map;
   map.emplace("sinkId", smithy::Document(value.sinkId));
@@ -675,6 +718,9 @@ smithy::Document SerializePutSinkOutput(const PutSinkOutput& value) {
   }
   if (value.sink.has_value()) {
     map.emplace("sink", SerializeKitchenSink((*value.sink)));
+  }
+  if (value.echo.has_value()) {
+    map.emplace("echo", SerializePutSinkResponse((*value.echo)));
   }
   return smithy::Document(std::move(map));
 }
@@ -722,6 +768,18 @@ smithy::Outcome<PutSinkOutput> DeserializePutSinkOutput(const smithy::Document& 
         parsed_member = std::move(*parsed);
       }
       out.sink = std::move(parsed_member);
+    }
+  }
+  {
+    const smithy::Document* member = doc.Find("echo");
+    if (member != nullptr && !member->is_null()) {
+      PutSinkResponse parsed_member{};
+      {
+        auto parsed = DeserializePutSinkResponse(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.echo = std::move(parsed_member);
     }
   }
   return out;

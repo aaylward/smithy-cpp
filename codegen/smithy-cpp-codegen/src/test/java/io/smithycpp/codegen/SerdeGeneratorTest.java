@@ -1,13 +1,11 @@
 package io.smithycpp.codegen;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
-import software.amazon.smithy.build.MockManifest;
-import software.amazon.smithy.build.PluginContext;
 import software.amazon.smithy.model.Model;
-import software.amazon.smithy.model.node.Node;
 
 /**
  * Direct assertions on the serde SerdeGenerator/SerdeCodeGen emit for a purpose-built model —
@@ -17,21 +15,8 @@ import software.amazon.smithy.model.node.Node;
 class SerdeGeneratorTest {
 
   private static String generateSerde(String modelText) {
-    Model model =
-        Model.assembler().addUnparsedModel("serde-test.smithy", modelText).assemble().unwrap();
-    MockManifest manifest = new MockManifest();
-    PluginContext context =
-        PluginContext.builder()
-            .fileManifest(manifest)
-            .model(model)
-            .settings(
-                Node.objectNodeBuilder()
-                    .withMember("service", "test.serde#Svc")
-                    .withMember("namespace", "test::serde")
-                    .build())
-            .build();
-    new CppCodegenPlugin().execute(context);
-    return manifest.expectFileString("/src/serde.cc");
+    return PluginTestHarness.generate(modelText, "test.serde#Svc", "test::serde")
+        .expectFileString("/src/serde.cc");
   }
 
   private static final String KITCHEN_MODEL =
@@ -108,11 +93,25 @@ class SerdeGeneratorTest {
   }
 
   @Test
+  void wireNameHonorsJsonNameOnlyWhenTheProtocolDoes() {
+    // One policy for serde functions and binding code alike: a protocol that
+    // ignores @jsonName must ignore it in BOTH, or the body splits its keys.
+    var member =
+        software.amazon.smithy.model.shapes.MemberShape.builder()
+            .id("test.serde#Payload$renamed")
+            .target("smithy.api#String")
+            .addTrait(new software.amazon.smithy.model.traits.JsonNameTrait("wire_key"))
+            .build();
+    assertEquals("wire_key", HttpBindingCodeGen.wireName(member, true));
+    assertEquals("renamed", HttpBindingCodeGen.wireName(member, false));
+  }
+
+  @Test
   void hasSerdeFunctionsMatchesExactlyTheShapeKindsSerdeEmits() {
-    // The helper-name collision guard reuses this predicate, so its edges
-    // matter beyond serde itself: enums convert through FromString/ToString
-    // (no Serialize/Deserialize functions to hide), simple shapes inline,
-    // and smithy.api#Unit never crosses the wire.
+    // serdeShapes() selects by this predicate, so its edges decide exactly
+    // which shapes get Serialize/Deserialize functions in serde.cc: enums
+    // convert through FromString/ToString, simple shapes inline, and
+    // smithy.api#Unit never crosses the wire.
     Model model =
         Model.assembler()
             .addUnparsedModel(

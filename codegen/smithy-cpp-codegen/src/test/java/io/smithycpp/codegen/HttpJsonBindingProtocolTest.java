@@ -6,9 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import software.amazon.smithy.build.MockManifest;
-import software.amazon.smithy.build.PluginContext;
-import software.amazon.smithy.model.Model;
-import software.amazon.smithy.model.node.Node;
 import software.amazon.smithy.model.shapes.ShapeId;
 
 /**
@@ -77,25 +74,7 @@ class HttpJsonBindingProtocolTest {
       """;
 
   private static MockManifest generateFiles() {
-    Model model =
-        Model.assembler()
-            .discoverModels(HttpJsonBindingProtocolTest.class.getClassLoader())
-            .addUnparsedModel("files.smithy", FILES_MODEL)
-            .assemble()
-            .unwrap();
-    MockManifest manifest = new MockManifest();
-    new CppCodegenPlugin()
-        .execute(
-            PluginContext.builder()
-                .fileManifest(manifest)
-                .model(model)
-                .settings(
-                    Node.objectNodeBuilder()
-                        .withMember("service", "test.rest#Files")
-                        .withMember("namespace", "test::rest")
-                        .build())
-                .build());
-    return manifest;
+    return PluginTestHarness.generate(FILES_MODEL, "test.rest#Files", "test::rest");
   }
 
   private static int count(String haystack, String needle) {
@@ -177,8 +156,96 @@ class HttpJsonBindingProtocolTest {
     // payload-less responses (harmless — Set is idempotent — but duplicated
     // generated code); pin the single emission.
     String server = generateFiles().expectFileString("/src/server.cc");
-    assertTrue(server.contains("SerializePutFileResponse"), server);
+    assertTrue(server.contains("BuildPutFileResponse"), server);
     assertEquals(
         1, count(server, "response.headers.Set(\"x-out-\" + map_key, map_value);"), server);
+  }
+
+  @Test
+  void jsonNameRenamesBodyKeysInBindingAndSerdeAlike() {
+    // simpleRestJson honors @jsonName. The binding emitters (client request
+    // write, server request read, server response write) and the serde
+    // functions must all use the renamed key — a split policy would make the
+    // two ends of the wire disagree about the body.
+    String model =
+        """
+        $version: "2.0"
+        namespace test.rest
+        use alloy#simpleRestJson
+
+        @simpleRestJson
+        service Svc { version: "1", operations: [Put] }
+        @http(method: "POST", uri: "/put")
+        operation Put {
+            input := {
+                @jsonName("wire_key")
+                renamed: String
+
+                nested: Payload
+            }
+            output := {
+                @jsonName("out_key")
+                renamed: String
+            }
+        }
+
+        structure Payload {
+            @jsonName("nested_key")
+            inner: String
+        }
+        """;
+    MockManifest manifest = PluginTestHarness.generate(model, "test.rest#Svc", "test::rest");
+    String client = manifest.expectFileString("/src/client.cc");
+    String server = manifest.expectFileString("/src/server.cc");
+    String serde = manifest.expectFileString("/src/serde.cc");
+    assertTrue(client.contains("body_map.emplace(\"wire_key\""), client);
+    assertTrue(server.contains("Find(\"wire_key\")"), server);
+    assertTrue(server.contains("body_map.emplace(\"out_key\""), server);
+    // Nested structures go through serde, which applies the same policy.
+    assertTrue(serde.contains("\"nested_key\""), serde);
+    // Nowhere does the un-renamed member name appear as a JSON key.
+    assertTrue(!client.contains("\"renamed\"") && !server.contains("\"renamed\""), client);
+  }
+
+  @Test
+  void requiredBodyMemberIsStrictOnClientsLenientOnServers() {
+    // The one deliberate divergence inside the shared document-body READ
+    // (HttpBindingCodeGen.writeDocumentBodyRead): a missing required body
+    // member fails the exchange on the client, while the server records a
+    // validation failure and keeps parsing so one response carries every
+    // failure. Everything else in that emitter is shared by construction.
+    String model =
+        """
+        $version: "2.0"
+        namespace test.rest
+        use alloy#simpleRestJson
+
+        @simpleRestJson
+        service Svc { version: "1", operations: [Put] }
+        @http(method: "POST", uri: "/put", code: 200)
+        operation Put {
+            input := {
+                @required
+                name: String
+            }
+            output := {
+                @required
+                name: String
+
+                @httpResponseCode
+                @required
+                status: Integer
+            }
+        }
+        """;
+    MockManifest manifest = PluginTestHarness.generate(model, "test.rest#Svc", "test::rest");
+    String client = manifest.expectFileString("/src/client.cc");
+    String server = manifest.expectFileString("/src/server.cc");
+    // Client: strict — the required @httpResponseCode member forces the
+    // member-by-member body parse, and absence is a Serialization error.
+    assertTrue(
+        client.contains("smithy::Error::Serialization(\"missing required member: name\")"), client);
+    // Server: lenient — absence is recorded and parsing continues.
+    assertTrue(server.contains("AddValidationFailure(validation_failures, \"/name\""), server);
   }
 }

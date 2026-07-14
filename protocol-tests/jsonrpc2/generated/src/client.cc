@@ -84,7 +84,7 @@ smithy::Error MakeThrottledErrorError(const smithy::http::HttpResponse& response
   return error;
 }
 
-smithy::Error DeserializeEchoPayloadError(const smithy::http::HttpResponse& response) {
+smithy::Error ParseEchoPayloadError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "NotFoundError") return MakeNotFoundErrorError(response, std::move(parsed));
   if (parsed.code == "ThrottledError") return MakeThrottledErrorError(response, std::move(parsed));
@@ -147,7 +147,7 @@ smithy::Outcome<EchoPayloadOutput> JsonRpc2ProtocolClient::EchoPayload(const Ech
   // Errors are JSON-RPC envelopes on HTTP 200; non-200 means the request
   // never reached the protocol layer (router 404, proxy) and parses generically.
   const bool is_error = !envelope_doc.ok() || !envelope_doc->is_map() || envelope_doc->Find("error") != nullptr;
-  if (response->status != 200 || is_error) return DeserializeEchoPayloadError(*response);
+  if (response->status != 200 || is_error) return ParseEchoPayloadError(*response);
   const smithy::Document* result = envelope_doc->Find("result");
   if (result == nullptr) return EchoPayloadOutput{};
   return DeserializeEchoPayloadOutput(*result);

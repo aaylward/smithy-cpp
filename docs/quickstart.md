@@ -87,6 +87,11 @@ carries — if they ever diverge, trust the example.)
 
 ## 2. Write the model
 
+(When a model is invalid, the generation action fails and the `cpp-codegen:` line at the top of
+its stderr names the problem — a Smithy validation failure lists every event. You never need to
+read the Java stack trace below it; if there is no `cpp-codegen:` line at all, you have found a
+generator bug worth reporting.)
+
 `model/todo.smithy` — a deliberately small task tracker: add a task, fetch it back, and one
 thing that can go wrong. This is the entire file:
 

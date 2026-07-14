@@ -40,6 +40,36 @@ public final class CppCodegenRunner {
   private CppCodegenRunner() {}
 
   public static void main(String[] args) {
+    try {
+      run(args);
+    } catch (CodegenException
+        | software.amazon.smithy.model.validation.ValidatedResultException e) {
+      // The most common consumer mistake — an invalid model or bad flag —
+      // surfaces through the Bazel rule's action log. Print the diagnostic
+      // itself instead of burying it in a JVM stack trace (issue #49); real
+      // generator bugs (any other exception) still get the full trace.
+      System.err.println(describe(e));
+      System.exit(1);
+    }
+  }
+
+  /**
+   * One line per problem, each carrying the {@code cpp-codegen:} attribution so the message is
+   * findable in a Bazel action log. Package-private for tests (main exits the JVM).
+   */
+  static String describe(RuntimeException e) {
+    if (e instanceof software.amazon.smithy.model.validation.ValidatedResultException validation) {
+      StringBuilder out = new StringBuilder("cpp-codegen: the model failed Smithy validation:");
+      for (var event : validation.getValidationEvents()) {
+        out.append(System.lineSeparator()).append("  ").append(event);
+      }
+      return out.toString();
+    }
+    return e.getMessage();
+  }
+
+  /** The runner body; throws instead of exiting so tests and probes can assert on failures. */
+  static void run(String[] args) {
     List<String> modelPaths = new ArrayList<>();
     String service = null;
     String namespace = null;

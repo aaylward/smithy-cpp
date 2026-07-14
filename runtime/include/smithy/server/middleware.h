@@ -46,8 +46,11 @@ std::function<http::HttpResponse(const http::HttpRequest&)> TooManyRequests(
 // Probes run on the transport's request thread, once per probe request,
 // concurrently across requests — they must be thread-safe and cheap (cache
 // expensive checks behind the callable). A probe that throws counts as
-// failing; the exception never reaches the transport. The name appears
-// verbatim in the JSON failing list, so use plain identifiers.
+// failing; the exception is logged, never reaching the transport. The name
+// lands verbatim in the JSON failing list, so HealthEndpoint throws
+// std::invalid_argument at composition time for a name that would corrupt
+// it (quote, backslash, control character) — or for a null probe, which
+// would otherwise present as a permanent outage.
 struct ReadinessCheck {
   std::string name;
   std::function<bool()> probe;

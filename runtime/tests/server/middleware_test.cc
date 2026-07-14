@@ -396,6 +396,21 @@ TEST(HealthEndpointTest, AThrowingProbeIsAFailingCheckNotAnUnwind) {
   EXPECT_EQ(response.body, R"({"status":"unhealthy","failing":["db"]})");
 }
 
+TEST(HealthEndpointTest, NullProbeThrowsAtComposition) {
+  // Contained per-request, a null probe would read as a permanent outage.
+  EXPECT_THROW(HealthEndpoint("/readyz", {{"db", nullptr}}), std::invalid_argument);
+}
+
+TEST(HealthEndpointTest, NameThatWouldCorruptTheJsonThrowsAtComposition) {
+  // Names land verbatim between the failing list's quotes; reject at
+  // composition time what would produce invalid JSON during an outage.
+  for (const std::string name : {"d\"b", "d\\b", "d\nb"}) {
+    EXPECT_THROW(HealthEndpoint("/readyz", {{name, [] { return true; }}}), std::invalid_argument)
+        << name;
+  }
+  EXPECT_NO_THROW(HealthEndpoint("/readyz", {{"db:primary/us-east 1", [] { return true; }}}));
+}
+
 TEST(HealthEndpointTest, ReadinessAnswersHeadWithStatusOnly) {
   auto handler = Chain({HealthEndpoint("/readyz", {{"db", [] { return false; }}})},
                        [](const http::HttpRequest&) { return Ok("router"); });

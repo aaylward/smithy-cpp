@@ -40,6 +40,23 @@ interface ProtocolGenerator {
     return false;
   }
 
+  /**
+   * The per-operation helpers this protocol emits beside the serde functions: every client's
+   * Deserialize&lt;Op&gt;Error, plus Serialize&lt;Op&gt;Response in HTTP-binding servers. Shape
+   * names matching {@code <op><suffix>} would make C++ hide the serde functions, so generation
+   * rejects them up front (ProtocolSupport.rejectHelperNameCollisions).
+   */
+  default List<OperationHelper> perOperationHelpers() {
+    return List.of(OperationHelper.CLIENT_ERROR);
+  }
+
+  /** A per-operation helper function named {@code <prefix><OperationName><suffix>}. */
+  record OperationHelper(String prefix, String suffix, boolean serverSide) {
+    static final OperationHelper CLIENT_ERROR = new OperationHelper("Deserialize", "Error", false);
+    static final OperationHelper SERVER_RESPONSE =
+        new OperationHelper("Serialize", "Response", true);
+  }
+
   /** Emits the file-local helpers (error deserializer etc.) into client.cc's anon namespace. */
   void writeClientHelpers(CppWriter w, CppContext context);
 
@@ -78,6 +95,10 @@ interface ProtocolGenerator {
   /** Emits the constructor statements registering one operation's route. */
   default void writeServerRoute(
       CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
-    throw new UnsupportedOperationException(name() + " does not emit per-operation routes");
+    throw new software.amazon.smithy.codegen.core.CodegenException(
+        "cpp-codegen: "
+            + name()
+            + " does not emit per-operation routes; single-endpoint protocols override"
+            + " writeServerRoutes instead");
   }
 }

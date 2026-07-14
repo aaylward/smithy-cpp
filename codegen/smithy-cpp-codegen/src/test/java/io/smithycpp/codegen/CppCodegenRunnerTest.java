@@ -138,4 +138,23 @@ class CppCodegenRunnerTest {
         RuntimeException.class,
         () -> CppCodegenRunner.main(args(writeModel(MODEL), output, "test.omit#NoSuchOp")));
   }
+
+  @Test
+  void unknownArgumentIsAnAttributedCodegenDiagnostic() {
+    CodegenException error =
+        assertThrows(
+            CodegenException.class, () -> CppCodegenRunner.main(new String[] {"--bogus", "x"}));
+    assertTrue(
+        error.getMessage().startsWith("cpp-codegen: unknown argument --bogus"), error.getMessage());
+  }
+
+  @Test
+  void missingRequiredArgumentsAreAnAttributedCodegenDiagnostic() {
+    CodegenException error =
+        assertThrows(
+            CodegenException.class,
+            () -> CppCodegenRunner.main(new String[] {"--service", "test.omit#Svc"}));
+    assertTrue(error.getMessage().startsWith("cpp-codegen: required:"), error.getMessage());
+    assertTrue(error.getMessage().contains("--namespace"), error.getMessage());
+  }
 }

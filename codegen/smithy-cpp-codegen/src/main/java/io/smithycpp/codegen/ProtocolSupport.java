@@ -1,5 +1,6 @@
 package io.smithycpp.codegen;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -278,6 +279,142 @@ final class ProtocolSupport {
     w.write("return response;");
     w.closeBlock("}");
     w.write("");
+  }
+
+  /**
+   * Rejects shape names whose serde functions would be hidden by the per-operation helpers the
+   * client/server emit into their anonymous namespaces (issue #47: the free-function namespace was
+   * never collision-checked, unlike declared type names). A serde-carrying shape named {@code
+   * <Op>Error} makes serde's {@code Deserialize<Op>Error(Document)} invisible next to the client's
+   * {@code Deserialize<Op>Error(HttpResponse)} — C++ name hiding, not overloading — and {@code
+   * <Op>Response} does the same to {@code Serialize<Op>Response} in HTTP servers. Only names of
+   * helpers this run actually emits are reserved: mode=client leaves {@code <Op>Response} free,
+   * mode=server leaves {@code <Op>Error} free, and error-less operations get no error deserializer
+   * at all.
+   */
+  static void rejectHelperNameCollisions(
+      CppContext context,
+      ProtocolGenerator protocol,
+      ServiceShape service,
+      List<OperationShape> operations) {
+    Map<String, String> reserved = new HashMap<>();
+    for (OperationShape operation : operations) {
+      String opName = CppReservedWords.escape(operation.getId().getName());
+      for (ProtocolGenerator.OperationHelper helper : protocol.perOperationHelpers()) {
+        boolean emitted =
+            helper.serverSide()
+                ? context.settings().generateServer()
+                : context.settings().generateClient();
+        // Deserialize<Op>Error only exists for operations that declare errors;
+        // error-less operations return GenericError instead (errorExpression).
+        if (helper.equals(ProtocolGenerator.OperationHelper.CLIENT_ERROR)
+            && operation.getErrors(service).isEmpty()) {
+          emitted = false;
+        }
+        if (emitted) {
+          reserved.put(
+              opName + helper.suffix(),
+              helper.prefix() + opName + helper.suffix() + " (" + operation.getId() + ")");
+        }
+      }
+    }
+    if (reserved.isEmpty()) {
+      return;
+    }
+    for (Shape shape :
+        new software.amazon.smithy.model.neighbor.Walker(context.model())
+            .walkShapes(context.model().expectShape(context.settings().service()))) {
+      if (!SerdeGenerator.hasSerdeFunctions(shape)) {
+        continue;
+      }
+      String declared = context.cppSymbols().declaredName(shape);
+      String helper = reserved.get(declared);
+      if (helper != null) {
+        throw new CodegenException(
+            "cpp-codegen: shape "
+                + shape.getId()
+                + " generates serde functions named after the per-operation helper "
+                + helper
+                + ", which would hide them inside the generated client/server; rename the shape"
+                + " or the operation");
+      }
+    }
+  }
+
+  /**
+   * The shared head of every RPC operation body: @idempotencyToken prep and the POST request
+   * skeleton (target, headers, and body are the protocol's wire format and stay with the caller).
+   * Returns the input variable name.
+   */
+  static String writeRpcRequestPrelude(CppWriter w, CppContext context, StructureShape input) {
+    String in =
+        prepareIdempotencyTokens(w, context, input, context.cppSymbols().toSymbol(input).getName());
+    w.write("smithy::http::HttpRequest request;");
+    w.write("request.method = \"POST\";");
+    return in;
+  }
+
+  /** Compression + Send + transport-error check: every RPC request phase ends here. */
+  static void writeRpcSend(CppWriter w, OperationShape operation) {
+    writeRequestCompression(w, operation);
+    w.write("auto response = Send(std::move(request));");
+    w.write("if (!response) return std::move(response).error();");
+  }
+
+  /**
+   * Emits the early return for operations whose output has no members; returns whether it did (the
+   * caller stops emitting response handling).
+   */
+  static boolean writeEmptyOutputReturn(CppWriter w, CppContext context, StructureShape output) {
+    if (!output.members().isEmpty()) {
+      return false;
+    }
+    w.write("return $L{};", context.cppSymbols().toSymbol(output).getName());
+    return true;
+  }
+
+  /**
+   * Deserializes an RPC server's decoded input document into {@code input}, reporting parse
+   * failures through the protocol's error emitter ({@code parseErrorStatus} is the protocol's
+   * serialization-failure code: rpcv2Cbor's 400, jsonRpc2's -32602). The caller owns the
+   * protocol-specific decode framing before this and skips it entirely for no-input operations.
+   */
+  static void writeRpcParsedInput(
+      CppWriter w,
+      CppContext context,
+      StructureShape input,
+      String deserializeFrom,
+      String parseErrorStatus,
+      ErrorResponseSpec spec) {
+    w.write(
+        "auto parsed = Deserialize$L($L);",
+        SerdeCodeGen.serdeFunctionSuffix(context, input),
+        deserializeFrom);
+    w.write(
+        "if (!parsed) return $L($L, \"SerializationException\", parsed.error().message(), {}$L);",
+        spec.errorFn(),
+        parseErrorStatus,
+        spec.extraArgs());
+    w.write("input = *std::move(parsed);");
+  }
+
+  /**
+   * The validate→invoke tail every RPC server shares: run the operation's validators over {@code
+   * input}, call the handler, and map handler errors through ErrorToResponse. Response
+   * serialization stays with the caller.
+   */
+  static void writeRpcDispatch(
+      CppWriter w,
+      OperationShape operation,
+      String handlerAccess,
+      ErrorResponseSpec spec,
+      ValidationGenerator validation) {
+    validation.writeRouteGuard(w, operation, spec.extraArgs());
+    w.write(
+        "auto outcome = $L$L(input);",
+        handlerAccess,
+        CppReservedWords.escape(operation.getId().getName()));
+    w.write("if (!outcome) return ErrorToResponse(outcome.error()$L);", spec.extraArgs());
   }
 
   /** HTTP status for a modeled error shape: @httpError, else @error class default. */

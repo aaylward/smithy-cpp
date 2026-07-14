@@ -45,6 +45,10 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
         /* errorTypeHeader= */ "");
   }
 
+  /** rpcv2Cbor error identity travels in the body, never a header; no extra response args. */
+  private static final ProtocolSupport.ErrorResponseSpec SPEC =
+      new ProtocolSupport.ErrorResponseSpec("CborError", /* errortypeHeader= */ "");
+
   /** Set up by writeServerHelpers (always called before the routes are emitted). */
   private ValidationGenerator validation;
 
@@ -63,9 +67,7 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
         "smithy::cbor::Encode(smithy::Document(std::move(body))).ToString()",
         "smithy-protocol",
         "rpc-v2-cbor");
-    ProtocolSupport.ErrorResponseSpec spec =
-        new ProtocolSupport.ErrorResponseSpec("CborError", /* errortypeHeader= */ "");
-    ProtocolSupport.writeServerErrorToResponse(w, context, service, operations, spec);
+    ProtocolSupport.writeServerErrorToResponse(w, context, service, operations, SPEC);
     // rpcv2Cbor error identity travels in the body, as the fully qualified shape id.
     validation =
         ValidationGenerator.writeWiring(
@@ -74,7 +76,7 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
             operations,
             /* alsoEmit= */ false,
             "smithy.framework#ValidationException",
-            spec);
+            SPEC);
   }
 
   @Override
@@ -83,7 +85,6 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
     StructureShape input = ProtocolSupport.inputShape(context, operation);
     StructureShape output = ProtocolSupport.outputShape(context, operation);
     String inputType = context.cppSymbols().toSymbol(input).getName();
-    String opName = CppReservedWords.escape(operation.getId().getName());
 
     boolean compressed = ProtocolSupport.gzipCompressed(operation);
     w.openBlock(
@@ -125,17 +126,9 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
               + "decoded.error().message(), {});");
       w.write("body_doc = *std::move(decoded);");
       w.closeBlock("}");
-      w.write(
-          "auto parsed = Deserialize$L(body_doc);",
-          SerdeCodeGen.serdeFunctionSuffix(context, input));
-      w.write(
-          "if (!parsed) return CborError(400, \"SerializationException\", "
-              + "parsed.error().message(), {});");
-      w.write("input = *std::move(parsed);");
+      ProtocolSupport.writeRpcParsedInput(w, context, input, "body_doc", "400", SPEC);
     }
-    validation.writeRouteGuard(w, operation, "");
-    w.write("auto outcome = handler->$L(input);", opName);
-    w.write("if (!outcome) return ErrorToResponse(outcome.error());");
+    ProtocolSupport.writeRpcDispatch(w, operation, "handler->", SPEC, validation);
     w.write("smithy::http::HttpResponse response;");
     w.write("response.headers.Set(\"smithy-protocol\", \"rpc-v2-cbor\");");
     w.write("response.headers.Set(\"content-type\", \"application/cbor\");");
@@ -152,12 +145,7 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
     StructureShape input = ProtocolSupport.inputShape(context, operation);
     StructureShape output = ProtocolSupport.outputShape(context, operation);
 
-    String in =
-        ProtocolSupport.prepareIdempotencyTokens(
-            w, context, input, context.cppSymbols().toSymbol(input).getName());
-
-    w.write("smithy::http::HttpRequest request;");
-    w.write("request.method = \"POST\";");
+    String in = ProtocolSupport.writeRpcRequestPrelude(w, context, input);
     w.write(
         "request.target = path_prefix_ + \"/service/$L/operation/$L\";",
         service.getId().getName(),
@@ -174,18 +162,15 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
           in);
     }
 
-    ProtocolSupport.writeRequestCompression(w, operation);
-    w.write("auto response = Send(std::move(request));");
-    w.write("if (!response) return std::move(response).error();");
+    ProtocolSupport.writeRpcSend(w, operation);
     w.write(
         "if (response->status != 200) return $L;",
         ProtocolSupport.errorExpression(context, service, operation));
 
-    String outType = context.cppSymbols().toSymbol(output).getName();
-    if (output.members().isEmpty()) {
-      w.write("return $L{};", outType);
+    if (ProtocolSupport.writeEmptyOutputReturn(w, context, output)) {
       return;
     }
+    String outType = context.cppSymbols().toSymbol(output).getName();
     boolean allOptional = output.members().stream().noneMatch(MemberShape::isRequired);
     if (allOptional) {
       w.write("if (response->body.empty()) return $L{};", outType);

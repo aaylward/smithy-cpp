@@ -106,4 +106,55 @@ class SerdeGeneratorTest {
     assertTrue(serde.contains("doc.Find(\"name\")"), serde);
     assertFalse(serde.contains("unknown member in structure"), serde);
   }
+
+  @Test
+  void hasSerdeFunctionsMatchesExactlyTheShapeKindsSerdeEmits() {
+    // The helper-name collision guard reuses this predicate, so its edges
+    // matter beyond serde itself: enums convert through FromString/ToString
+    // (no Serialize/Deserialize functions to hide), simple shapes inline,
+    // and smithy.api#Unit never crosses the wire.
+    Model model =
+        Model.assembler()
+            .addUnparsedModel(
+                "kinds.smithy",
+                """
+                $version: "2.0"
+                namespace test.kinds
+
+                structure S {}
+                union U { a: String }
+                list L { member: String }
+                map M { key: String, value: String }
+
+                enum E {
+                    A
+                }
+
+                intEnum IE {
+                    A = 1
+                }
+
+                string Str
+                """)
+            .assemble()
+            .unwrap();
+    for (String serde : new String[] {"S", "U", "L", "M"}) {
+      assertTrue(
+          SerdeGenerator.hasSerdeFunctions(
+              model.expectShape(
+                  software.amazon.smithy.model.shapes.ShapeId.from("test.kinds#" + serde))),
+          serde);
+    }
+    for (String inline : new String[] {"E", "IE", "Str"}) {
+      assertFalse(
+          SerdeGenerator.hasSerdeFunctions(
+              model.expectShape(
+                  software.amazon.smithy.model.shapes.ShapeId.from("test.kinds#" + inline))),
+          inline);
+    }
+    assertFalse(
+        SerdeGenerator.hasSerdeFunctions(
+            model.expectShape(
+                software.amazon.smithy.model.shapes.ShapeId.from("smithy.api#Unit"))));
+  }
 }

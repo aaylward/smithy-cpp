@@ -72,19 +72,20 @@ final class NodeLiteralGenerator {
   }
 
   private static String floatingExpression(Node node, boolean isFloat) {
-    String type = isFloat ? "float" : "double";
-    if (node.isStringNode()) {
-      String text = node.expectStringNode().getValue();
-      return switch (text) {
-        case "NaN" -> "std::numeric_limits<" + type + ">::quiet_NaN()";
-        case "Infinity" -> "std::numeric_limits<" + type + ">::infinity()";
-        case "-Infinity" -> "-std::numeric_limits<" + type + ">::infinity()";
-        default ->
-            throw new CodegenException(
-                "cpp-codegen: unexpected float text in test params: " + text);
-      };
-    }
-    double value = node.expectNumberNode().getValue().doubleValue();
+    // Smithy encodes non-finite params as strings; CppLiterals maps the values
+    // to the numeric_limits idiom either way.
+    double value =
+        node.isStringNode()
+            ? switch (node.expectStringNode().getValue()) {
+              case "NaN" -> Double.NaN;
+              case "Infinity" -> Double.POSITIVE_INFINITY;
+              case "-Infinity" -> Double.NEGATIVE_INFINITY;
+              default ->
+                  throw new CodegenException(
+                      "cpp-codegen: unexpected float text in test params: "
+                          + node.expectStringNode().getValue());
+            }
+            : node.expectNumberNode().getValue().doubleValue();
     return isFloat ? CppLiterals.floatLiteral(value) : CppLiterals.doubleLiteral(value);
   }
 

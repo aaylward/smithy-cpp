@@ -55,13 +55,31 @@ final class CppLiterals {
     return value == Long.MIN_VALUE ? "(-9223372036854775807LL - 1)" : String.valueOf(value);
   }
 
-  /** Text of a double literal; guarantees a decimal point or exponent so the type stays double. */
+  /**
+   * Text of a double literal; guarantees a decimal point or exponent so the type stays double.
+   * Non-finite values have no C++ literal spelling (Double.toString yields NaN/Infinity, which does
+   * not compile), so they take the numeric_limits idiom — the same one ParseDoubleText produces.
+   * Callers emit into files that already include &lt;limits&gt; (today that is
+   * ProtocolTestGenerator's output; writeCommonIncludes adds the header unconditionally).
+   */
   static String doubleLiteral(double value) {
-    String text = Double.toString(value);
-    return text; // Double.toString always includes '.' or 'E'.
+    if (!Double.isFinite(value)) {
+      return nonFiniteExpression(value, "double");
+    }
+    return Double.toString(value); // Double.toString always includes '.' or 'E'.
   }
 
   static String floatLiteral(double value) {
-    return doubleLiteral(value) + "F";
+    if (!Double.isFinite(value)) {
+      return nonFiniteExpression(value, "float");
+    }
+    return Double.toString(value) + "F";
+  }
+
+  private static String nonFiniteExpression(double value, String type) {
+    if (Double.isNaN(value)) {
+      return "std::numeric_limits<" + type + ">::quiet_NaN()";
+    }
+    return (value > 0 ? "" : "-") + "std::numeric_limits<" + type + ">::infinity()";
   }
 }

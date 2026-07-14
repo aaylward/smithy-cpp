@@ -562,7 +562,7 @@ final class ValidationGenerator {
     // produce uncompilable code; reject it rather than emit broken output.
     if (value.contains(")__smithy\"")) {
       throw new software.amazon.smithy.codegen.core.CodegenException(
-          "@pattern "
+          "cpp-codegen: @pattern "
               + value
               + " (at "
               + pattern.getSourceLocation()
@@ -576,7 +576,7 @@ final class ValidationGenerator {
         char next = i + 1 < value.length() ? value.charAt(i + 1) : '\0';
         if (!inClass && next >= '1' && next <= '9') {
           throw new software.amazon.smithy.codegen.core.CodegenException(
-              "@pattern "
+              "cpp-codegen: @pattern "
                   + value
                   + " (at "
                   + pattern.getSourceLocation()
@@ -604,7 +604,7 @@ final class ValidationGenerator {
                 && (value.charAt(i + 3) == '=' || value.charAt(i + 3) == '!');
         if (kind == '=' || kind == '!' || lookbehind) {
           throw new software.amazon.smithy.codegen.core.CodegenException(
-              "@pattern "
+              "cpp-codegen: @pattern "
                   + value
                   + " (at "
                   + pattern.getSourceLocation()

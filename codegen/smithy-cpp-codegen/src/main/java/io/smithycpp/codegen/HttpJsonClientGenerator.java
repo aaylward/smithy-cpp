@@ -232,11 +232,10 @@ final class HttpJsonClientGenerator {
           ProtocolSupport.errorExpression(context, service, operation));
     }
 
-    String outType = context.cppSymbols().toSymbol(output).getName();
-    if (output.members().isEmpty()) {
-      w.write("return $L{};", outType);
+    if (ProtocolSupport.writeEmptyOutputReturn(w, context, output)) {
       return;
     }
+    String outType = context.cppSymbols().toSymbol(output).getName();
     boolean allOptional = output.members().stream().noneMatch(MemberShape::isRequired);
     if (responseHeaders.isEmpty()
         && responseCode == null

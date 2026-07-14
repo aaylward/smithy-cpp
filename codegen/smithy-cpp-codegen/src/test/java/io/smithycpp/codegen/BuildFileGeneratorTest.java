@@ -107,4 +107,30 @@ class BuildFileGeneratorTest {
     String plain = generate("both").expectFileString("/BUILD.bazel");
     assertFalse(plain.contains(":compression"), plain);
   }
+
+  @Test
+  void compressionLinkageIsScopedToTheServiceClosure() {
+    // Multi-service model (like roundtrip): a sibling service's compressed
+    // operation must not drag :compression into THIS service's BUILD.
+    String model =
+        """
+        $version: "2.0"
+        namespace test.build
+        use smithy.cpp.protocols#jsonRpc2
+
+        @jsonRpc2
+        service Plain { version: "1", operations: [Op] }
+        operation Op { input := { name: String } }
+
+        @jsonRpc2
+        service Compressed { version: "1", operations: [Zip] }
+
+        @requestCompression(encodings: ["gzip"])
+        operation Zip { input := { data: String } }
+        """;
+    String build =
+        PluginTestHarness.generate(model, "test.build#Plain", "test::build")
+            .expectFileString("/BUILD.bazel");
+    assertFalse(build.contains(":compression"), build);
+  }
 }

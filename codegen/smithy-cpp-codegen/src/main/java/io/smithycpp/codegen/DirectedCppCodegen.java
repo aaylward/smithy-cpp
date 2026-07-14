@@ -110,9 +110,14 @@ public final class DirectedCppCodegen
       }
     }
     if (directive.settings().emitBuildFile()) {
+      // Scoped to the service closure, not the whole model: a multi-service
+      // model (roundtrip) must not link :compression into every service's
+      // BUILD because one sibling service compresses.
       boolean hasCompression =
           protocol != null
-              && directive.context().model().getOperationShapes().stream()
+              && software.amazon.smithy.model.knowledge.TopDownIndex.of(directive.context().model())
+                  .getContainedOperations(service)
+                  .stream()
                   .anyMatch(ProtocolSupport::gzipCompressed);
       BuildFileGenerator.run(
           directive.context(), protocol, hasClient, hasSerde, hasServer, hasCompression);

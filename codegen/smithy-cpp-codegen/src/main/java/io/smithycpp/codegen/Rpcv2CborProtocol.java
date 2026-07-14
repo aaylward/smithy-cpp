@@ -126,7 +126,7 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
               + "decoded.error().message(), {});");
       w.write("body_doc = *std::move(decoded);");
       w.closeBlock("}");
-      ProtocolSupport.writeRpcParsedInput(w, context, operation, "body_doc", "400", SPEC);
+      ProtocolSupport.writeRpcParsedInput(w, context, input, "body_doc", "400", SPEC);
     }
     ProtocolSupport.writeRpcDispatch(w, operation, "handler->", SPEC, validation);
     w.write("smithy::http::HttpResponse response;");

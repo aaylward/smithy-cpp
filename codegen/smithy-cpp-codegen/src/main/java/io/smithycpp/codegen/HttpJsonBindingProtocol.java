@@ -77,10 +77,10 @@ final class HttpJsonBindingProtocol implements ProtocolGenerator {
   }
 
   @Override
-  public List<String> perOperationHelperSuffixes() {
+  public List<OperationHelper> perOperationHelpers() {
     // Beyond every client's Deserialize<Op>Error, the HTTP server emits
     // Serialize<Op>Response beside serde's Serialize<Type> functions.
-    return List.of("Error", "Response");
+    return List.of(OperationHelper.CLIENT_ERROR, OperationHelper.SERVER_RESPONSE);
   }
 
   @Override

@@ -59,7 +59,8 @@ public final class DirectedCppCodegen
       ClientGenerator clientGenerator = new ClientGenerator(directive.context(), service, protocol);
       java.util.List<software.amazon.smithy.model.shapes.OperationShape> operations =
           clientGenerator.operations();
-      ProtocolSupport.rejectHelperNameCollisions(directive.context(), protocol, operations);
+      ProtocolSupport.rejectHelperNameCollisions(
+          directive.context(), protocol, service, operations);
       if (!operations.isEmpty()) {
         if (directive.settings().generateClient()) {
           clientGenerator.run();

@@ -1,5 +1,6 @@
 package io.smithycpp.codegen;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -283,31 +284,47 @@ final class ProtocolSupport {
   /**
    * Rejects shape names whose serde functions would be hidden by the per-operation helpers the
    * client/server emit into their anonymous namespaces (issue #47: the free-function namespace was
-   * never collision-checked, unlike declared type names). A declared aggregate named {@code
+   * never collision-checked, unlike declared type names). A serde-carrying shape named {@code
    * <Op>Error} makes serde's {@code Deserialize<Op>Error(Document)} invisible next to the client's
    * {@code Deserialize<Op>Error(HttpResponse)} — C++ name hiding, not overloading — and {@code
-   * <Op>Response} does the same to {@code Serialize<Op>Response} in HTTP servers.
+   * <Op>Response} does the same to {@code Serialize<Op>Response} in HTTP servers. Only names of
+   * helpers this run actually emits are reserved: mode=client leaves {@code <Op>Response} free,
+   * mode=server leaves {@code <Op>Error} free, and error-less operations get no error deserializer
+   * at all.
    */
   static void rejectHelperNameCollisions(
-      CppContext context, ProtocolGenerator protocol, List<OperationShape> operations) {
-    Map<String, String> reserved = new TreeMap<>();
+      CppContext context,
+      ProtocolGenerator protocol,
+      ServiceShape service,
+      List<OperationShape> operations) {
+    Map<String, String> reserved = new HashMap<>();
     for (OperationShape operation : operations) {
       String opName = CppReservedWords.escape(operation.getId().getName());
-      for (String suffix : protocol.perOperationHelperSuffixes()) {
-        String helperPrefix = suffix.equals("Error") ? "Deserialize" : "Serialize";
-        reserved.put(
-            opName + suffix, helperPrefix + opName + suffix + " (" + operation.getId() + ")");
+      for (ProtocolGenerator.OperationHelper helper : protocol.perOperationHelpers()) {
+        boolean emitted =
+            helper.serverSide()
+                ? context.settings().generateServer()
+                : context.settings().generateClient();
+        // Deserialize<Op>Error only exists for operations that declare errors;
+        // error-less operations return GenericError instead (errorExpression).
+        if (helper.equals(ProtocolGenerator.OperationHelper.CLIENT_ERROR)
+            && operation.getErrors(service).isEmpty()) {
+          emitted = false;
+        }
+        if (emitted) {
+          reserved.put(
+              opName + helper.suffix(),
+              helper.prefix() + opName + helper.suffix() + " (" + operation.getId() + ")");
+        }
       }
+    }
+    if (reserved.isEmpty()) {
+      return;
     }
     for (Shape shape :
         new software.amazon.smithy.model.neighbor.Walker(context.model())
             .walkShapes(context.model().expectShape(context.settings().service()))) {
-      if (!(shape.isStructureShape()
-          || shape.isUnionShape()
-          || shape.isEnumShape()
-          || shape.isIntEnumShape()
-          || shape.isListShape()
-          || shape.isMapShape())) {
+      if (!SerdeGenerator.hasSerdeFunctions(shape)) {
         continue;
       }
       String declared = context.cppSymbols().declaredName(shape);
@@ -365,11 +382,10 @@ final class ProtocolSupport {
   static void writeRpcParsedInput(
       CppWriter w,
       CppContext context,
-      OperationShape operation,
+      StructureShape input,
       String deserializeFrom,
       String parseErrorStatus,
       ErrorResponseSpec spec) {
-    StructureShape input = inputShape(context, operation);
     w.write(
         "auto parsed = Deserialize$L($L);",
         SerdeCodeGen.serdeFunctionSuffix(context, input),

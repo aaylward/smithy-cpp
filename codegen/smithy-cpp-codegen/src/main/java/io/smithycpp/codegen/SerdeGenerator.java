@@ -70,7 +70,15 @@ final class SerdeGenerator {
   }
 
   private static boolean serdeShape(Set<Shape> closure, Shape shape) {
-    if (!closure.contains(shape) || shape.getId().toString().equals("smithy.api#Unit")) {
+    return closure.contains(shape) && hasSerdeFunctions(shape);
+  }
+
+  /**
+   * Whether serde.cc emits Serialize/Deserialize functions for this shape. Enums convert through
+   * FromString/ToString instead, and smithy.api#Unit never crosses the wire.
+   */
+  static boolean hasSerdeFunctions(Shape shape) {
+    if (shape.getId().toString().equals("smithy.api#Unit")) {
       return false;
     }
     return shape.isStructureShape()

@@ -250,7 +250,7 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
       w.write(
           "if (!params.is_map()) return JsonRpcError(-32602, \"SerializationException\", "
               + "\"params must be an object\", {}, id);");
-      ProtocolSupport.writeRpcParsedInput(w, context, operation, "params", "-32602", SPEC);
+      ProtocolSupport.writeRpcParsedInput(w, context, input, "params", "-32602", SPEC);
     }
     ProtocolSupport.writeRpcDispatch(w, operation, "handler.", SPEC, validation);
     w.write("smithy::DocumentMap envelope;");

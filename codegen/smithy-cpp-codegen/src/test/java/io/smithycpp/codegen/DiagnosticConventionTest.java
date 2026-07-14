@@ -32,19 +32,29 @@ class DiagnosticConventionTest {
       Pattern.compile(
           "new\\s+(?:software\\.amazon\\.smithy\\.codegen\\.core\\.)?CodegenException\\(\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
 
+  /**
+   * Any CodegenException construction whose first argument is not a string literal — those would
+   * silently escape the prefix scan above, so the convention requires the message to start with a
+   * literal.
+   */
+  private static final Pattern CODEGEN_THROW_NON_LITERAL =
+      Pattern.compile(
+          "new\\s+(?:software\\.amazon\\.smithy\\.codegen\\.core\\.)?CodegenException\\((?!\\s*\")");
+
   private static final Pattern BANNED_TYPES =
       Pattern.compile("throw\\s+new\\s+(IllegalArgumentException|UnsupportedOperationException)");
 
-  private static Stream<Path> generatorSources() throws IOException {
-    try (Stream<Path> files = Files.list(SOURCES)) {
-      return files.filter(p -> p.toString().endsWith(".java")).sorted().toList().stream();
+  private static List<Path> generatorSources() throws IOException {
+    // Recursive, so a future subpackage cannot silently drop out of the audit.
+    try (Stream<Path> files = Files.walk(SOURCES)) {
+      return files.filter(p -> p.toString().endsWith(".java")).sorted().toList();
     }
   }
 
   @Test
   void everyCodegenExceptionMessageCarriesTheAttributionPrefix() throws IOException {
     List<String> violations = new ArrayList<>();
-    for (Path source : generatorSources().toList()) {
+    for (Path source : generatorSources()) {
       String text = Files.readString(source);
       Matcher matcher = CODEGEN_THROW.matcher(text);
       while (matcher.find()) {
@@ -53,18 +63,22 @@ class DiagnosticConventionTest {
           violations.add(source.getFileName() + ": \"" + literal + "\"");
         }
       }
+      if (CODEGEN_THROW_NON_LITERAL.matcher(text).find()) {
+        violations.add(
+            source.getFileName() + ": CodegenException without a leading string literal");
+      }
     }
     assertEquals(
         List.of(),
         violations,
-        "CodegenException messages must start with \"cpp-codegen: \" (and, when a shape is at"
-            + " fault, name the shape and the fix)");
+        "CodegenException messages must start with the literal \"cpp-codegen: \" (and, when a"
+            + " shape is at fault, name the shape and the fix)");
   }
 
   @Test
   void generatorDiagnosticsUseCodegenExceptionNotGenericRuntimeTypes() throws IOException {
     List<String> violations = new ArrayList<>();
-    for (Path source : generatorSources().toList()) {
+    for (Path source : generatorSources()) {
       String text = Files.readString(source);
       Matcher matcher = BANNED_TYPES.matcher(text);
       while (matcher.find()) {

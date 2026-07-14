@@ -74,9 +74,20 @@ operation PutSink {
         echoedMetadata: StringMap
 
         sink: KitchenSink
+
+        // Deliberately named after the operation: server.cc's
+        // BuildPutSinkResponse helper and serde's SerializePutSinkResponse
+        // must coexist in one translation unit (issue #64 — helper names
+        // stay out of the serde Serialize/Deserialize<Shape> pattern).
+        echo: PutSinkResponse
     }
 
     errors: [SinkNotFound, SinkQuotaExceeded]
+}
+
+/// Named after the PutSink operation on purpose — see the `echo` member.
+structure PutSinkResponse {
+    note: String
 }
 
 /// Raw blob payload with an extra header member.
@@ -116,7 +127,18 @@ operation DescribeSink {
         sink: KitchenSink
     }
 
-    errors: [SinkNotFound]
+    errors: [SinkNotFound, DescribeSinkError]
+}
+
+/// Deliberately named after the operation: client.cc's ParseDescribeSinkError
+/// helper and serde's DeserializeDescribeSinkError (called inside
+/// MakeDescribeSinkErrorError, same translation unit) must coexist
+/// (issue #64 — helper names stay out of the serde naming pattern).
+@error("client")
+@httpError(410)
+structure DescribeSinkError {
+    @required
+    message: String
 }
 
 /// The RPC variant round-trips the same kitchen sink over CBOR.

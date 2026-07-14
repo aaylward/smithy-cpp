@@ -18,6 +18,9 @@ namespace example::roundtrip::rest {
 // Serializers never fail; deserializers return smithy::Error on wire
 // mismatches and enforce @required members.
 
+smithy::Document SerializeDescribeSinkError(const DescribeSinkError& value);
+smithy::Outcome<DescribeSinkError> DeserializeDescribeSinkError(const smithy::Document& doc);
+
 smithy::Document SerializeDescribeSinkInput(const DescribeSinkInput& value);
 smithy::Outcome<DescribeSinkInput> DeserializeDescribeSinkInput(const smithy::Document& doc);
 
@@ -50,6 +53,9 @@ smithy::Outcome<SinkNotFound> DeserializeSinkNotFound(const smithy::Document& do
 
 smithy::Document SerializePutSinkInput(const PutSinkInput& value);
 smithy::Outcome<PutSinkInput> DeserializePutSinkInput(const smithy::Document& doc);
+
+smithy::Document SerializePutSinkResponse(const PutSinkResponse& value);
+smithy::Outcome<PutSinkResponse> DeserializePutSinkResponse(const smithy::Document& doc);
 
 smithy::Document SerializePutSinkOutput(const PutSinkOutput& value);
 smithy::Outcome<PutSinkOutput> DeserializePutSinkOutput(const smithy::Document& doc);

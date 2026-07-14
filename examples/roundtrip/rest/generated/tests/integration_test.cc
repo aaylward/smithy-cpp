@@ -60,6 +60,12 @@ struct Rng {
   }
 };
 
+DescribeSinkError RandomDescribeSinkError(Rng& rng) {
+  DescribeSinkError v{};
+  v.message = rng.Text(1, 9);
+  return v;
+}
+
 DescribeSinkInput RandomDescribeSinkInput(Rng& rng) {
   DescribeSinkInput v{};
   v.sinkId = std::string("0");
@@ -175,12 +181,19 @@ PutSinkInput RandomPutSinkInput(Rng& rng) {
   return v;
 }
 
+PutSinkResponse RandomPutSinkResponse(Rng& rng) {
+  PutSinkResponse v{};
+  if (rng.Coin()) v.note = rng.Text(1, 9);
+  return v;
+}
+
 PutSinkOutput RandomPutSinkOutput(Rng& rng) {
   PutSinkOutput v{};
   v.sinkId = rng.Text(1, 9);
   if (rng.Coin()) v.revision = static_cast<std::int32_t>(rng.Int(-2147483648LL, 2147483647LL));
   if (rng.Coin()) v.echoedMetadata = RandomStringMap(rng);
   if (rng.Coin()) v.sink = RandomKitchenSink(rng);
+  if (rng.Coin()) v.echo = RandomPutSinkResponse(rng);
   return v;
 }
 
@@ -362,6 +375,21 @@ TEST_P(RoundTripRestIntegrationTest, DescribeSinkSinkNotFoundMapsAcrossTheWire) 
   EXPECT_EQ(outcome.error().code(), "SinkNotFound");
   ASSERT_NE(outcome.error().detail<SinkNotFound>(), nullptr);
   EXPECT_EQ(*outcome.error().detail<SinkNotFound>(), detail);
+}
+
+TEST_P(RoundTripRestIntegrationTest, DescribeSinkDescribeSinkErrorMapsAcrossTheWire) {
+  Rng rng{std::mt19937{42U}, /*fill_all=*/true};
+  const DescribeSinkError detail = RandomDescribeSinkError(rng);
+  smithy::Error error = smithy::Error::Modeled("DescribeSinkError", "integration");
+  error.set_detail(detail);
+  handler_->nextDescribeSinkError = error;
+  const DescribeSinkInput input = RandomDescribeSinkInput(rng);
+  const auto outcome = client_->DescribeSink(input);
+  ASSERT_FALSE(outcome.ok());
+  EXPECT_EQ(outcome.error().kind(), smithy::ErrorKind::kModeled);
+  EXPECT_EQ(outcome.error().code(), "DescribeSinkError");
+  ASSERT_NE(outcome.error().detail<DescribeSinkError>(), nullptr);
+  EXPECT_EQ(*outcome.error().detail<DescribeSinkError>(), detail);
 }
 
 TEST_P(RoundTripRestIntegrationTest, PutSinkSinkNotFoundMapsAcrossTheWire) {

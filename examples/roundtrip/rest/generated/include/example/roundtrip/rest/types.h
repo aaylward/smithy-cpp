@@ -17,6 +17,17 @@
 
 namespace example::roundtrip::rest {
 
+/// Deliberately named after the operation: client.cc's ParseDescribeSinkError
+/// helper and serde's DeserializeDescribeSinkError (called inside
+/// MakeDescribeSinkErrorError, same translation unit) must coexist
+/// (issue #64 — helper names stay out of the serde naming pattern).
+struct DescribeSinkError {
+  std::string message{};
+
+  friend bool operator==(const DescribeSinkError&, const DescribeSinkError&) = default;
+};
+
+
 struct DescribeSinkInput {
   std::string sinkId{};
 
@@ -174,11 +185,20 @@ struct PutSinkInput {
 };
 
 
+/// Named after the PutSink operation on purpose — see the `echo` member.
+struct PutSinkResponse {
+  std::optional<std::string> note{};
+
+  friend bool operator==(const PutSinkResponse&, const PutSinkResponse&) = default;
+};
+
+
 struct PutSinkOutput {
   std::string sinkId{};
   std::optional<std::int32_t> revision{};
   std::optional<std::map<std::string, std::string>> echoedMetadata{};
   std::optional<KitchenSink> sink{};
+  std::optional<PutSinkResponse> echo{};
 
   friend bool operator==(const PutSinkOutput&, const PutSinkOutput&) = default;
 };

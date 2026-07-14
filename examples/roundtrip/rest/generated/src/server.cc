@@ -76,6 +76,21 @@ smithy::http::HttpResponse ErrorToResponse(const smithy::Error& error) {
   std::vector<std::pair<std::string, std::string>> header_values;
   (void)header_values;
   if (error.kind() == smithy::ErrorKind::kModeled) {
+    if (error.code() == "DescribeSinkError") {
+      smithy::DocumentMap body;
+      if (const auto* detail = error.detail<DescribeSinkError>()) {
+        body = SerializeDescribeSinkError(*detail).as_map();
+      }
+      // The typed detail's own message member wins over the generic one.
+      const bool has_message = body.count("message") != 0 || body.count("Message") != 0;
+      if (!has_message && !error.message().empty()) {
+        body.emplace("message", smithy::Document(error.message()));
+      }
+      auto response = JsonError(410, "", "", std::move(body));
+      response.headers.Set("x-error-type", error.code());
+      for (const auto& [name, value] : header_values) response.headers.Set(name, value);
+      return response;
+    }
     if (error.code() == "SinkNotFound") {
       smithy::DocumentMap body;
       if (const auto* detail = error.detail<SinkNotFound>()) {
@@ -333,6 +348,9 @@ smithy::http::HttpResponse BuildPutSinkResponse(const PutSinkOutput& output) {
   body_map.emplace("sinkId", smithy::Document(output.sinkId));
   if (output.sink.has_value()) {
     body_map.emplace("sink", SerializeKitchenSink((*output.sink)));
+  }
+  if (output.echo.has_value()) {
+    body_map.emplace("echo", SerializePutSinkResponse((*output.echo)));
   }
   response.headers.Set("content-type", "application/json");
   response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));

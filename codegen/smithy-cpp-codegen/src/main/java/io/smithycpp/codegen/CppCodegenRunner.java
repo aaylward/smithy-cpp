@@ -105,17 +105,21 @@ public final class CppCodegenRunner {
       model = pruneOperations(model, omitOperations);
     }
 
+    runPlugin(FileManifest.create(Paths.get(output)), model, settingsNode);
+  }
+
+  /** Runs the plugin once — the real run and the staleness probes share this wiring. */
+  private static void runPlugin(FileManifest manifest, Model model, ObjectNode settings) {
     PluginContext context =
-        PluginContext.builder()
-            .fileManifest(FileManifest.create(Paths.get(output)))
-            .model(model)
-            .settings(settingsNode)
-            .build();
+        PluginContext.builder().fileManifest(manifest).model(model).settings(settings).build();
     new CppCodegenPlugin().execute(context);
   }
 
   /** Removes the named operations (and everything only they referenced) from the model. */
   private static Model pruneOperations(Model model, Collection<String> operationIds) {
+    if (operationIds.isEmpty()) {
+      return model;
+    }
     Set<Shape> toRemove = new HashSet<>();
     for (String id : operationIds) {
       toRemove.add(model.expectShape(ShapeId.from(id)));
@@ -139,15 +143,12 @@ public final class CppCodegenRunner {
     for (String id : omitOperations) {
       List<String> others = new ArrayList<>(omitOperations);
       others.remove(id);
-      PluginContext probe =
-          PluginContext.builder()
-              .fileManifest(new MockManifest())
-              .model(pruneOperations(model, others))
-              .settings(settings)
-              .build();
       try {
-        new CppCodegenPlugin().execute(probe);
-      } catch (RuntimeException stillUnsupported) {
+        runPlugin(new MockManifest(), pruneOperations(model, others), settings);
+      } catch (CodegenException stillUnsupported) {
+        // Only the generator's own "can't handle this" signal keeps an omit.
+        // Anything else is a real bug that must surface here — this probe is
+        // the one execution that ever generates the omitted operation.
         continue;
       }
       throw new CodegenException(

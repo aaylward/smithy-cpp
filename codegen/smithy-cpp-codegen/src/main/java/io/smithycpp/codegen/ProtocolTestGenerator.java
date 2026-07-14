@@ -103,24 +103,38 @@ final class ProtocolTestGenerator {
     // round: a server-malformed entry is invisible to a malformedTests=false
     // run (and an "any" entry can match in either path), so flagging those
     // would couple the exclusion contract to which paths a task enables.
-    Map<String, String> stale = new LinkedHashMap<>(unusedExclusions);
-    stale.keySet().removeIf(key -> !pathRan(key.substring(0, key.indexOf(' '))));
+    List<String> stale =
+        unusedExclusions.keySet().stream().filter(key -> pathRan(kindOf(key))).toList();
     if (!stale.isEmpty()) {
       throw new CodegenException(
           "cpp-codegen: protocol-test-exclusions.txt has entries that matched no generated test"
               + " for "
               + service.getId()
               + " (remove them): "
-              + stale.keySet());
+              + stale);
     }
   }
 
-  /** Whether this run executed the generation path that consults entries of {@code kind}. */
+  /** The kind prefix of a "kind testId" exclusion key. */
+  private static String kindOf(String key) {
+    int space = key.indexOf(' ');
+    if (space < 0) {
+      throw new CodegenException("cpp-codegen: bad exclusion key (want '<kind> <testId>'): " + key);
+    }
+    return key.substring(0, space);
+  }
+
+  /**
+   * Whether this run executed the generation path that consults entries of {@code kind}. The kind
+   * vocabulary must stay in step with the {@link #loadExclusions} validation pattern.
+   */
   private boolean pathRan(String kind) {
     return switch (kind) {
       case "server-malformed" -> malformedTests;
       case "any" -> standardTests && malformedTests;
-      default -> standardTests;
+      case "request", "response", "error", "server-request", "server-response", "server-error" ->
+          standardTests;
+      default -> throw new CodegenException("cpp-codegen: unknown exclusion kind: " + kind);
     };
   }
 

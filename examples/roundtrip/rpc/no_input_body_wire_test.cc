@@ -12,6 +12,7 @@
 
 #include "example/roundtrip/rpc/server.h"
 #include "smithy/http/transport.h"
+#include "smithy/testing/protocol_test.h"
 
 namespace example::roundtrip::rpc {
 namespace {
@@ -33,13 +34,7 @@ class RecordingHandler final : public RoundTripRpcHandler {
 };
 
 smithy::http::HttpRequest CborRequest(const std::string& operation, std::string body) {
-  smithy::http::HttpRequest request;
-  request.method = "POST";
-  request.target = "/service/RoundTripRpc/operation/" + operation;
-  request.headers.Set("smithy-protocol", "rpc-v2-cbor");
-  request.headers.Set("content-type", "application/cbor");
-  request.body = std::move(body);
-  return request;
+  return smithy::testing::Rpcv2CborRequest("RoundTripRpc", operation, std::move(body));
 }
 
 TEST(NoInputBodyTest, GarbageBodyAtANoInputOperationIsIgnored) {

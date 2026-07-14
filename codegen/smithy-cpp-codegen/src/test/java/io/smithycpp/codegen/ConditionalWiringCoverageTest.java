@@ -1,10 +1,12 @@
 package io.smithycpp.codegen;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 import software.amazon.smithy.build.MockManifest;
+import software.amazon.smithy.model.validation.ValidatedResultException;
 
 /**
  * Branch pins for conditional emissions no fixture exercises (issue #68 item 3): the inventory of
@@ -122,41 +124,40 @@ class ConditionalWiringCoverageTest {
         }
         """;
     var error =
-        org.junit.jupiter.api.Assertions.assertThrows(
-            software.amazon.smithy.model.validation.ValidatedResultException.class,
+        assertThrows(
+            ValidatedResultException.class,
             () -> PluginTestHarness.generate(model, "test.wiring#Svc", "test::wiring"));
     assertTrue(error.getMessage().contains("outputToken"), error.getMessage());
   }
-
-  private static final String MALFORMED_MODEL =
-      """
-      $version: "2.0"
-      namespace test.wiring
-      use smithy.protocols#rpcv2Cbor
-      use smithy.test#httpMalformedRequestTests
-
-      @rpcv2Cbor
-      service Svc { version: "1", operations: [Op] }
-      operation Op { input := { name: String } }
-
-      apply Op @httpMalformedRequestTests([
-          {
-              id: "Garbage"
-              protocol: rpcv2Cbor
-              request: { method: "POST", uri: "/service/Svc/operation/Op", body: "xx" }
-              response: { code: 400 }
-          }
-      ])
-      """;
 
   @Test
   void malformedTestsOffSuppressesTheFileAndItsBuildTargetTogether() {
     // hasMalformedTests is computed once and threaded to both the test file
     // and the tests BUILD target — this pins the pairing in the OFF state
     // (the ON state is every protocol-tests module).
+    String model =
+        """
+        $version: "2.0"
+        namespace test.wiring
+        use smithy.protocols#rpcv2Cbor
+        use smithy.test#httpMalformedRequestTests
+
+        @rpcv2Cbor
+        service Svc { version: "1", operations: [Op] }
+        operation Op { input := { name: String } }
+
+        apply Op @httpMalformedRequestTests([
+            {
+                id: "Garbage"
+                protocol: rpcv2Cbor
+                request: { method: "POST", uri: "/service/Svc/operation/Op", body: "xx" }
+                response: { code: 400 }
+            }
+        ])
+        """;
     MockManifest manifest =
         PluginTestHarness.generate(
-            MALFORMED_MODEL,
+            model,
             "test.wiring#Svc",
             "test::wiring",
             settings ->

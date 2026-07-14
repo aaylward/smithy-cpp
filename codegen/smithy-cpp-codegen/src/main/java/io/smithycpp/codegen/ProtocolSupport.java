@@ -159,6 +159,21 @@ final class ProtocolSupport {
     };
   }
 
+  /**
+   * The service closure's operations, sorted by id — the one spelling of "this service's
+   * operations" (ClientGenerator and DirectedCppCodegen's BUILD emission both derive from it, so
+   * their closure semantics cannot drift).
+   */
+  static List<OperationShape> containedOperations(
+      software.amazon.smithy.model.Model model, ServiceShape service) {
+    List<OperationShape> operations =
+        new java.util.ArrayList<>(
+            software.amazon.smithy.model.knowledge.TopDownIndex.of(model)
+                .getContainedOperations(service));
+    operations.sort(java.util.Comparator.comparing(OperationShape::getId));
+    return operations;
+  }
+
   /** Whether @requestCompression asks for gzip on this operation. */
   static boolean gzipCompressed(OperationShape operation) {
     return operation

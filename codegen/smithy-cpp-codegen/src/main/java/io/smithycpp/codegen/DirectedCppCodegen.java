@@ -115,9 +115,7 @@ public final class DirectedCppCodegen
       // BUILD because one sibling service compresses.
       boolean hasCompression =
           protocol != null
-              && software.amazon.smithy.model.knowledge.TopDownIndex.of(directive.context().model())
-                  .getContainedOperations(service)
-                  .stream()
+              && ProtocolSupport.containedOperations(directive.context().model(), service).stream()
                   .anyMatch(ProtocolSupport::gzipCompressed);
       BuildFileGenerator.run(
           directive.context(), protocol, hasClient, hasSerde, hasServer, hasCompression);

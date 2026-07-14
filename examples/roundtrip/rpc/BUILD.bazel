@@ -7,6 +7,7 @@ cc_test(
     deps = [
         "//examples/roundtrip/rpc/generated:server",
         "//runtime:http",
+        "//runtime:protocol_test_support",
         "@googletest//:gtest_main",
     ],
 )

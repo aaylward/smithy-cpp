@@ -41,6 +41,22 @@ class CapturingTransport final : public smithy::http::HttpClient {
   smithy::http::HttpResponse next_response{200, {}, ""};
 };
 
+// The rpcv2Cbor request preamble every hand-written server-side wire test
+// builds: POST /service/<Service>/operation/<Operation> plus the protocol
+// and content-type headers. One home instead of a copy per test file — the
+// generated conformance tests regenerate their own copies, these don't.
+inline smithy::http::HttpRequest Rpcv2CborRequest(const std::string& service,
+                                                  const std::string& operation,
+                                                  std::string body = "") {
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = "/service/" + service + "/operation/" + operation;
+  request.headers.Set("smithy-protocol", "rpc-v2-cbor");
+  request.headers.Set("content-type", "application/cbor");
+  request.body = std::move(body);
+  return request;
+}
+
 // Wraps a transport and mutates successful responses in flight — e.g. the
 // integration tests inject unknown body members that clients must ignore.
 class MutatingTransport final : public smithy::http::HttpClient {

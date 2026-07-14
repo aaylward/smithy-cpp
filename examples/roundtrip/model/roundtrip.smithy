@@ -6,6 +6,15 @@ use alloy#simpleRestJson
 use smithy.cpp.protocols#jsonRpc2
 use smithy.protocols#rpcv2Cbor
 
+// Accretion policy: this fixture deliberately accumulates one exemplar per
+// conditional-emission branch and edge case (issues #64, #68) — the "odd"
+// traits and shapes below each carry a rationale comment and are load-bearing
+// for compiled-golden coverage; don't clean them up without checking the pins
+// that reference them. Also: RoundTripRpc has hand-written handler
+// implementors OUTSIDE examples/ (benchmarks/, protocol-tests/unions/) —
+// adding an operation to it breaks them at compile time by design; grep for
+// RoundTripRpcHandler before pushing.
+
 /// Kitchen-sink fixture for the Phase 5 integration matrix: the same shapes
 /// served over simpleRestJson (with every supported HTTP binding), rpcv2Cbor,
 /// and jsonRpc2, so random round-trips exercise every protocol's serde end

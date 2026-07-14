@@ -92,7 +92,10 @@ cd codegen && gradle spotlessApply
   Convention: every fix for a "generator emitted redundant/dead code" bug lands with an
   exactly-once or absence assertion — in `GeneratedCodeShapeTest`, or beside the feature's own
   tests like `HttpJsonBindingProtocolTest.serverWritesResponsePrefixHeadersExactlyOnce` — so the
-  smell cannot quietly return.
+  smell cannot quietly return. Placement rule for branch pins generally: a pin lands in the
+  feature-owning test class when one exists (the compression-scoping pin lives in
+  `BuildFileGeneratorTest`); `ConditionalWiringCoverageTest` is the fallback for arms with no
+  owning class, not the default destination.
 - Machine-specific Bazel flags go in `.bazelrc.user` (gitignored), e.g. a
   `--downloader_config` when working behind a proxy that blocks GitHub downloads.
 - The Boost-dependent targets (`//runtime:http_beast` and the tests that use it) fetch ~30

@@ -6,13 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
 
 /**
- * Exactly-once / absence pins for generator shape regressions (issue #68). Goldens ratify
- * generated-code shape rather than judge it: redundant or dead emission compiles, passes
- * conformance, and lives in the fixtures until a human reads them. Convention (development.md):
- * every fix for a "generator emitted redundant/dead code" bug lands with a pin here or beside the
- * feature's own tests (e.g. {@code
- * HttpJsonBindingProtocolTest.serverWritesResponsePrefixHeadersExactlyOnce}, pinning #63's
- * duplicate prefix-header emission) so the smell cannot quietly return.
+ * Exactly-once / absence pins for "generator emitted redundant/dead code" fixes with no
+ * feature-owning test class — see the convention in docs/development.md (issue #68).
  */
 class GeneratedCodeShapeTest {
 

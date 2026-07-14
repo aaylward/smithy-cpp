@@ -7,9 +7,10 @@ import software.amazon.smithy.model.shapes.Shape;
 import software.amazon.smithy.model.traits.TimestampFormatTrait;
 
 /**
- * Member-level serde emission shared by the serde file generator and the protocol client
- * generators: C++ expressions that turn a typed value into a Document node, and statements that
- * read a Document node back into a typed lvalue.
+ * Member-level serde emission shared by the serde file generator and both halves of the protocol
+ * generators: the wire-name policy, C++ expressions that turn a typed value into a Document node,
+ * statements that read one back into a typed lvalue, and the one member-serialize / member-parse
+ * skeletons everything rides so the shared branches cannot drift (issue #72).
  */
 final class SerdeCodeGen {
 
@@ -51,6 +52,13 @@ final class SerdeCodeGen {
       w.closeBlock("}");
     }
   }
+
+  /**
+   * The C++ condition for "the required member was absent or null" — written against the {@code
+   * member} local {@link #writeMemberRead} declares, so hook implementations use this constant
+   * instead of hand-writing a condition coupled to that variable name.
+   */
+  static final String MEMBER_ABSENT = "member == nullptr || member->is_null()";
 
   /** Emits the required-member-absent branch of {@link #writeMemberRead}. */
   interface RequiredAbsentEmitter {

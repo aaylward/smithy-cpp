@@ -211,7 +211,7 @@ final class HttpJsonClientGenerator {
           w, context, serde, operation, payload, in, "request", true);
     } else if (!body.isEmpty()) {
       w.write("smithy::DocumentMap body_map;");
-      HttpBindingCodeGen.writeDocumentBodyMap(w, context, serde, body, in);
+      HttpBindingCodeGen.writeDocumentBodyMap(w, serde, body, in);
       w.write("request.body = smithy::json::Encode(smithy::Document(std::move(body_map)));");
       w.write("request.headers.Set(\"content-type\", \"application/json\");");
     }
@@ -281,7 +281,6 @@ final class HttpJsonClientGenerator {
     } else if (!responseBody.isEmpty()) {
       HttpBindingCodeGen.writeDocumentBodyRead(
           w,
-          context,
           serde,
           responseBody,
           "response->body",
@@ -291,8 +290,8 @@ final class HttpJsonClientGenerator {
           (w2, member, deserializeMember) -> {
             // Clients are strict: a missing required member fails the exchange.
             w2.write(
-                "if (member == nullptr || member->is_null()) return "
-                    + "smithy::Error::Serialization($S);",
+                "if ($L) return smithy::Error::Serialization($S);",
+                SerdeCodeGen.MEMBER_ABSENT,
                 "missing required member: " + member.getMemberName());
             deserializeMember.run();
           });

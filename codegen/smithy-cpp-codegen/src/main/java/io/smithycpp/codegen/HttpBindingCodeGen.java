@@ -154,7 +154,7 @@ final class HttpBindingCodeGen {
    * optionals are skipped). Shared by the client request body and the server response body.
    */
   static void writeDocumentBodyMap(
-      CppWriter w, CppContext context, SerdeCodeGen serde, List<HttpBinding> body, String owner) {
+      CppWriter w, SerdeCodeGen serde, List<HttpBinding> body, String owner) {
     for (HttpBinding binding : body) {
       serde.writeMemberSerialize(w, binding.getMember(), owner, "body_map");
     }
@@ -268,7 +268,6 @@ final class HttpBindingCodeGen {
    */
   static void writeDocumentBodyRead(
       CppWriter w,
-      CppContext context,
       SerdeCodeGen serde,
       List<HttpBinding> body,
       String bodyExpr,

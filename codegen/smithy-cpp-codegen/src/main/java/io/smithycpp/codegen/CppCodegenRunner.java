@@ -2,11 +2,14 @@ package io.smithycpp.codegen;
 
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import software.amazon.smithy.build.FileManifest;
+import software.amazon.smithy.build.MockManifest;
 import software.amazon.smithy.build.PluginContext;
+import software.amazon.smithy.codegen.core.CodegenException;
 import software.amazon.smithy.model.Model;
 import software.amazon.smithy.model.node.Node;
 import software.amazon.smithy.model.node.ObjectNode;
@@ -27,7 +30,10 @@ import software.amazon.smithy.model.transform.ModelTransformer;
  * <p>Models are discovered from the classpath (so the official protocol-test suites generate
  * straight from their published jars); {@code --model} adds a local file on top. {@code
  * --omit-operation} prunes operations that use features the generator doesn't support yet — the
- * generated module documents the gap, and the flag list must only shrink over time.
+ * generated module documents the gap, and the flag list must only shrink over time. That shrink is
+ * enforced: each omitted operation is probe-generated in memory, and an omit whose operation now
+ * generates cleanly fails the run until the flag is removed (mirroring the self-policing
+ * protocol-test exclusion list).
  */
 public final class CppCodegenRunner {
 
@@ -72,16 +78,6 @@ public final class CppCodegenRunner {
     }
     Model model = assembler.assemble().unwrap();
 
-    if (!omitOperations.isEmpty()) {
-      Set<Shape> toRemove = new HashSet<>();
-      for (String id : omitOperations) {
-        toRemove.add(model.expectShape(ShapeId.from(id)));
-      }
-      ModelTransformer transformer = ModelTransformer.create();
-      model = transformer.removeShapes(model, toRemove);
-      model = transformer.removeUnreferencedShapes(model);
-    }
-
     ObjectNode.Builder settings =
         Node.objectNodeBuilder()
             .withMember("service", service)
@@ -102,13 +98,63 @@ public final class CppCodegenRunner {
     if (emitBuildFile != null) {
       settings.withMember("emitBuildFile", emitBuildFile);
     }
+    ObjectNode settingsNode = settings.build();
+
+    if (!omitOperations.isEmpty()) {
+      rejectStaleOmits(model, omitOperations, settingsNode);
+      model = pruneOperations(model, omitOperations);
+    }
 
     PluginContext context =
         PluginContext.builder()
             .fileManifest(FileManifest.create(Paths.get(output)))
             .model(model)
-            .settings(settings.build())
+            .settings(settingsNode)
             .build();
     new CppCodegenPlugin().execute(context);
+  }
+
+  /** Removes the named operations (and everything only they referenced) from the model. */
+  private static Model pruneOperations(Model model, Collection<String> operationIds) {
+    Set<Shape> toRemove = new HashSet<>();
+    for (String id : operationIds) {
+      toRemove.add(model.expectShape(ShapeId.from(id)));
+    }
+    ModelTransformer transformer = ModelTransformer.create();
+    Model pruned = transformer.removeShapes(model, toRemove);
+    return transformer.removeUnreferencedShapes(pruned);
+  }
+
+  /**
+   * Enforces the must-only-shrink contract on {@code --omit-operation}: each omitted operation is
+   * probe-generated in memory (with the other omits still applied, so a failure is attributable to
+   * it alone), and an omit whose operation now generates cleanly fails the run — otherwise a newly
+   * supported operation would silently stay excluded from its suite forever.
+   */
+  private static void rejectStaleOmits(
+      Model model, List<String> omitOperations, ObjectNode settings) {
+    for (String id : omitOperations) {
+      model.expectShape(ShapeId.from(id));
+    }
+    for (String id : omitOperations) {
+      List<String> others = new ArrayList<>(omitOperations);
+      others.remove(id);
+      PluginContext probe =
+          PluginContext.builder()
+              .fileManifest(new MockManifest())
+              .model(pruneOperations(model, others))
+              .settings(settings)
+              .build();
+      try {
+        new CppCodegenPlugin().execute(probe);
+      } catch (RuntimeException stillUnsupported) {
+        continue;
+      }
+      throw new CodegenException(
+          "cpp-codegen: stale --omit-operation "
+              + id
+              + ": generation now succeeds with the operation included — remove the flag"
+              + " (the omit list must only shrink)");
+    }
   }
 }

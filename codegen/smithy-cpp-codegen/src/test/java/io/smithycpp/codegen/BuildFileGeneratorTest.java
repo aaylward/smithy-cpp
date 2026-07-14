@@ -29,10 +29,14 @@ class BuildFileGeneratorTest {
       """;
 
   private static MockManifest generate(ObjectNode settings) {
+    return generate(MODEL, settings);
+  }
+
+  private static MockManifest generate(String modelText, ObjectNode settings) {
     Model model =
         Model.assembler()
             .discoverModels(BuildFileGeneratorTest.class.getClassLoader())
-            .addUnparsedModel("build-test.smithy", MODEL)
+            .addUnparsedModel("build-test.smithy", modelText)
             .assemble()
             .unwrap();
     MockManifest manifest = new MockManifest();
@@ -103,5 +107,31 @@ class BuildFileGeneratorTest {
     MockManifest manifest = generate(settings);
     assertFalse(manifest.hasFile("/BUILD.bazel"), "emitBuildFile=false must suppress BUILD");
     assertTrue(manifest.hasFile("/include/test/build/types.h"));
+  }
+
+  @Test
+  void gzipCompressionLinksTheCompressionTarget() {
+    // The BUILD dep keys on ProtocolSupport.gzipCompressed, not on
+    // @requestCompression's mere presence. The negative direction is
+    // untestable through a real model — Smithy's RequestCompressionTrait
+    // validator rejects every encoding except gzip at assembly — so the
+    // predicate's non-gzip arm is pinned by ProtocolSupportTest instead.
+    String compressed =
+        """
+        $version: "2.0"
+        namespace test.build
+        use smithy.cpp.protocols#jsonRpc2
+
+        @jsonRpc2
+        service Svc { version: "1", operations: [Op] }
+
+        @requestCompression(encodings: ["gzip"])
+        operation Op { input := { data: String } }
+        """;
+    String build = generate(compressed, settings("both")).expectFileString("/BUILD.bazel");
+    assertTrue(build.contains(":compression"), build);
+    // And the base model (no compression anywhere) must not link it.
+    String plain = generate(settings("both")).expectFileString("/BUILD.bazel");
+    assertFalse(plain.contains(":compression"), plain);
   }
 }

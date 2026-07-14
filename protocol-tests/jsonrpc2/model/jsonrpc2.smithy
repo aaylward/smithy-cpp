@@ -284,6 +284,19 @@ apply EchoPayload @httpMalformedRequestTests([
         bodyMediaType: "application/json"
         params: {}
     }
+    {
+        id: "JsonRpc2ServerIgnoresParamsForNoArgs"
+        documentation: "Params sent to an operation with no modeled input are ignored; the handler still runs. Conforming clients never send them, so this is server-only."
+        protocol: jsonRpc2
+        method: "POST"
+        uri: "/"
+        headers: { "content-type": "application/json" }
+        body: """
+            {"jsonrpc":"2.0","method":"NoArgs","id":1,"params":{"unexpected":true}}"""
+        bodyMediaType: "application/json"
+        params: {}
+        appliesTo: "server"
+    }
 ])
 @httpResponseTests([
     {

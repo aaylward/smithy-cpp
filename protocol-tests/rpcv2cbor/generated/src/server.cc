@@ -238,16 +238,6 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
       return CborError(415, "UnsupportedMediaTypeException", "expected content-type: application/cbor", {});
     }
     Float16Input input{};
-    // An absent body deserializes like an empty CBOR map.
-    smithy::Document body_doc{smithy::DocumentMap{}};
-    if (!request.body.empty()) {
-      auto decoded = smithy::cbor::Decode(smithy::Blob::FromString(request.body));
-      if (!decoded) return CborError(400, "SerializationException", decoded.error().message(), {});
-      body_doc = *std::move(decoded);
-    }
-    auto parsed = DeserializeFloat16Input(body_doc);
-    if (!parsed) return CborError(400, "SerializationException", parsed.error().message(), {});
-    input = *std::move(parsed);
     auto outcome = handler->Float16(input);
     if (!outcome) return ErrorToResponse(outcome.error());
     smithy::http::HttpResponse response;
@@ -266,16 +256,6 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
       return CborError(415, "UnsupportedMediaTypeException", "expected content-type: application/cbor", {});
     }
     FractionalSecondsInput input{};
-    // An absent body deserializes like an empty CBOR map.
-    smithy::Document body_doc{smithy::DocumentMap{}};
-    if (!request.body.empty()) {
-      auto decoded = smithy::cbor::Decode(smithy::Blob::FromString(request.body));
-      if (!decoded) return CborError(400, "SerializationException", decoded.error().message(), {});
-      body_doc = *std::move(decoded);
-    }
-    auto parsed = DeserializeFractionalSecondsInput(body_doc);
-    if (!parsed) return CborError(400, "SerializationException", parsed.error().message(), {});
-    input = *std::move(parsed);
     auto outcome = handler->FractionalSeconds(input);
     if (!outcome) return ErrorToResponse(outcome.error());
     smithy::http::HttpResponse response;
@@ -294,16 +274,6 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
       return CborError(415, "UnsupportedMediaTypeException", "expected content-type: application/cbor", {});
     }
     GreetingWithErrorsInput input{};
-    // An absent body deserializes like an empty CBOR map.
-    smithy::Document body_doc{smithy::DocumentMap{}};
-    if (!request.body.empty()) {
-      auto decoded = smithy::cbor::Decode(smithy::Blob::FromString(request.body));
-      if (!decoded) return CborError(400, "SerializationException", decoded.error().message(), {});
-      body_doc = *std::move(decoded);
-    }
-    auto parsed = DeserializeGreetingWithErrorsInput(body_doc);
-    if (!parsed) return CborError(400, "SerializationException", parsed.error().message(), {});
-    input = *std::move(parsed);
     auto outcome = handler->GreetingWithErrors(input);
     if (!outcome) return ErrorToResponse(outcome.error());
     smithy::http::HttpResponse response;
@@ -322,16 +292,6 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
       return CborError(415, "UnsupportedMediaTypeException", "expected content-type: application/cbor", {});
     }
     NoInputOutputInput input{};
-    // An absent body deserializes like an empty CBOR map.
-    smithy::Document body_doc{smithy::DocumentMap{}};
-    if (!request.body.empty()) {
-      auto decoded = smithy::cbor::Decode(smithy::Blob::FromString(request.body));
-      if (!decoded) return CborError(400, "SerializationException", decoded.error().message(), {});
-      body_doc = *std::move(decoded);
-    }
-    auto parsed = DeserializeNoInputOutputInput(body_doc);
-    if (!parsed) return CborError(400, "SerializationException", parsed.error().message(), {});
-    input = *std::move(parsed);
     auto outcome = handler->NoInputOutput(input);
     if (!outcome) return ErrorToResponse(outcome.error());
     smithy::http::HttpResponse response;

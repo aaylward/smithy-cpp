@@ -151,10 +151,7 @@ smithy::http::HttpResponse HandleEchoPayload(JsonRpc2ProtocolHandler& handler, c
 
 smithy::http::HttpResponse HandleNoArgs(JsonRpc2ProtocolHandler& handler, const smithy::Document& params, const smithy::Document& id) {
   NoArgsInput input{};
-  if (!params.is_map()) return JsonRpcError(-32602, "SerializationException", "params must be an object", {}, id);
-  auto parsed = DeserializeNoArgsInput(params);
-  if (!parsed) return JsonRpcError(-32602, "SerializationException", parsed.error().message(), {}, id);
-  input = *std::move(parsed);
+  (void)params;
   auto outcome = handler.NoArgs(input);
   if (!outcome) return ErrorToResponse(outcome.error(), id);
   smithy::DocumentMap envelope;

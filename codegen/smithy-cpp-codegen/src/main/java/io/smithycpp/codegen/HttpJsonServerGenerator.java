@@ -11,8 +11,6 @@ import software.amazon.smithy.model.shapes.ServiceShape;
 import software.amazon.smithy.model.shapes.Shape;
 import software.amazon.smithy.model.shapes.StructureShape;
 import software.amazon.smithy.model.traits.HttpTrait;
-import software.amazon.smithy.model.traits.RequestCompressionTrait;
-import software.amazon.smithy.model.traits.synthetic.OriginalShapeIdTrait;
 
 /**
  * The server half of the HTTP+JSON protocol: the JsonError/ErrorToResponse helpers, validation
@@ -64,27 +62,23 @@ final class HttpJsonServerGenerator {
       CppWriter w, CppContext context, ServiceShape service, List<OperationShape> operations) {
     SerdeCodeGen serde = new SerdeCodeGen(context);
     ProtocolSupport.writeNumericParseHelpers(w);
-    w.openBlock(
-        "smithy::http::HttpResponse JsonError(int status, const std::string& code, "
-            + "const std::string& message, smithy::DocumentMap body) {");
-    w.write("if (!code.empty()) body.insert_or_assign(\"__type\", smithy::Document(code));");
-    w.write("if (!message.empty()) body.insert_or_assign(\"message\", smithy::Document(message));");
-    w.write("smithy::http::HttpResponse response;");
-    w.write("response.status = status;");
-    w.write("response.headers.Set(\"content-type\", \"application/json\");");
-    w.write("response.body = smithy::json::Encode(smithy::Document(std::move(body)));");
-    w.write("return response;");
-    w.closeBlock("}");
-    w.write("");
-    ProtocolSupport.writeServerErrorToResponse(
-        w, context, service, operations, "JsonError", errorTypeHeaderName);
-    validation = new ValidationGenerator(context, operations);
-    emitsValidation = validation.hasValidators() || anyTopLevelRequired(context, operations);
-    if (emitsValidation) {
-      ValidationGenerator.writeFailureHelper(w);
-      validation.writeValidators(w);
-      ValidationGenerator.writeValidationErrorResponse(w, "JsonError", "", errorTypeHeaderName);
-    }
+    ProtocolSupport.writeErrorBodyHelper(
+        w,
+        "JsonError",
+        "application/json",
+        "smithy::json::Encode(smithy::Document(std::move(body)))");
+    ProtocolSupport.ErrorResponseSpec spec =
+        new ProtocolSupport.ErrorResponseSpec("JsonError", errorTypeHeaderName);
+    ProtocolSupport.writeServerErrorToResponse(w, context, service, operations, spec);
+    validation =
+        ValidationGenerator.writeWiring(
+            w,
+            context,
+            operations,
+            /* alsoEmit= */ anyTopLevelRequired(context, operations),
+            /* validationErrorCode= */ "",
+            spec);
+    emitsValidation = validation.wiringEmitted();
     for (OperationShape operation : operations) {
       writeParseInputFunction(w, context, serde, operation);
       writeSerializeResponseFunction(w, context, serde, operation);
@@ -402,11 +396,7 @@ final class HttpJsonServerGenerator {
     HttpBindingCodeGen.ResponseBindings resp =
         HttpBindingCodeGen.ResponseBindings.of(bindingIndex, operation);
     boolean hasResponseContent = !resp.body().isEmpty() || resp.payload() != null;
-    boolean compressed =
-        operation
-            .getTrait(RequestCompressionTrait.class)
-            .map(t -> t.getEncodings().contains("gzip"))
-            .orElse(false);
+    boolean compressed = ProtocolSupport.gzipCompressed(operation);
     w.openBlock(
         "(void)router_->Add($S, $S, [handler](const smithy::http::HttpRequest& $L, "
             + "const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {",
@@ -417,13 +407,8 @@ final class HttpJsonServerGenerator {
       w.write("smithy::http::HttpRequest request = raw_request;");
       ProtocolSupport.writeRequestDecompression(w, operation, "JsonError", "");
     }
-    StructureShape inputShape = ProtocolSupport.inputShape(context, operation);
     boolean noModeledInput =
-        inputShape.getId().toString().equals("smithy.api#Unit")
-            || inputShape
-                .getTrait(OriginalShapeIdTrait.class)
-                .map(t -> t.getOriginalId().toString().equals("smithy.api#Unit"))
-                .orElse(false);
+        ProtocolSupport.noModeledInput(ProtocolSupport.inputShape(context, operation));
     w.write("// Content-Type validation per the HTTP binding spec (415), then Accept (406);");
     w.write("// the malformed-request suite pins the error-identity headers. A missing");
     w.write("// content-type is tolerated, and blob payloads without @mediaType accept");

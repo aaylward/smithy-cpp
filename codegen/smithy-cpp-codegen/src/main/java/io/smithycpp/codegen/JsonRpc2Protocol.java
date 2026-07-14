@@ -137,13 +137,7 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
     w.write("envelope.emplace(\"id\", smithy::Document(1));");
     // Operations with no modeled input (smithy.api#Unit) omit params; empty
     // input structures still send an (empty) params object.
-    boolean noModeledInput =
-        input.getId().toString().equals("smithy.api#Unit")
-            || input
-                .getTrait(software.amazon.smithy.model.traits.synthetic.OriginalShapeIdTrait.class)
-                .map(t -> t.getOriginalId().toString().equals("smithy.api#Unit"))
-                .orElse(false);
-    if (!noModeledInput) {
+    if (!ProtocolSupport.noModeledInput(input)) {
       w.write(
           "envelope.emplace(\"params\", Serialize$L($L));",
           SerdeCodeGen.serdeFunctionSuffix(context, input),
@@ -222,29 +216,20 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
     w.write("return response;");
     w.closeBlock("}");
     w.write("");
-    ProtocolSupport.writeServerErrorToResponse(
-        w,
-        context,
-        service,
-        operations,
-        "JsonRpcError",
-        /* errortypeHeader= */ "",
-        ", const smithy::Document& id",
-        ", id");
-    validation = new ValidationGenerator(context, operations);
-    if (validation.hasValidators()) {
-      ValidationGenerator.writeFailureHelper(w);
-      validation.writeValidators(w);
-      // jsonRpc2 validation identity travels in error.data.__type, as the
-      // fully qualified shape id (the rpcv2Cbor convention).
-      ValidationGenerator.writeValidationErrorResponse(
-          w,
-          "JsonRpcError",
-          "smithy.framework#ValidationException",
-          /* errortypeHeader= */ "",
-          ", const smithy::Document& id",
-          ", id");
-    }
+    ProtocolSupport.ErrorResponseSpec spec =
+        new ProtocolSupport.ErrorResponseSpec(
+            "JsonRpcError", /* errortypeHeader= */ "", ", const smithy::Document& id", ", id");
+    ProtocolSupport.writeServerErrorToResponse(w, context, service, operations, spec);
+    // jsonRpc2 validation identity travels in error.data.__type, as the
+    // fully qualified shape id (the rpcv2Cbor convention).
+    validation =
+        ValidationGenerator.writeWiring(
+            w,
+            context,
+            operations,
+            /* alsoEmit= */ false,
+            "smithy.framework#ValidationException",
+            spec);
     for (OperationShape operation : operations) {
       writeOperationDispatch(w, context, service, operation);
     }
@@ -265,7 +250,7 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
         opName,
         handlerType);
     w.write("$L input{};", inputType);
-    if (input.getId().toString().equals("smithy.api#Unit")) {
+    if (ProtocolSupport.noModeledInput(input)) {
       w.write("(void)params;");
     } else {
       w.write(
@@ -278,13 +263,7 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
               + "parsed.error().message(), {}, id);");
       w.write("input = *std::move(parsed);");
     }
-    if (validation != null && validation.validates(operation)) {
-      w.write("std::vector<smithy::server::ValidationFailure> validation_failures;");
-      w.write("$L(input, \"\", &validation_failures);", validation.validatorNameFor(operation));
-      w.write(
-          "if (!validation_failures.empty()) "
-              + "return ValidationErrorResponse(validation_failures, id);");
-    }
+    validation.writeRouteGuard(w, operation, ", id");
     w.write("auto outcome = handler.$L(input);", opName);
     w.write("if (!outcome) return ErrorToResponse(outcome.error(), id);");
     w.write("smithy::DocumentMap envelope;");
@@ -305,13 +284,7 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
   @Override
   public void writeServerRoutes(
       CppWriter w, CppContext context, ServiceShape service, List<OperationShape> operations) {
-    boolean anyCompressed =
-        operations.stream()
-            .anyMatch(
-                op ->
-                    op.getTrait(software.amazon.smithy.model.traits.RequestCompressionTrait.class)
-                        .map(t -> t.getEncodings().contains("gzip"))
-                        .orElse(false));
+    boolean anyCompressed = operations.stream().anyMatch(ProtocolSupport::gzipCompressed);
     w.openBlock(
         "(void)router_->Add(\"POST\", \"/\", "
             + "[handler](const smithy::http::HttpRequest& $L, "
@@ -320,22 +293,11 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
     w.write("smithy::Document id;  // null until the envelope yields one (JSON-RPC 2.0 §5)");
     if (anyCompressed) {
       // The endpoint is shared, so @requestCompression decodes before dispatch
-      // (the client compresses the whole envelope).
-      w.addInclude("\"smithy/compression/gzip.h\"");
+      // (the client compresses the whole envelope); the reserved -32700 code
+      // reports an undecodable body, with the envelope id echoed.
       w.write("smithy::http::HttpRequest request = raw_request;");
-      w.write("// @requestCompression(gzip): decode before parsing.");
-      w.openBlock(
-          "if (const auto request_encoding = request.headers.Get(\"content-encoding\"); "
-              + "request_encoding.has_value() && (*request_encoding == \"gzip\" || "
-              + "request_encoding->ends_with(\", gzip\"))) {");
-      w.write("auto decompressed = smithy::GzipDecompress(request.body);");
-      w.openBlock("if (!decompressed) {");
-      w.write(
-          "return JsonRpcError(-32700, \"SerializationException\", "
-              + "\"invalid gzip request body\", {}, id);");
-      w.closeBlock("}");
-      w.write("request.body = *std::move(decompressed);");
-      w.closeBlock("}");
+      ProtocolSupport.writeGzipRequestDecode(
+          w, "JsonRpcError", "-32700", "SerializationException", ", id");
     }
     w.write("// A present Content-Type must carry application/json (parameters ignored).");
     w.openBlock(

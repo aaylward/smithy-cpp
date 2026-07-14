@@ -148,6 +148,24 @@ TEST(JsonRpc2ProtocolServerRequestTest, JsonRpc2NoParamsRequest) {
   EXPECT_EQ(*handler->lastNoArgs, expected);
 }
 
+// Params sent to an operation with no modeled input are ignored; the handler still runs. Conforming clients never send them, so this is server-only.
+TEST(JsonRpc2ProtocolServerRequestTest, JsonRpc2ServerIgnoresParamsForNoArgs) {
+  auto handler = std::make_shared<RecordingHandler>();
+  JsonRpc2ProtocolServer server(handler);
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = "/";
+  request.headers.Set("content-type", "application/json");
+  request.body = "{\"jsonrpc\":\"2.0\",\"method\":\"NoArgs\",\"id\":1,\"params\":{\"unexpected\":true}}";
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  ASSERT_TRUE(handler->lastNoArgs.has_value()) << response.status << " " << response.body;
+  const NoArgsInput expected = [] {
+  NoArgsInput v{};
+  return v;
+}();
+  EXPECT_EQ(*handler->lastNoArgs, expected);
+}
+
 // A valid constrained input passes validation and reaches the handler.
 TEST(JsonRpc2ProtocolServerRequestTest, JsonRpc2ConstrainedRequest) {
   auto handler = std::make_shared<RecordingHandler>();

@@ -159,6 +159,27 @@ final class ProtocolSupport {
     };
   }
 
+  /** Whether @requestCompression asks for gzip on this operation. */
+  static boolean gzipCompressed(OperationShape operation) {
+    return operation
+        .getTrait(software.amazon.smithy.model.traits.RequestCompressionTrait.class)
+        .map(t -> t.getEncodings().contains("gzip"))
+        .orElse(false);
+  }
+
+  /**
+   * Whether {@code input} is smithy.api#Unit — directly, or via the synthetic dedicated input shape
+   * derived from it (OriginalShapeIdTrait). Operations without modeled input send no body/params
+   * and no content type.
+   */
+  static boolean noModeledInput(StructureShape input) {
+    return input.getId().toString().equals("smithy.api#Unit")
+        || input
+            .getTrait(software.amazon.smithy.model.traits.synthetic.OriginalShapeIdTrait.class)
+            .map(t -> t.getOriginalId().toString().equals("smithy.api#Unit"))
+            .orElse(false);
+  }
+
   /**
    * Client-side @requestCompression: gzip the request body once it reaches the configured minimum
    * size, appending to any member-bound Content-Encoding header. Emitted after the body and every
@@ -166,9 +187,7 @@ final class ProtocolSupport {
    */
   static void writeRequestCompression(
       CppWriter w, software.amazon.smithy.model.shapes.OperationShape operation) {
-    var trait =
-        operation.getTrait(software.amazon.smithy.model.traits.RequestCompressionTrait.class);
-    if (trait.isEmpty() || !trait.get().getEncodings().contains("gzip")) {
+    if (!gzipCompressed(operation)) {
       return;
     }
     w.addInclude("\"smithy/compression/gzip.h\"");
@@ -192,15 +211,19 @@ final class ProtocolSupport {
    * when the (final) Content-Encoding is gzip. Emitted at the top of the route lambda.
    */
   static void writeRequestDecompression(
-      CppWriter w,
-      software.amazon.smithy.model.shapes.OperationShape operation,
-      String errorFn,
-      String errorCode) {
-    var trait =
-        operation.getTrait(software.amazon.smithy.model.traits.RequestCompressionTrait.class);
-    if (trait.isEmpty() || !trait.get().getEncodings().contains("gzip")) {
+      CppWriter w, OperationShape operation, String errorFn, String errorCode) {
+    if (!gzipCompressed(operation)) {
       return;
     }
+    writeGzipRequestDecode(w, errorFn, "400", errorCode, "");
+  }
+
+  /**
+   * The gzip request-decode block itself, for callers with their own gating and error shape
+   * (jsonRpc2's shared endpoint uses the reserved -32700 code and threads the envelope id).
+   */
+  static void writeGzipRequestDecode(
+      CppWriter w, String errorFn, String status, String errorCode, String extraArgs) {
     w.addInclude("\"smithy/compression/gzip.h\"");
     w.write("// @requestCompression(gzip): decode before parsing.");
     w.openBlock(
@@ -209,10 +232,52 @@ final class ProtocolSupport {
             + "request_encoding->ends_with(\", gzip\"))) {");
     w.write("auto decompressed = smithy::GzipDecompress(request.body);");
     w.openBlock("if (!decompressed) {");
-    w.write("return $L(400, $S, \"invalid gzip request body\", {});", errorFn, errorCode);
+    w.write(
+        "return $L($L, $S, \"invalid gzip request body\", {}$L);",
+        errorFn,
+        status,
+        errorCode,
+        extraArgs);
     w.closeBlock("}");
     w.write("request.body = *std::move(decompressed);");
     w.closeBlock("}");
+  }
+
+  /**
+   * Emits {@code <name>(status, code, message, body)} — the protocol's error-body helper that
+   * ErrorToResponse and route-level failures call: a non-empty {@code code} lands in the body's
+   * __type, a non-empty {@code message} in message, and the body is rendered by {@code encodeExpr}.
+   * JsonRpcError stays protocol-specific (envelope nesting, id echo, message-fallback).
+   */
+  static void writeErrorBodyHelper(
+      CppWriter w, String name, String contentType, String encodeExpr) {
+    writeErrorBodyHelper(w, name, contentType, encodeExpr, "", "");
+  }
+
+  /** Overload with one extra fixed response header (rpcv2Cbor's smithy-protocol). */
+  static void writeErrorBodyHelper(
+      CppWriter w,
+      String name,
+      String contentType,
+      String encodeExpr,
+      String extraHeaderName,
+      String extraHeaderValue) {
+    w.openBlock(
+        "smithy::http::HttpResponse $L(int status, const std::string& code, "
+            + "const std::string& message, smithy::DocumentMap body) {",
+        name);
+    w.write("if (!code.empty()) body.insert_or_assign(\"__type\", smithy::Document(code));");
+    w.write("if (!message.empty()) body.insert_or_assign(\"message\", smithy::Document(message));");
+    w.write("smithy::http::HttpResponse response;");
+    w.write("response.status = status;");
+    if (!extraHeaderName.isEmpty()) {
+      w.write("response.headers.Set($S, $S);", extraHeaderName, extraHeaderValue);
+    }
+    w.write("response.headers.Set(\"content-type\", $S);", contentType);
+    w.write("response.body = $L;", encodeExpr);
+    w.write("return response;");
+    w.closeBlock("}");
+    w.write("");
   }
 
   /** HTTP status for a modeled error shape: @httpError, else @error class default. */
@@ -226,7 +291,20 @@ final class ProtocolSupport {
   }
 
   /**
-   * Emits the server's ErrorToResponse over {@code errorBodyFn(status, code, message, body)}:
+   * A protocol's error-response identity, shared by ErrorToResponse and the validation wiring: the
+   * error-body function name, the error-identity response header ("" when identity travels in the
+   * body), and the extra parameter/argument text threaded through every response helper (jsonRpc2's
+   * envelope id; "" elsewhere).
+   */
+  record ErrorResponseSpec(
+      String errorFn, String errortypeHeader, String extraParams, String extraArgs) {
+    ErrorResponseSpec(String errorFn, String errortypeHeader) {
+      this(errorFn, errortypeHeader, "", "");
+    }
+  }
+
+  /**
+   * Emits the server's ErrorToResponse over {@code spec.errorFn()(status, code, message, body)}:
    * modeled errors get their @httpError status and serialized detail; validation/serialization
    * failures map to 400; anything else is a non-leaking 500.
    */
@@ -235,19 +313,25 @@ final class ProtocolSupport {
       CppContext context,
       ServiceShape service,
       List<OperationShape> operations,
-      String errorBodyFn,
-      String errortypeHeader) {
+      ErrorResponseSpec spec) {
     writeServerErrorToResponse(
-        w, context, service, operations, errorBodyFn, errortypeHeader, "", "");
+        w,
+        context,
+        service,
+        operations,
+        spec.errorFn(),
+        spec.errortypeHeader(),
+        spec.extraParams(),
+        spec.extraArgs());
   }
 
   /**
-   * Variant threading extra context through ErrorToResponse into {@code errorBodyFn}: {@code
-   * extraParams} is appended to the signature (e.g. ", const smithy::Document& id") and {@code
+   * Positional variant behind the {@link ErrorResponseSpec} entry point: {@code extraParams} is
+   * appended to ErrorToResponse's signature (e.g. ", const smithy::Document& id") and {@code
    * extraArgs} to every {@code errorBodyFn} call (e.g. ", id"). jsonRpc2 uses this to echo the
    * request id into error envelopes.
    */
-  static void writeServerErrorToResponse(
+  private static void writeServerErrorToResponse(
       CppWriter w,
       CppContext context,
       ServiceShape service,

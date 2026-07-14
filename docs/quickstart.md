@@ -69,7 +69,10 @@ so you never install or invoke Java yourself). Supported platforms are Linux and
 ([ADR-0008](adr/0008-drop-windows-support.md) dropped Windows):
 
 ```
+# C++20 (the smithy-cpp runtime baseline) and the Java 17 toolchain the
+# generator action runs on. Copy these lines into your own .bazelrc.
 common --enable_platform_specific_config
+
 build:linux --cxxopt=-std=c++20 --host_cxxopt=-std=c++20
 build:macos --cxxopt=-std=c++20 --host_cxxopt=-std=c++20
 common --java_language_version=17
@@ -82,8 +85,8 @@ test --test_output=errors
 try-import %workspace%/.bazelrc.user
 ```
 
-(This is the same block the CI-tested [`examples/bazel-consumer/.bazelrc`](../examples/bazel-consumer/.bazelrc)
-carries — if they ever diverge, trust the example.)
+(This is byte-for-byte the CI-tested [`examples/bazel-consumer/.bazelrc`](../examples/bazel-consumer/.bazelrc);
+`QuickstartMirrorTest` fails the build if this page and the example ever diverge.)
 
 ## 2. Write the model
 
@@ -264,7 +267,7 @@ class InMemoryHandler final : public TodoHandler {
   }
 
  private:
-  std::mutex mu_;  // handlers run concurrently — see below
+  std::mutex mu_;  // handlers must be thread-safe: transports dispatch on a thread pool
   int next_id_ = 1;
   std::map<std::string, std::string> titles_;
 };

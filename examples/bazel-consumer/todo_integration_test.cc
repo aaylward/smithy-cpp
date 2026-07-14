@@ -33,6 +33,8 @@ using acme::todo::TodoClient;
 using acme::todo::TodoHandler;
 using acme::todo::TodoServer;
 
+// [quickstart:handler] This exact block is the handler docs/quickstart.md
+// teaches; QuickstartMirrorTest fails if the two ever diverge.
 class InMemoryHandler final : public TodoHandler {
  public:
   smithy::Outcome<AddTaskOutput> AddTask(const AddTaskInput& input) override {
@@ -48,18 +50,17 @@ class InMemoryHandler final : public TodoHandler {
     if (it == titles_.end()) {
       smithy::Error error = smithy::Error::Modeled("NoSuchTask", "no task: " + input.taskId);
       error.set_detail(NoSuchTask{.message = "no task: " + input.taskId});
-      return error;
+      return error;  // the server turns this into the modeled 404
     }
     return GetTaskOutput{.taskId = input.taskId, .title = it->second, .done = false};
   }
 
  private:
-  // Handlers must be thread-safe: the socket transport (exercised by this
-  // test's kSocket variant) invokes them from a thread pool.
-  std::mutex mu_;
+  std::mutex mu_;  // handlers must be thread-safe: transports dispatch on a thread pool
   int next_id_ = 1;
   std::map<std::string, std::string> titles_;
 };
+// [/quickstart:handler]
 
 enum class Transport { kLoopback, kSocket };
 

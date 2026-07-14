@@ -62,18 +62,11 @@ final class HttpJsonServerGenerator {
       CppWriter w, CppContext context, ServiceShape service, List<OperationShape> operations) {
     SerdeCodeGen serde = new SerdeCodeGen(context);
     ProtocolSupport.writeNumericParseHelpers(w);
-    w.openBlock(
-        "smithy::http::HttpResponse JsonError(int status, const std::string& code, "
-            + "const std::string& message, smithy::DocumentMap body) {");
-    w.write("if (!code.empty()) body.insert_or_assign(\"__type\", smithy::Document(code));");
-    w.write("if (!message.empty()) body.insert_or_assign(\"message\", smithy::Document(message));");
-    w.write("smithy::http::HttpResponse response;");
-    w.write("response.status = status;");
-    w.write("response.headers.Set(\"content-type\", \"application/json\");");
-    w.write("response.body = smithy::json::Encode(smithy::Document(std::move(body)));");
-    w.write("return response;");
-    w.closeBlock("}");
-    w.write("");
+    ProtocolSupport.writeErrorBodyHelper(
+        w,
+        "JsonError",
+        "application/json",
+        "smithy::json::Encode(smithy::Document(std::move(body)))");
     ProtocolSupport.writeServerErrorToResponse(
         w, context, service, operations, "JsonError", errorTypeHeaderName);
     boolean topLevelRequired = anyTopLevelRequired(context, operations);

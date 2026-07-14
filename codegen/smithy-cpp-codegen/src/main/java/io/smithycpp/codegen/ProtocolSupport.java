@@ -232,6 +232,43 @@ final class ProtocolSupport {
     w.closeBlock("}");
   }
 
+  /**
+   * Emits {@code <name>(status, code, message, body)} — the protocol's error-body helper that
+   * ErrorToResponse and route-level failures call: a non-empty {@code code} lands in the body's
+   * __type, a non-empty {@code message} in message, and the body is rendered by {@code encodeExpr}.
+   * JsonRpcError stays protocol-specific (envelope nesting, id echo, message-fallback).
+   */
+  static void writeErrorBodyHelper(
+      CppWriter w, String name, String contentType, String encodeExpr) {
+    writeErrorBodyHelper(w, name, contentType, encodeExpr, null, null);
+  }
+
+  /** Overload with one extra fixed response header (rpcv2Cbor's smithy-protocol). */
+  static void writeErrorBodyHelper(
+      CppWriter w,
+      String name,
+      String contentType,
+      String encodeExpr,
+      String extraHeaderName,
+      String extraHeaderValue) {
+    w.openBlock(
+        "smithy::http::HttpResponse $L(int status, const std::string& code, "
+            + "const std::string& message, smithy::DocumentMap body) {",
+        name);
+    w.write("if (!code.empty()) body.insert_or_assign(\"__type\", smithy::Document(code));");
+    w.write("if (!message.empty()) body.insert_or_assign(\"message\", smithy::Document(message));");
+    w.write("smithy::http::HttpResponse response;");
+    w.write("response.status = status;");
+    if (extraHeaderName != null) {
+      w.write("response.headers.Set($S, $S);", extraHeaderName, extraHeaderValue);
+    }
+    w.write("response.headers.Set(\"content-type\", $S);", contentType);
+    w.write("response.body = $L;", encodeExpr);
+    w.write("return response;");
+    w.closeBlock("}");
+    w.write("");
+  }
+
   /** HTTP status for a modeled error shape: @httpError, else @error class default. */
   static int errorStatus(StructureShape shape) {
     var httpError = shape.getTrait(software.amazon.smithy.model.traits.HttpErrorTrait.class);

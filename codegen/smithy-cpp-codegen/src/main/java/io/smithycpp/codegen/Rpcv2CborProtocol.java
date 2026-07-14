@@ -56,21 +56,13 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
   @Override
   public void writeServerHelpers(
       CppWriter w, CppContext context, ServiceShape service, List<OperationShape> operations) {
-    w.openBlock(
-        "smithy::http::HttpResponse CborError(int status, const std::string& code, "
-            + "const std::string& message, smithy::DocumentMap body) {");
-    w.write("if (!code.empty()) body.insert_or_assign(\"__type\", smithy::Document(code));");
-    w.write(
-        "if (!message.empty()) body.insert_or_assign(\"message\", "
-            + "smithy::Document(message));");
-    w.write("smithy::http::HttpResponse response;");
-    w.write("response.status = status;");
-    w.write("response.headers.Set(\"smithy-protocol\", \"rpc-v2-cbor\");");
-    w.write("response.headers.Set(\"content-type\", \"application/cbor\");");
-    w.write("response.body = smithy::cbor::Encode(smithy::Document(std::move(body))).ToString();");
-    w.write("return response;");
-    w.closeBlock("}");
-    w.write("");
+    ProtocolSupport.writeErrorBodyHelper(
+        w,
+        "CborError",
+        "application/cbor",
+        "smithy::cbor::Encode(smithy::Document(std::move(body))).ToString()",
+        "smithy-protocol",
+        "rpc-v2-cbor");
     ProtocolSupport.writeServerErrorToResponse(
         w, context, service, operations, "CborError", /* errortypeHeader= */ "");
     // rpcv2Cbor error identity travels in the body, as the fully qualified shape id.

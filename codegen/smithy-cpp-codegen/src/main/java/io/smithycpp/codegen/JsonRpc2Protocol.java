@@ -216,15 +216,10 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
     w.write("return response;");
     w.closeBlock("}");
     w.write("");
-    ProtocolSupport.writeServerErrorToResponse(
-        w,
-        context,
-        service,
-        operations,
-        "JsonRpcError",
-        /* errortypeHeader= */ "",
-        ", const smithy::Document& id",
-        ", id");
+    ProtocolSupport.ErrorResponseSpec spec =
+        new ProtocolSupport.ErrorResponseSpec(
+            "JsonRpcError", /* errortypeHeader= */ "", ", const smithy::Document& id", ", id");
+    ProtocolSupport.writeServerErrorToResponse(w, context, service, operations, spec);
     // jsonRpc2 validation identity travels in error.data.__type, as the
     // fully qualified shape id (the rpcv2Cbor convention).
     validation =
@@ -233,11 +228,8 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
             context,
             operations,
             /* alsoEmit= */ false,
-            "JsonRpcError",
             "smithy.framework#ValidationException",
-            /* errortypeHeader= */ "",
-            ", const smithy::Document& id",
-            ", id");
+            spec);
     for (OperationShape operation : operations) {
       writeOperationDispatch(w, context, service, operation);
     }
@@ -301,22 +293,11 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
     w.write("smithy::Document id;  // null until the envelope yields one (JSON-RPC 2.0 §5)");
     if (anyCompressed) {
       // The endpoint is shared, so @requestCompression decodes before dispatch
-      // (the client compresses the whole envelope).
-      w.addInclude("\"smithy/compression/gzip.h\"");
+      // (the client compresses the whole envelope); the reserved -32700 code
+      // reports an undecodable body, with the envelope id echoed.
       w.write("smithy::http::HttpRequest request = raw_request;");
-      w.write("// @requestCompression(gzip): decode before parsing.");
-      w.openBlock(
-          "if (const auto request_encoding = request.headers.Get(\"content-encoding\"); "
-              + "request_encoding.has_value() && (*request_encoding == \"gzip\" || "
-              + "request_encoding->ends_with(\", gzip\"))) {");
-      w.write("auto decompressed = smithy::GzipDecompress(request.body);");
-      w.openBlock("if (!decompressed) {");
-      w.write(
-          "return JsonRpcError(-32700, \"SerializationException\", "
-              + "\"invalid gzip request body\", {}, id);");
-      w.closeBlock("}");
-      w.write("request.body = *std::move(decompressed);");
-      w.closeBlock("}");
+      ProtocolSupport.writeGzipRequestDecode(
+          w, "JsonRpcError", "-32700", "SerializationException", ", id");
     }
     w.write("// A present Content-Type must carry application/json (parameters ignored).");
     w.openBlock(

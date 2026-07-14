@@ -63,8 +63,9 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
         "smithy::cbor::Encode(smithy::Document(std::move(body))).ToString()",
         "smithy-protocol",
         "rpc-v2-cbor");
-    ProtocolSupport.writeServerErrorToResponse(
-        w, context, service, operations, "CborError", /* errortypeHeader= */ "");
+    ProtocolSupport.ErrorResponseSpec spec =
+        new ProtocolSupport.ErrorResponseSpec("CborError", /* errortypeHeader= */ "");
+    ProtocolSupport.writeServerErrorToResponse(w, context, service, operations, spec);
     // rpcv2Cbor error identity travels in the body, as the fully qualified shape id.
     validation =
         ValidationGenerator.writeWiring(
@@ -72,11 +73,8 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
             context,
             operations,
             /* alsoEmit= */ false,
-            "CborError",
             "smithy.framework#ValidationException",
-            /* errortypeHeader= */ "",
-            "",
-            "");
+            spec);
   }
 
   @Override

@@ -113,10 +113,7 @@ public final class DirectedCppCodegen
       boolean hasCompression =
           protocol != null
               && directive.context().model().getOperationShapes().stream()
-                  .anyMatch(
-                      op ->
-                          op.hasTrait(
-                              software.amazon.smithy.model.traits.RequestCompressionTrait.class));
+                  .anyMatch(ProtocolSupport::gzipCompressed);
       BuildFileGenerator.run(
           directive.context(), protocol, hasClient, hasSerde, hasServer, hasCompression);
     }

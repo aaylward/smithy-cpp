@@ -67,21 +67,18 @@ final class HttpJsonServerGenerator {
         "JsonError",
         "application/json",
         "smithy::json::Encode(smithy::Document(std::move(body)))");
-    ProtocolSupport.writeServerErrorToResponse(
-        w, context, service, operations, "JsonError", errorTypeHeaderName);
-    boolean topLevelRequired = anyTopLevelRequired(context, operations);
+    ProtocolSupport.ErrorResponseSpec spec =
+        new ProtocolSupport.ErrorResponseSpec("JsonError", errorTypeHeaderName);
+    ProtocolSupport.writeServerErrorToResponse(w, context, service, operations, spec);
     validation =
         ValidationGenerator.writeWiring(
             w,
             context,
             operations,
-            /* alsoEmit= */ topLevelRequired,
-            "JsonError",
-            "",
-            errorTypeHeaderName,
-            "",
-            "");
-    emitsValidation = validation.hasValidators() || topLevelRequired;
+            /* alsoEmit= */ anyTopLevelRequired(context, operations),
+            /* validationErrorCode= */ "",
+            spec);
+    emitsValidation = validation.wiringEmitted();
     for (OperationShape operation : operations) {
       writeParseInputFunction(w, context, serde, operation);
       writeSerializeResponseFunction(w, context, serde, operation);

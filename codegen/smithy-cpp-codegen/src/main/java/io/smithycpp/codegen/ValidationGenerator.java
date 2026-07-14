@@ -40,37 +40,53 @@ final class ValidationGenerator {
     }
   }
 
+  /** Set by {@link #writeWiring}: whether ValidationErrorResponse was emitted this run. */
+  private boolean wiringEmitted;
+
   /**
    * The construct-then-emit wiring every protocol's writeServerHelpers repeats: build the
    * validators and, when the service validates anything (or {@code alsoEmit} — failures the
    * protocol records itself, like HTTP+JSON's top-level @required bindings), emit the failure
-   * helper, the per-shape validators, and ValidationErrorResponse over {@code errorFn}. {@code
-   * extraParams}/{@code extraArgs} thread protocol-specific response arguments (jsonRpc2's envelope
-   * id).
+   * helper, the per-shape validators, and ValidationErrorResponse over the spec's error function.
+   * {@code validationErrorCode} is the wire identity of validation failures ("" when the protocol
+   * carries none in the body).
    */
   static ValidationGenerator writeWiring(
       CppWriter w,
       CppContext context,
       List<OperationShape> operations,
       boolean alsoEmit,
-      String errorFn,
-      String errorCode,
-      String errortypeHeader,
-      String extraParams,
-      String extraArgs) {
+      String validationErrorCode,
+      ProtocolSupport.ErrorResponseSpec spec) {
     ValidationGenerator validation = new ValidationGenerator(context, operations);
-    if (validation.hasValidators() || alsoEmit) {
+    validation.wiringEmitted = validation.hasValidators() || alsoEmit;
+    if (validation.wiringEmitted) {
       writeFailureHelper(w);
       validation.writeValidators(w);
-      writeValidationErrorResponse(w, errorFn, errorCode, errortypeHeader, extraParams, extraArgs);
+      writeValidationErrorResponse(
+          w,
+          spec.errorFn(),
+          validationErrorCode,
+          spec.errortypeHeader(),
+          spec.extraParams(),
+          spec.extraArgs());
     }
     return validation;
   }
 
   /**
+   * Whether {@link #writeWiring} emitted ValidationErrorResponse — the gate for generated code that
+   * calls it.
+   */
+  boolean wiringEmitted() {
+    return wiringEmitted;
+  }
+
+  /**
    * Emits the declare-validate-early-return guard for one operation's route (a no-op when the
    * operation validates nothing). The RPC protocols share this shape; {@code extraArgs} threads
-   * jsonRpc2's envelope id.
+   * jsonRpc2's envelope id. Requires {@link #writeWiring} to have run — ServerGenerator emits
+   * helpers before routes.
    */
   void writeRouteGuard(CppWriter w, OperationShape operation, String extraArgs) {
     if (!validates(operation)) {
@@ -191,18 +207,10 @@ final class ValidationGenerator {
   /**
    * Emits {@code ValidationErrorResponse(failures)}: the protocol's 400 ValidationException wire
    * shape ({@code message} summary + {@code fieldList}), built on the protocol's error helper.
+   * {@code extraParams} is appended to the signature and {@code extraArgs} to the {@code errorFn}
+   * call (jsonRpc2's envelope-id echo).
    */
-  static void writeValidationErrorResponse(
-      CppWriter w, String errorFn, String errorCode, String errortypeHeader) {
-    writeValidationErrorResponse(w, errorFn, errorCode, errortypeHeader, "", "");
-  }
-
-  /**
-   * Variant threading extra context through ValidationErrorResponse into {@code errorFn}: {@code
-   * extraParams} is appended to the signature and {@code extraArgs} to the {@code errorFn} call.
-   * jsonRpc2 uses this to echo the request id into the error envelope.
-   */
-  static void writeValidationErrorResponse(
+  private static void writeValidationErrorResponse(
       CppWriter w,
       String errorFn,
       String errorCode,

@@ -97,7 +97,13 @@ cd codegen && gradle spotlessApply
   `BuildFileGeneratorTest`); `ConditionalWiringCoverageTest` is the fallback for arms with no
   owning class, not the default destination.
 - Machine-specific Bazel flags go in `.bazelrc.user` (gitignored), e.g. a
-  `--downloader_config` when working behind a proxy that blocks GitHub downloads.
+  `--downloader_config` when working behind a proxy that blocks GitHub downloads. A rewrite of
+  `github.com/(.*)` to `mirror.bazel.build/github.com/$1` unblocks most module archives; for the
+  few that aren't mirrored (nlohmann_json, google_benchmark), `git clone` the exact tag (git often
+  works where archive downloads don't) and point `--override_module=<name>=<checkout>` at it —
+  nlohmann ships its own BUILD.bazel, so it only needs a MODULE.bazel in the checkout root (copy
+  the patched one from the module's page on the Bazel Central Registry). Add
+  `--lockfile_mode=off` so local runs don't dirty the checked-in MODULE.bazel.lock.
 - The Boost-dependent targets (`//runtime:http_beast` and the tests that use it) fetch ~30
   modular Boost archives. Behind a proxy that blocks GitHub they won't fetch; exclude them and
   run everything else with

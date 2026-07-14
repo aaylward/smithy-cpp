@@ -7,9 +7,10 @@ import software.amazon.smithy.model.shapes.Shape;
 import software.amazon.smithy.model.traits.TimestampFormatTrait;
 
 /**
- * Member-level serde emission shared by the serde file generator and the protocol client
- * generators: C++ expressions that turn a typed value into a Document node, and statements that
- * read a Document node back into a typed lvalue.
+ * Member-level serde emission shared by the serde file generator and both halves of the protocol
+ * generators: the wire-name policy, C++ expressions that turn a typed value into a Document node,
+ * statements that read one back into a typed lvalue, and the one member-serialize / member-parse
+ * skeletons everything rides so the shared branches cannot drift (issue #72).
  */
 final class SerdeCodeGen {
 
@@ -29,6 +30,94 @@ final class SerdeCodeGen {
    */
   String wireName(MemberShape member) {
     return HttpBindingCodeGen.wireName(member, useJsonName);
+  }
+
+  /**
+   * Writes one member of {@code owner} into an in-scope DocumentMap named {@code mapVar} (unset
+   * optionals are skipped). The one member-serialize skeleton — serde's whole-structure serializer
+   * and the HTTP binding body writer both ride it, so they cannot drift (issue #72).
+   */
+  void writeMemberSerialize(CppWriter w, MemberShape member, String owner, String mapVar) {
+    String field = owner + "." + context.cppSymbols().toMemberName(member);
+    // Populated @default members are plain and always serialize their value.
+    if (MemberDefaults.plain(context.model(), member)) {
+      w.write("$L.emplace($S, $L);", mapVar, wireName(member), serializeExpression(member, field));
+    } else {
+      w.openBlock("if ($L.has_value()) {", field);
+      w.write(
+          "$L.emplace($S, $L);",
+          mapVar,
+          wireName(member),
+          serializeExpression(member, "(*" + field + ")"));
+      w.closeBlock("}");
+    }
+  }
+
+  /**
+   * The C++ condition for "the required member was absent or null" — written against the {@code
+   * member} local {@link #writeMemberRead} declares, so hook implementations use this constant
+   * instead of hand-writing a condition coupled to that variable name.
+   */
+  static final String MEMBER_ABSENT = "member == nullptr || member->is_null()";
+
+  /** Emits the required-member-absent branch of {@link #writeMemberRead}. */
+  interface RequiredAbsentEmitter {
+    /**
+     * {@code member} was required but the document carried null or nothing; {@code
+     * deserializeMember} emits the member's deserialization for the branch where it was present.
+     */
+    void write(CppWriter w, MemberShape member, Runnable deserializeMember);
+  }
+
+  /**
+   * Reads one member out of a decoded document map into {@code targetPrefix}<member> — the one
+   * member-parse skeleton (issue #72). The lenient-required (@required + @default keeps the
+   * initializer) and optional branches are identical for serde functions and both HTTP wire ends by
+   * construction; what a missing required member means is the caller's {@code requiredAbsent} hook
+   * (serde and clients fail the parse, servers record a validation failure), and only serde
+   * fills @input defaults inline ({@code fillDefaults} — the HTTP server fills them post-parse
+   * across all binding locations). {@code mapAccess} reaches the decoded document: {@code "doc."}
+   * for serde's by-value parameter, {@code "body_doc->"} for the binding readers' Outcome.
+   */
+  void writeMemberRead(
+      CppWriter w,
+      MemberShape member,
+      String mapAccess,
+      String targetPrefix,
+      String structType,
+      boolean fillDefaults,
+      RequiredAbsentEmitter requiredAbsent) {
+    String field = targetPrefix + context.cppSymbols().toMemberName(member);
+    String path = structType + "." + member.getMemberName();
+    w.openBlock("{");
+    w.write("const smithy::Document* member = $LFind($S);", mapAccess, wireName(member));
+    if (MemberDefaults.lenientRequired(context.model(), member)) {
+      // @required + @default (the evolution pattern): absence keeps the
+      // member's default initializer instead of failing.
+      w.openBlock("if (member != nullptr && !member->is_null()) {");
+      writeDeserializeInto(w, member, "member", field, path);
+      w.closeBlock("}");
+    } else if (member.isRequired()) {
+      requiredAbsent.write(w, member, () -> writeDeserializeInto(w, member, "member", field, path));
+    } else {
+      w.openBlock("if (member != nullptr && !member->is_null()) {");
+      var targetType = context.cppSymbols().toSymbol(target(member));
+      w.write("$L parsed_member{};", targetType.getName());
+      writeDeserializeInto(w, member, "member", "parsed_member", path);
+      w.write("$L = std::move(parsed_member);", field);
+      if (fillDefaults && MemberDefaults.fillOnParse(context.model(), member)) {
+        // @input members stay client-optional, but servers (the only
+        // consumers of input deserializers) fill the default when absent.
+        w.closeBlock("} else {");
+        w.indent();
+        w.write("$L = $L;", field, MemberDefaults.literal(context, member));
+        w.dedent();
+        w.write("}");
+      } else {
+        w.closeBlock("}");
+      }
+    }
+    w.closeBlock("}");
   }
 
   private Shape target(MemberShape member) {

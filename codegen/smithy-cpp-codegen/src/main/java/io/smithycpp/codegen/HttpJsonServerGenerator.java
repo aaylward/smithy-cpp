@@ -250,7 +250,6 @@ final class HttpJsonServerGenerator {
     if (!body.isEmpty()) {
       HttpBindingCodeGen.writeDocumentBodyRead(
           w,
-          context,
           serde,
           body,
           "request.body",
@@ -260,7 +259,7 @@ final class HttpJsonServerGenerator {
           (w2, member, deserializeMember) -> {
             // Servers record the absence and keep parsing, so one response
             // carries every validation failure.
-            w2.openBlock("if (member == nullptr || member->is_null()) {");
+            w2.openBlock("if ($L) {", SerdeCodeGen.MEMBER_ABSENT);
             w2.write(
                 "AddValidationFailure(validation_failures, $S, $S);",
                 "/" + member.getMemberName(),
@@ -356,7 +355,7 @@ final class HttpJsonServerGenerator {
     }
     // restJson1 servers always produce a JSON body (at minimum "{}").
     w.write("smithy::DocumentMap body_map;");
-    HttpBindingCodeGen.writeDocumentBodyMap(w, context, serde, responseBody, "output");
+    HttpBindingCodeGen.writeDocumentBodyMap(w, serde, responseBody, "output");
     w.write("response.headers.Set(\"content-type\", \"application/json\");");
     w.write("response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));");
     w.write("return response;");

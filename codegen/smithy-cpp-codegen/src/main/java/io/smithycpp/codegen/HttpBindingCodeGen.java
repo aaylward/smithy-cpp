@@ -154,23 +154,9 @@ final class HttpBindingCodeGen {
    * optionals are skipped). Shared by the client request body and the server response body.
    */
   static void writeDocumentBodyMap(
-      CppWriter w, CppContext context, SerdeCodeGen serde, List<HttpBinding> body, String owner) {
+      CppWriter w, SerdeCodeGen serde, List<HttpBinding> body, String owner) {
     for (HttpBinding binding : body) {
-      MemberShape member = binding.getMember();
-      String field = owner + "." + context.cppSymbols().toMemberName(member);
-      if (MemberDefaults.plain(context.model(), member)) {
-        w.write(
-            "body_map.emplace($S, $L);",
-            serde.wireName(member),
-            serde.serializeExpression(member, field));
-      } else {
-        w.openBlock("if ($L.has_value()) {", field);
-        w.write(
-            "body_map.emplace($S, $L);",
-            serde.wireName(member),
-            serde.serializeExpression(member, "(*" + field + ")"));
-        w.closeBlock("}");
-      }
+      serde.writeMemberSerialize(w, binding.getMember(), owner, "body_map");
     }
   }
 
@@ -272,63 +258,37 @@ final class HttpBindingCodeGen {
     }
   }
 
-  /** Emits the required-member-absent branch of {@link #writeDocumentBodyRead}. */
-  interface RequiredAbsentEmitter {
-    /**
-     * {@code member} was required but the body carried null or nothing; {@code deserializeMember}
-     * emits the member's deserialization for the branch where it was present.
-     */
-    void write(CppWriter w, MemberShape member, Runnable deserializeMember);
-  }
-
   /**
    * Parses a JSON document body member-by-member into {@code targetPrefix}<member> fields — the
-   * READ direction both wire ends share (client response parse, server request parse). The
-   * lenient-required branch (@required + @default keeps the default initializer) and the optional
-   * branch are identical on both ends by construction; the ends differ only in what a missing
+   * READ direction both wire ends share (client response parse, server request parse), riding
+   * {@link SerdeCodeGen#writeMemberRead} per member. The ends differ only in what a missing
    * required member means — clients fail the exchange, servers record a validation failure and keep
    * parsing — so that branch is the caller's {@code requiredAbsent} hook. Runs inside an
    * Outcome-returning function with an empty {@code structType} value already constructed.
    */
   static void writeDocumentBodyRead(
       CppWriter w,
-      CppContext context,
       SerdeCodeGen serde,
       List<HttpBinding> body,
       String bodyExpr,
       String targetPrefix,
       String structType,
       String opName,
-      RequiredAbsentEmitter requiredAbsent) {
+      SerdeCodeGen.RequiredAbsentEmitter requiredAbsent) {
     w.write("auto body_doc = smithy::json::Decode($L.empty() ? \"{}\" : $L);", bodyExpr, bodyExpr);
     w.write("if (!body_doc) return std::move(body_doc).error();");
     w.write(
         "if (!body_doc->is_map()) return smithy::Error::Serialization($S);",
         opName + ": expected a JSON object body");
     for (HttpBinding binding : body) {
-      MemberShape member = binding.getMember();
-      String field = targetPrefix + context.cppSymbols().toMemberName(member);
-      String path = structType + "." + member.getMemberName();
-      w.openBlock("{");
-      w.write("const smithy::Document* member = body_doc->Find($S);", serde.wireName(member));
-      if (MemberDefaults.lenientRequired(context.model(), member)) {
-        // @required + @default: absence keeps the default initializer.
-        w.openBlock("if (member != nullptr && !member->is_null()) {");
-        serde.writeDeserializeInto(w, member, "member", field, path);
-        w.closeBlock("}");
-      } else if (member.isRequired()) {
-        requiredAbsent.write(
-            w, member, () -> serde.writeDeserializeInto(w, member, "member", field, path));
-      } else {
-        w.openBlock("if (member != nullptr && !member->is_null()) {");
-        var targetType =
-            context.cppSymbols().toSymbol(context.model().expectShape(member.getTarget()));
-        w.write("$L parsed_member{};", targetType.getName());
-        serde.writeDeserializeInto(w, member, "member", "parsed_member", path);
-        w.write("$L = std::move(parsed_member);", field);
-        w.closeBlock("}");
-      }
-      w.closeBlock("}");
+      serde.writeMemberRead(
+          w,
+          binding.getMember(),
+          "body_doc->",
+          targetPrefix,
+          structType,
+          /* fillDefaults= */ false,
+          requiredAbsent);
     }
   }
 

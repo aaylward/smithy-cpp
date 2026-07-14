@@ -123,12 +123,7 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
     StructureShape input = ProtocolSupport.inputShape(context, operation);
     StructureShape output = ProtocolSupport.outputShape(context, operation);
 
-    String in =
-        ProtocolSupport.prepareIdempotencyTokens(
-            w, context, input, context.cppSymbols().toSymbol(input).getName());
-
-    w.write("smithy::http::HttpRequest request;");
-    w.write("request.method = \"POST\";");
+    String in = ProtocolSupport.writeRpcRequestPrelude(w, context, input);
     w.write("request.target = path_prefix_ + \"/\";");
     w.write("request.headers.Set(\"content-type\", \"application/json\");");
     w.write("smithy::DocumentMap envelope;");
@@ -145,9 +140,7 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
     }
     w.write("request.body = smithy::json::Encode(smithy::Document(std::move(envelope)));");
 
-    ProtocolSupport.writeRequestCompression(w, operation);
-    w.write("auto response = Send(std::move(request));");
-    w.write("if (!response) return std::move(response).error();");
+    ProtocolSupport.writeRpcSend(w, operation);
     w.write("auto envelope_doc = smithy::json::Decode(response->body);");
     w.write("// Errors are JSON-RPC envelopes on HTTP 200; non-200 means the request");
     w.write("// never reached the protocol layer (router 404, proxy) and parses generically.");
@@ -158,11 +151,10 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
         "if (response->status != 200 || is_error) return $L;",
         ProtocolSupport.errorExpression(context, service, operation));
 
-    String outType = context.cppSymbols().toSymbol(output).getName();
-    if (output.members().isEmpty()) {
-      w.write("return $L{};", outType);
+    if (ProtocolSupport.writeEmptyOutputReturn(w, context, output)) {
       return;
     }
+    String outType = context.cppSymbols().toSymbol(output).getName();
     w.write("const smithy::Document* result = envelope_doc->Find(\"result\");");
     boolean allOptional = output.members().stream().noneMatch(MemberShape::isRequired);
     if (allOptional) {
@@ -174,6 +166,11 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
     }
     w.write("return Deserialize$L(*result);", SerdeCodeGen.serdeFunctionSuffix(context, output));
   }
+
+  /** jsonRpc2 error identity travels in error.data.__type; every response echoes the id. */
+  private static final ProtocolSupport.ErrorResponseSpec SPEC =
+      new ProtocolSupport.ErrorResponseSpec(
+          "JsonRpcError", /* errortypeHeader= */ "", ", const smithy::Document& id", ", id");
 
   /** Set up by writeServerHelpers (always called before the routes are emitted). */
   private ValidationGenerator validation;
@@ -216,10 +213,7 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
     w.write("return response;");
     w.closeBlock("}");
     w.write("");
-    ProtocolSupport.ErrorResponseSpec spec =
-        new ProtocolSupport.ErrorResponseSpec(
-            "JsonRpcError", /* errortypeHeader= */ "", ", const smithy::Document& id", ", id");
-    ProtocolSupport.writeServerErrorToResponse(w, context, service, operations, spec);
+    ProtocolSupport.writeServerErrorToResponse(w, context, service, operations, SPEC);
     // jsonRpc2 validation identity travels in error.data.__type, as the
     // fully qualified shape id (the rpcv2Cbor convention).
     validation =
@@ -229,7 +223,7 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
             operations,
             /* alsoEmit= */ false,
             "smithy.framework#ValidationException",
-            spec);
+            SPEC);
     for (OperationShape operation : operations) {
       writeOperationDispatch(w, context, service, operation);
     }
@@ -256,16 +250,9 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
       w.write(
           "if (!params.is_map()) return JsonRpcError(-32602, \"SerializationException\", "
               + "\"params must be an object\", {}, id);");
-      w.write(
-          "auto parsed = Deserialize$L(params);", SerdeCodeGen.serdeFunctionSuffix(context, input));
-      w.write(
-          "if (!parsed) return JsonRpcError(-32602, \"SerializationException\", "
-              + "parsed.error().message(), {}, id);");
-      w.write("input = *std::move(parsed);");
+      ProtocolSupport.writeRpcParsedInput(w, context, operation, "params", "-32602", SPEC);
     }
-    validation.writeRouteGuard(w, operation, ", id");
-    w.write("auto outcome = handler.$L(input);", opName);
-    w.write("if (!outcome) return ErrorToResponse(outcome.error(), id);");
+    ProtocolSupport.writeRpcDispatch(w, operation, "handler.", SPEC, validation);
     w.write("smithy::DocumentMap envelope;");
     w.write("envelope.emplace(\"jsonrpc\", smithy::Document(\"2.0\"));");
     w.write(

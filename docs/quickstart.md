@@ -75,7 +75,14 @@ common --java_language_version=17
 common --tool_java_language_version=17
 common --java_runtime_version=remotejdk_17
 common --tool_java_runtime_version=remotejdk_17
+test --test_output=errors
+
+# Personal overrides stay out of version control.
+try-import %workspace%/.bazelrc.user
 ```
+
+(This is the same block the CI-tested [`examples/bazel-consumer/.bazelrc`](../examples/bazel-consumer/.bazelrc)
+carries — if they ever diverge, trust the example.)
 
 ## 2. Write the model
 
@@ -233,12 +240,14 @@ error — no exceptions):
 class InMemoryHandler final : public TodoHandler {
  public:
   smithy::Outcome<AddTaskOutput> AddTask(const AddTaskInput& input) override {
+    const std::lock_guard<std::mutex> lock(mu_);
     const std::string id = "task-" + std::to_string(next_id_++);
     titles_[id] = input.title;
     return AddTaskOutput{.taskId = id, .title = input.title};
   }
 
   smithy::Outcome<GetTaskOutput> GetTask(const GetTaskInput& input) override {
+    const std::lock_guard<std::mutex> lock(mu_);
     const auto it = titles_.find(input.taskId);
     if (it == titles_.end()) {
       smithy::Error error = smithy::Error::Modeled("NoSuchTask", "no task: " + input.taskId);
@@ -249,10 +258,15 @@ class InMemoryHandler final : public TodoHandler {
   }
 
  private:
+  std::mutex mu_;  // handlers run concurrently — see below
   int next_id_ = 1;
   std::map<std::string, std::string> titles_;
 };
 ```
+
+The mutex is not optional: **handler implementations must be thread-safe.** The production
+socket transport dispatches requests on a thread pool, so any two operations (or two calls to
+the same operation) can run concurrently against your one handler instance.
 
 Then wire the generated server to the generated client over the in-memory loopback (or a real
 socket) exactly like

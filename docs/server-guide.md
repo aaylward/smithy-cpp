@@ -6,6 +6,11 @@ target.
 
 ## Implementing a handler
 
+Handler implementations must be **thread-safe**: the production socket transport dispatches
+requests on a thread pool, so any mix of operations can run concurrently against the one
+handler instance you pass to the server. Guard shared state (the quickstart's in-memory
+handler shows the minimal mutex pattern).
+
 ```cpp
 #include "example/weather/server.h"
 

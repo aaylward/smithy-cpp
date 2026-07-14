@@ -5,7 +5,9 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <utility>
 
@@ -34,12 +36,14 @@ using acme::todo::TodoServer;
 class InMemoryHandler final : public TodoHandler {
  public:
   smithy::Outcome<AddTaskOutput> AddTask(const AddTaskInput& input) override {
+    const std::lock_guard<std::mutex> lock(mu_);
     const std::string id = "task-" + std::to_string(next_id_++);
     titles_[id] = input.title;
     return AddTaskOutput{.taskId = id, .title = input.title};
   }
 
   smithy::Outcome<GetTaskOutput> GetTask(const GetTaskInput& input) override {
+    const std::lock_guard<std::mutex> lock(mu_);
     const auto it = titles_.find(input.taskId);
     if (it == titles_.end()) {
       smithy::Error error = smithy::Error::Modeled("NoSuchTask", "no task: " + input.taskId);
@@ -50,6 +54,9 @@ class InMemoryHandler final : public TodoHandler {
   }
 
  private:
+  // Handlers must be thread-safe: the socket transport (exercised by this
+  // test's kSocket variant) invokes them from a thread pool.
+  std::mutex mu_;
   int next_id_ = 1;
   std::map<std::string, std::string> titles_;
 };

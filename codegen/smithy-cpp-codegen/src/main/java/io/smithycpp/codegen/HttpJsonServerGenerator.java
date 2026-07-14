@@ -244,45 +244,28 @@ final class HttpJsonServerGenerator {
       HttpBindingCodeGen.writePayloadRead(w, context, serde, payload, "request.body", "input.");
     }
     if (!body.isEmpty()) {
-      w.write(
-          "auto body_doc = smithy::json::Decode(request.body.empty() ? \"{}\" : request.body);");
-      w.write("if (!body_doc) return std::move(body_doc).error();");
-      w.write(
-          "if (!body_doc->is_map()) return smithy::Error::Serialization($S);",
-          opName + ": expected a JSON object body");
-      for (HttpBinding binding : body) {
-        MemberShape member = binding.getMember();
-        String wireName = HttpBindingCodeGen.wireName(member);
-        String field = "input." + context.cppSymbols().toMemberName(member);
-        String path = inputType + "." + member.getMemberName();
-        w.openBlock("{");
-        w.write("const smithy::Document* member = body_doc->Find($S);", wireName);
-        if (MemberDefaults.lenientRequired(context.model(), member)) {
-          // @required + @default: absence keeps the default initializer.
-          w.openBlock("if (member != nullptr && !member->is_null()) {");
-          serde.writeDeserializeInto(w, member, "member", field, path);
-          w.closeBlock("}");
-        } else if (member.isRequired()) {
-          w.openBlock("if (member == nullptr || member->is_null()) {");
-          w.write(
-              "AddValidationFailure(validation_failures, $S, $S);",
-              "/" + member.getMemberName(),
-              ValidationGenerator.memberMustNotBeNull("/" + member.getMemberName()));
-          w.closeBlock("} else {");
-          w.indent();
-          serde.writeDeserializeInto(w, member, "member", field, path);
-          w.closeBlock("}");
-        } else {
-          w.openBlock("if (member != nullptr && !member->is_null()) {");
-          var targetType =
-              context.cppSymbols().toSymbol(context.model().expectShape(member.getTarget()));
-          w.write("$L parsed_member{};", targetType.getName());
-          serde.writeDeserializeInto(w, member, "member", "parsed_member", path);
-          w.write("$L = std::move(parsed_member);", field);
-          w.closeBlock("}");
-        }
-        w.closeBlock("}");
-      }
+      HttpBindingCodeGen.writeDocumentBodyRead(
+          w,
+          context,
+          serde,
+          body,
+          "request.body",
+          "input.",
+          inputType,
+          opName,
+          (w2, member, deserializeMember) -> {
+            // Servers record the absence and keep parsing, so one response
+            // carries every validation failure.
+            w2.openBlock("if (member == nullptr || member->is_null()) {");
+            w2.write(
+                "AddValidationFailure(validation_failures, $S, $S);",
+                "/" + member.getMemberName(),
+                ValidationGenerator.memberMustNotBeNull("/" + member.getMemberName()));
+            w2.closeBlock("} else {");
+            w2.indent();
+            deserializeMember.run();
+            w2.closeBlock("}");
+          });
     }
     // @default on @input members: clients skip them when unset, servers fill
     // the default for whatever the wire left unset (any binding location).

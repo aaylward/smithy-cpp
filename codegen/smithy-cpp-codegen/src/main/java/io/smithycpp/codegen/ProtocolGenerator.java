@@ -40,6 +40,16 @@ interface ProtocolGenerator {
     return false;
   }
 
+  /**
+   * Suffixes of the per-operation helpers this protocol emits beside the serde functions
+   * (Deserialize&lt;Op&gt;Error in every client; HTTP-binding servers add
+   * Serialize&lt;Op&gt;Response). Shape names matching {@code <Op><suffix>} would make C++ hide the
+   * serde functions, so generation rejects them up front.
+   */
+  default List<String> perOperationHelperSuffixes() {
+    return List.of("Error");
+  }
+
   /** Emits the file-local helpers (error deserializer etc.) into client.cc's anon namespace. */
   void writeClientHelpers(CppWriter w, CppContext context);
 

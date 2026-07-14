@@ -281,6 +281,50 @@ final class ProtocolSupport {
   }
 
   /**
+   * Rejects shape names whose serde functions would be hidden by the per-operation helpers the
+   * client/server emit into their anonymous namespaces (issue #47: the free-function namespace was
+   * never collision-checked, unlike declared type names). A declared aggregate named {@code
+   * <Op>Error} makes serde's {@code Deserialize<Op>Error(Document)} invisible next to the client's
+   * {@code Deserialize<Op>Error(HttpResponse)} — C++ name hiding, not overloading — and {@code
+   * <Op>Response} does the same to {@code Serialize<Op>Response} in HTTP servers.
+   */
+  static void rejectHelperNameCollisions(
+      CppContext context, ProtocolGenerator protocol, List<OperationShape> operations) {
+    Map<String, String> reserved = new TreeMap<>();
+    for (OperationShape operation : operations) {
+      String opName = CppReservedWords.escape(operation.getId().getName());
+      for (String suffix : protocol.perOperationHelperSuffixes()) {
+        String helperPrefix = suffix.equals("Error") ? "Deserialize" : "Serialize";
+        reserved.put(
+            opName + suffix, helperPrefix + opName + suffix + " (" + operation.getId() + ")");
+      }
+    }
+    for (Shape shape :
+        new software.amazon.smithy.model.neighbor.Walker(context.model())
+            .walkShapes(context.model().expectShape(context.settings().service()))) {
+      if (!(shape.isStructureShape()
+          || shape.isUnionShape()
+          || shape.isEnumShape()
+          || shape.isIntEnumShape()
+          || shape.isListShape()
+          || shape.isMapShape())) {
+        continue;
+      }
+      String declared = context.cppSymbols().declaredName(shape);
+      String helper = reserved.get(declared);
+      if (helper != null) {
+        throw new CodegenException(
+            "cpp-codegen: shape "
+                + shape.getId()
+                + " generates serde functions named after the per-operation helper "
+                + helper
+                + ", which would hide them inside the generated client/server; rename the shape"
+                + " or the operation");
+      }
+    }
+  }
+
+  /**
    * The shared head of every RPC operation body: @idempotencyToken prep and the POST request
    * skeleton (target, headers, and body are the protocol's wire format and stay with the caller).
    * Returns the input variable name.

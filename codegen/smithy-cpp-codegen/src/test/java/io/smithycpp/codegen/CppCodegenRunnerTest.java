@@ -93,7 +93,7 @@ class CppCodegenRunnerTest {
   @Test
   void validOmitPrunesTheUnsupportedOperation() throws IOException {
     Path output = tmp.resolve("out-valid");
-    CppCodegenRunner.main(args(writeModel(MODEL), output, "test.omit#Bad"));
+    CppCodegenRunner.run(args(writeModel(MODEL), output, "test.omit#Bad"));
     String header = Files.readString(output.resolve("include/test/omit/types.h"));
     assertTrue(header.contains("struct GoodInput"), header);
     // The omitted operation and everything only it referenced are gone.
@@ -109,7 +109,7 @@ class CppCodegenRunnerTest {
         assertThrows(
             CodegenException.class,
             () ->
-                CppCodegenRunner.main(
+                CppCodegenRunner.run(
                     args(writeModel(MODEL), output, "test.omit#Bad", "test.omit#Good")));
     assertTrue(
         error.getMessage().contains("stale --omit-operation test.omit#Good"), error.getMessage());
@@ -124,7 +124,7 @@ class CppCodegenRunnerTest {
     Path output = tmp.resolve("out-attributable");
     assertDoesNotThrow(
         () ->
-            CppCodegenRunner.main(
+            CppCodegenRunner.run(
                 args(writeModel(TWO_BAD_MODEL), output, "test.omit#Bad", "test.omit#AlsoBad")));
     String header = Files.readString(output.resolve("include/test/omit/types.h"));
     assertTrue(header.contains("struct GoodInput"), header);
@@ -136,14 +136,14 @@ class CppCodegenRunnerTest {
     Path output = tmp.resolve("out-unknown");
     assertThrows(
         RuntimeException.class,
-        () -> CppCodegenRunner.main(args(writeModel(MODEL), output, "test.omit#NoSuchOp")));
+        () -> CppCodegenRunner.run(args(writeModel(MODEL), output, "test.omit#NoSuchOp")));
   }
 
   @Test
   void unknownArgumentIsAnAttributedCodegenDiagnostic() {
     CodegenException error =
         assertThrows(
-            CodegenException.class, () -> CppCodegenRunner.main(new String[] {"--bogus", "x"}));
+            CodegenException.class, () -> CppCodegenRunner.run(new String[] {"--bogus", "x"}));
     assertTrue(
         error.getMessage().startsWith("cpp-codegen: unknown argument --bogus"), error.getMessage());
   }
@@ -153,8 +153,48 @@ class CppCodegenRunnerTest {
     CodegenException error =
         assertThrows(
             CodegenException.class,
-            () -> CppCodegenRunner.main(new String[] {"--service", "test.omit#Svc"}));
+            () -> CppCodegenRunner.run(new String[] {"--service", "test.omit#Svc"}));
     assertTrue(error.getMessage().startsWith("cpp-codegen: required:"), error.getMessage());
     assertTrue(error.getMessage().contains("--namespace"), error.getMessage());
+  }
+
+  @Test
+  void describeKeepsTheAttributedMessageAndFormatsValidationEvents() throws IOException {
+    // What the Bazel action log shows (issue #49): the diagnostic itself,
+    // not a stack trace. CodegenExceptions pass through; a model that fails
+    // Smithy validation gets the prefix plus one line per event.
+    assertTrue(
+        CppCodegenRunner.describe(new CodegenException("cpp-codegen: boom"))
+            .equals("cpp-codegen: boom"));
+    Path bad = tmp.resolve("bad.smithy");
+    Files.writeString(
+        bad,
+        """
+        $version: "2.0"
+        namespace test.bad
+
+        structure Broken {
+            member: test.bad#DoesNotExist
+        }
+        """);
+    var thrown =
+        assertThrows(
+            software.amazon.smithy.model.validation.ValidatedResultException.class,
+            () ->
+                CppCodegenRunner.run(
+                    new String[] {
+                      "--model",
+                      bad.toString(),
+                      "--service",
+                      "test.bad#Nope",
+                      "--namespace",
+                      "test::bad",
+                      "--output",
+                      tmp.resolve("out-bad").toString()
+                    }));
+    String described = CppCodegenRunner.describe(thrown);
+    assertTrue(described.startsWith("cpp-codegen: the model failed Smithy validation:"), described);
+    assertTrue(described.contains("DoesNotExist"), described);
+    assertFalse(described.contains("at software.amazon"), described); // no stack frames
   }
 }

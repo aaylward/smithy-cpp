@@ -5,7 +5,9 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <utility>
 
@@ -31,28 +33,34 @@ using acme::todo::TodoClient;
 using acme::todo::TodoHandler;
 using acme::todo::TodoServer;
 
+// [quickstart:handler] This exact block is the handler docs/quickstart.md
+// teaches; QuickstartMirrorTest fails if the two ever diverge.
 class InMemoryHandler final : public TodoHandler {
  public:
   smithy::Outcome<AddTaskOutput> AddTask(const AddTaskInput& input) override {
+    const std::lock_guard<std::mutex> lock(mu_);
     const std::string id = "task-" + std::to_string(next_id_++);
     titles_[id] = input.title;
     return AddTaskOutput{.taskId = id, .title = input.title};
   }
 
   smithy::Outcome<GetTaskOutput> GetTask(const GetTaskInput& input) override {
+    const std::lock_guard<std::mutex> lock(mu_);
     const auto it = titles_.find(input.taskId);
     if (it == titles_.end()) {
       smithy::Error error = smithy::Error::Modeled("NoSuchTask", "no task: " + input.taskId);
       error.set_detail(NoSuchTask{.message = "no task: " + input.taskId});
-      return error;
+      return error;  // the server turns this into the modeled 404
     }
     return GetTaskOutput{.taskId = input.taskId, .title = it->second, .done = false};
   }
 
  private:
+  std::mutex mu_;  // handlers must be thread-safe: transports dispatch on a thread pool
   int next_id_ = 1;
   std::map<std::string, std::string> titles_;
 };
+// [/quickstart:handler]
 
 enum class Transport { kLoopback, kSocket };
 

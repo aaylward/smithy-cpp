@@ -90,6 +90,8 @@ final class ServerGenerator {
     w.write("/// Implement one method per operation. Return a modeled error as");
     w.write("/// smithy::Error::Modeled(\"<ErrorShapeName>\", message), optionally with the");
     w.write("/// typed error structure attached via set_detail() so it serializes fully.");
+    w.write("/// Implementations must be thread-safe: transports may invoke any mix of");
+    w.write("/// operations concurrently on the one handler instance.");
     w.openBlock("class $LHandler {", name);
     w.write("public:").indent();
     w.write("virtual ~$LHandler() = default;", name);

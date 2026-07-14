@@ -65,19 +65,35 @@ bazel_dep(name = "rules_cc", version = "0.2.17")
 ```
 
 `.bazelrc` (C++20 is the runtime baseline; the generator runs on a hermetic Java 17 toolchain,
-so you never install or invoke Java yourself):
+so you never install or invoke Java yourself). Supported platforms are Linux and macOS
+([ADR-0008](adr/0008-drop-windows-support.md) dropped Windows):
 
 ```
+# C++20 (the smithy-cpp runtime baseline) and the Java 17 toolchain the
+# generator action runs on. Copy these lines into your own .bazelrc.
 common --enable_platform_specific_config
+
 build:linux --cxxopt=-std=c++20 --host_cxxopt=-std=c++20
 build:macos --cxxopt=-std=c++20 --host_cxxopt=-std=c++20
 common --java_language_version=17
 common --tool_java_language_version=17
 common --java_runtime_version=remotejdk_17
 common --tool_java_runtime_version=remotejdk_17
+test --test_output=errors
+
+# Personal overrides stay out of version control.
+try-import %workspace%/.bazelrc.user
 ```
 
+(This is byte-for-byte the CI-tested [`examples/bazel-consumer/.bazelrc`](../examples/bazel-consumer/.bazelrc);
+`QuickstartMirrorTest` fails the build if this page and the example ever diverge.)
+
 ## 2. Write the model
+
+(When a model is invalid, the generation action fails and the `cpp-codegen:` line at the top of
+its stderr names the problem — a Smithy validation failure lists every event. You never need to
+read the Java stack trace below it; if there is no `cpp-codegen:` line at all, you have found a
+generator bug worth reporting.)
 
 `model/todo.smithy` — a deliberately small task tracker: add a task, fetch it back, and one
 thing that can go wrong. This is the entire file:
@@ -233,12 +249,14 @@ error — no exceptions):
 class InMemoryHandler final : public TodoHandler {
  public:
   smithy::Outcome<AddTaskOutput> AddTask(const AddTaskInput& input) override {
+    const std::lock_guard<std::mutex> lock(mu_);
     const std::string id = "task-" + std::to_string(next_id_++);
     titles_[id] = input.title;
     return AddTaskOutput{.taskId = id, .title = input.title};
   }
 
   smithy::Outcome<GetTaskOutput> GetTask(const GetTaskInput& input) override {
+    const std::lock_guard<std::mutex> lock(mu_);
     const auto it = titles_.find(input.taskId);
     if (it == titles_.end()) {
       smithy::Error error = smithy::Error::Modeled("NoSuchTask", "no task: " + input.taskId);
@@ -249,10 +267,15 @@ class InMemoryHandler final : public TodoHandler {
   }
 
  private:
+  std::mutex mu_;  // handlers must be thread-safe: transports dispatch on a thread pool
   int next_id_ = 1;
   std::map<std::string, std::string> titles_;
 };
 ```
+
+The mutex is not optional: **handler implementations must be thread-safe.** The production
+socket transport dispatches requests on a thread pool, so any two operations (or two calls to
+the same operation) can run concurrently against your one handler instance.
 
 Then wire the generated server to the generated client over the in-memory loopback (or a real
 socket) exactly like

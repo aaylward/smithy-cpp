@@ -14,6 +14,8 @@ namespace example::bookstore {
 /// Implement one method per operation. Return a modeled error as
 /// smithy::Error::Modeled("<ErrorShapeName>", message), optionally with the
 /// typed error structure attached via set_detail() so it serializes fully.
+/// Implementations must be thread-safe: transports may invoke any mix of
+/// operations concurrently on the one handler instance.
 class BookstoreHandler {
   public:
     virtual ~BookstoreHandler() = default;

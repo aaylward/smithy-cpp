@@ -19,7 +19,7 @@ that shape it. [`docs/development.md`](docs/development.md) covers building and 
 ## Pull requests
 
 1. Fork/branch from `main`; keep PRs focused on one concern.
-2. Make CI green: Bazel matrix (Linux gcc/clang, macOS, Windows), sanitizers, Gradle, lint.
+2. Make CI green: Bazel matrix (Linux gcc/clang, macOS), sanitizers, Gradle, lint.
 3. Architectural changes need an ADR in `docs/adr/` (next sequential number).
 
 ## License

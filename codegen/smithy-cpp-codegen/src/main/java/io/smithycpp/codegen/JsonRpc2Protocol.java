@@ -258,7 +258,7 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
         opName,
         handlerType);
     w.write("$L input{};", inputType);
-    if (input.getId().toString().equals("smithy.api#Unit")) {
+    if (ProtocolSupport.noModeledInput(input)) {
       w.write("(void)params;");
     } else {
       w.write(

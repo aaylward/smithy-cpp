@@ -117,7 +117,7 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
             + "\"expected content-type: application/cbor\", {});");
     w.closeBlock("}");
     w.write("$L input{};", inputType);
-    if (!input.getId().toString().equals("smithy.api#Unit")) {
+    if (!ProtocolSupport.noModeledInput(input)) {
       w.write("// An absent body deserializes like an empty CBOR map.");
       w.write("smithy::Document body_doc{smithy::DocumentMap{}};");
       w.openBlock("if (!request.body.empty()) {");

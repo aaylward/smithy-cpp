@@ -29,14 +29,18 @@ final class HttpJsonServerGenerator {
    */
   private final String errorTypeHeaderName;
 
+  /** Mirror of the owning protocol's usesJsonName() — body keys must match the serde functions. */
+  private final boolean useJsonName;
+
   /** Set up by writeHelpers (always called before the routes are emitted). */
   private ValidationGenerator validation;
 
   /** Whether the service emits ValidationErrorResponse (constraints or top-level @required). */
   private boolean emitsValidation;
 
-  HttpJsonServerGenerator(String errorTypeHeaderName) {
+  HttpJsonServerGenerator(String errorTypeHeaderName, boolean useJsonName) {
     this.errorTypeHeaderName = errorTypeHeaderName;
+    this.useJsonName = useJsonName;
   }
 
   List<String> includes() {
@@ -253,6 +257,7 @@ final class HttpJsonServerGenerator {
           "input.",
           inputType,
           opName,
+          useJsonName,
           (w2, member, deserializeMember) -> {
             // Servers record the absence and keep parsing, so one response
             // carries every validation failure.
@@ -348,7 +353,7 @@ final class HttpJsonServerGenerator {
     }
     // restJson1 servers always produce a JSON body (at minimum "{}").
     w.write("smithy::DocumentMap body_map;");
-    HttpBindingCodeGen.writeDocumentBodyMap(w, context, serde, responseBody, "output");
+    HttpBindingCodeGen.writeDocumentBodyMap(w, context, serde, responseBody, "output", useJsonName);
     w.write("response.headers.Set(\"content-type\", \"application/json\");");
     w.write("response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));");
     w.write("return response;");

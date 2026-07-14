@@ -33,15 +33,9 @@ final class SerdeGenerator {
     this.useJsonName = useJsonName;
   }
 
-  /** The body key for a member: @jsonName when the module's protocol honors it. */
+  /** The body key for a member — the same policy the binding code applies. */
   private String wireName(MemberShape member) {
-    if (useJsonName) {
-      var trait = member.getTrait(software.amazon.smithy.model.traits.JsonNameTrait.class);
-      if (trait.isPresent()) {
-        return trait.get().getValue();
-      }
-    }
-    return member.getMemberName();
+    return HttpBindingCodeGen.wireName(member, useJsonName);
   }
 
   /** Aggregate shapes in the closure, topologically ordered, excluding smithy.api#Unit. */

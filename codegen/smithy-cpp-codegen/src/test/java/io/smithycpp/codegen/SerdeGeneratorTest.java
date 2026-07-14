@@ -1,5 +1,6 @@
 package io.smithycpp.codegen;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -105,6 +106,20 @@ class SerdeGeneratorTest {
     String serde = generateSerde(KITCHEN_MODEL);
     assertTrue(serde.contains("doc.Find(\"name\")"), serde);
     assertFalse(serde.contains("unknown member in structure"), serde);
+  }
+
+  @Test
+  void wireNameHonorsJsonNameOnlyWhenTheProtocolDoes() {
+    // One policy for serde functions and binding code alike: a protocol that
+    // ignores @jsonName must ignore it in BOTH, or the body splits its keys.
+    var member =
+        software.amazon.smithy.model.shapes.MemberShape.builder()
+            .id("test.serde#Payload$renamed")
+            .target("smithy.api#String")
+            .addTrait(new software.amazon.smithy.model.traits.JsonNameTrait("wire_key"))
+            .build();
+    assertEquals("wire_key", HttpBindingCodeGen.wireName(member, true));
+    assertEquals("renamed", HttpBindingCodeGen.wireName(member, false));
   }
 
   @Test

@@ -26,8 +26,15 @@ final class HttpBindingCodeGen {
 
   private HttpBindingCodeGen() {}
 
-  /** The JSON document key for a member: @jsonName wins over the member name (HTTP+JSON). */
-  static String wireName(MemberShape member) {
+  /**
+   * The JSON document key for a member: @jsonName when the module's protocol honors it
+   * (ProtocolGenerator.usesJsonName), else the member name. The one policy shared by the serde
+   * functions and the binding code — separate copies could give the two inconsistent body keys.
+   */
+  static String wireName(MemberShape member, boolean useJsonName) {
+    if (!useJsonName) {
+      return member.getMemberName();
+    }
     return member
         .getTrait(JsonNameTrait.class)
         .map(JsonNameTrait::getValue)
@@ -147,20 +154,25 @@ final class HttpBindingCodeGen {
    * optionals are skipped). Shared by the client request body and the server response body.
    */
   static void writeDocumentBodyMap(
-      CppWriter w, CppContext context, SerdeCodeGen serde, List<HttpBinding> body, String owner) {
+      CppWriter w,
+      CppContext context,
+      SerdeCodeGen serde,
+      List<HttpBinding> body,
+      String owner,
+      boolean useJsonName) {
     for (HttpBinding binding : body) {
       MemberShape member = binding.getMember();
       String field = owner + "." + context.cppSymbols().toMemberName(member);
       if (MemberDefaults.plain(context.model(), member)) {
         w.write(
             "body_map.emplace($S, $L);",
-            wireName(member),
+            wireName(member, useJsonName),
             serde.serializeExpression(member, field));
       } else {
         w.openBlock("if ($L.has_value()) {", field);
         w.write(
             "body_map.emplace($S, $L);",
-            wireName(member),
+            wireName(member, useJsonName),
             serde.serializeExpression(member, "(*" + field + ")"));
         w.closeBlock("}");
       }
@@ -292,6 +304,7 @@ final class HttpBindingCodeGen {
       String targetPrefix,
       String structType,
       String opName,
+      boolean useJsonName,
       RequiredAbsentEmitter requiredAbsent) {
     w.write("auto body_doc = smithy::json::Decode($L.empty() ? \"{}\" : $L);", bodyExpr, bodyExpr);
     w.write("if (!body_doc) return std::move(body_doc).error();");
@@ -303,7 +316,8 @@ final class HttpBindingCodeGen {
       String field = targetPrefix + context.cppSymbols().toMemberName(member);
       String path = structType + "." + member.getMemberName();
       w.openBlock("{");
-      w.write("const smithy::Document* member = body_doc->Find($S);", wireName(member));
+      w.write(
+          "const smithy::Document* member = body_doc->Find($S);", wireName(member, useJsonName));
       if (MemberDefaults.lenientRequired(context.model(), member)) {
         // @required + @default: absence keeps the default initializer.
         w.openBlock("if (member != nullptr && !member->is_null()) {");

@@ -30,8 +30,12 @@ final class HttpJsonClientGenerator {
    */
   private final String errorTypeHeaderName;
 
-  HttpJsonClientGenerator(String errorTypeHeaderName) {
+  /** Mirror of the owning protocol's usesJsonName() — body keys must match the serde functions. */
+  private final boolean useJsonName;
+
+  HttpJsonClientGenerator(String errorTypeHeaderName, boolean useJsonName) {
     this.errorTypeHeaderName = errorTypeHeaderName;
+    this.useJsonName = useJsonName;
   }
 
   List<String> includes() {
@@ -72,8 +76,8 @@ final class HttpJsonClientGenerator {
           continue;
         }
       }
-      // The document key is what the serde reads: @jsonName wins over the name.
-      String wireName = HttpBindingCodeGen.wireName(member);
+      // The document key is what the serde reads.
+      String wireName = HttpBindingCodeGen.wireName(member, useJsonName);
       w.openBlock(
           "if (const auto header_value = response.headers.Get($S); header_value.has_value()) {",
           binding.getLocationName());
@@ -207,7 +211,7 @@ final class HttpJsonClientGenerator {
           w, context, serde, operation, payload, in, "request", true);
     } else if (!body.isEmpty()) {
       w.write("smithy::DocumentMap body_map;");
-      HttpBindingCodeGen.writeDocumentBodyMap(w, context, serde, body, in);
+      HttpBindingCodeGen.writeDocumentBodyMap(w, context, serde, body, in, useJsonName);
       w.write("request.body = smithy::json::Encode(smithy::Document(std::move(body_map)));");
       w.write("request.headers.Set(\"content-type\", \"application/json\");");
     }
@@ -284,6 +288,7 @@ final class HttpJsonClientGenerator {
           "out.",
           outType,
           CppReservedWords.escape(operation.getId().getName()),
+          useJsonName,
           (w2, member, deserializeMember) -> {
             // Clients are strict: a missing required member fails the exchange.
             w2.write(

@@ -65,7 +65,8 @@ bazel_dep(name = "rules_cc", version = "0.2.17")
 ```
 
 `.bazelrc` (C++20 is the runtime baseline; the generator runs on a hermetic Java 17 toolchain,
-so you never install or invoke Java yourself):
+so you never install or invoke Java yourself). Supported platforms are Linux and macOS
+([ADR-0008](adr/0008-drop-windows-support.md) dropped Windows):
 
 ```
 common --enable_platform_specific_config

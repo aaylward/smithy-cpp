@@ -26,7 +26,8 @@ experience assumed. Day 2 (evolving the model) is
   modeled errors, paginators, idempotency tokens, and gzip request compression.
 - **In-graph generation:** `smithy_cpp_{types,client,server}_library` run the generator
   hermetically inside the Bazel build graph — no scripts, no JVM to install. An out-of-tree
-  consumer module is CI-tested on Linux/macOS/Windows, plus a CLI for generating elsewhere.
+  consumer module is CI-tested on Linux/macOS (Windows was dropped in ADR-0008), plus a CLI for
+  generating elsewhere.
 - **Production serving and calling** over Boost.Beast with TLS in both directions, retries with
   jittered backoff, client interceptors, server middleware, and bearer/API-key auth wiring.
 - **Hardening in CI:** sanitizer jobs, libFuzzer harnesses, hostile-input test banks, and every

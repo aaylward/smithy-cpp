@@ -82,7 +82,9 @@ class RecordingHandler : public RpcV2ProtocolHandler {
   int calls = 0;
 };
 
-class RpcV2CborMalformedTest : public testing::Test {
+// ::testing, not testing: inside namespace smithy::*, protocol_test.h's
+// smithy::testing shadows gtest's global namespace for unqualified lookup.
+class RpcV2CborMalformedTest : public ::testing::Test {
  protected:
   smithy::http::HttpRequest WellFormedRequest(const std::string& operation) {
     return smithy::testing::Rpcv2CborRequest("RpcV2Protocol", operation);

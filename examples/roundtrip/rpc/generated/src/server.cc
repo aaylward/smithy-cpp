@@ -122,6 +122,24 @@ RoundTripRpcServer::RoundTripRpcServer(std::shared_ptr<RoundTripRpcHandler> hand
   // The route table is derived from the model's @http traits; conflicts are
   // a modeling error surfaced by Router::Add (checked at generation time in a
   // later phase), so registration results are intentionally discarded.
+  (void)router_->Add("POST", "/service/RoundTripRpc/operation/Ping", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
+    if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
+      return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
+    }
+    // Content-Type validation per the rpcv2Cbor spec: a present header must
+    // carry application/cbor (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/cbor") {
+      return CborError(415, "UnsupportedMediaTypeException", "expected content-type: application/cbor", {});
+    }
+    PingInput input{};
+    auto outcome = handler->Ping(input);
+    if (!outcome) return ErrorToResponse(outcome.error());
+    smithy::http::HttpResponse response;
+    response.headers.Set("smithy-protocol", "rpc-v2-cbor");
+    response.headers.Set("content-type", "application/cbor");
+    response.body = smithy::cbor::Encode(SerializePingOutput(*outcome)).ToString();
+    return response;
+  }, "Ping");
   (void)router_->Add("POST", "/service/RoundTripRpc/operation/PutSinkRpc", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});

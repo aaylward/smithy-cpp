@@ -505,6 +505,28 @@ smithy::Outcome<SinkNotFound> DeserializeSinkNotFound(const smithy::Document& do
   return out;
 }
 
+smithy::Document SerializePingInput(const PingInput& value) {
+  smithy::DocumentMap map;
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<PingInput> DeserializePingInput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("PingInput: expected a map on the wire");
+  PingInput out;
+  return out;
+}
+
+smithy::Document SerializePingOutput(const PingOutput& value) {
+  smithy::DocumentMap map;
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<PingOutput> DeserializePingOutput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("PingOutput: expected a map on the wire");
+  PingOutput out;
+  return out;
+}
+
 smithy::Document SerializeSinkQuotaExceeded(const SinkQuotaExceeded& value) {
   smithy::DocumentMap map;
   if (value.message.has_value()) {

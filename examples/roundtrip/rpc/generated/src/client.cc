@@ -124,6 +124,18 @@ smithy::Outcome<smithy::http::HttpResponse> RoundTripRpcClient::Send(smithy::htt
   return smithy::SendWithRetries(*transport_, request, config_.retry, config_.interceptors);
 }
 
+smithy::Outcome<PingOutput> RoundTripRpcClient::Ping(const PingInput& input) const {
+  (void)input;
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = path_prefix_ + "/service/RoundTripRpc/operation/Ping";
+  request.headers.Set("smithy-protocol", "rpc-v2-cbor");
+  auto response = Send(std::move(request));
+  if (!response) return std::move(response).error();
+  if (response->status != 200) return GenericError(ParseError(*response));
+  return PingOutput{};
+}
+
 smithy::Outcome<PutSinkRpcOutput> RoundTripRpcClient::PutSinkRpc(const PutSinkRpcInput& input) const {
   smithy::http::HttpRequest request;
   request.method = "POST";

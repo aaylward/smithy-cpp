@@ -20,8 +20,14 @@ service RoundTripRest {
 @rpcv2Cbor
 service RoundTripRpc {
     version: "2026-01-01"
-    operations: [PutSinkRpc]
+    operations: [PutSinkRpc, Ping]
 }
+
+/// No-input, no-output operation: exists so the hand-written wire test can
+/// pin that the rpcv2Cbor server ignores request bodies sent to a no-input
+/// operation (issue #68 — the upstream conformance suite carries no such
+/// case, and #67 fixed a client/server asymmetry exactly here).
+operation Ping {}
 
 /// The same RPC surface as RoundTripRpc, served over JSON-RPC 2.0: one model,
 /// three protocol variants.

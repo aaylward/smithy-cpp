@@ -42,6 +42,12 @@ smithy::Outcome<KitchenSink> DeserializeKitchenSink(const smithy::Document& doc)
 smithy::Document SerializeSinkNotFound(const SinkNotFound& value);
 smithy::Outcome<SinkNotFound> DeserializeSinkNotFound(const smithy::Document& doc);
 
+smithy::Document SerializePingInput(const PingInput& value);
+smithy::Outcome<PingInput> DeserializePingInput(const smithy::Document& doc);
+
+smithy::Document SerializePingOutput(const PingOutput& value);
+smithy::Outcome<PingOutput> DeserializePingOutput(const smithy::Document& doc);
+
 smithy::Document SerializeSinkQuotaExceeded(const SinkQuotaExceeded& value);
 smithy::Outcome<SinkQuotaExceeded> DeserializeSinkQuotaExceeded(const smithy::Document& doc);
 

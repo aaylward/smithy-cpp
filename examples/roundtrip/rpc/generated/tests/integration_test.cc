@@ -151,6 +151,16 @@ SinkNotFound RandomSinkNotFound(Rng& rng) {
   return v;
 }
 
+PingInput RandomPingInput(Rng& rng) {
+  PingInput v{};
+  return v;
+}
+
+PingOutput RandomPingOutput(Rng& rng) {
+  PingOutput v{};
+  return v;
+}
+
 SinkQuotaExceeded RandomSinkQuotaExceeded(Rng& rng) {
   SinkQuotaExceeded v{};
   if (rng.Coin()) v.message = rng.Text(1, 9);
@@ -174,6 +184,14 @@ PutSinkRpcOutput RandomPutSinkRpcOutput(Rng& rng) {
 
 class ScriptedHandler final : public RoundTripRpcHandler {
   public:
+    smithy::Outcome<PingOutput> Ping(const PingInput& input) override {
+      lastPing = input;
+      if (nextPingError.has_value()) return *nextPingError;
+      return nextPingOutput;
+    }
+    std::optional<PingInput> lastPing;
+    PingOutput nextPingOutput{};
+    std::optional<smithy::Error> nextPingError;
     smithy::Outcome<PutSinkRpcOutput> PutSinkRpc(const PutSinkRpcInput& input) override {
       lastPutSinkRpc = input;
       if (nextPutSinkRpcError.has_value()) return *nextPutSinkRpcError;
@@ -214,6 +232,32 @@ class RoundTripRpcIntegrationTest : public ::testing::TestWithParam<TransportKin
     std::unique_ptr<smithy::http::SocketHttpServer> socket_server_;
     std::unique_ptr<RoundTripRpcClient> client_;
 };
+
+TEST_P(RoundTripRpcIntegrationTest, PingRandomRoundTrips) {
+  Rng rng{std::mt19937{20260707U}, /*fill_all=*/false};
+  for (int iteration = 0; iteration < 8; ++iteration) {
+    const PingInput input = RandomPingInput(rng);
+    PingOutput output = RandomPingOutput(rng);
+    handler_->nextPingOutput = output;
+    const auto outcome = client_->Ping(input);
+    ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+    ASSERT_TRUE(handler_->lastPing.has_value());
+    EXPECT_EQ(*handler_->lastPing, input);
+    EXPECT_EQ(*outcome, output);
+  }
+}
+
+TEST_P(RoundTripRpcIntegrationTest, PingMaximalRoundTrips) {
+  Rng rng{std::mt19937{7U}, /*fill_all=*/true};
+  const PingInput input = RandomPingInput(rng);
+  PingOutput output = RandomPingOutput(rng);
+  handler_->nextPingOutput = output;
+  const auto outcome = client_->Ping(input);
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  ASSERT_TRUE(handler_->lastPing.has_value());
+  EXPECT_EQ(*handler_->lastPing, input);
+  EXPECT_EQ(*outcome, output);
+}
 
 TEST_P(RoundTripRpcIntegrationTest, PutSinkRpcRandomRoundTrips) {
   Rng rng{std::mt19937{20260707U}, /*fill_all=*/false};
@@ -269,6 +313,32 @@ TEST_P(RoundTripRpcIntegrationTest, PutSinkRpcSinkQuotaExceededMapsAcrossTheWire
   EXPECT_EQ(outcome.error().code(), "SinkQuotaExceeded");
   ASSERT_NE(outcome.error().detail<SinkQuotaExceeded>(), nullptr);
   EXPECT_EQ(*outcome.error().detail<SinkQuotaExceeded>(), detail);
+}
+
+TEST(RoundTripRpcIntegrationUnknownMembers, PingToleratesUnknownResponseMembers) {
+  auto handler = std::make_shared<ScriptedHandler>();
+  RoundTripRpcServer server(handler);
+  auto loopback = std::make_shared<smithy::http::Loopback>();
+  ASSERT_TRUE(loopback->Start(server.Handler()).ok());
+  auto inject = [](smithy::http::HttpResponse& response) {
+    auto doc = smithy::cbor::Decode(smithy::Blob::FromString(response.body));
+    if (!doc.ok() || !doc->is_map()) return;
+    auto map = doc->as_map();
+    map.insert_or_assign("smithy_cpp_unknown_member", smithy::Document(42));
+    response.body = smithy::cbor::Encode(smithy::Document(std::move(map))).ToString();
+  };
+  auto transport = std::make_shared<smithy::testing::MutatingTransport>(loopback, inject);
+  smithy::ClientConfig config;
+  config.retry.max_attempts = 1;  // wire-exact tests: no retries
+  config.http_client = transport;
+  auto client = *RoundTripRpcClient::Create(std::move(config));
+  Rng rng{std::mt19937{99U}, /*fill_all=*/true};
+  const PingInput input = RandomPingInput(rng);
+  PingOutput output = RandomPingOutput(rng);
+  handler->nextPingOutput = output;
+  const auto outcome = client.Ping(input);
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  EXPECT_EQ(*outcome, output);
 }
 
 TEST(RoundTripRpcIntegrationUnknownMembers, PutSinkRpcToleratesUnknownResponseMembers) {

@@ -21,6 +21,11 @@ class RoundTripRpcClient {
     /// Fails when the endpoint cannot be parsed and no transport is injected.
     static smithy::Outcome<RoundTripRpcClient> Create(smithy::ClientConfig config);
 
+    /// No-input, no-output operation: exists so the hand-written wire test can
+    /// pin that the rpcv2Cbor server ignores request bodies sent to a no-input
+    /// operation (issue #68 — the upstream conformance suite carries no such
+    /// case, and #67 fixed a client/server asymmetry exactly here).
+    smithy::Outcome<PingOutput> Ping(const PingInput& input = {}) const;
     /// The RPC variant round-trips the same kitchen sink over CBOR.
     smithy::Outcome<PutSinkRpcOutput> PutSinkRpc(const PutSinkRpcInput& input) const;
 

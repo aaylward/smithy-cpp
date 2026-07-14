@@ -58,6 +58,12 @@ Middleware HealthEndpoint(std::string path = "/health");
   Readiness checks (dependency probes, 503 on degraded) are deliberately
   deferred; the signature can grow an optional checks parameter later without
   breaking callers.
+- Addendum (issue #49): the reserved growth path landed as
+  `HealthEndpoint(std::string path = "/health", std::vector<ReadinessCheck>
+  checks = {})` — with checks the endpoint is a readiness probe (200 when every
+  check passes, else 503 `{"status":"unhealthy","failing":[<names>]}`); probes
+  run per request, and a throwing probe counts as failing. Liveness and
+  readiness compose as two instances (`/livez` bare, `/readyz` with checks).
 
 ## 3. `Observe` grows an optional `on_start`
 

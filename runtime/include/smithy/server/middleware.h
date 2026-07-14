@@ -42,12 +42,31 @@ Middleware Guard(std::function<bool(const http::HttpRequest&)> admit,
 std::function<http::HttpResponse(const http::HttpRequest&)> TooManyRequests(
     std::optional<std::chrono::seconds> retry_after = std::nullopt);
 
-// Static liveness endpoint: answers GET or HEAD <path> (query string
-// ignored) with 200 {"status":"healthy"} (body omitted for HEAD); every
+// A named readiness dependency: probe() returns true when it can serve.
+// Probes run on the transport's request thread, once per probe request,
+// concurrently across requests — they must be thread-safe and cheap (cache
+// expensive checks behind the callable). A probe that throws counts as
+// failing; the exception never reaches the transport. The name appears
+// verbatim in the JSON failing list, so use plain identifiers.
+struct ReadinessCheck {
+  std::string name;
+  std::function<bool()> probe;
+};
+
+// Health endpoint: answers GET or HEAD <path> (query string ignored); every
 // other request passes through to the next handler, so a model may still
-// define other routes on the path. Readiness probing is deliberately out of
-// scope.
-Middleware HealthEndpoint(std::string path = "/health");
+// define other routes on the path. With no checks it is a static liveness
+// probe: always 200 {"status":"healthy"}. With checks it is a readiness
+// probe: 200 when every check passes, else 503
+// {"status":"unhealthy","failing":[<names>]} — so one server typically
+// composes two instances:
+//
+//   Chain({HealthEndpoint("/livez"),
+//          HealthEndpoint("/readyz", {{"db", [&] { return db.Alive(); }}})},
+//         server.Handler());
+//
+// Bodies are omitted for HEAD.
+Middleware HealthEndpoint(std::string path = "/health", std::vector<ReadinessCheck> checks = {});
 
 // One served request, as seen from outside the router.
 struct RequestObservation {

@@ -178,6 +178,7 @@ WeatherServer server(handler);
 // Policy stays an application dependency (your rate limiter, your metrics
 // backend); the middleware owns only the composition point.
 auto limiter = std::make_shared<MyRateLimiter>(/* window, budget */);
+auto db = std::make_shared<MyDbPool>(/* ... */);
 
 transport.Start(smithy::server::Chain(
     {// Outermost: shed abusive traffic before it costs anything. Trust
@@ -199,21 +200,29 @@ transport.Start(smithy::server::Chain(
            // gauge +1 (labeled by s.method/s.target; the operation is not
            // known until the router runs).
          }),
-     // Liveness: GET or HEAD /health -> 200 {"status":"healthy"} (no body
+     // Liveness: GET or HEAD /livez -> 200 {"status":"healthy"} (no body
      // for HEAD); everything else passes through to the router.
-     smithy::server::HealthEndpoint()},
+     smithy::server::HealthEndpoint("/livez"),
+     // Readiness: the same endpoint with checks. Every probe runs on every
+     // request (no caching — a cached 200 would hide a dependency outage);
+     // any failure answers 503 {"status":"unhealthy","failing":["db"]}.
+     // A throwing probe counts as failing, never unwinds into the transport.
+     smithy::server::HealthEndpoint(
+         "/readyz", {{"db", [db] { return db->Alive(); }}})},
     server.Handler()));
 ```
 
 The first middleware in the chain is outermost: it sees the request first and
 can short-circuit before anything below it runs (so `Guard`'s rejections never
-reach `Observe` — track rejection rates in the limiter itself). Liveness
+reach `Observe` — track rejection rates in the limiter itself). Health
 probes typically arrive without `x-forwarded-for`, so under this order they
 share the empty-string key with any client hitting the service directly, and
 one such direct-connect client can exhaust that key's budget and starve
-probes into liveness failures; where that risk is real, compose
-`HealthEndpoint()` outside `Guard`, or have `admit` always accept the empty
-key. `Guard` is the generic admission primitive — rate limiting (above), IP
+probes into liveness or readiness failures; where that risk is real, compose
+the `HealthEndpoint` instances outside `Guard`, or have `admit` always accept
+the empty key. Readiness probes run on the transport's request thread, once
+per probe request — keep them cheap (a pool's cached connectivity flag, not a
+fresh dial) and thread-safe. `Guard` is the generic admission primitive — rate limiting (above), IP
 allowlists, maintenance mode — admit/reject callbacks in, one decision point
 out. `Observe`'s callbacks run on the transport's request thread (keep them
 cheap or hand off) and always pair: when dispatch throws, `on_complete`

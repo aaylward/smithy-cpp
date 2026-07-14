@@ -47,17 +47,34 @@ std::function<http::HttpResponse(const http::HttpRequest&)> TooManyRequests(
   };
 }
 
-Middleware HealthEndpoint(std::string path) {
-  return [path = std::move(path)](http::RequestHandler next) {
-    return [path, next = std::move(next)](const http::HttpRequest& request) {
+Middleware HealthEndpoint(std::string path, std::vector<ReadinessCheck> checks) {
+  return [path = std::move(path), checks = std::move(checks)](http::RequestHandler next) {
+    return [path, checks, next = std::move(next)](const http::HttpRequest& request) {
       const std::string_view target(request.target);
       if ((request.method == "GET" || request.method == "HEAD") &&
           target.substr(0, target.find('?')) == path) {
+        // Probes run per request: a readiness endpoint that caches would
+        // keep answering 200 while a dependency is down. A throwing probe
+        // is a failing dependency, never an unwind into the transport.
+        std::string failing;
+        for (const ReadinessCheck& check : checks) {
+          bool ok = false;
+          try {
+            ok = check.probe();
+          } catch (...) {
+          }
+          if (!ok) {
+            failing += failing.empty() ? "\"" : ",\"";
+            failing += check.name;
+            failing += '"';
+          }
+        }
         http::HttpResponse response;
-        response.status = 200;
+        response.status = failing.empty() ? 200 : 503;
         response.headers.Set("content-type", "application/json");
         if (request.method == "GET") {
-          response.body = R"({"status":"healthy"})";
+          response.body = failing.empty() ? R"({"status":"healthy"})"
+                                          : R"({"status":"unhealthy","failing":[)" + failing + "]}";
         }
         return response;
       }

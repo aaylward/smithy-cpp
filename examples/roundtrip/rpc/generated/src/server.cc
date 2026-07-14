@@ -10,6 +10,7 @@
 #include "example/roundtrip/rpc/serde.h"
 #include "example/roundtrip/rpc/server.h"
 #include "smithy/cbor/cbor.h"
+#include "smithy/compression/gzip.h"
 #include "smithy/core/blob.h"
 #include "smithy/core/document.h"
 #include "smithy/server/router.h"
@@ -122,7 +123,34 @@ RoundTripRpcServer::RoundTripRpcServer(std::shared_ptr<RoundTripRpcHandler> hand
   // The route table is derived from the model's @http traits; conflicts are
   // a modeling error surfaced by Router::Add (checked at generation time in a
   // later phase), so registration results are intentionally discarded.
-  (void)router_->Add("POST", "/service/RoundTripRpc/operation/PutSinkRpc", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
+  (void)router_->Add("POST", "/service/RoundTripRpc/operation/Ping", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
+    if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
+      return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
+    }
+    // Content-Type validation per the rpcv2Cbor spec: a present header must
+    // carry application/cbor (parameters ignored); 415 otherwise.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/cbor") {
+      return CborError(415, "UnsupportedMediaTypeException", "expected content-type: application/cbor", {});
+    }
+    PingInput input{};
+    auto outcome = handler->Ping(input);
+    if (!outcome) return ErrorToResponse(outcome.error());
+    smithy::http::HttpResponse response;
+    response.headers.Set("smithy-protocol", "rpc-v2-cbor");
+    response.headers.Set("content-type", "application/cbor");
+    response.body = smithy::cbor::Encode(SerializePingOutput(*outcome)).ToString();
+    return response;
+  }, "Ping");
+  (void)router_->Add("POST", "/service/RoundTripRpc/operation/PutSinkRpc", [handler](const smithy::http::HttpRequest& raw_request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
+    smithy::http::HttpRequest request = raw_request;
+    // @requestCompression(gzip): decode before parsing.
+    if (const auto request_encoding = request.headers.Get("content-encoding"); request_encoding.has_value() && (*request_encoding == "gzip" || request_encoding->ends_with(", gzip"))) {
+      auto decompressed = smithy::GzipDecompress(request.body);
+      if (!decompressed) {
+        return CborError(400, "SerializationException", "invalid gzip request body", {});
+      }
+      request.body = *std::move(decompressed);
+    }
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
     }

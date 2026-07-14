@@ -211,19 +211,14 @@ class RecordingHandler : public RoundTripRpcHandler {
     output.sink = input.sink;  // echo, so the response leg is exercised too
     return output;
   }
+  smithy::Outcome<PingOutput> Ping(const PingInput&) override { return PingOutput{}; }
   std::optional<PutSinkRpcInput> last;
 };
 
 class UnionCborServerTest : public testing::Test {
  protected:
   smithy::http::HttpResponse Send(const std::string& body) {
-    smithy::http::HttpRequest request;
-    request.method = "POST";
-    request.target = "/service/RoundTripRpc/operation/PutSinkRpc";
-    request.headers.Set("smithy-protocol", "rpc-v2-cbor");
-    request.headers.Set("content-type", "application/cbor");
-    request.body = body;
-    return server_.Handler()(request);
+    return server_.Handler()(smithy::testing::Rpcv2CborRequest("RoundTripRpc", "PutSinkRpc", body));
   }
 
   std::shared_ptr<RecordingHandler> handler_ = std::make_shared<RecordingHandler>();

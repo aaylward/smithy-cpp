@@ -1,9 +1,6 @@
 package io.smithycpp.codegen;
 
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
-import software.amazon.smithy.model.knowledge.TopDownIndex;
 import software.amazon.smithy.model.shapes.OperationShape;
 import software.amazon.smithy.model.shapes.ServiceShape;
 import software.amazon.smithy.model.shapes.StructureShape;
@@ -23,10 +20,7 @@ final class ClientGenerator {
   }
 
   List<OperationShape> operations() {
-    List<OperationShape> operations =
-        new ArrayList<>(TopDownIndex.of(context.model()).getContainedOperations(service));
-    operations.sort(Comparator.comparing(OperationShape::getId));
-    return operations;
+    return ProtocolSupport.containedOperations(context.model(), service);
   }
 
   private String clientName() {
@@ -319,20 +313,16 @@ final class ClientGenerator {
     String outputType =
         context.cppSymbols().toSymbol(ProtocolSupport.outputShape(context, operation)).getName();
     String inToken = context.cppSymbols().toMemberName(info.getInputTokenMember());
-    var outTokenMember = info.getOutputTokenMemberPath().get(0);
-    String outToken = context.cppSymbols().toMemberName(outTokenMember);
-    boolean outRequired = outTokenMember.isRequired();
+    String outToken = context.cppSymbols().toMemberName(info.getOutputTokenMemberPath().get(0));
 
     w.openBlock("$L $L::Paginate$L($L input) const {", pager, name, opName, inputType);
     w.write("return $L(*this, std::move(input));", pager);
     w.closeBlock("}");
     w.write("");
 
-    String exhausted =
-        outRequired
-            ? "page->" + outToken + ".empty()"
-            : "!page->" + outToken + ".has_value() || page->" + outToken + "->empty()";
-    String tokenValue = (outRequired ? "page->" : "*page->") + outToken;
+    // The output token is always optional: Smithy's paginated validator
+    // rejects @required output tokens at assembly (pinned by
+    // ConditionalWiringCoverageTest), so there is no plain-member arm here.
     w.openBlock("smithy::Outcome<std::optional<$L>> $L::Next() {", outputType, pager);
     w.write("if (done_) return std::optional<$L>();", outputType);
     w.write("auto page = client_.$L(input_);", opName);
@@ -340,12 +330,12 @@ final class ClientGenerator {
     w.write("done_ = true;");
     w.write("return std::move(page).error();");
     w.closeBlock("}");
-    w.openBlock("if ($L) {", exhausted);
+    w.openBlock("if (!page->$1L.has_value() || page->$1L->empty()) {", outToken);
     w.write("done_ = true;");
     w.dedent();
     w.write("} else {");
     w.indent();
-    w.write("input_.$L = $L;", inToken, tokenValue);
+    w.write("input_.$L = *page->$L;", inToken, outToken);
     w.closeBlock("}");
     w.write("return std::optional<$L>(std::move(*page));", outputType);
     w.closeBlock("}");

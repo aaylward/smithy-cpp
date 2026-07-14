@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <charconv>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <limits>
@@ -12,6 +13,7 @@
 
 #include "example/roundtrip/rest/client.h"
 #include "example/roundtrip/rest/serde.h"
+#include "smithy/compression/gzip.h"
 #include "smithy/core/base64.h"
 #include "smithy/core/blob.h"
 #include "smithy/core/document_serde.h"
@@ -228,9 +230,7 @@ smithy::Outcome<PutSinkOutput> RoundTripRestClient::PutSink(const PutSinkInput& 
   target += "/";
   target += smithy::http::EncodePathSegment(input.sinkId);
   smithy::http::QueryString query;
-  if (input.limit.has_value()) {
-    query.Add("limit", std::to_string(static_cast<std::int64_t>((*input.limit))));
-  }
+  query.Add("limit", std::to_string(static_cast<std::int64_t>(input.limit)));
   if (input.tag.has_value()) {
     query.Add("tag", (*input.tag));
   }
@@ -238,9 +238,7 @@ smithy::Outcome<PutSinkOutput> RoundTripRestClient::PutSink(const PutSinkInput& 
   smithy::http::HttpRequest request;
   request.method = "PUT";
   request.target = std::move(target);
-  if (input.created.has_value()) {
-    request.headers.Set("x-sink-created", (*input.created).Format(smithy::TimestampFormat::kHttpDate));
-  }
+  request.headers.Set("x-sink-created", input.created.Format(smithy::TimestampFormat::kHttpDate));
   if (input.priority.has_value()) {
     request.headers.Set("x-sink-priority", std::string((*input.priority).ToString()));
   }
@@ -258,6 +256,14 @@ smithy::Outcome<PutSinkOutput> RoundTripRestClient::PutSink(const PutSinkInput& 
   }
   request.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
   request.headers.Set("content-type", "application/json");
+  // @requestCompression(gzip): applied last, appended to Content-Encoding.
+  if (request.body.size() >= static_cast<std::size_t>(config_.request_min_compression_size_bytes)) {
+    auto compressed = smithy::GzipCompress(request.body);
+    if (!compressed) return std::move(compressed).error();
+    request.body = *std::move(compressed);
+    const auto existing_encoding = request.headers.Get("content-encoding");
+    request.headers.Set("content-encoding", existing_encoding.has_value() && !existing_encoding->empty() ? *existing_encoding + ", gzip" : "gzip");
+  }
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
   if (response->status != 200) return ParsePutSinkError(*response);

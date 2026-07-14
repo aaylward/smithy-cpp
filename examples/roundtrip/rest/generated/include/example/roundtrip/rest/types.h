@@ -174,9 +174,9 @@ struct SinkNotFound {
 struct PutSinkInput {
   std::string sinkId{};
   std::optional<std::string> tag{};
-  std::optional<std::int32_t> limit{};
+  std::int32_t limit{};
   std::optional<Priority> priority{};
-  std::optional<smithy::Timestamp> created{};
+  smithy::Timestamp created{};
   std::optional<std::map<std::string, std::string>> metadata{};
   std::optional<KitchenSink> sink{};
   std::optional<smithy::Document> freeform{};

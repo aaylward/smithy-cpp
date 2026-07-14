@@ -6,6 +6,15 @@ use alloy#simpleRestJson
 use smithy.cpp.protocols#jsonRpc2
 use smithy.protocols#rpcv2Cbor
 
+// Accretion policy: this fixture deliberately accumulates one exemplar per
+// conditional-emission branch and edge case (issues #64, #68) — the "odd"
+// traits and shapes below each carry a rationale comment and are load-bearing
+// for compiled-golden coverage; don't clean them up without checking the pins
+// that reference them. Also: RoundTripRpc has hand-written handler
+// implementors OUTSIDE examples/ (benchmarks/, protocol-tests/unions/) —
+// adding an operation to it breaks them at compile time by design; grep for
+// RoundTripRpcHandler before pushing.
+
 /// Kitchen-sink fixture for the Phase 5 integration matrix: the same shapes
 /// served over simpleRestJson (with every supported HTTP binding), rpcv2Cbor,
 /// and jsonRpc2, so random round-trips exercise every protocol's serde end
@@ -20,8 +29,14 @@ service RoundTripRest {
 @rpcv2Cbor
 service RoundTripRpc {
     version: "2026-01-01"
-    operations: [PutSinkRpc]
+    operations: [PutSinkRpc, Ping]
 }
+
+/// No-input, no-output operation: exists so the hand-written wire test can
+/// pin that the rpcv2Cbor server ignores request bodies sent to a no-input
+/// operation (issue #68 — the upstream conformance suite carries no such
+/// case, and #67 fixed a client/server asymmetry exactly here).
+operation Ping {}
 
 /// The same RPC surface as RoundTripRpc, served over JSON-RPC 2.0: one model,
 /// three protocol variants.
@@ -32,9 +47,13 @@ service RoundTripJsonRpc {
 }
 
 /// Every binding location at once: label, query, @httpQueryParams, headers,
-/// prefix headers, and a JSON body full of aggregate shapes.
+/// prefix headers, and a JSON body full of aggregate shapes. Compressed and
+/// carrying required query/header members so the HTTP+JSON gzip path and the
+/// required-absence validation wiring both land in a compiled golden
+/// (issue #68: conditional emissions need fixtures on both branches).
 @idempotent
 @http(method: "PUT", uri: "/sinks/{sinkId}")
+@requestCompression(encodings: ["gzip"])
 operation PutSink {
     input := {
         @required
@@ -44,12 +63,14 @@ operation PutSink {
         @httpQuery("tag")
         tag: String
 
+        @required
         @httpQuery("limit")
         limit: PageLimit
 
         @httpHeader("x-sink-priority")
         priority: Priority
 
+        @required
         @httpHeader("x-sink-created")
         created: Timestamp
 
@@ -141,7 +162,10 @@ structure DescribeSinkError {
     message: String
 }
 
-/// The RPC variant round-trips the same kitchen sink over CBOR.
+/// The RPC variant round-trips the same kitchen sink over CBOR — compressed,
+/// so the rpcv2Cbor decompress path and jsonRpc2's shared-endpoint
+/// anyCompressed branch both land in compiled goldens (issue #68).
+@requestCompression(encodings: ["gzip"])
 operation PutSinkRpc {
     input := {
         @required

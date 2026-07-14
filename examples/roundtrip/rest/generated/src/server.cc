@@ -15,6 +15,7 @@
 
 #include "example/roundtrip/rest/serde.h"
 #include "example/roundtrip/rest/server.h"
+#include "smithy/compression/gzip.h"
 #include "smithy/core/base64.h"
 #include "smithy/core/blob.h"
 #include "smithy/core/document.h"
@@ -195,9 +196,9 @@ void ValidatePutSinkInput(const PutSinkInput& value, const std::string& path, st
       AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy regular expression pattern: " + std::string("^[A-Za-z0-9]+$"));
     }
   }
-  if (value.limit.has_value()) {
+  {
     const std::string member_path = path + "/limit";
-    if ((*value.limit) < 1 || (*value.limit) > 100) {
+    if (value.limit < 1 || value.limit > 100) {
       AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must be between 1 and 100, inclusive");
     }
   }
@@ -286,11 +287,14 @@ smithy::Outcome<PutSinkInput> ParsePutSinkInput(const smithy::http::HttpRequest&
     if (!parsed_ts) return std::move(parsed_ts).error();
     input.created = *std::move(parsed_ts);
   }
+  if (!request.headers.Get("x-sink-created").has_value()) AddValidationFailure(validation_failures, "/created", "Value at '/created' failed to satisfy constraint: Member must not be null");
   if (const auto header_value = request.headers.Get("x-sink-priority"); header_value.has_value()) {
     input.priority = Priority::FromString((*header_value));
   }
+  bool saw_limit = false;
   for (const auto& [key, value] : context.query_params) {
     if (key == "limit") {
+      saw_limit = true;
       auto parsed_num = ParseInt64Text(value, -2147483648LL, 2147483647LL);
       if (!parsed_num) return std::move(parsed_num).error();
       input.limit = static_cast<std::int32_t>(*parsed_num);
@@ -301,6 +305,7 @@ smithy::Outcome<PutSinkInput> ParsePutSinkInput(const smithy::http::HttpRequest&
       continue;
     }
   }
+  if (!saw_limit) AddValidationFailure(validation_failures, "/limit", "Value at '/limit' failed to satisfy constraint: Member must not be null");
   for (const auto& [header_name, header_value] : request.headers.entries()) {
     if (!smithy::http::HeaderNameStartsWith(header_name, "x-meta-")) continue;
     if (!input.metadata.has_value()) input.metadata.emplace();
@@ -421,7 +426,16 @@ RoundTripRestServer::RoundTripRestServer(std::shared_ptr<RoundTripRestHandler> h
     if (!outcome) return ErrorToResponse(outcome.error());
     return BuildDescribeSinkResponse(*outcome);
   }, "DescribeSink");
-  (void)router_->Add("PUT", "/sinks/{sinkId}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+  (void)router_->Add("PUT", "/sinks/{sinkId}", [handler](const smithy::http::HttpRequest& raw_request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    smithy::http::HttpRequest request = raw_request;
+    // @requestCompression(gzip): decode before parsing.
+    if (const auto request_encoding = request.headers.Get("content-encoding"); request_encoding.has_value() && (*request_encoding == "gzip" || request_encoding->ends_with(", gzip"))) {
+      auto decompressed = smithy::GzipDecompress(request.body);
+      if (!decompressed) {
+        return JsonError(400, "", "invalid gzip request body", {});
+      }
+      request.body = *std::move(decompressed);
+    }
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing
     // content-type is tolerated, and blob payloads without @mediaType accept

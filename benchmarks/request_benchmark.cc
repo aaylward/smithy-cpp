@@ -63,6 +63,10 @@ class RpcHandler final : public example::roundtrip::rpc::RoundTripRpcHandler {
       const example::roundtrip::rpc::PutSinkRpcInput& input) override {
     return example::roundtrip::rpc::PutSinkRpcOutput{.sinkId = input.sinkId, .sink = input.sink};
   }
+  smithy::Outcome<example::roundtrip::rpc::PingOutput> Ping(
+      const example::roundtrip::rpc::PingInput&) override {
+    return example::roundtrip::rpc::PingOutput{};
+  }
 };
 
 class JsonRpcHandler final : public example::roundtrip::jsonrpc::RoundTripJsonRpcHandler {

@@ -110,9 +110,12 @@ public final class DirectedCppCodegen
       }
     }
     if (directive.settings().emitBuildFile()) {
+      // Scoped to the service closure, not the whole model: a multi-service
+      // model (roundtrip) must not link :compression into every service's
+      // BUILD because one sibling service compresses.
       boolean hasCompression =
           protocol != null
-              && directive.context().model().getOperationShapes().stream()
+              && ProtocolSupport.containedOperations(directive.context().model(), service).stream()
                   .anyMatch(ProtocolSupport::gzipCompressed);
       BuildFileGenerator.run(
           directive.context(), protocol, hasClient, hasSerde, hasServer, hasCompression);

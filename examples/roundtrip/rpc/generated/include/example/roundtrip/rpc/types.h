@@ -145,6 +145,16 @@ struct SinkNotFound {
 };
 
 
+struct PingInput {
+  friend bool operator==(const PingInput&, const PingInput&) = default;
+};
+
+
+struct PingOutput {
+  friend bool operator==(const PingOutput&, const PingOutput&) = default;
+};
+
+
 struct SinkQuotaExceeded {
   std::optional<std::string> message{};
   std::optional<std::int32_t> retryAfterSeconds{};

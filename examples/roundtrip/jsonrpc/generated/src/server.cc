@@ -9,6 +9,7 @@
 
 #include "example/roundtrip/jsonrpc/serde.h"
 #include "example/roundtrip/jsonrpc/server.h"
+#include "smithy/compression/gzip.h"
 #include "smithy/core/document.h"
 #include "smithy/http/headers.h"
 #include "smithy/json/json.h"
@@ -155,8 +156,17 @@ RoundTripJsonRpcServer::RoundTripJsonRpcServer(std::shared_ptr<RoundTripJsonRpcH
   // The route table is derived from the model's @http traits; conflicts are
   // a modeling error surfaced by Router::Add (checked at generation time in a
   // later phase), so registration results are intentionally discarded.
-  (void)router_->Add("POST", "/", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
+  (void)router_->Add("POST", "/", [handler](const smithy::http::HttpRequest& raw_request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
     smithy::Document id;  // null until the envelope yields one (JSON-RPC 2.0 §5)
+    smithy::http::HttpRequest request = raw_request;
+    // @requestCompression(gzip): decode before parsing.
+    if (const auto request_encoding = request.headers.Get("content-encoding"); request_encoding.has_value() && (*request_encoding == "gzip" || request_encoding->ends_with(", gzip"))) {
+      auto decompressed = smithy::GzipDecompress(request.body);
+      if (!decompressed) {
+        return JsonRpcError(-32700, "SerializationException", "invalid gzip request body", {}, id);
+      }
+      request.body = *std::move(decompressed);
+    }
     // A present Content-Type must carry application/json (parameters ignored).
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
       return JsonRpcError(-32600, "UnsupportedMediaTypeException", "expected content-type: application/json", {}, id);

@@ -21,7 +21,9 @@ class RoundTripJsonRpcClient {
     /// Fails when the endpoint cannot be parsed and no transport is injected.
     static smithy::Outcome<RoundTripJsonRpcClient> Create(smithy::ClientConfig config);
 
-    /// The RPC variant round-trips the same kitchen sink over CBOR.
+    /// The RPC variant round-trips the same kitchen sink over CBOR — compressed,
+    /// so the rpcv2Cbor decompress path and jsonRpc2's shared-endpoint
+    /// anyCompressed branch both land in compiled goldens (issue #68).
     smithy::Outcome<PutSinkRpcOutput> PutSinkRpc(const PutSinkRpcInput& input) const;
 
   private:

@@ -18,6 +18,13 @@ namespace example::roundtrip::rpc {
 
 namespace {
 
+PingOutput MinimalPingOutput() {
+    return [] {
+    PingOutput v{};
+    return v;
+  }();
+}
+
 PutSinkRpcOutput MinimalPutSinkRpcOutput() {
     return [] {
     PutSinkRpcOutput v{};
@@ -27,6 +34,10 @@ PutSinkRpcOutput MinimalPutSinkRpcOutput() {
 
 class SmokeHandler : public RoundTripRpcHandler {
   public:
+    smithy::Outcome<PingOutput> Ping(const PingInput& input) override {
+      (void)input;
+      return MinimalPingOutput();
+    }
     smithy::Outcome<PutSinkRpcOutput> PutSinkRpc(const PutSinkRpcInput& input) override {
       (void)input;
       return MinimalPutSinkRpcOutput();
@@ -45,6 +56,17 @@ RoundTripRpcClient MakeClient(std::shared_ptr<RoundTripRpcHandler> handler) {
 }
 
 }  // namespace
+
+TEST(RoundTripRpcSmokeTest, PingRoundTrips) {
+  RoundTripRpcClient client = MakeClient(std::make_shared<SmokeHandler>());
+    const PingInput input = [] {
+    PingInput v{};
+    return v;
+  }();
+  const auto outcome = client.Ping(input);
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  EXPECT_EQ(*outcome, MinimalPingOutput());
+}
 
 TEST(RoundTripRpcSmokeTest, PutSinkRpcRoundTrips) {
   RoundTripRpcClient client = MakeClient(std::make_shared<SmokeHandler>());

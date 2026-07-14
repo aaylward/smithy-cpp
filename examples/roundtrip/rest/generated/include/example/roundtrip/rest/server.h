@@ -21,7 +21,10 @@ class RoundTripRestHandler {
     /// Read-only operation: no body in, body out.
     virtual smithy::Outcome<DescribeSinkOutput> DescribeSink(const DescribeSinkInput& input) = 0;
     /// Every binding location at once: label, query, @httpQueryParams, headers,
-    /// prefix headers, and a JSON body full of aggregate shapes.
+    /// prefix headers, and a JSON body full of aggregate shapes. Compressed and
+    /// carrying required query/header members so the HTTP+JSON gzip path and the
+    /// required-absence validation wiring both land in a compiled golden
+    /// (issue #68: conditional emissions need fixtures on both branches).
     virtual smithy::Outcome<PutSinkOutput> PutSink(const PutSinkInput& input) = 0;
     /// Raw blob payload with an extra header member.
     virtual smithy::Outcome<UploadAttachmentOutput> UploadAttachment(const UploadAttachmentInput& input) = 0;

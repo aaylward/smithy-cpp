@@ -16,6 +16,7 @@ cc_test(
         "//runtime:cbor",
         "//runtime:core",
         "//runtime:http",
+        "//runtime:protocol_test_support",
         "@googletest//:gtest_main",
     ],
 )

@@ -221,13 +221,8 @@ TEST_F(UnionGauntletCborTest, ModeledErrorCarriesAUnionNextToItsTypeDiscriminato
 
   // Server side: the error body carries __type AND the union member — the
   // wire shape whose deserialization the exactly-one arithmetic tolerates.
-  smithy::http::HttpRequest request;
-  request.method = "POST";
-  request.target = "/service/UnionGauntlet/operation/EchoChoice";
-  request.headers.Set("smithy-protocol", "rpc-v2-cbor");
-  request.headers.Set("content-type", "application/cbor");
-  request.body = RequestBody(OneMember("grade", smithy::Document("fail")));
-  const auto response = server_->Handler()(request);
+  const auto response = server_->Handler()(smithy::testing::Rpcv2CborRequest(
+      "UnionGauntlet", "EchoChoice", RequestBody(OneMember("grade", smithy::Document("fail")))));
   EXPECT_EQ(response.status, 400) << response.body;
   auto body = smithy::cbor::Decode(smithy::Blob::FromString(response.body));
   ASSERT_TRUE(body.ok());

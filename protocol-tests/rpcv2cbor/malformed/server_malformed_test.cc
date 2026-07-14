@@ -12,6 +12,7 @@
 
 #include "smithy/cbor/cbor.h"
 #include "smithy/protocoltests/rpcv2cbor/server.h"
+#include "smithy/testing/protocol_test.h"
 
 namespace smithy::protocoltests::rpcv2cbor {
 namespace {
@@ -81,15 +82,12 @@ class RecordingHandler : public RpcV2ProtocolHandler {
   int calls = 0;
 };
 
-class RpcV2CborMalformedTest : public testing::Test {
+// ::testing, not testing: inside namespace smithy::*, protocol_test.h's
+// smithy::testing shadows gtest's global namespace for unqualified lookup.
+class RpcV2CborMalformedTest : public ::testing::Test {
  protected:
   smithy::http::HttpRequest WellFormedRequest(const std::string& operation) {
-    smithy::http::HttpRequest request;
-    request.method = "POST";
-    request.target = "/service/RpcV2Protocol/operation/" + operation;
-    request.headers.Set("smithy-protocol", "rpc-v2-cbor");
-    request.headers.Set("content-type", "application/cbor");
-    return request;
+    return smithy::testing::Rpcv2CborRequest("RpcV2Protocol", operation);
   }
 
   smithy::http::HttpResponse Send(const smithy::http::HttpRequest& request) {

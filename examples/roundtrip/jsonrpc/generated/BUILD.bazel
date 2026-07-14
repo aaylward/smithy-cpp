@@ -31,6 +31,7 @@ cc_library(
         ":serde",
         ":types",
         "//runtime:client",
+        "//runtime:compression",
         "//runtime:core",
         "//runtime:http",
         "//runtime:json",
@@ -45,6 +46,7 @@ cc_library(
     deps = [
         ":serde",
         ":types",
+        "//runtime:compression",
         "//runtime:core",
         "//runtime:http",
         "//runtime:json",

@@ -45,7 +45,8 @@ TEST(ApiKeyQueryTest, AppendsToAnExistingQueryString) {
   auto transport = std::make_shared<CapturingTransport>();
   auto client = MakeClient(transport);
   (void)client.PutSink(PutSinkInput{.sinkId = "s1", .tag = "prod"});
-  EXPECT_EQ(transport->last_request.target, "/sinks/s1?tag=prod&api-key=k%26e%20y");
+  // limit is @required, so the (default-zero) value always rides along.
+  EXPECT_EQ(transport->last_request.target, "/sinks/s1?limit=0&tag=prod&api-key=k%26e%20y");
 }
 
 TEST(ApiKeyQueryTest, AbsentProviderLeavesTheTargetAlone) {

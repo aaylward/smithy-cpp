@@ -476,10 +476,6 @@ final class HttpJsonServerGenerator {
       w.write("");
       return;
     }
-    if (responsePrefixHeaders != null && responsePayload == null) {
-      HttpBindingCodeGen.writePrefixHeadersWrite(
-          w, context, responsePrefixHeaders, "output", "response");
-    }
     if (http.getCode() == 204) {
       // 204 No Content responses must not carry a body (or content-type).
       w.write("return response;");

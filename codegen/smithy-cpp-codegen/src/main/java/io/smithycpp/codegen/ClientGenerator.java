@@ -321,18 +321,17 @@ final class ClientGenerator {
     String inToken = context.cppSymbols().toMemberName(info.getInputTokenMember());
     var outTokenMember = info.getOutputTokenMemberPath().get(0);
     String outToken = context.cppSymbols().toMemberName(outTokenMember);
-    boolean outRequired = outTokenMember.isRequired();
 
     w.openBlock("$L $L::Paginate$L($L input) const {", pager, name, opName, inputType);
     w.write("return $L(*this, std::move(input));", pager);
     w.closeBlock("}");
     w.write("");
 
-    String exhausted =
-        outRequired
-            ? "page->" + outToken + ".empty()"
-            : "!page->" + outToken + ".has_value() || page->" + outToken + "->empty()";
-    String tokenValue = (outRequired ? "page->" : "*page->") + outToken;
+    // The output token is always optional: Smithy's paginated validator
+    // rejects @required output tokens at assembly (pinned by
+    // ConditionalWiringCoverageTest), so there is no plain-member arm here.
+    String exhausted = "!page->" + outToken + ".has_value() || page->" + outToken + "->empty()";
+    String tokenValue = "*page->" + outToken;
     w.openBlock("smithy::Outcome<std::optional<$L>> $L::Next() {", outputType, pager);
     w.write("if (done_) return std::optional<$L>();", outputType);
     w.write("auto page = client_.$L(input_);", opName);

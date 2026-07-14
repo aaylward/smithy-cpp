@@ -2,8 +2,6 @@ package io.smithycpp.codegen;
 
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
-import software.amazon.smithy.codegen.core.CodegenException;
 import software.amazon.smithy.model.knowledge.HttpBinding;
 import software.amazon.smithy.model.knowledge.HttpBindingIndex;
 import software.amazon.smithy.model.pattern.SmithyPattern;
@@ -13,6 +11,8 @@ import software.amazon.smithy.model.shapes.ServiceShape;
 import software.amazon.smithy.model.shapes.Shape;
 import software.amazon.smithy.model.shapes.StructureShape;
 import software.amazon.smithy.model.traits.HttpTrait;
+import software.amazon.smithy.model.traits.RequestCompressionTrait;
+import software.amazon.smithy.model.traits.synthetic.OriginalShapeIdTrait;
 
 /**
  * The server half of the HTTP+JSON protocol: the JsonError/ErrorToResponse helpers, validation
@@ -120,32 +120,15 @@ final class HttpJsonServerGenerator {
     StructureShape input = ProtocolSupport.inputShape(context, operation);
     String inputType = context.cppSymbols().toSymbol(input).getName();
     String opName = CppReservedWords.escape(operation.getId().getName());
-
-    Map<String, HttpBinding> labels = new TreeMap<>();
-    Map<String, HttpBinding> queries = new TreeMap<>();
-    Map<String, HttpBinding> headers = new TreeMap<>();
-    List<HttpBinding> body = new java.util.ArrayList<>();
-    HttpBinding queryParams = null;
-    HttpBinding payload = null;
-    HttpBinding prefixHeaders = null;
-    for (HttpBinding binding : index.getRequestBindings(operation).values()) {
-      switch (binding.getLocation()) {
-        case LABEL -> labels.put(binding.getLocationName(), binding);
-        case QUERY -> queries.put(binding.getLocationName(), binding);
-        case QUERY_PARAMS -> queryParams = binding;
-        case HEADER -> headers.put(binding.getLocationName(), binding);
-        case DOCUMENT -> body.add(binding);
-        case PAYLOAD -> payload = binding;
-        case PREFIX_HEADERS -> prefixHeaders = binding;
-        default ->
-            throw new CodegenException(
-                "cpp-codegen: HTTP+JSON server binding "
-                    + binding.getLocation()
-                    + " is not supported yet ("
-                    + operation.getId()
-                    + ")");
-      }
-    }
+    HttpBindingCodeGen.RequestBindings req =
+        HttpBindingCodeGen.RequestBindings.of(index, operation);
+    Map<String, HttpBinding> labels = req.labels();
+    Map<String, HttpBinding> queries = req.queries();
+    Map<String, HttpBinding> headers = req.headers();
+    List<HttpBinding> body = req.body();
+    HttpBinding queryParams = req.queryParams();
+    HttpBinding payload = req.payload();
+    HttpBinding prefixHeaders = req.prefixHeaders();
 
     w.openBlock(
         "smithy::Outcome<$L> Parse$LInput(const smithy::http::HttpRequest& request, "
@@ -163,7 +146,7 @@ final class HttpJsonServerGenerator {
       MemberShape member = binding.getMember();
       w.openBlock("{");
       w.write("const std::string& label_value = context.labels.at($S);", binding.getLocationName());
-      writeTextValueInto(
+      HttpBindingCodeGen.writeTextValueInto(
           w,
           context,
           serde,
@@ -206,7 +189,7 @@ final class HttpJsonServerGenerator {
             w.write("if (!$L.has_value()) $L.emplace();", field, field);
           }
           String container = plainQuery ? field : "(*" + field + ")";
-          writeTextValueInto(
+          HttpBindingCodeGen.writeTextValueInto(
               w,
               context,
               serde,
@@ -216,7 +199,7 @@ final class HttpJsonServerGenerator {
               "smithy::TimestampFormat::kDateTime",
               /* push= */ true);
         } else {
-          writeTextValueInto(
+          HttpBindingCodeGen.writeTextValueInto(
               w,
               context,
               serde,
@@ -275,11 +258,7 @@ final class HttpJsonServerGenerator {
           opName + ": expected a JSON object body");
       for (HttpBinding binding : body) {
         MemberShape member = binding.getMember();
-        String wireName =
-            member
-                .getTrait(software.amazon.smithy.model.traits.JsonNameTrait.class)
-                .map(software.amazon.smithy.model.traits.JsonNameTrait::getValue)
-                .orElse(member.getMemberName());
+        String wireName = HttpBindingCodeGen.wireName(member);
         String field = "input." + context.cppSymbols().toMemberName(member);
         String path = inputType + "." + member.getMemberName();
         w.openBlock("{");
@@ -337,84 +316,6 @@ final class HttpJsonServerGenerator {
         ValidationGenerator.memberMustNotBeNull(path));
   }
 
-  /**
-   * Emits statements converting a decoded text {@code valueExpr} into {@code sink} (assignment
-   * target, or a push_back callee when {@code push}). Runs inside an Outcome-returning function.
-   */
-  private void writeTextValueInto(
-      CppWriter w,
-      CppContext context,
-      SerdeCodeGen serde,
-      MemberShape member,
-      String valueExpr,
-      String sink,
-      String timestampDefault,
-      boolean push) {
-    Shape target = context.model().expectShape(member.getTarget());
-    String open = push ? sink + "(" : sink + " = ";
-    String close = push ? ");" : ";";
-    switch (target.getType()) {
-      case TIMESTAMP -> {
-        String format = serde.timestampFormat(member, timestampDefault);
-        if (format.equals("smithy::TimestampFormat::kDateTime")) {
-          // Servers reject RFC3339 UTC offsets in text positions (clients must
-          // accept them in responses, so Timestamp::Parse itself stays lenient).
-          w.write(
-              "if ($L.empty() || ($L.back() != 'Z' && $L.back() != 'z')) return "
-                  + "smithy::Error::Serialization(\"expected a Z-terminated date-time\");",
-              valueExpr,
-              valueExpr,
-              valueExpr);
-        }
-        w.write("auto parsed_ts = smithy::Timestamp::Parse($L, $L);", valueExpr, format);
-        w.write("if (!parsed_ts) return std::move(parsed_ts).error();");
-        w.write("$L*std::move(parsed_ts)$L", open, close);
-      }
-      case STRING -> w.write("$L$L$L", open, valueExpr, close);
-      case ENUM ->
-          w.write(
-              "$L$L::FromString($L)$L",
-              open,
-              context.cppSymbols().toSymbol(target).getName(),
-              valueExpr,
-              close);
-      case BYTE, SHORT, INTEGER, LONG, INT_ENUM -> {
-        w.write(
-            "auto parsed_num = ParseInt64Text($L, $L);",
-            valueExpr,
-            ProtocolSupport.int64Bounds(target.getType()));
-        w.write("if (!parsed_num) return std::move(parsed_num).error();");
-        w.write(
-            "$Lstatic_cast<$L>(*parsed_num)$L",
-            open,
-            context.cppSymbols().toSymbol(target).getName(),
-            close);
-      }
-      case FLOAT -> {
-        w.write("auto parsed_num = ParseDoubleText($L);", valueExpr);
-        w.write("if (!parsed_num) return std::move(parsed_num).error();");
-        w.write("$Lstatic_cast<float>(*parsed_num)$L", open, close);
-      }
-      case DOUBLE -> {
-        w.write("auto parsed_num = ParseDoubleText($L);", valueExpr);
-        w.write("if (!parsed_num) return std::move(parsed_num).error();");
-        w.write("$L*parsed_num$L", open, close);
-      }
-      case BOOLEAN -> {
-        w.write(
-            "if ($L != \"true\" && $L != \"false\") return "
-                + "smithy::Error::Serialization(\"expected a boolean, got: \" + $L);",
-            valueExpr,
-            valueExpr,
-            valueExpr);
-        w.write("$L($L == \"true\")$L", open, valueExpr, close);
-      }
-      default ->
-          throw new CodegenException(
-              "cpp-codegen: label/query binding target " + target.getId() + " is not supported");
-    }
-  }
-
   /** Emits Serialize<Op>Response(output) (inverse of the client response handling). */
   private void writeSerializeResponseFunction(
       CppWriter w, CppContext context, SerdeCodeGen serde, OperationShape operation) {
@@ -423,28 +324,13 @@ final class HttpJsonServerGenerator {
     StructureShape output = ProtocolSupport.outputShape(context, operation);
     String outputType = context.cppSymbols().toSymbol(output).getName();
     String opName = CppReservedWords.escape(operation.getId().getName());
-
-    Map<String, HttpBinding> responseHeaders = new TreeMap<>();
-    List<HttpBinding> responseBody = new java.util.ArrayList<>();
-    HttpBinding responseCode = null;
-    HttpBinding responsePayload = null;
-    HttpBinding responsePrefixHeaders = null;
-    for (HttpBinding binding : index.getResponseBindings(operation).values()) {
-      switch (binding.getLocation()) {
-        case DOCUMENT -> responseBody.add(binding);
-        case RESPONSE_CODE -> responseCode = binding;
-        case PAYLOAD -> responsePayload = binding;
-        case PREFIX_HEADERS -> responsePrefixHeaders = binding;
-        case HEADER -> responseHeaders.put(binding.getLocationName(), binding);
-        default ->
-            throw new CodegenException(
-                "cpp-codegen: HTTP+JSON server output binding "
-                    + binding.getLocation()
-                    + " is not supported yet ("
-                    + operation.getId()
-                    + ")");
-      }
-    }
+    HttpBindingCodeGen.ResponseBindings resp =
+        HttpBindingCodeGen.ResponseBindings.of(index, operation);
+    Map<String, HttpBinding> responseHeaders = resp.headers();
+    List<HttpBinding> responseBody = resp.body();
+    HttpBinding responseCode = resp.responseCode();
+    HttpBinding responsePayload = resp.payload();
+    HttpBinding responsePrefixHeaders = resp.prefixHeaders();
 
     w.openBlock(
         "smithy::http::HttpResponse Serialize$LResponse(const $L& output) {", opName, outputType);
@@ -485,25 +371,7 @@ final class HttpJsonServerGenerator {
     }
     // restJson1 servers always produce a JSON body (at minimum "{}").
     w.write("smithy::DocumentMap body_map;");
-    for (HttpBinding binding : responseBody) {
-      MemberShape member = binding.getMember();
-      String field = "output." + context.cppSymbols().toMemberName(member);
-      String wireName =
-          member
-              .getTrait(software.amazon.smithy.model.traits.JsonNameTrait.class)
-              .map(software.amazon.smithy.model.traits.JsonNameTrait::getValue)
-              .orElse(member.getMemberName());
-      if (MemberDefaults.plain(context.model(), member)) {
-        w.write("body_map.emplace($S, $L);", wireName, serde.serializeExpression(member, field));
-      } else {
-        w.openBlock("if ($L.has_value()) {", field);
-        w.write(
-            "body_map.emplace($S, $L);",
-            wireName,
-            serde.serializeExpression(member, "(*" + field + ")"));
-        w.closeBlock("}");
-      }
-    }
+    HttpBindingCodeGen.writeDocumentBodyMap(w, context, serde, responseBody, "output");
     w.write("response.headers.Set(\"content-type\", \"application/json\");");
     w.write("response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));");
     w.write("return response;");
@@ -529,15 +397,14 @@ final class HttpJsonServerGenerator {
       pattern.append('/');
     }
     HttpBindingIndex bindingIndex = HttpBindingIndex.of(context.model());
-    boolean hasResponseContent =
-        bindingIndex.getResponseBindings(operation).values().stream()
-            .anyMatch(
-                b ->
-                    b.getLocation() == HttpBinding.Location.DOCUMENT
-                        || b.getLocation() == HttpBinding.Location.PAYLOAD);
+    HttpBindingCodeGen.RequestBindings req =
+        HttpBindingCodeGen.RequestBindings.of(bindingIndex, operation);
+    HttpBindingCodeGen.ResponseBindings resp =
+        HttpBindingCodeGen.ResponseBindings.of(bindingIndex, operation);
+    boolean hasResponseContent = !resp.body().isEmpty() || resp.payload() != null;
     boolean compressed =
         operation
-            .getTrait(software.amazon.smithy.model.traits.RequestCompressionTrait.class)
+            .getTrait(RequestCompressionTrait.class)
             .map(t -> t.getEncodings().contains("gzip"))
             .orElse(false);
     w.openBlock(
@@ -554,7 +421,7 @@ final class HttpJsonServerGenerator {
     boolean noModeledInput =
         inputShape.getId().toString().equals("smithy.api#Unit")
             || inputShape
-                .getTrait(software.amazon.smithy.model.traits.synthetic.OriginalShapeIdTrait.class)
+                .getTrait(OriginalShapeIdTrait.class)
                 .map(t -> t.getOriginalId().toString().equals("smithy.api#Unit"))
                 .orElse(false);
     w.write("// Content-Type validation per the HTTP binding spec (415), then Accept (406);");
@@ -567,14 +434,11 @@ final class HttpJsonServerGenerator {
       writeErrorTypeHeader(w, "error_response", "UnsupportedMediaTypeException");
       w.write("return error_response;");
       w.closeBlock("}");
-    } else if (!HttpBindingCodeGen.lenientPayload(
-        context, bindingIndex, operation, /* response= */ false)) {
+    } else if (!HttpBindingCodeGen.lenientPayload(context, operation, /* response= */ false)) {
       String requestContentType =
           HttpBindingCodeGen.payloadContentType(context, operation, /* isRequest= */ true);
       String expected = requestContentType.isEmpty() ? "application/json" : requestContentType;
-      boolean hasRequestPayload =
-          bindingIndex.getRequestBindings(operation).values().stream()
-              .anyMatch(b -> b.getLocation() == HttpBinding.Location.PAYLOAD);
+      boolean hasRequestPayload = req.payload() != null;
       // Payload-bound requests additionally require a content-type once a body
       // is present; document bodies tolerate a missing header (the server-mode
       // httpRequestTests pin that leniency).
@@ -594,8 +458,7 @@ final class HttpJsonServerGenerator {
       w.closeBlock("}");
     }
     if (hasResponseContent
-        && !HttpBindingCodeGen.lenientPayload(
-            context, bindingIndex, operation, /* response= */ true)) {
+        && !HttpBindingCodeGen.lenientPayload(context, operation, /* response= */ true)) {
       String determined =
           HttpBindingCodeGen.payloadContentType(context, operation, /* isRequest= */ false);
       String responseContentType = determined.isEmpty() ? "application/json" : determined;
@@ -616,7 +479,7 @@ final class HttpJsonServerGenerator {
               + "return ValidationErrorResponse(validation_failures);");
     }
     w.write("if (!input) return ErrorToResponse(input.error());");
-    if (validation != null && validation.validates(operation)) {
+    if (validation.validates(operation)) {
       w.write("$L(*input, \"\", &validation_failures);", validation.validatorNameFor(operation));
       w.write(
           "if (!validation_failures.empty()) "

@@ -1,26 +1,117 @@
 package io.smithycpp.codegen;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import software.amazon.smithy.codegen.core.CodegenException;
 import software.amazon.smithy.model.knowledge.HttpBinding;
 import software.amazon.smithy.model.knowledge.HttpBindingIndex;
 import software.amazon.smithy.model.shapes.MemberShape;
 import software.amazon.smithy.model.shapes.OperationShape;
 import software.amazon.smithy.model.shapes.Shape;
+import software.amazon.smithy.model.shapes.ShapeType;
+import software.amazon.smithy.model.traits.JsonNameTrait;
+import software.amazon.smithy.model.traits.MediaTypeTrait;
 
 /**
  * HTTP-binding emission shared by the client and server halves of the HTTP+JSON protocol (companion
- * to {@link SerdeCodeGen}, which owns the document-body expressions): @httpHeader
- * and @httpPrefixHeaders read/write, @httpPayload read/write, and the payload content-type
- * predicates. Each read/write pair is its own wire inverse — the client writes what the server
- * reads and vice versa — which is why both halves share these emitters.
+ * to {@link SerdeCodeGen}, which owns the document-body expressions): binding partitioning,
+ * the @jsonName wire key, @httpHeader and @httpPrefixHeaders read/write, @httpPayload read/write,
+ * text-position value parsing, and the payload content-type predicates. Each read/write pair is its
+ * own wire inverse — the client writes what the server reads and vice versa — which is why both
+ * halves share these emitters.
  */
 final class HttpBindingCodeGen {
 
   private HttpBindingCodeGen() {}
 
+  /** The JSON document key for a member: @jsonName wins over the member name (HTTP+JSON). */
+  static String wireName(MemberShape member) {
+    return member
+        .getTrait(JsonNameTrait.class)
+        .map(JsonNameTrait::getValue)
+        .orElse(member.getMemberName());
+  }
+
+  /** An operation's request bindings partitioned by location (maps sorted by location name). */
+  record RequestBindings(
+      Map<String, HttpBinding> labels,
+      Map<String, HttpBinding> queries,
+      Map<String, HttpBinding> headers,
+      List<HttpBinding> body,
+      HttpBinding queryParams,
+      HttpBinding payload,
+      HttpBinding prefixHeaders) {
+
+    static RequestBindings of(HttpBindingIndex index, OperationShape operation) {
+      Map<String, HttpBinding> labels = new TreeMap<>();
+      Map<String, HttpBinding> queries = new TreeMap<>();
+      Map<String, HttpBinding> headers = new TreeMap<>();
+      List<HttpBinding> body = new ArrayList<>();
+      HttpBinding queryParams = null;
+      HttpBinding payload = null;
+      HttpBinding prefixHeaders = null;
+      for (HttpBinding binding : index.getRequestBindings(operation).values()) {
+        switch (binding.getLocation()) {
+          case LABEL -> labels.put(binding.getLocationName(), binding);
+          case QUERY -> queries.put(binding.getLocationName(), binding);
+          case QUERY_PARAMS -> queryParams = binding;
+          case HEADER -> headers.put(binding.getLocationName(), binding);
+          case DOCUMENT -> body.add(binding);
+          case PAYLOAD -> payload = binding;
+          case PREFIX_HEADERS -> prefixHeaders = binding;
+          default ->
+              throw new CodegenException(
+                  "cpp-codegen: HTTP+JSON request binding "
+                      + binding.getLocation()
+                      + " is not supported yet ("
+                      + operation.getId()
+                      + ")");
+        }
+      }
+      return new RequestBindings(
+          labels, queries, headers, body, queryParams, payload, prefixHeaders);
+    }
+  }
+
+  /** An operation's response bindings partitioned by location (headers sorted by name). */
+  record ResponseBindings(
+      Map<String, HttpBinding> headers,
+      List<HttpBinding> body,
+      HttpBinding responseCode,
+      HttpBinding payload,
+      HttpBinding prefixHeaders) {
+
+    static ResponseBindings of(HttpBindingIndex index, OperationShape operation) {
+      Map<String, HttpBinding> headers = new TreeMap<>();
+      List<HttpBinding> body = new ArrayList<>();
+      HttpBinding responseCode = null;
+      HttpBinding payload = null;
+      HttpBinding prefixHeaders = null;
+      for (HttpBinding binding : index.getResponseBindings(operation).values()) {
+        switch (binding.getLocation()) {
+          case DOCUMENT -> body.add(binding);
+          case RESPONSE_CODE -> responseCode = binding;
+          case PAYLOAD -> payload = binding;
+          case PREFIX_HEADERS -> prefixHeaders = binding;
+          case HEADER -> headers.put(binding.getLocationName(), binding);
+          default ->
+              throw new CodegenException(
+                  "cpp-codegen: HTTP+JSON response binding "
+                      + binding.getLocation()
+                      + " is not supported yet ("
+                      + operation.getId()
+                      + ")");
+        }
+      }
+      return new ResponseBindings(headers, body, responseCode, payload, prefixHeaders);
+    }
+  }
+
   /** Blob payloads without @mediaType accept any content type / accept header. */
-  static boolean lenientPayload(
-      CppContext context, HttpBindingIndex index, OperationShape operation, boolean response) {
+  static boolean lenientPayload(CppContext context, OperationShape operation, boolean response) {
+    HttpBindingIndex index = HttpBindingIndex.of(context.model());
     var bindings =
         response ? index.getResponseBindings(operation) : index.getRequestBindings(operation);
     return bindings.values().stream()
@@ -31,9 +122,8 @@ final class HttpBindingCodeGen {
               }
               Shape target = context.model().expectShape(b.getMember().getTarget());
               return target.isBlobShape()
-                  && !target.hasTrait(software.amazon.smithy.model.traits.MediaTypeTrait.class)
-                  && !b.getMember()
-                      .hasTrait(software.amazon.smithy.model.traits.MediaTypeTrait.class);
+                  && !target.hasTrait(MediaTypeTrait.class)
+                  && !b.getMember().hasTrait(MediaTypeTrait.class);
             });
   }
 
@@ -47,10 +137,34 @@ final class HttpBindingCodeGen {
     Shape target = context.model().expectShape(member.getTarget());
     return switch (target.getType()) {
       case STRING, ENUM ->
-          !member.hasTrait(software.amazon.smithy.model.traits.MediaTypeTrait.class)
-              && !target.hasTrait(software.amazon.smithy.model.traits.MediaTypeTrait.class);
+          !member.hasTrait(MediaTypeTrait.class) && !target.hasTrait(MediaTypeTrait.class);
       default -> false;
     };
+  }
+
+  /**
+   * Writes each document-bound member of {@code owner} into an in-scope {@code body_map} (unset
+   * optionals are skipped). Shared by the client request body and the server response body.
+   */
+  static void writeDocumentBodyMap(
+      CppWriter w, CppContext context, SerdeCodeGen serde, List<HttpBinding> body, String owner) {
+    for (HttpBinding binding : body) {
+      MemberShape member = binding.getMember();
+      String field = owner + "." + context.cppSymbols().toMemberName(member);
+      if (MemberDefaults.plain(context.model(), member)) {
+        w.write(
+            "body_map.emplace($S, $L);",
+            wireName(member),
+            serde.serializeExpression(member, field));
+      } else {
+        w.openBlock("if ($L.has_value()) {", field);
+        w.write(
+            "body_map.emplace($S, $L);",
+            wireName(member),
+            serde.serializeExpression(member, "(*" + field + ")"));
+        w.closeBlock("}");
+      }
+    }
   }
 
   /** The message's content type when an @httpPayload member is bound (media-type aware). */
@@ -90,15 +204,7 @@ final class HttpBindingCodeGen {
     String field = in + "." + context.cppSymbols().toMemberName(member);
     boolean optional = !MemberDefaults.plain(context.model(), member);
     String value = optional ? "(*" + field + ")" : field;
-    String contentType =
-        "if (!"
-            + messageVar
-            + ".headers.Get(\"content-type\").has_value()) "
-            + messageVar
-            + ".headers.Set(\"content-type\", "
-            + CppLiterals.stringLiteral(payloadContentType(context, operation, isRequest))
-            + ");";
-    boolean structure = target.getType() == software.amazon.smithy.model.shapes.ShapeType.STRUCTURE;
+    boolean structure = target.getType() == ShapeType.STRUCTURE;
     if (optional && !structure) {
       w.openBlock("if ($L.has_value()) {", field);
     }
@@ -141,7 +247,11 @@ final class HttpBindingCodeGen {
                 serde.serializeExpression(member, value));
       }
     }
-    w.write("$L", contentType);
+    w.write(
+        "if (!$L.headers.Get(\"content-type\").has_value()) $L.headers.Set(\"content-type\", $L);",
+        messageVar,
+        messageVar,
+        CppLiterals.stringLiteral(payloadContentType(context, operation, isRequest)));
     if (optional && !structure) {
       w.closeBlock("}");
     }
@@ -205,8 +315,7 @@ final class HttpBindingCodeGen {
         w.write("auto payload_doc = smithy::json::Decode($L);", bodyExpr);
         w.write("if (!payload_doc) return std::move(payload_doc).error();");
         w.write("const smithy::Document* payload_ptr = &*payload_doc;");
-        boolean structure =
-            target.getType() == software.amazon.smithy.model.shapes.ShapeType.STRUCTURE;
+        boolean structure = target.getType() == ShapeType.STRUCTURE;
         if (member.isRequired()) {
           serde.writeDeserializeInto(w, member, "payload_ptr", field, path);
         } else {
@@ -307,44 +416,41 @@ final class HttpBindingCodeGen {
               : "SplitHeaderListValues";
       w.openBlock("for (const std::string& part : smithy::http::$L(*header_value)) {", splitter);
       writeParsedHeaderValue(
-          w,
-          context,
-          serde,
-          element,
-          "part",
-          "items.push_back",
-          serde.timestampFormat(element, "smithy::TimestampFormat::kHttpDate"));
+          w, context, element, "part", "items.push_back", /* push= */ true, tsFormat);
       w.closeBlock("}");
       w.write("$L = std::move(items);", field);
     } else {
       writeParsedHeaderValue(
           w,
           context,
-          serde,
           member,
           "(*header_value)",
-          field + " = ",
+          field,
+          /* push= */ false,
           serde.timestampFormat(member, "smithy::TimestampFormat::kHttpDate"));
     }
     w.closeBlock("}");
   }
 
   /**
-   * Emits `<sink>(parsed)` / `<sink> parsed;` for one header text value. Timestamps and media-type
-   * strings parse through Outcomes, so those emit a statement pair instead of one expression.
+   * Emits `<sink>(parsed)` / `<sink> = parsed;` for one header text value. Timestamps and
+   * media-type strings parse through Outcomes, so those emit a statement pair instead of one
+   * expression.
    */
   private static void writeParsedHeaderValue(
       CppWriter w,
       CppContext context,
-      SerdeCodeGen serde,
       MemberShape member,
       String valueExpr,
       String sink,
+      boolean push,
       String timestampFormat) {
     Shape target = context.model().expectShape(member.getTarget());
-    boolean call = !sink.endsWith("= ");
-    String open = call ? sink + "(" : sink;
-    String close = call ? ");" : ";";
+    String open = push ? sink + "(" : sink + " = ";
+    String close = push ? ");" : ";";
+    if (writeSimpleTextParse(w, context, target, valueExpr, open, close)) {
+      return;
+    }
     switch (target.getType()) {
       case TIMESTAMP -> {
         w.write("auto parsed_ts = smithy::Timestamp::Parse($L, $L);", valueExpr, timestampFormat);
@@ -352,7 +458,7 @@ final class HttpBindingCodeGen {
         w.write("$L*std::move(parsed_ts)$L", open, close);
       }
       case STRING -> {
-        if (target.hasTrait(software.amazon.smithy.model.traits.MediaTypeTrait.class)) {
+        if (target.hasTrait(MediaTypeTrait.class)) {
           // restJson1: string headers with @mediaType are base64 encoded.
           w.write("auto decoded = smithy::Base64Decode($L);", valueExpr);
           w.write("if (!decoded) return std::move(decoded).error();");
@@ -361,6 +467,66 @@ final class HttpBindingCodeGen {
           w.write("$L$L$L", open, valueExpr, close);
         }
       }
+      default ->
+          throw new CodegenException(
+              "cpp-codegen: @httpHeader target " + target.getId() + " is not supported yet");
+    }
+  }
+
+  /**
+   * Emits statements converting a decoded text {@code valueExpr} in a label or query position into
+   * {@code sink} (assignment target, or a push_back callee when {@code push}). Differs from the
+   * header read only in timestamp strictness (servers reject non-Z RFC3339 offsets in text
+   * positions) and string handling (no @mediaType base64 in labels/queries). Runs inside an
+   * Outcome-returning function.
+   */
+  static void writeTextValueInto(
+      CppWriter w,
+      CppContext context,
+      SerdeCodeGen serde,
+      MemberShape member,
+      String valueExpr,
+      String sink,
+      String timestampDefault,
+      boolean push) {
+    Shape target = context.model().expectShape(member.getTarget());
+    String open = push ? sink + "(" : sink + " = ";
+    String close = push ? ");" : ";";
+    if (writeSimpleTextParse(w, context, target, valueExpr, open, close)) {
+      return;
+    }
+    switch (target.getType()) {
+      case TIMESTAMP -> {
+        String format = serde.timestampFormat(member, timestampDefault);
+        if (format.equals("smithy::TimestampFormat::kDateTime")) {
+          // Servers reject RFC3339 UTC offsets in text positions (clients must
+          // accept them in responses, so Timestamp::Parse itself stays lenient).
+          w.write(
+              "if ($L.empty() || ($L.back() != 'Z' && $L.back() != 'z')) return "
+                  + "smithy::Error::Serialization(\"expected a Z-terminated date-time\");",
+              valueExpr,
+              valueExpr,
+              valueExpr);
+        }
+        w.write("auto parsed_ts = smithy::Timestamp::Parse($L, $L);", valueExpr, format);
+        w.write("if (!parsed_ts) return std::move(parsed_ts).error();");
+        w.write("$L*std::move(parsed_ts)$L", open, close);
+      }
+      case STRING -> w.write("$L$L$L", open, valueExpr, close);
+      default ->
+          throw new CodegenException(
+              "cpp-codegen: label/query binding target " + target.getId() + " is not supported");
+    }
+  }
+
+  /**
+   * Emits the parse of one text-position value for the simple types whose emission is identical in
+   * header, label, and query positions. Returns false for the position-dependent types (timestamps,
+   * strings) so the caller supplies its own handling.
+   */
+  private static boolean writeSimpleTextParse(
+      CppWriter w, CppContext context, Shape target, String valueExpr, String open, String close) {
+    switch (target.getType()) {
       case ENUM ->
           w.write(
               "$L$L::FromString($L)$L",
@@ -399,12 +565,11 @@ final class HttpBindingCodeGen {
             valueExpr);
         w.write("$L($L == \"true\")$L", open, valueExpr, close);
       }
-      default ->
-          throw new CodegenException(
-              "cpp-codegen: response @httpHeader target "
-                  + target.getId()
-                  + " is not supported yet");
+      default -> {
+        return false;
+      }
     }
+    return true;
   }
 
   /** Writes one @httpHeader binding from {@code owner}.<member> into {@code headersExpr}. */
@@ -447,8 +612,7 @@ final class HttpBindingCodeGen {
               member,
               access,
               serde.timestampFormat(member, "smithy::TimestampFormat::kHttpDate"));
-      if (target.isStringShape()
-          && target.hasTrait(software.amazon.smithy.model.traits.MediaTypeTrait.class)) {
+      if (target.isStringShape() && target.hasTrait(MediaTypeTrait.class)) {
         // restJson1: string headers with @mediaType are base64 encoded.
         expr = "smithy::Base64Encode(smithy::Blob::FromString(" + expr + "))";
       }

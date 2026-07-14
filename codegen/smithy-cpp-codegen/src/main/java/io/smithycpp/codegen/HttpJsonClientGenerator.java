@@ -13,6 +13,7 @@ import software.amazon.smithy.model.shapes.ServiceShape;
 import software.amazon.smithy.model.shapes.Shape;
 import software.amazon.smithy.model.shapes.StructureShape;
 import software.amazon.smithy.model.traits.HttpTrait;
+import software.amazon.smithy.model.traits.MediaTypeTrait;
 
 /**
  * The client half of the HTTP+JSON protocol: one operation-method body per operation — request
@@ -43,7 +44,7 @@ final class HttpJsonClientGenerator {
         "<limits>");
   }
 
-  void writeHelpers(CppWriter w, CppContext context) {
+  void writeHelpers(CppWriter w) {
     ProtocolSupport.writeErrorSupport(
         w, "auto doc = smithy::json::Decode(response.body);", errorTypeHeaderName);
     ProtocolSupport.writeNumericParseHelpers(w);
@@ -62,7 +63,7 @@ final class HttpJsonClientGenerator {
       // any affected conformance cases.
       switch (target.getType()) {
         case STRING -> {
-          if (target.hasTrait(software.amazon.smithy.model.traits.MediaTypeTrait.class)) {
+          if (target.hasTrait(MediaTypeTrait.class)) {
             continue;
           }
         }
@@ -72,11 +73,7 @@ final class HttpJsonClientGenerator {
         }
       }
       // The document key is what the serde reads: @jsonName wins over the name.
-      String wireName =
-          member
-              .getTrait(software.amazon.smithy.model.traits.JsonNameTrait.class)
-              .map(software.amazon.smithy.model.traits.JsonNameTrait::getValue)
-              .orElse(member.getMemberName());
+      String wireName = HttpBindingCodeGen.wireName(member);
       w.openBlock(
           "if (const auto header_value = response.headers.Get($S); header_value.has_value()) {",
           binding.getLocationName());
@@ -128,53 +125,22 @@ final class HttpJsonClientGenerator {
     StructureShape input = ProtocolSupport.inputShape(context, operation);
     StructureShape output = ProtocolSupport.outputShape(context, operation);
     SerdeCodeGen serde = new SerdeCodeGen(context);
-
-    Map<String, HttpBinding> labels = new TreeMap<>();
-    Map<String, HttpBinding> queries = new TreeMap<>();
-    Map<String, HttpBinding> headers = new TreeMap<>();
-    List<HttpBinding> body = new java.util.ArrayList<>();
-    HttpBinding queryParams = null;
-    HttpBinding payload = null;
-    HttpBinding prefixHeaders = null;
-    for (HttpBinding binding : index.getRequestBindings(operation).values()) {
-      switch (binding.getLocation()) {
-        case LABEL -> labels.put(binding.getLocationName(), binding);
-        case QUERY -> queries.put(binding.getLocationName(), binding);
-        case QUERY_PARAMS -> queryParams = binding;
-        case HEADER -> headers.put(binding.getLocationName(), binding);
-        case DOCUMENT -> body.add(binding);
-        case PAYLOAD -> payload = binding;
-        case PREFIX_HEADERS -> prefixHeaders = binding;
-        default ->
-            throw new CodegenException(
-                "cpp-codegen: HTTP+JSON input binding "
-                    + binding.getLocation()
-                    + " is not supported yet ("
-                    + operation.getId()
-                    + ")");
-      }
-    }
-    Map<String, HttpBinding> responseHeaders = new TreeMap<>();
-    List<HttpBinding> responseBody = new java.util.ArrayList<>();
-    HttpBinding responseCode = null;
-    HttpBinding responsePayload = null;
-    HttpBinding responsePrefixHeaders = null;
-    for (HttpBinding binding : index.getResponseBindings(operation).values()) {
-      switch (binding.getLocation()) {
-        case DOCUMENT -> responseBody.add(binding);
-        case RESPONSE_CODE -> responseCode = binding;
-        case PAYLOAD -> responsePayload = binding;
-        case PREFIX_HEADERS -> responsePrefixHeaders = binding;
-        case HEADER -> responseHeaders.put(binding.getLocationName(), binding);
-        default ->
-            throw new CodegenException(
-                "cpp-codegen: HTTP+JSON output binding "
-                    + binding.getLocation()
-                    + " is not supported yet ("
-                    + operation.getId()
-                    + ")");
-      }
-    }
+    HttpBindingCodeGen.RequestBindings req =
+        HttpBindingCodeGen.RequestBindings.of(index, operation);
+    HttpBindingCodeGen.ResponseBindings resp =
+        HttpBindingCodeGen.ResponseBindings.of(index, operation);
+    Map<String, HttpBinding> labels = req.labels();
+    Map<String, HttpBinding> queries = req.queries();
+    Map<String, HttpBinding> headers = req.headers();
+    List<HttpBinding> body = req.body();
+    HttpBinding queryParams = req.queryParams();
+    HttpBinding payload = req.payload();
+    HttpBinding prefixHeaders = req.prefixHeaders();
+    Map<String, HttpBinding> responseHeaders = resp.headers();
+    List<HttpBinding> responseBody = resp.body();
+    HttpBinding responseCode = resp.responseCode();
+    HttpBinding responsePayload = resp.payload();
+    HttpBinding responsePrefixHeaders = resp.prefixHeaders();
 
     String in =
         ProtocolSupport.prepareIdempotencyTokens(
@@ -241,25 +207,7 @@ final class HttpJsonClientGenerator {
           w, context, serde, operation, payload, in, "request", true);
     } else if (!body.isEmpty()) {
       w.write("smithy::DocumentMap body_map;");
-      for (HttpBinding binding : body) {
-        MemberShape member = binding.getMember();
-        String field = in + "." + context.cppSymbols().toMemberName(member);
-        String wireName =
-            member
-                .getTrait(software.amazon.smithy.model.traits.JsonNameTrait.class)
-                .map(software.amazon.smithy.model.traits.JsonNameTrait::getValue)
-                .orElse(member.getMemberName());
-        if (MemberDefaults.plain(context.model(), member)) {
-          w.write("body_map.emplace($S, $L);", wireName, serde.serializeExpression(member, field));
-        } else {
-          w.openBlock("if ($L.has_value()) {", field);
-          w.write(
-              "body_map.emplace($S, $L);",
-              wireName,
-              serde.serializeExpression(member, "(*" + field + ")"));
-          w.closeBlock("}");
-        }
-      }
+      HttpBindingCodeGen.writeDocumentBodyMap(w, context, serde, body, in);
       w.write("request.body = smithy::json::Encode(smithy::Document(std::move(body_map)));");
       w.write("request.headers.Set(\"content-type\", \"application/json\");");
     }
@@ -337,11 +285,7 @@ final class HttpJsonClientGenerator {
           CppReservedWords.escape(operation.getId().getName()) + ": expected a JSON object body");
       for (HttpBinding binding : responseBody) {
         MemberShape member = binding.getMember();
-        String wireName =
-            member
-                .getTrait(software.amazon.smithy.model.traits.JsonNameTrait.class)
-                .map(software.amazon.smithy.model.traits.JsonNameTrait::getValue)
-                .orElse(member.getMemberName());
+        String wireName = HttpBindingCodeGen.wireName(member);
         String field = "out." + context.cppSymbols().toMemberName(member);
         String path = outType + "." + member.getMemberName();
         w.openBlock("{");

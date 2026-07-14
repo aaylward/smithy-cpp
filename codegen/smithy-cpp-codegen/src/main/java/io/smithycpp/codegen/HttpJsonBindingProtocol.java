@@ -83,7 +83,7 @@ final class HttpJsonBindingProtocol implements ProtocolGenerator {
 
   @Override
   public void writeClientHelpers(CppWriter w, CppContext context) {
-    client.writeHelpers(w, context);
+    client.writeHelpers(w);
   }
 
   @Override

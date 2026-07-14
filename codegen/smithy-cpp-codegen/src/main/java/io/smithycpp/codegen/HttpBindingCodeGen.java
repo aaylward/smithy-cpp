@@ -154,25 +154,20 @@ final class HttpBindingCodeGen {
    * optionals are skipped). Shared by the client request body and the server response body.
    */
   static void writeDocumentBodyMap(
-      CppWriter w,
-      CppContext context,
-      SerdeCodeGen serde,
-      List<HttpBinding> body,
-      String owner,
-      boolean useJsonName) {
+      CppWriter w, CppContext context, SerdeCodeGen serde, List<HttpBinding> body, String owner) {
     for (HttpBinding binding : body) {
       MemberShape member = binding.getMember();
       String field = owner + "." + context.cppSymbols().toMemberName(member);
       if (MemberDefaults.plain(context.model(), member)) {
         w.write(
             "body_map.emplace($S, $L);",
-            wireName(member, useJsonName),
+            serde.wireName(member),
             serde.serializeExpression(member, field));
       } else {
         w.openBlock("if ($L.has_value()) {", field);
         w.write(
             "body_map.emplace($S, $L);",
-            wireName(member, useJsonName),
+            serde.wireName(member),
             serde.serializeExpression(member, "(*" + field + ")"));
         w.closeBlock("}");
       }
@@ -304,7 +299,6 @@ final class HttpBindingCodeGen {
       String targetPrefix,
       String structType,
       String opName,
-      boolean useJsonName,
       RequiredAbsentEmitter requiredAbsent) {
     w.write("auto body_doc = smithy::json::Decode($L.empty() ? \"{}\" : $L);", bodyExpr, bodyExpr);
     w.write("if (!body_doc) return std::move(body_doc).error();");
@@ -316,8 +310,7 @@ final class HttpBindingCodeGen {
       String field = targetPrefix + context.cppSymbols().toMemberName(member);
       String path = structType + "." + member.getMemberName();
       w.openBlock("{");
-      w.write(
-          "const smithy::Document* member = body_doc->Find($S);", wireName(member, useJsonName));
+      w.write("const smithy::Document* member = body_doc->Find($S);", serde.wireName(member));
       if (MemberDefaults.lenientRequired(context.model(), member)) {
         // @required + @default: absence keeps the default initializer.
         w.openBlock("if (member != nullptr && !member->is_null()) {");

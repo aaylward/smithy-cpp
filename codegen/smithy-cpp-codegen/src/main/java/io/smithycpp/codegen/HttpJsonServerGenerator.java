@@ -64,7 +64,7 @@ final class HttpJsonServerGenerator {
 
   void writeHelpers(
       CppWriter w, CppContext context, ServiceShape service, List<OperationShape> operations) {
-    SerdeCodeGen serde = new SerdeCodeGen(context);
+    SerdeCodeGen serde = new SerdeCodeGen(context, useJsonName);
     ProtocolSupport.writeNumericParseHelpers(w);
     ProtocolSupport.writeErrorBodyHelper(
         w,
@@ -85,7 +85,7 @@ final class HttpJsonServerGenerator {
     emitsValidation = validation.wiringEmitted();
     for (OperationShape operation : operations) {
       writeParseInputFunction(w, context, serde, operation);
-      writeSerializeResponseFunction(w, context, serde, operation);
+      writeBuildResponseFunction(w, context, serde, operation);
     }
   }
 
@@ -257,7 +257,6 @@ final class HttpJsonServerGenerator {
           "input.",
           inputType,
           opName,
-          useJsonName,
           (w2, member, deserializeMember) -> {
             // Servers record the absence and keep parsing, so one response
             // carries every validation failure.
@@ -303,7 +302,7 @@ final class HttpJsonServerGenerator {
    * Serialize: the serde functions own the Serialize/Deserialize<Shape> namespace, and a same-named
    * file-local helper would hide them for shapes named <Op>Response.
    */
-  private void writeSerializeResponseFunction(
+  private void writeBuildResponseFunction(
       CppWriter w, CppContext context, SerdeCodeGen serde, OperationShape operation) {
     HttpBindingIndex index = HttpBindingIndex.of(context.model());
     HttpTrait http = operation.expectTrait(HttpTrait.class);
@@ -357,7 +356,7 @@ final class HttpJsonServerGenerator {
     }
     // restJson1 servers always produce a JSON body (at minimum "{}").
     w.write("smithy::DocumentMap body_map;");
-    HttpBindingCodeGen.writeDocumentBodyMap(w, context, serde, responseBody, "output", useJsonName);
+    HttpBindingCodeGen.writeDocumentBodyMap(w, context, serde, responseBody, "output");
     w.write("response.headers.Set(\"content-type\", \"application/json\");");
     w.write("response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));");
     w.write("return response;");

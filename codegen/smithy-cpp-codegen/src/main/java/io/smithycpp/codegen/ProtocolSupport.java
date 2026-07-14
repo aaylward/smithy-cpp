@@ -552,11 +552,11 @@ final class ProtocolSupport {
 
   /**
    * Emits Make&lt;Error&gt;Error for every error shape any operation declares (typed detail via the
-   * shape's serde, @retryable honored) plus a Deserialize&lt;Op&gt;Error dispatcher per operation
-   * that has errors. Must run inside the client source's anonymous namespace, after {@link
+   * shape's serde, @retryable honored) plus a Parse&lt;Op&gt;Error dispatcher per operation that
+   * has errors. Must run inside the client source's anonymous namespace, after {@link
    * #writeErrorSupport}.
    */
-  static void writeOperationErrorDeserializers(
+  static void writeOperationErrorParsers(
       CppWriter w,
       CppContext context,
       ServiceShape service,
@@ -620,8 +620,8 @@ final class ProtocolSupport {
       // Serialize/Deserialize<Shape> namespace, and a same-named file-local
       // helper would hide them (C++ name hiding) for shapes named <Op>Error.
       w.openBlock(
-          "smithy::Error Parse$LError(const smithy::http::HttpResponse& response) {",
-          CppReservedWords.escape(operation.getId().getName()));
+          "smithy::Error $L(const smithy::http::HttpResponse& response) {",
+          parseErrorFunction(operation));
       w.write("ParsedError parsed = ParseError(response);");
       for (Map.Entry<String, StructureShape> entry : sorted.entrySet()) {
         w.write(
@@ -656,12 +656,17 @@ final class ProtocolSupport {
     }
   }
 
+  /** The one derivation of the Parse<Op>Error helper name (definition and call sites). */
+  private static String parseErrorFunction(OperationShape operation) {
+    return "Parse" + CppReservedWords.escape(operation.getId().getName()) + "Error";
+  }
+
   /** The expression a protocol's operation body returns for a non-success response. */
   static String errorExpression(CppContext context, ServiceShape service, OperationShape op) {
     if (op.getErrors(service).isEmpty()) {
       return "GenericError(ParseError(*response))";
     }
-    return "Parse" + CppReservedWords.escape(op.getId().getName()) + "Error(*response)";
+    return parseErrorFunction(op) + "(*response)";
   }
 
   /**

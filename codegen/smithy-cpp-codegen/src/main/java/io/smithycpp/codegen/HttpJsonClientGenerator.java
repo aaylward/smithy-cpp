@@ -128,7 +128,7 @@ final class HttpJsonClientGenerator {
     HttpBindingIndex index = HttpBindingIndex.of(context.model());
     StructureShape input = ProtocolSupport.inputShape(context, operation);
     StructureShape output = ProtocolSupport.outputShape(context, operation);
-    SerdeCodeGen serde = new SerdeCodeGen(context);
+    SerdeCodeGen serde = new SerdeCodeGen(context, useJsonName);
     HttpBindingCodeGen.RequestBindings req =
         HttpBindingCodeGen.RequestBindings.of(index, operation);
     HttpBindingCodeGen.ResponseBindings resp =
@@ -211,7 +211,7 @@ final class HttpJsonClientGenerator {
           w, context, serde, operation, payload, in, "request", true);
     } else if (!body.isEmpty()) {
       w.write("smithy::DocumentMap body_map;");
-      HttpBindingCodeGen.writeDocumentBodyMap(w, context, serde, body, in, useJsonName);
+      HttpBindingCodeGen.writeDocumentBodyMap(w, context, serde, body, in);
       w.write("request.body = smithy::json::Encode(smithy::Document(std::move(body_map)));");
       w.write("request.headers.Set(\"content-type\", \"application/json\");");
     }
@@ -288,7 +288,6 @@ final class HttpJsonClientGenerator {
           "out.",
           outType,
           CppReservedWords.escape(operation.getId().getName()),
-          useJsonName,
           (w2, member, deserializeMember) -> {
             // Clients are strict: a missing required member fails the exchange.
             w2.write(

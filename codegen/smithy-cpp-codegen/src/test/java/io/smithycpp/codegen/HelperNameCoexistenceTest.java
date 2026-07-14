@@ -1,5 +1,6 @@
 package io.smithycpp.codegen;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
@@ -74,6 +75,29 @@ class HelperNameCoexistenceTest {
     MockManifest manifest = PluginTestHarness.generate(model, "test.coexist#Svc", "test::coexist");
     String server = manifest.expectFileString("/src/server.cc");
     assertTrue(server.contains("smithy::http::HttpResponse BuildGetResponse("), server);
-    assertTrue(server.contains("SerializeGetResponse("), server);
+    // The full call expression, not just the name — a regressed helper
+    // declaration would also contain "SerializeGetResponse(".
+    assertTrue(server.contains("SerializeGetResponse((*output.payload))"), server);
+  }
+
+  @Test
+  void errorLessOperationsSkipTheErrorParserAndFallBackToGenericError() {
+    // Parse<Op>Error only exists for operations that declare errors; an
+    // error-less operation's body returns GenericError(ParseError(...))
+    // directly (previously pinned by a guard-scoping test, now by output).
+    String model =
+        """
+        $version: "2.0"
+        namespace test.coexist
+        use smithy.cpp.protocols#jsonRpc2
+
+        @jsonRpc2
+        service Svc { version: "1", operations: [Get] }
+        operation Get { input := { name: String } }
+        """;
+    MockManifest manifest = PluginTestHarness.generate(model, "test.coexist#Svc", "test::coexist");
+    String client = manifest.expectFileString("/src/client.cc");
+    assertFalse(client.contains("ParseGetError"), client);
+    assertTrue(client.contains("GenericError(ParseError(*response))"), client);
   }
 }

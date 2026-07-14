@@ -261,12 +261,11 @@ final class ValidationGenerator {
     w.addInclude("<cstddef>");
     w.addInclude("<string>");
     w.addInclude("<vector>");
-    SerdeGenerator ordering = new SerdeGenerator(context, false);
     // Constrained shapes on recursion cycles validate mutually; declare those
     // validators up front so definition order doesn't matter.
     RecursionIndex recursion = context.cppSymbols().recursion();
     boolean declared = false;
-    for (Shape shape : ordering.serdeShapes()) {
+    for (Shape shape : SerdeGenerator.serdeShapes(context)) {
       if (!constrained.contains(shape.getId()) || !recursion.inCycle(shape.getId())) {
         continue;
       }
@@ -280,7 +279,7 @@ final class ValidationGenerator {
     if (declared) {
       w.write("");
     }
-    for (Shape shape : ordering.serdeShapes()) {
+    for (Shape shape : SerdeGenerator.serdeShapes(context)) {
       if (!constrained.contains(shape.getId())) {
         continue;
       }

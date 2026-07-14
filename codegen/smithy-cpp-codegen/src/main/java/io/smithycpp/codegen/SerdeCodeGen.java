@@ -15,8 +15,20 @@ final class SerdeCodeGen {
 
   private final CppContext context;
 
-  SerdeCodeGen(CppContext context) {
+  /** Whether the module's protocol honors @jsonName (ProtocolGenerator.usesJsonName). */
+  private final boolean useJsonName;
+
+  SerdeCodeGen(CppContext context, boolean useJsonName) {
     this.context = context;
+    this.useJsonName = useJsonName;
+  }
+
+  /**
+   * The JSON document key for a member. Riding on this instance keeps the serde functions and the
+   * binding emitters (which all take a SerdeCodeGen) on one policy by construction.
+   */
+  String wireName(MemberShape member) {
+    return HttpBindingCodeGen.wireName(member, useJsonName);
   }
 
   private Shape target(MemberShape member) {

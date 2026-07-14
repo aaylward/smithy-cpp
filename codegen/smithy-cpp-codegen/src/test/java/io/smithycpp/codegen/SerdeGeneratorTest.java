@@ -108,10 +108,10 @@ class SerdeGeneratorTest {
 
   @Test
   void hasSerdeFunctionsMatchesExactlyTheShapeKindsSerdeEmits() {
-    // The helper-name collision guard reuses this predicate, so its edges
-    // matter beyond serde itself: enums convert through FromString/ToString
-    // (no Serialize/Deserialize functions to hide), simple shapes inline,
-    // and smithy.api#Unit never crosses the wire.
+    // serdeShapes() selects by this predicate, so its edges decide exactly
+    // which shapes get Serialize/Deserialize functions in serde.cc: enums
+    // convert through FromString/ToString, simple shapes inline, and
+    // smithy.api#Unit never crosses the wire.
     Model model =
         Model.assembler()
             .addUnparsedModel(

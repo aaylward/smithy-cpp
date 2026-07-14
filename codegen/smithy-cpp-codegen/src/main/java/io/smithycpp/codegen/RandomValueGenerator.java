@@ -85,8 +85,7 @@ final class RandomValueGenerator {
 
   /** Emits Random<Shape> for every aggregate serde shape, in topological order. */
   void writeBuilders(CppWriter w) {
-    SerdeGenerator ordering = new SerdeGenerator(context, false);
-    for (Shape shape : ordering.serdeShapes()) {
+    for (Shape shape : SerdeGenerator.serdeShapes(context)) {
       writeBuilder(w, shape);
     }
   }

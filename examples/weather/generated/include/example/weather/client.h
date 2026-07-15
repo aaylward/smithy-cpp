@@ -2,13 +2,16 @@
 
 #pragma once
 
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 
 #include "example/weather/types.h"
 #include "smithy/client/config.h"
+#include "smithy/core/fatal.h"
 #include "smithy/core/outcome.h"
 #include "smithy/http/transport.h"
 
@@ -19,7 +22,8 @@ class ListCitiesPaginator;
 /// simpleRestJson client for example.weather#Weather.
 /// Modeled service errors surface as smithy::Error with kind kModeled,
 /// code() set to the error shape name, and the deserialized error
-/// structure attached: error.detail<TheErrorShape>().
+/// structure attached. Dispatch on them through the per-operation
+/// <Operation>Errors listings below rather than comparing code() text.
 class WeatherClient {
   public:
     /// Fails when the endpoint cannot be parsed and no transport is injected.
@@ -60,6 +64,180 @@ class ListCitiesPaginator {
     WeatherClient client_;
     ListCitiesInput input_;
     bool done_ = false;
+};
+
+/// The modeled errors of DeleteCity, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class DeleteCityErrors {
+  public:
+    DeleteCityErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static DeleteCityErrors FromError(const smithy::Error& error) {
+      DeleteCityErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "NoSuchResource") {
+        const auto* detail = error.detail<NoSuchResource>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : NoSuchResource{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_no_such_resource() const { return value_.index() == 1; }
+    const NoSuchResource& as_no_such_resource() const {
+      require_is(1, "no_such_resource");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const NoSuchResource* as_no_such_resource_or_null() const { return std::get_if<1>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "no_such_resource"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    friend bool operator==(const DeleteCityErrors&, const DeleteCityErrors&) = default;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("DeleteCityErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, NoSuchResource> value_;
+};
+
+/// The modeled errors of GetCity, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class GetCityErrors {
+  public:
+    GetCityErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static GetCityErrors FromError(const smithy::Error& error) {
+      GetCityErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "NoSuchResource") {
+        const auto* detail = error.detail<NoSuchResource>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : NoSuchResource{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_no_such_resource() const { return value_.index() == 1; }
+    const NoSuchResource& as_no_such_resource() const {
+      require_is(1, "no_such_resource");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const NoSuchResource* as_no_such_resource_or_null() const { return std::get_if<1>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "no_such_resource"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    friend bool operator==(const GetCityErrors&, const GetCityErrors&) = default;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("GetCityErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, NoSuchResource> value_;
+};
+
+/// The modeled errors of GetForecast, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class GetForecastErrors {
+  public:
+    GetForecastErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static GetForecastErrors FromError(const smithy::Error& error) {
+      GetForecastErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "NoSuchResource") {
+        const auto* detail = error.detail<NoSuchResource>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : NoSuchResource{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_no_such_resource() const { return value_.index() == 1; }
+    const NoSuchResource& as_no_such_resource() const {
+      require_is(1, "no_such_resource");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const NoSuchResource* as_no_such_resource_or_null() const { return std::get_if<1>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "no_such_resource"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    friend bool operator==(const GetForecastErrors&, const GetForecastErrors&) = default;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("GetForecastErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, NoSuchResource> value_;
 };
 
 }  // namespace example::weather

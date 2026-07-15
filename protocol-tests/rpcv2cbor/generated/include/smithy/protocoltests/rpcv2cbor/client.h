@@ -2,10 +2,14 @@
 
 #pragma once
 
+#include <cstddef>
 #include <memory>
 #include <string>
+#include <utility>
+#include <variant>
 
 #include "smithy/client/config.h"
+#include "smithy/core/fatal.h"
 #include "smithy/core/outcome.h"
 #include "smithy/http/transport.h"
 #include "smithy/protocoltests/rpcv2cbor/types.h"
@@ -15,7 +19,8 @@ namespace smithy::protocoltests::rpcv2cbor {
 /// rpcv2Cbor client for smithy.protocoltests.rpcv2Cbor#RpcV2Protocol.
 /// Modeled service errors surface as smithy::Error with kind kModeled,
 /// code() set to the error shape name, and the deserialized error
-/// structure attached: error.detail<TheErrorShape>().
+/// structure attached. Dispatch on them through the per-operation
+/// <Operation>Errors listings below rather than comparing code() text.
 class RpcV2ProtocolClient {
   public:
     /// Fails when the endpoint cannot be parsed and no transport is injected.
@@ -58,6 +63,309 @@ class RpcV2ProtocolClient {
     smithy::ClientConfig config_;
     std::shared_ptr<smithy::http::HttpClient> transport_;
     std::string path_prefix_;
+};
+
+/// The modeled errors of GreetingWithErrors, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class GreetingWithErrorsErrors {
+  public:
+    GreetingWithErrorsErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static GreetingWithErrorsErrors FromError(const smithy::Error& error) {
+      GreetingWithErrorsErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "InvalidGreeting") {
+        const auto* detail = error.detail<InvalidGreeting>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : InvalidGreeting{});
+        return result;
+      }
+      if (error.code() == "ComplexError") {
+        const auto* detail = error.detail<ComplexError>();
+        result.value_.emplace<2>(detail != nullptr ? *detail : ComplexError{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_invalid_greeting() const { return value_.index() == 1; }
+    const InvalidGreeting& as_invalid_greeting() const {
+      require_is(1, "invalid_greeting");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const InvalidGreeting* as_invalid_greeting_or_null() const { return std::get_if<1>(&value_); }
+
+    bool is_complex_error() const { return value_.index() == 2; }
+    const ComplexError& as_complex_error() const {
+      require_is(2, "complex_error");
+      return std::get<2>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const ComplexError* as_complex_error_or_null() const { return std::get_if<2>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "invalid_greeting", "complex_error"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    friend bool operator==(const GreetingWithErrorsErrors&, const GreetingWithErrorsErrors&) = default;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("GreetingWithErrorsErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, InvalidGreeting, ComplexError> value_;
+};
+
+/// The modeled errors of OperationWithDefaults, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class OperationWithDefaultsErrors {
+  public:
+    OperationWithDefaultsErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static OperationWithDefaultsErrors FromError(const smithy::Error& error) {
+      OperationWithDefaultsErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "ValidationException") {
+        const auto* detail = error.detail<ValidationException>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : ValidationException{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_validation_exception() const { return value_.index() == 1; }
+    const ValidationException& as_validation_exception() const {
+      require_is(1, "validation_exception");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const ValidationException* as_validation_exception_or_null() const { return std::get_if<1>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "validation_exception"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    friend bool operator==(const OperationWithDefaultsErrors&, const OperationWithDefaultsErrors&) = default;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("OperationWithDefaultsErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, ValidationException> value_;
+};
+
+/// The modeled errors of RpcV2CborDenseMaps, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class RpcV2CborDenseMapsErrors {
+  public:
+    RpcV2CborDenseMapsErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static RpcV2CborDenseMapsErrors FromError(const smithy::Error& error) {
+      RpcV2CborDenseMapsErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "ValidationException") {
+        const auto* detail = error.detail<ValidationException>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : ValidationException{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_validation_exception() const { return value_.index() == 1; }
+    const ValidationException& as_validation_exception() const {
+      require_is(1, "validation_exception");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const ValidationException* as_validation_exception_or_null() const { return std::get_if<1>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "validation_exception"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    friend bool operator==(const RpcV2CborDenseMapsErrors&, const RpcV2CborDenseMapsErrors&) = default;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("RpcV2CborDenseMapsErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, ValidationException> value_;
+};
+
+/// The modeled errors of RpcV2CborLists, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class RpcV2CborListsErrors {
+  public:
+    RpcV2CborListsErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static RpcV2CborListsErrors FromError(const smithy::Error& error) {
+      RpcV2CborListsErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "ValidationException") {
+        const auto* detail = error.detail<ValidationException>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : ValidationException{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_validation_exception() const { return value_.index() == 1; }
+    const ValidationException& as_validation_exception() const {
+      require_is(1, "validation_exception");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const ValidationException* as_validation_exception_or_null() const { return std::get_if<1>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "validation_exception"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    friend bool operator==(const RpcV2CborListsErrors&, const RpcV2CborListsErrors&) = default;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("RpcV2CborListsErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, ValidationException> value_;
+};
+
+/// The modeled errors of RpcV2CborSparseMaps, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class RpcV2CborSparseMapsErrors {
+  public:
+    RpcV2CborSparseMapsErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static RpcV2CborSparseMapsErrors FromError(const smithy::Error& error) {
+      RpcV2CborSparseMapsErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "ValidationException") {
+        const auto* detail = error.detail<ValidationException>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : ValidationException{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_validation_exception() const { return value_.index() == 1; }
+    const ValidationException& as_validation_exception() const {
+      require_is(1, "validation_exception");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const ValidationException* as_validation_exception_or_null() const { return std::get_if<1>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "validation_exception"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    friend bool operator==(const RpcV2CborSparseMapsErrors&, const RpcV2CborSparseMapsErrors&) = default;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("RpcV2CborSparseMapsErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, ValidationException> value_;
 };
 
 }  // namespace smithy::protocoltests::rpcv2cbor

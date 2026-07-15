@@ -1,5 +1,18 @@
 load("@rules_cc//cc:defs.bzl", "cc_test")
 
+# The typed view over an operation's modeled errors (issue #49): FromError
+# matching, detail carriage, kind gating, exhaustive visit, wrong-case death.
+cc_test(
+    name = "typed_errors_test",
+    size = "small",
+    srcs = ["typed_errors_test.cc"],
+    deps = [
+        "//examples/roundtrip/rest/generated:client",
+        "//runtime:core",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_test(
     name = "api_key_wire_test",
     size = "small",

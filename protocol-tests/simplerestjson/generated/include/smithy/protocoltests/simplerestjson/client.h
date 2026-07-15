@@ -2,10 +2,14 @@
 
 #pragma once
 
+#include <cstddef>
 #include <memory>
 #include <string>
+#include <utility>
+#include <variant>
 
 #include "smithy/client/config.h"
+#include "smithy/core/fatal.h"
 #include "smithy/core/outcome.h"
 #include "smithy/http/transport.h"
 #include "smithy/protocoltests/simplerestjson/types.h"
@@ -15,7 +19,8 @@ namespace smithy::protocoltests::simplerestjson {
 /// simpleRestJson client for alloy.test#PizzaAdminService.
 /// Modeled service errors surface as smithy::Error with kind kModeled,
 /// code() set to the error shape name, and the deserialized error
-/// structure attached: error.detail<TheErrorShape>().
+/// structure attached. Dispatch on them through the per-operation
+/// <Operation>Errors listings below rather than comparing code() text.
 class PizzaAdminServiceClient {
   public:
     /// Fails when the endpoint cannot be parsed and no transport is injected.
@@ -41,6 +46,949 @@ class PizzaAdminServiceClient {
     smithy::ClientConfig config_;
     std::shared_ptr<smithy::http::HttpClient> transport_;
     std::string path_prefix_;
+};
+
+/// The modeled errors of AddMenuItem, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class AddMenuItemErrors {
+  public:
+    AddMenuItemErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static AddMenuItemErrors FromError(const smithy::Error& error) {
+      AddMenuItemErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "PriceError") {
+        const auto* detail = error.detail<PriceError>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : PriceError{});
+        return result;
+      }
+      if (error.code() == "GenericServerError") {
+        const auto* detail = error.detail<GenericServerError>();
+        result.value_.emplace<2>(detail != nullptr ? *detail : GenericServerError{});
+        return result;
+      }
+      if (error.code() == "GenericClientError") {
+        const auto* detail = error.detail<GenericClientError>();
+        result.value_.emplace<3>(detail != nullptr ? *detail : GenericClientError{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_price_error() const { return value_.index() == 1; }
+    const PriceError& as_price_error() const {
+      require_is(1, "price_error");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const PriceError* as_price_error_or_null() const { return std::get_if<1>(&value_); }
+
+    bool is_generic_server_error() const { return value_.index() == 2; }
+    const GenericServerError& as_generic_server_error() const {
+      require_is(2, "generic_server_error");
+      return std::get<2>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const GenericServerError* as_generic_server_error_or_null() const { return std::get_if<2>(&value_); }
+
+    bool is_generic_client_error() const { return value_.index() == 3; }
+    const GenericClientError& as_generic_client_error() const {
+      require_is(3, "generic_client_error");
+      return std::get<3>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const GenericClientError* as_generic_client_error_or_null() const { return std::get_if<3>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "price_error", "generic_server_error", "generic_client_error"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    friend bool operator==(const AddMenuItemErrors&, const AddMenuItemErrors&) = default;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("AddMenuItemErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, PriceError, GenericServerError, GenericClientError> value_;
+};
+
+/// The modeled errors of CustomCode, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class CustomCodeErrors {
+  public:
+    CustomCodeErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static CustomCodeErrors FromError(const smithy::Error& error) {
+      CustomCodeErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "UnknownServerError") {
+        const auto* detail = error.detail<UnknownServerError>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : UnknownServerError{});
+        return result;
+      }
+      if (error.code() == "GenericServerError") {
+        const auto* detail = error.detail<GenericServerError>();
+        result.value_.emplace<2>(detail != nullptr ? *detail : GenericServerError{});
+        return result;
+      }
+      if (error.code() == "GenericClientError") {
+        const auto* detail = error.detail<GenericClientError>();
+        result.value_.emplace<3>(detail != nullptr ? *detail : GenericClientError{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_unknown_server_error() const { return value_.index() == 1; }
+    const UnknownServerError& as_unknown_server_error() const {
+      require_is(1, "unknown_server_error");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const UnknownServerError* as_unknown_server_error_or_null() const { return std::get_if<1>(&value_); }
+
+    bool is_generic_server_error() const { return value_.index() == 2; }
+    const GenericServerError& as_generic_server_error() const {
+      require_is(2, "generic_server_error");
+      return std::get<2>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const GenericServerError* as_generic_server_error_or_null() const { return std::get_if<2>(&value_); }
+
+    bool is_generic_client_error() const { return value_.index() == 3; }
+    const GenericClientError& as_generic_client_error() const {
+      require_is(3, "generic_client_error");
+      return std::get<3>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const GenericClientError* as_generic_client_error_or_null() const { return std::get_if<3>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "unknown_server_error", "generic_server_error", "generic_client_error"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    friend bool operator==(const CustomCodeErrors&, const CustomCodeErrors&) = default;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("CustomCodeErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, UnknownServerError, GenericServerError, GenericClientError> value_;
+};
+
+/// The modeled errors of GetEnum, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class GetEnumErrors {
+  public:
+    GetEnumErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static GetEnumErrors FromError(const smithy::Error& error) {
+      GetEnumErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "UnknownServerError") {
+        const auto* detail = error.detail<UnknownServerError>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : UnknownServerError{});
+        return result;
+      }
+      if (error.code() == "GenericServerError") {
+        const auto* detail = error.detail<GenericServerError>();
+        result.value_.emplace<2>(detail != nullptr ? *detail : GenericServerError{});
+        return result;
+      }
+      if (error.code() == "GenericClientError") {
+        const auto* detail = error.detail<GenericClientError>();
+        result.value_.emplace<3>(detail != nullptr ? *detail : GenericClientError{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_unknown_server_error() const { return value_.index() == 1; }
+    const UnknownServerError& as_unknown_server_error() const {
+      require_is(1, "unknown_server_error");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const UnknownServerError* as_unknown_server_error_or_null() const { return std::get_if<1>(&value_); }
+
+    bool is_generic_server_error() const { return value_.index() == 2; }
+    const GenericServerError& as_generic_server_error() const {
+      require_is(2, "generic_server_error");
+      return std::get<2>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const GenericServerError* as_generic_server_error_or_null() const { return std::get_if<2>(&value_); }
+
+    bool is_generic_client_error() const { return value_.index() == 3; }
+    const GenericClientError& as_generic_client_error() const {
+      require_is(3, "generic_client_error");
+      return std::get<3>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const GenericClientError* as_generic_client_error_or_null() const { return std::get_if<3>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "unknown_server_error", "generic_server_error", "generic_client_error"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    friend bool operator==(const GetEnumErrors&, const GetEnumErrors&) = default;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("GetEnumErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, UnknownServerError, GenericServerError, GenericClientError> value_;
+};
+
+/// The modeled errors of GetIntEnum, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class GetIntEnumErrors {
+  public:
+    GetIntEnumErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static GetIntEnumErrors FromError(const smithy::Error& error) {
+      GetIntEnumErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "UnknownServerError") {
+        const auto* detail = error.detail<UnknownServerError>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : UnknownServerError{});
+        return result;
+      }
+      if (error.code() == "GenericServerError") {
+        const auto* detail = error.detail<GenericServerError>();
+        result.value_.emplace<2>(detail != nullptr ? *detail : GenericServerError{});
+        return result;
+      }
+      if (error.code() == "GenericClientError") {
+        const auto* detail = error.detail<GenericClientError>();
+        result.value_.emplace<3>(detail != nullptr ? *detail : GenericClientError{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_unknown_server_error() const { return value_.index() == 1; }
+    const UnknownServerError& as_unknown_server_error() const {
+      require_is(1, "unknown_server_error");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const UnknownServerError* as_unknown_server_error_or_null() const { return std::get_if<1>(&value_); }
+
+    bool is_generic_server_error() const { return value_.index() == 2; }
+    const GenericServerError& as_generic_server_error() const {
+      require_is(2, "generic_server_error");
+      return std::get<2>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const GenericServerError* as_generic_server_error_or_null() const { return std::get_if<2>(&value_); }
+
+    bool is_generic_client_error() const { return value_.index() == 3; }
+    const GenericClientError& as_generic_client_error() const {
+      require_is(3, "generic_client_error");
+      return std::get<3>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const GenericClientError* as_generic_client_error_or_null() const { return std::get_if<3>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "unknown_server_error", "generic_server_error", "generic_client_error"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    friend bool operator==(const GetIntEnumErrors&, const GetIntEnumErrors&) = default;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("GetIntEnumErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, UnknownServerError, GenericServerError, GenericClientError> value_;
+};
+
+/// The modeled errors of GetMenu, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class GetMenuErrors {
+  public:
+    GetMenuErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static GetMenuErrors FromError(const smithy::Error& error) {
+      GetMenuErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "NotFoundError") {
+        const auto* detail = error.detail<NotFoundError>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : NotFoundError{});
+        return result;
+      }
+      if (error.code() == "FallbackError") {
+        const auto* detail = error.detail<FallbackError>();
+        result.value_.emplace<2>(detail != nullptr ? *detail : FallbackError{});
+        return result;
+      }
+      if (error.code() == "GenericServerError") {
+        const auto* detail = error.detail<GenericServerError>();
+        result.value_.emplace<3>(detail != nullptr ? *detail : GenericServerError{});
+        return result;
+      }
+      if (error.code() == "GenericClientError") {
+        const auto* detail = error.detail<GenericClientError>();
+        result.value_.emplace<4>(detail != nullptr ? *detail : GenericClientError{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_not_found_error() const { return value_.index() == 1; }
+    const NotFoundError& as_not_found_error() const {
+      require_is(1, "not_found_error");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const NotFoundError* as_not_found_error_or_null() const { return std::get_if<1>(&value_); }
+
+    bool is_fallback_error() const { return value_.index() == 2; }
+    const FallbackError& as_fallback_error() const {
+      require_is(2, "fallback_error");
+      return std::get<2>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const FallbackError* as_fallback_error_or_null() const { return std::get_if<2>(&value_); }
+
+    bool is_generic_server_error() const { return value_.index() == 3; }
+    const GenericServerError& as_generic_server_error() const {
+      require_is(3, "generic_server_error");
+      return std::get<3>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const GenericServerError* as_generic_server_error_or_null() const { return std::get_if<3>(&value_); }
+
+    bool is_generic_client_error() const { return value_.index() == 4; }
+    const GenericClientError& as_generic_client_error() const {
+      require_is(4, "generic_client_error");
+      return std::get<4>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const GenericClientError* as_generic_client_error_or_null() const { return std::get_if<4>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "not_found_error", "fallback_error", "generic_server_error", "generic_client_error"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    friend bool operator==(const GetMenuErrors&, const GetMenuErrors&) = default;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("GetMenuErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, NotFoundError, FallbackError, GenericServerError, GenericClientError> value_;
+};
+
+/// The modeled errors of HeaderEndpoint, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class HeaderEndpointErrors {
+  public:
+    HeaderEndpointErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static HeaderEndpointErrors FromError(const smithy::Error& error) {
+      HeaderEndpointErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "GenericServerError") {
+        const auto* detail = error.detail<GenericServerError>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : GenericServerError{});
+        return result;
+      }
+      if (error.code() == "GenericClientError") {
+        const auto* detail = error.detail<GenericClientError>();
+        result.value_.emplace<2>(detail != nullptr ? *detail : GenericClientError{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_generic_server_error() const { return value_.index() == 1; }
+    const GenericServerError& as_generic_server_error() const {
+      require_is(1, "generic_server_error");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const GenericServerError* as_generic_server_error_or_null() const { return std::get_if<1>(&value_); }
+
+    bool is_generic_client_error() const { return value_.index() == 2; }
+    const GenericClientError& as_generic_client_error() const {
+      require_is(2, "generic_client_error");
+      return std::get<2>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const GenericClientError* as_generic_client_error_or_null() const { return std::get_if<2>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "generic_server_error", "generic_client_error"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    friend bool operator==(const HeaderEndpointErrors&, const HeaderEndpointErrors&) = default;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("HeaderEndpointErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, GenericServerError, GenericClientError> value_;
+};
+
+/// The modeled errors of Health, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class HealthErrors {
+  public:
+    HealthErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static HealthErrors FromError(const smithy::Error& error) {
+      HealthErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "UnknownServerError") {
+        const auto* detail = error.detail<UnknownServerError>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : UnknownServerError{});
+        return result;
+      }
+      if (error.code() == "GenericServerError") {
+        const auto* detail = error.detail<GenericServerError>();
+        result.value_.emplace<2>(detail != nullptr ? *detail : GenericServerError{});
+        return result;
+      }
+      if (error.code() == "GenericClientError") {
+        const auto* detail = error.detail<GenericClientError>();
+        result.value_.emplace<3>(detail != nullptr ? *detail : GenericClientError{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_unknown_server_error() const { return value_.index() == 1; }
+    const UnknownServerError& as_unknown_server_error() const {
+      require_is(1, "unknown_server_error");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const UnknownServerError* as_unknown_server_error_or_null() const { return std::get_if<1>(&value_); }
+
+    bool is_generic_server_error() const { return value_.index() == 2; }
+    const GenericServerError& as_generic_server_error() const {
+      require_is(2, "generic_server_error");
+      return std::get<2>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const GenericServerError* as_generic_server_error_or_null() const { return std::get_if<2>(&value_); }
+
+    bool is_generic_client_error() const { return value_.index() == 3; }
+    const GenericClientError& as_generic_client_error() const {
+      require_is(3, "generic_client_error");
+      return std::get<3>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const GenericClientError* as_generic_client_error_or_null() const { return std::get_if<3>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "unknown_server_error", "generic_server_error", "generic_client_error"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    friend bool operator==(const HealthErrors&, const HealthErrors&) = default;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("HealthErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, UnknownServerError, GenericServerError, GenericClientError> value_;
+};
+
+/// The modeled errors of HttpPayloadRequiredWithDefault, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class HttpPayloadRequiredWithDefaultErrors {
+  public:
+    HttpPayloadRequiredWithDefaultErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static HttpPayloadRequiredWithDefaultErrors FromError(const smithy::Error& error) {
+      HttpPayloadRequiredWithDefaultErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "GenericServerError") {
+        const auto* detail = error.detail<GenericServerError>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : GenericServerError{});
+        return result;
+      }
+      if (error.code() == "GenericClientError") {
+        const auto* detail = error.detail<GenericClientError>();
+        result.value_.emplace<2>(detail != nullptr ? *detail : GenericClientError{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_generic_server_error() const { return value_.index() == 1; }
+    const GenericServerError& as_generic_server_error() const {
+      require_is(1, "generic_server_error");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const GenericServerError* as_generic_server_error_or_null() const { return std::get_if<1>(&value_); }
+
+    bool is_generic_client_error() const { return value_.index() == 2; }
+    const GenericClientError& as_generic_client_error() const {
+      require_is(2, "generic_client_error");
+      return std::get<2>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const GenericClientError* as_generic_client_error_or_null() const { return std::get_if<2>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "generic_server_error", "generic_client_error"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    friend bool operator==(const HttpPayloadRequiredWithDefaultErrors&, const HttpPayloadRequiredWithDefaultErrors&) = default;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("HttpPayloadRequiredWithDefaultErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, GenericServerError, GenericClientError> value_;
+};
+
+/// The modeled errors of HttpPayloadWithDefault, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class HttpPayloadWithDefaultErrors {
+  public:
+    HttpPayloadWithDefaultErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static HttpPayloadWithDefaultErrors FromError(const smithy::Error& error) {
+      HttpPayloadWithDefaultErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "GenericServerError") {
+        const auto* detail = error.detail<GenericServerError>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : GenericServerError{});
+        return result;
+      }
+      if (error.code() == "GenericClientError") {
+        const auto* detail = error.detail<GenericClientError>();
+        result.value_.emplace<2>(detail != nullptr ? *detail : GenericClientError{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_generic_server_error() const { return value_.index() == 1; }
+    const GenericServerError& as_generic_server_error() const {
+      require_is(1, "generic_server_error");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const GenericServerError* as_generic_server_error_or_null() const { return std::get_if<1>(&value_); }
+
+    bool is_generic_client_error() const { return value_.index() == 2; }
+    const GenericClientError& as_generic_client_error() const {
+      require_is(2, "generic_client_error");
+      return std::get<2>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const GenericClientError* as_generic_client_error_or_null() const { return std::get_if<2>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "generic_server_error", "generic_client_error"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    friend bool operator==(const HttpPayloadWithDefaultErrors&, const HttpPayloadWithDefaultErrors&) = default;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("HttpPayloadWithDefaultErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, GenericServerError, GenericClientError> value_;
+};
+
+/// The modeled errors of OpenUnions, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class OpenUnionsErrors {
+  public:
+    OpenUnionsErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static OpenUnionsErrors FromError(const smithy::Error& error) {
+      OpenUnionsErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "GenericServerError") {
+        const auto* detail = error.detail<GenericServerError>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : GenericServerError{});
+        return result;
+      }
+      if (error.code() == "GenericClientError") {
+        const auto* detail = error.detail<GenericClientError>();
+        result.value_.emplace<2>(detail != nullptr ? *detail : GenericClientError{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_generic_server_error() const { return value_.index() == 1; }
+    const GenericServerError& as_generic_server_error() const {
+      require_is(1, "generic_server_error");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const GenericServerError* as_generic_server_error_or_null() const { return std::get_if<1>(&value_); }
+
+    bool is_generic_client_error() const { return value_.index() == 2; }
+    const GenericClientError& as_generic_client_error() const {
+      require_is(2, "generic_client_error");
+      return std::get<2>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const GenericClientError* as_generic_client_error_or_null() const { return std::get_if<2>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "generic_server_error", "generic_client_error"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    friend bool operator==(const OpenUnionsErrors&, const OpenUnionsErrors&) = default;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("OpenUnionsErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, GenericServerError, GenericClientError> value_;
+};
+
+/// The modeled errors of RoundTrip, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class RoundTripErrors {
+  public:
+    RoundTripErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static RoundTripErrors FromError(const smithy::Error& error) {
+      RoundTripErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "GenericServerError") {
+        const auto* detail = error.detail<GenericServerError>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : GenericServerError{});
+        return result;
+      }
+      if (error.code() == "GenericClientError") {
+        const auto* detail = error.detail<GenericClientError>();
+        result.value_.emplace<2>(detail != nullptr ? *detail : GenericClientError{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_generic_server_error() const { return value_.index() == 1; }
+    const GenericServerError& as_generic_server_error() const {
+      require_is(1, "generic_server_error");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const GenericServerError* as_generic_server_error_or_null() const { return std::get_if<1>(&value_); }
+
+    bool is_generic_client_error() const { return value_.index() == 2; }
+    const GenericClientError& as_generic_client_error() const {
+      require_is(2, "generic_client_error");
+      return std::get<2>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const GenericClientError* as_generic_client_error_or_null() const { return std::get_if<2>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "generic_server_error", "generic_client_error"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    friend bool operator==(const RoundTripErrors&, const RoundTripErrors&) = default;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("RoundTripErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, GenericServerError, GenericClientError> value_;
+};
+
+/// The modeled errors of Version, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class VersionErrors {
+  public:
+    VersionErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static VersionErrors FromError(const smithy::Error& error) {
+      VersionErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "GenericServerError") {
+        const auto* detail = error.detail<GenericServerError>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : GenericServerError{});
+        return result;
+      }
+      if (error.code() == "GenericClientError") {
+        const auto* detail = error.detail<GenericClientError>();
+        result.value_.emplace<2>(detail != nullptr ? *detail : GenericClientError{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_generic_server_error() const { return value_.index() == 1; }
+    const GenericServerError& as_generic_server_error() const {
+      require_is(1, "generic_server_error");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const GenericServerError* as_generic_server_error_or_null() const { return std::get_if<1>(&value_); }
+
+    bool is_generic_client_error() const { return value_.index() == 2; }
+    const GenericClientError& as_generic_client_error() const {
+      require_is(2, "generic_client_error");
+      return std::get<2>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const GenericClientError* as_generic_client_error_or_null() const { return std::get_if<2>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "generic_server_error", "generic_client_error"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    friend bool operator==(const VersionErrors&, const VersionErrors&) = default;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("VersionErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, GenericServerError, GenericClientError> value_;
 };
 
 }  // namespace smithy::protocoltests::simplerestjson

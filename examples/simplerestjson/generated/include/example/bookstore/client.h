@@ -2,11 +2,15 @@
 
 #pragma once
 
+#include <cstddef>
 #include <memory>
 #include <string>
+#include <utility>
+#include <variant>
 
 #include "example/bookstore/types.h"
 #include "smithy/client/config.h"
+#include "smithy/core/fatal.h"
 #include "smithy/core/outcome.h"
 #include "smithy/http/transport.h"
 
@@ -15,7 +19,8 @@ namespace example::bookstore {
 /// simpleRestJson client for example.bookstore#Bookstore.
 /// Modeled service errors surface as smithy::Error with kind kModeled,
 /// code() set to the error shape name, and the deserialized error
-/// structure attached: error.detail<TheErrorShape>().
+/// structure attached. Dispatch on them through the per-operation
+/// <Operation>Errors listings below rather than comparing code() text.
 class BookstoreClient {
   public:
     /// Fails when the endpoint cannot be parsed and no transport is injected.
@@ -31,6 +36,64 @@ class BookstoreClient {
     smithy::ClientConfig config_;
     std::shared_ptr<smithy::http::HttpClient> transport_;
     std::string path_prefix_;
+};
+
+/// The modeled errors of GetBook, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class GetBookErrors {
+  public:
+    GetBookErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static GetBookErrors FromError(const smithy::Error& error) {
+      GetBookErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "BookNotFound") {
+        const auto* detail = error.detail<BookNotFound>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : BookNotFound{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_book_not_found() const { return value_.index() == 1; }
+    const BookNotFound& as_book_not_found() const {
+      require_is(1, "book_not_found");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const BookNotFound* as_book_not_found_or_null() const { return std::get_if<1>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "book_not_found"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    friend bool operator==(const GetBookErrors&, const GetBookErrors&) = default;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("GetBookErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, BookNotFound> value_;
 };
 
 }  // namespace example::bookstore

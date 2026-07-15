@@ -56,7 +56,8 @@ final class ClientGenerator {
     w.write("/// $L client for $L.", protocol.name(), service.getId().toString());
     w.write("/// Modeled service errors surface as smithy::Error with kind kModeled,");
     w.write("/// code() set to the error shape name, and the deserialized error");
-    w.write("/// structure attached: error.detail<TheErrorShape>().");
+    w.write("/// structure attached. Dispatch on them through the per-operation");
+    w.write("/// <Operation>Errors listings below rather than comparing code() text.");
     w.openBlock("class $L {", name);
     w.write("public:").indent();
     w.write("/// Fails when the endpoint cannot be parsed and no transport is injected.");
@@ -136,6 +137,113 @@ final class ClientGenerator {
       w.closeBlock("};");
       w.write("");
     }
+
+    for (OperationShape operation : operations()) {
+      writeErrorListing(w, operation);
+    }
+  }
+
+  /**
+   * The typed view over an operation's modeled errors (issue #49): a tagged-variant listing so
+   * consumers dispatch on FromError(outcome.error()) — exhaustively via visit(), typo-proof via
+   * is_x/as_x — instead of comparing Error::code() text and guessing the detail type.
+   */
+  private void writeErrorListing(CppWriter w, OperationShape operation) {
+    List<StructureShape> errors =
+        operation.getErrors().stream()
+            .map(id -> context.model().expectShape(id, StructureShape.class))
+            .toList();
+    if (errors.isEmpty()) {
+      return;
+    }
+    String listingName = errorsName(operation);
+    requireNoModelCollision(operation, listingName);
+
+    java.util.LinkedHashMap<String, String> folded = new java.util.LinkedHashMap<>();
+    for (StructureShape error : errors) {
+      folded.put(
+          error.getId().getName(),
+          "as_" + software.amazon.smithy.utils.CaseUtils.toSnakeCase(error.getId().getName()));
+    }
+    TypeGenerators.requireDistinctNames("operation", operation.getId(), folded, java.util.Set.of());
+
+    List<TypeGenerators.TaggedMember> members =
+        errors.stream()
+            .map(
+                error ->
+                    new TypeGenerators.TaggedMember(
+                        software.amazon.smithy.utils.CaseUtils.toSnakeCase(error.getId().getName()),
+                        context.cppSymbols().toSymbol(error).getName()))
+            .toList();
+
+    String opName = CppReservedWords.escape(operation.getId().getName());
+    w.write("/// The modeled errors of $L, matched from a smithy::Error so dispatch is", opName);
+    w.write("/// typed and exhaustive instead of string-compared. FromError() is empty()");
+    w.write("/// when the error is none of this operation's modeled errors (transport,");
+    w.write("/// serialization, unknown, or another operation's error).");
+    TypeGenerators.emitTaggedVariant(
+        w,
+        listingName,
+        members,
+        /* withFactories= */ false,
+        "/// True when the error is none of this operation's modeled errors.",
+        "/// Name of the engaged member, \"(empty)\" when none matched.",
+        () -> writeFromError(w, listingName, errors));
+  }
+
+  private void writeFromError(CppWriter w, String listingName, List<StructureShape> errors) {
+    w.write("/// Matches `error` against this operation's modeled errors. An engaged");
+    w.write("/// member carries the deserialized error detail, default-initialized when");
+    w.write("/// the error arrived without one.");
+    w.openBlock("static $L FromError(const smithy::Error& error) {", listingName);
+    w.write("$L result;", listingName);
+    w.write("if (error.kind() != smithy::ErrorKind::kModeled) return result;");
+    for (int i = 0; i < errors.size(); ++i) {
+      StructureShape error = errors.get(i);
+      String typeName = context.cppSymbols().toSymbol(error).getName();
+      w.openBlock("if (error.code() == $S) {", error.getId().getName());
+      w.write("const auto* detail = error.detail<$L>();", typeName);
+      w.write("result.value_.emplace<$L>(detail != nullptr ? *detail : $L{});", i + 1, typeName);
+      w.write("return result;");
+      w.closeBlock("}");
+    }
+    w.write("return result;");
+    w.closeBlock("}");
+  }
+
+  /**
+   * The listing's synthetic name lives beside the model's own types, so a modeled shape with the
+   * same C++ name in this namespace must fail loudly (the plural already dodges the
+   * operation-named-error convention, e.g. DescribeSink vs DescribeSinkError).
+   */
+  private void requireNoModelCollision(OperationShape operation, String listingName) {
+    String namespace = service.getId().getNamespace();
+    java.util.stream.Stream<software.amazon.smithy.model.shapes.Shape> named =
+        java.util.stream.Stream.of(
+                context.model().getStructureShapes().stream(),
+                context.model().getUnionShapes().stream(),
+                context.model().getEnumShapes().stream(),
+                context.model().getIntEnumShapes().stream())
+            .flatMap(s -> s.map(software.amazon.smithy.model.shapes.Shape.class::cast));
+    named
+        .filter(shape -> shape.getId().getNamespace().equals(namespace))
+        .filter(shape -> context.cppSymbols().toSymbol(shape).getName().equals(listingName))
+        .findAny()
+        .ifPresent(
+            shape -> {
+              throw new software.amazon.smithy.codegen.core.CodegenException(
+                  "cpp-codegen: operation "
+                      + operation.getId()
+                      + " generates the error listing '"
+                      + listingName
+                      + "', which collides with shape "
+                      + shape.getId()
+                      + "; rename the shape or the operation");
+            });
+  }
+
+  private String errorsName(OperationShape operation) {
+    return CppReservedWords.escape(operation.getId().getName()) + "Errors";
   }
 
   /**

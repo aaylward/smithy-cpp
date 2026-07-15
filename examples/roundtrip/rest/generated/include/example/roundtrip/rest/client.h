@@ -2,11 +2,15 @@
 
 #pragma once
 
+#include <cstddef>
 #include <memory>
 #include <string>
+#include <utility>
+#include <variant>
 
 #include "example/roundtrip/rest/types.h"
 #include "smithy/client/config.h"
+#include "smithy/core/fatal.h"
 #include "smithy/core/outcome.h"
 #include "smithy/http/transport.h"
 
@@ -15,7 +19,8 @@ namespace example::roundtrip::rest {
 /// simpleRestJson client for example.roundtrip#RoundTripRest.
 /// Modeled service errors surface as smithy::Error with kind kModeled,
 /// code() set to the error shape name, and the deserialized error
-/// structure attached: error.detail<TheErrorShape>().
+/// structure attached. Dispatch on them through the per-operation
+/// <Operation>Errors listings below rather than comparing code() text.
 class RoundTripRestClient {
   public:
     /// Fails when the endpoint cannot be parsed and no transport is injected.
@@ -39,6 +44,206 @@ class RoundTripRestClient {
     smithy::ClientConfig config_;
     std::shared_ptr<smithy::http::HttpClient> transport_;
     std::string path_prefix_;
+};
+
+/// The modeled errors of DescribeSink, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class DescribeSinkErrors {
+  public:
+    DescribeSinkErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static DescribeSinkErrors FromError(const smithy::Error& error) {
+      DescribeSinkErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "SinkNotFound") {
+        const auto* detail = error.detail<SinkNotFound>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : SinkNotFound{});
+        return result;
+      }
+      if (error.code() == "DescribeSinkError") {
+        const auto* detail = error.detail<DescribeSinkError>();
+        result.value_.emplace<2>(detail != nullptr ? *detail : DescribeSinkError{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_sink_not_found() const { return value_.index() == 1; }
+    const SinkNotFound& as_sink_not_found() const {
+      require_is(1, "sink_not_found");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const SinkNotFound* as_sink_not_found_or_null() const { return std::get_if<1>(&value_); }
+
+    bool is_describe_sink_error() const { return value_.index() == 2; }
+    const DescribeSinkError& as_describe_sink_error() const {
+      require_is(2, "describe_sink_error");
+      return std::get<2>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const DescribeSinkError* as_describe_sink_error_or_null() const { return std::get_if<2>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "sink_not_found", "describe_sink_error"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    friend bool operator==(const DescribeSinkErrors&, const DescribeSinkErrors&) = default;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("DescribeSinkErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, SinkNotFound, DescribeSinkError> value_;
+};
+
+/// The modeled errors of PutSink, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class PutSinkErrors {
+  public:
+    PutSinkErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static PutSinkErrors FromError(const smithy::Error& error) {
+      PutSinkErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "SinkNotFound") {
+        const auto* detail = error.detail<SinkNotFound>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : SinkNotFound{});
+        return result;
+      }
+      if (error.code() == "SinkQuotaExceeded") {
+        const auto* detail = error.detail<SinkQuotaExceeded>();
+        result.value_.emplace<2>(detail != nullptr ? *detail : SinkQuotaExceeded{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_sink_not_found() const { return value_.index() == 1; }
+    const SinkNotFound& as_sink_not_found() const {
+      require_is(1, "sink_not_found");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const SinkNotFound* as_sink_not_found_or_null() const { return std::get_if<1>(&value_); }
+
+    bool is_sink_quota_exceeded() const { return value_.index() == 2; }
+    const SinkQuotaExceeded& as_sink_quota_exceeded() const {
+      require_is(2, "sink_quota_exceeded");
+      return std::get<2>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const SinkQuotaExceeded* as_sink_quota_exceeded_or_null() const { return std::get_if<2>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "sink_not_found", "sink_quota_exceeded"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    friend bool operator==(const PutSinkErrors&, const PutSinkErrors&) = default;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("PutSinkErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, SinkNotFound, SinkQuotaExceeded> value_;
+};
+
+/// The modeled errors of UploadAttachment, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class UploadAttachmentErrors {
+  public:
+    UploadAttachmentErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static UploadAttachmentErrors FromError(const smithy::Error& error) {
+      UploadAttachmentErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "SinkNotFound") {
+        const auto* detail = error.detail<SinkNotFound>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : SinkNotFound{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_sink_not_found() const { return value_.index() == 1; }
+    const SinkNotFound& as_sink_not_found() const {
+      require_is(1, "sink_not_found");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const SinkNotFound* as_sink_not_found_or_null() const { return std::get_if<1>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "sink_not_found"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    friend bool operator==(const UploadAttachmentErrors&, const UploadAttachmentErrors&) = default;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("UploadAttachmentErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, SinkNotFound> value_;
 };
 
 }  // namespace example::roundtrip::rest

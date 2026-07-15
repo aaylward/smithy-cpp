@@ -2,10 +2,14 @@
 
 #pragma once
 
+#include <cstddef>
 #include <memory>
 #include <string>
+#include <utility>
+#include <variant>
 
 #include "smithy/client/config.h"
+#include "smithy/core/fatal.h"
 #include "smithy/core/outcome.h"
 #include "smithy/http/transport.h"
 #include "smithy/protocoltests/jsonrpc2/types.h"
@@ -15,7 +19,8 @@ namespace smithy::protocoltests::jsonrpc2 {
 /// jsonRpc2 client for smithy.cpp.protocoltests.jsonrpc2#JsonRpc2Protocol.
 /// Modeled service errors surface as smithy::Error with kind kModeled,
 /// code() set to the error shape name, and the deserialized error
-/// structure attached: error.detail<TheErrorShape>().
+/// structure attached. Dispatch on them through the per-operation
+/// <Operation>Errors listings below rather than comparing code() text.
 class JsonRpc2ProtocolClient {
   public:
     /// Fails when the endpoint cannot be parsed and no transport is injected.
@@ -32,6 +37,77 @@ class JsonRpc2ProtocolClient {
     smithy::ClientConfig config_;
     std::shared_ptr<smithy::http::HttpClient> transport_;
     std::string path_prefix_;
+};
+
+/// The modeled errors of EchoPayload, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class EchoPayloadErrors {
+  public:
+    EchoPayloadErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static EchoPayloadErrors FromError(const smithy::Error& error) {
+      EchoPayloadErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "NotFoundError") {
+        const auto* detail = error.detail<NotFoundError>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : NotFoundError{});
+        return result;
+      }
+      if (error.code() == "ThrottledError") {
+        const auto* detail = error.detail<ThrottledError>();
+        result.value_.emplace<2>(detail != nullptr ? *detail : ThrottledError{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_not_found_error() const { return value_.index() == 1; }
+    const NotFoundError& as_not_found_error() const {
+      require_is(1, "not_found_error");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const NotFoundError* as_not_found_error_or_null() const { return std::get_if<1>(&value_); }
+
+    bool is_throttled_error() const { return value_.index() == 2; }
+    const ThrottledError& as_throttled_error() const {
+      require_is(2, "throttled_error");
+      return std::get<2>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const ThrottledError* as_throttled_error_or_null() const { return std::get_if<2>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "not_found_error", "throttled_error"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    friend bool operator==(const EchoPayloadErrors&, const EchoPayloadErrors&) = default;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("EchoPayloadErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, NotFoundError, ThrottledError> value_;
 };
 
 }  // namespace smithy::protocoltests::jsonrpc2

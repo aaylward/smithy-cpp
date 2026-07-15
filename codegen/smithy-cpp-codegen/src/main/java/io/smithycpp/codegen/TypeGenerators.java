@@ -55,7 +55,7 @@ final class TypeGenerators {
    * enumerator/method that no longer compiles. Catching it here names both members and the fix
    * instead of surfacing a C++ redefinition error in the generated output.
    */
-  private static void requireDistinctNames(
+  static void requireDistinctNames(
       String kind,
       Object shapeId,
       java.util.LinkedHashMap<String, String> foldedByMember,
@@ -255,50 +255,92 @@ final class TypeGenerators {
           member.getMemberName(), "From" + CaseUtils.toPascalCase(symbols().toMemberName(member)));
     }
     requireDistinctNames("union", shape.getId(), folded, java.util.Set.of());
+
+    List<TaggedMember> tagged = new java.util.ArrayList<>();
+    for (MemberShape member : members) {
+      Symbol type =
+          context.symbolProvider().toSymbol(context.model().expectShape(member.getTarget()));
+      writer.addIncludesFor(type);
+      tagged.add(new TaggedMember(symbols().toMemberName(member), type.getName()));
+    }
+    writeDocs(shape);
+    emitTaggedVariant(
+        writer,
+        name,
+        tagged,
+        /* withFactories= */ true,
+        "/// True until one of the From* factories has been used.",
+        "/// Name of the engaged member, \"(empty)\" until a From* factory has run.",
+        null);
+  }
+
+  /** One alternative of a tagged-variant class: accessor stem + C++ type name. */
+  record TaggedMember(String memberName, String typeName) {}
+
+  /**
+   * The tagged-variant class shape shared by generated unions and per-operation error listings:
+   * is_x/as_x/as_x_or_null accessors over {@code std::variant<std::monostate, ...>}, empty(),
+   * case_name(), visit(), equality, and the contextful wrong-case guard (ADR-0009). Callers add
+   * member-type includes; {@code extraPublic} (nullable) emits caller-specific members right after
+   * the default constructor — the error listings' FromError factory.
+   */
+  static void emitTaggedVariant(
+      CppWriter writer,
+      String name,
+      List<TaggedMember> members,
+      boolean withFactories,
+      String emptyDoc,
+      String caseNameDoc,
+      Runnable extraPublic) {
     writer.addInclude("<cstddef>").addInclude("<utility>").addInclude("<variant>");
     writer.addInclude("\"smithy/core/fatal.h\"");
 
-    writeDocs(shape);
     writer.openBlock("class $L {", name);
     writer.write("public:").indent();
     writer.write("$L() = default;", name);
     writer.write("");
+    if (extraPublic != null) {
+      extraPublic.run();
+      writer.write("");
+    }
     for (int i = 0; i < members.size(); ++i) {
-      MemberShape member = members.get(i);
-      Symbol type =
-          context.symbolProvider().toSymbol(context.model().expectShape(member.getTarget()));
-      writer.addIncludesFor(type);
-      String memberName = symbols().toMemberName(member);
+      TaggedMember member = members.get(i);
       int index = i + 1; // index 0 is the unset monostate
-      writer.openBlock(
-          "static $L From$L($L value) {", name, CaseUtils.toPascalCase(memberName), type.getName());
-      writer.write("$L result;", name);
-      writer.write("result.value_.emplace<$L>(std::move(value));", index);
-      writer.write("return result;");
-      writer.closeBlock("}");
-      writer.write("bool is_$L() const { return value_.index() == $L; }", memberName, index);
-      writer.openBlock("const $L& as_$L() const {", type.getName(), memberName);
-      writer.write("require_is($L, $S);", index, memberName);
+      if (withFactories) {
+        writer.openBlock(
+            "static $L From$L($L value) {",
+            name,
+            CaseUtils.toPascalCase(member.memberName()),
+            member.typeName());
+        writer.write("$L result;", name);
+        writer.write("result.value_.emplace<$L>(std::move(value));", index);
+        writer.write("return result;");
+        writer.closeBlock("}");
+      }
+      writer.write(
+          "bool is_$L() const { return value_.index() == $L; }", member.memberName(), index);
+      writer.openBlock("const $L& as_$L() const {", member.typeName(), member.memberName());
+      writer.write("require_is($L, $S);", index, member.memberName());
       writer.write("return std::get<$L>(value_);", index);
       writer.closeBlock("}");
       writer.write("/// The engaged member, or nullptr when another member (or none) is set.");
       writer.write(
           "const $L* as_$L_or_null() const { return std::get_if<$L>(&value_); }",
-          type.getName(),
-          memberName,
+          member.typeName(),
+          member.memberName(),
           index);
       writer.write("");
     }
-    writer.write("/// True until one of the From* factories has been used.");
+    writer.write(emptyDoc);
     writer.write("bool empty() const { return value_.index() == 0; }");
     writer.write("");
     String caseNames =
         java.util.stream.Stream.concat(
                 java.util.stream.Stream.of("(empty)"),
-                members.stream().map(m -> symbols().toMemberName(m)))
+                members.stream().map(TaggedMember::memberName))
             .map(CppLiterals::stringLiteral)
             .collect(java.util.stream.Collectors.joining(", "));
-    writer.write("/// Name of the engaged member, \"(empty)\" until a From* factory has run.");
+    writer.write(caseNameDoc);
     writer.openBlock("const char* case_name() const {");
     writer.write("static constexpr const char* kNames[] = {$L};", caseNames);
     writer.write("return kNames[value_.index()];");
@@ -321,18 +363,13 @@ final class TypeGenerators {
     writer.closeBlock("}");
     writer.closeBlock("}");
     writer.write("");
-    StringBuilder variant = new StringBuilder("std::variant<std::monostate");
-    for (MemberShape member : members) {
-      variant
-          .append(", ")
-          .append(
-              context
-                  .symbolProvider()
-                  .toSymbol(context.model().expectShape(member.getTarget()))
-                  .getName());
-    }
-    variant.append(">");
-    writer.write("$L value_;", variant).dedent();
+    String variant =
+        members.stream()
+            .map(TaggedMember::typeName)
+            .collect(
+                java.util.stream.Collectors.joining(
+                    ", ", "std::variant<std::monostate, ", "> value_;"));
+    writer.write("$L", variant).dedent();
     writer.closeBlock("};");
     writer.write("");
   }

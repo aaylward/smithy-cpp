@@ -2,11 +2,15 @@
 
 #pragma once
 
+#include <cstddef>
 #include <memory>
 #include <string>
+#include <utility>
+#include <variant>
 
 #include "example/cafe/types.h"
 #include "smithy/client/config.h"
+#include "smithy/core/fatal.h"
 #include "smithy/core/outcome.h"
 #include "smithy/http/transport.h"
 
@@ -15,7 +19,8 @@ namespace example::cafe {
 /// rpcv2Cbor client for example.cafe#Cafe.
 /// Modeled service errors surface as smithy::Error with kind kModeled,
 /// code() set to the error shape name, and the deserialized error
-/// structure attached: error.detail<TheErrorShape>().
+/// structure attached. Dispatch on them through the per-operation
+/// <Operation>Errors listings below rather than comparing code() text.
 class CafeClient {
   public:
     /// Fails when the endpoint cannot be parsed and no transport is injected.
@@ -31,6 +36,122 @@ class CafeClient {
     smithy::ClientConfig config_;
     std::shared_ptr<smithy::http::HttpClient> transport_;
     std::string path_prefix_;
+};
+
+/// The modeled errors of GetOrder, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class GetOrderErrors {
+  public:
+    GetOrderErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static GetOrderErrors FromError(const smithy::Error& error) {
+      GetOrderErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "OrderNotFound") {
+        const auto* detail = error.detail<OrderNotFound>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : OrderNotFound{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_order_not_found() const { return value_.index() == 1; }
+    const OrderNotFound& as_order_not_found() const {
+      require_is(1, "order_not_found");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const OrderNotFound* as_order_not_found_or_null() const { return std::get_if<1>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "order_not_found"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    friend bool operator==(const GetOrderErrors&, const GetOrderErrors&) = default;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("GetOrderErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, OrderNotFound> value_;
+};
+
+/// The modeled errors of OrderCoffee, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class OrderCoffeeErrors {
+  public:
+    OrderCoffeeErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static OrderCoffeeErrors FromError(const smithy::Error& error) {
+      OrderCoffeeErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "OutOfBeans") {
+        const auto* detail = error.detail<OutOfBeans>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : OutOfBeans{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_out_of_beans() const { return value_.index() == 1; }
+    const OutOfBeans& as_out_of_beans() const {
+      require_is(1, "out_of_beans");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const OutOfBeans* as_out_of_beans_or_null() const { return std::get_if<1>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "out_of_beans"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    friend bool operator==(const OrderCoffeeErrors&, const OrderCoffeeErrors&) = default;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("OrderCoffeeErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, OutOfBeans> value_;
 };
 
 }  // namespace example::cafe

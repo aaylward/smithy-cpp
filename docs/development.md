@@ -113,6 +113,12 @@ cd codegen && gradle spotlessApply
   nlohmann ships its own BUILD.bazel, so it only needs a MODULE.bazel in the checkout root (copy
   the patched one from the module's page on the Bazel Central Registry). Add
   `--lockfile_mode=off` so local runs don't dirty the checked-in MODULE.bazel.lock.
+  Boost 1.90's asio also depends on the BCR `openssl` module, whose perl toolchain archives
+  (`rules_perl`) are unmirrored too — and toolchain registration makes *every* analysis fetch
+  them, not just openssl consumers. The Beast targets (the only openssl consumers) are already
+  excluded behind a proxy, so point `--override_module=openssl=<dir>` at a stub directory
+  holding an empty BUILD.bazel plus a MODULE.bazel containing only
+  `module(name = "openssl", version = "3.5.4.bcr.1", compatibility_level = 3030100)`.
   The consumer-facing version of this recipe (including the `repo1.maven.org` fetch every
   git_override consumer triggers, and air-gapped prefetch) is in
   [quickstart.md](quickstart.md#the-first-build-cost-caching-and-locked-down-networks).

@@ -2,7 +2,9 @@
 #define SMITHY_CORE_BLOB_H_
 
 #include <compare>
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -38,5 +40,15 @@ class Blob {
 };
 
 }  // namespace smithy
+
+// Hashes by byte content, so blob-bearing generated structs can key unordered
+// containers (issue #49). Process-local: never persist hash values.
+template <>
+struct std::hash<smithy::Blob> {
+  std::size_t operator()(const smithy::Blob& blob) const noexcept {
+    return std::hash<std::string_view>{}(
+        std::string_view(reinterpret_cast<const char*>(blob.data()), blob.size()));
+  }
+};
 
 #endif  // SMITHY_CORE_BLOB_H_

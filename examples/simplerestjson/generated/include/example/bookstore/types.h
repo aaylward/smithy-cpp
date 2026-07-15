@@ -3,9 +3,13 @@
 #pragma once
 
 #include <compare>
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
+
+#include "smithy/core/hash.h"
 
 namespace example::bookstore {
 
@@ -55,3 +59,58 @@ struct GetBookOutput {
 };
 
 }  // namespace example::bookstore
+
+// std::hash so generated types key std::unordered_map/std::unordered_set —
+// emitted exactly for the types that get operator<=> (issue #49). Hash
+// values are process-local: never persist or compare them across runs.
+
+template <>
+struct std::hash<example::bookstore::AddBookInput> {
+  std::size_t operator()(const example::bookstore::AddBookInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.isbn));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.title));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::bookstore::AddBookOutput> {
+  std::size_t operator()(const example::bookstore::AddBookOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.status));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.isbn));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::bookstore::BookNotFound> {
+  std::size_t operator()(const example::bookstore::BookNotFound& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.message));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.isbn));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::bookstore::GetBookInput> {
+  std::size_t operator()(const example::bookstore::GetBookInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.isbn));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.currency));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::bookstore::GetBookOutput> {
+  std::size_t operator()(const example::bookstore::GetBookOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.isbn));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.title));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.price));
+    return seed;
+  }
+};

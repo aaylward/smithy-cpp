@@ -4,6 +4,7 @@
 
 #include <compare>
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -12,6 +13,7 @@
 #include "example/roundtrip/jsonrpc/types.h"
 #include "smithy/client/config.h"
 #include "smithy/core/fatal.h"
+#include "smithy/core/hash.h"
 #include "smithy/core/outcome.h"
 #include "smithy/http/transport.h"
 
@@ -102,6 +104,7 @@ class PutSinkRpcErrors {
 
     friend bool operator==(const PutSinkRpcErrors&, const PutSinkRpcErrors&) = default;
     friend auto operator<=>(const PutSinkRpcErrors&, const PutSinkRpcErrors&) = default;
+    friend struct std::hash<PutSinkRpcErrors>;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -114,3 +117,16 @@ class PutSinkRpcErrors {
 };
 
 }  // namespace example::roundtrip::jsonrpc
+
+// std::hash so generated types key std::unordered_map/std::unordered_set —
+// emitted exactly for the types that get operator<=> (issue #49). Hash
+// values are process-local: never persist or compare them across runs.
+
+template <>
+struct std::hash<example::roundtrip::jsonrpc::PutSinkRpcErrors> {
+  std::size_t operator()(const example::roundtrip::jsonrpc::PutSinkRpcErrors& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};

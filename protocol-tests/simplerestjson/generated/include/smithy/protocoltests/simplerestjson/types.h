@@ -5,6 +5,7 @@
 #include <compare>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <optional>
 #include <string>
@@ -15,6 +16,7 @@
 
 #include "smithy/core/document.h"
 #include "smithy/core/fatal.h"
+#include "smithy/core/hash.h"
 #include "smithy/core/timestamp.h"
 
 namespace smithy::protocoltests::simplerestjson {
@@ -58,6 +60,7 @@ class PizzaBase {
     friend bool operator==(const PizzaBase&, const PizzaBase&) = default;
     friend bool operator==(const PizzaBase& a, Value b) { return a.value_ == b; }
     friend auto operator<=>(const PizzaBase&, const PizzaBase&) = default;
+    friend struct std::hash<PizzaBase>;
 
   private:
     Value value_ = Value::kUnknown;
@@ -131,6 +134,7 @@ class Ingredient {
     friend bool operator==(const Ingredient&, const Ingredient&) = default;
     friend bool operator==(const Ingredient& a, Value b) { return a.value_ == b; }
     friend auto operator<=>(const Ingredient&, const Ingredient&) = default;
+    friend struct std::hash<Ingredient>;
 
   private:
     Value value_ = Value::kUnknown;
@@ -205,6 +209,7 @@ class Food {
 
     friend bool operator==(const Food&, const Food&) = default;
     friend auto operator<=>(const Food&, const Food&) = default;
+    friend struct std::hash<Food>;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -321,6 +326,7 @@ class UnknownServerErrorCode {
     friend bool operator==(const UnknownServerErrorCode&, const UnknownServerErrorCode&) = default;
     friend bool operator==(const UnknownServerErrorCode& a, Value b) { return a.value_ == b; }
     friend auto operator<=>(const UnknownServerErrorCode&, const UnknownServerErrorCode&) = default;
+    friend struct std::hash<UnknownServerErrorCode>;
 
   private:
     Value value_ = Value::kUnknown;
@@ -391,6 +397,7 @@ class TheEnum {
     friend bool operator==(const TheEnum&, const TheEnum&) = default;
     friend bool operator==(const TheEnum& a, Value b) { return a.value_ == b; }
     friend auto operator<=>(const TheEnum&, const TheEnum&) = default;
+    friend struct std::hash<TheEnum>;
 
   private:
     Value value_ = Value::kUnknown;
@@ -769,3 +776,353 @@ struct VersionOutput {
 };
 
 }  // namespace smithy::protocoltests::simplerestjson
+
+// std::hash so generated types key std::unordered_map/std::unordered_set —
+// emitted exactly for the types that get operator<=> (issue #49). Hash
+// values are process-local: never persist or compare them across runs.
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::PizzaBase> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::PizzaBase& value) const noexcept {
+    return smithy::HashCombine(static_cast<std::size_t>(value.value_),
+                               smithy::HashValue(value.unknown_));
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::Ingredient> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::Ingredient& value) const noexcept {
+    return smithy::HashCombine(static_cast<std::size_t>(value.value_),
+                               smithy::HashValue(value.unknown_));
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::Pizza> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::Pizza& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.name));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.base));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.toppings));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::Salad> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::Salad& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.name));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.ingredients));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::Food> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::Food& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::MenuItem> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::MenuItem& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.food));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.price));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::AddMenuItemInput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::AddMenuItemInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.restaurant));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.menuItem));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::AddMenuItemOutput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::AddMenuItemOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.itemId));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.added));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::GenericClientError> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::GenericClientError& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.message));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::GenericServerError> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::GenericServerError& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.message));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::PriceError> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::PriceError& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.message));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.code));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::CustomCodeInput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::CustomCodeInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.code));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::CustomCodeOutput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::CustomCodeOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.code));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::UnknownServerErrorCode> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::UnknownServerErrorCode& value) const noexcept {
+    return smithy::HashCombine(static_cast<std::size_t>(value.value_),
+                               smithy::HashValue(value.unknown_));
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::UnknownServerError> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::UnknownServerError& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.errorCode));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.description));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.stateHash));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::FallbackError> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::FallbackError& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.error));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::TheEnum> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::TheEnum& value) const noexcept {
+    return smithy::HashCombine(static_cast<std::size_t>(value.value_),
+                               smithy::HashValue(value.unknown_));
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::GetEnumInput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::GetEnumInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.aa));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::GetEnumOutput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::GetEnumOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.result));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::GetIntEnumInput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::GetIntEnumInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.aa));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::GetIntEnumOutput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::GetIntEnumOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.result));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::GetMenuInput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::GetMenuInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.restaurant));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::GetMenuOutput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::GetMenuOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.menu));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::NotFoundError> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::NotFoundError& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.name));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::HeaderEndpointInput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::HeaderEndpointInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.uppercaseHeader));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.capitalizedHeader));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.lowercaseHeader));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.mixedHeader));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::HeaderEndpointOutput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::HeaderEndpointOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.uppercaseHeader));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.capitalizedHeader));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.lowercaseHeader));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.mixedHeader));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::HealthInput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::HealthInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.query));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::HealthOutput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::HealthOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.status));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::HttpPayloadRequiredWithDefaultInput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::HttpPayloadRequiredWithDefaultInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.body));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::HttpPayloadRequiredWithDefaultOutput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::HttpPayloadRequiredWithDefaultOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.body));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::HttpPayloadWithDefaultInput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::HttpPayloadWithDefaultInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.body));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::HttpPayloadWithDefaultOutput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::HttpPayloadWithDefaultOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.body));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::SmallStruct> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::SmallStruct& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.content));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::RoundTripInput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::RoundTripInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.label));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.header));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.query));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.body));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::RoundTripOutput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::RoundTripOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.label));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.header));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.query));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.body));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::VersionInput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::VersionInput& /*value*/) const noexcept { return 0; }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::VersionOutput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::VersionOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.version));
+    return seed;
+  }
+};

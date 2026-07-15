@@ -4,8 +4,11 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <functional>
 #include <map>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "example/cafe/types.h"
@@ -70,6 +73,47 @@ TEST(GeneratedTypeOrderingTest, EnumsSwitchDirectlyWithoutValueCalls) {
       break;
   }
   EXPECT_EQ(picked, "espresso");
+}
+
+// Generated types hash exactly when they order (issue #49): std::hash
+// specializations beside the defaulted <=> let structs, unions, and enums key
+// std::unordered_map/std::unordered_set too. Hash values are process-local —
+// never persist them or compare them across runs.
+
+TEST(GeneratedTypeHashingTest, StructsKeyUnorderedMaps) {
+  std::unordered_map<GetOrderInput, int> by_input;
+  by_input[GetOrderInput{.orderId = "a"}] = 1;
+  by_input[GetOrderInput{.orderId = "b"}] = 2;
+  by_input[GetOrderInput{.orderId = "a"}] = 3;  // same key: overwrite, don't grow
+  EXPECT_EQ(by_input.size(), 2u);
+  EXPECT_EQ(by_input.at(GetOrderInput{.orderId = "a"}), 3);
+}
+
+TEST(GeneratedTypeHashingTest, EqualStructsHashEqualThroughNestedMembers) {
+  const GetOrderOutput order{.orderId = "o-1",
+                             .coffeeType = CoffeeType(CoffeeType::Value::kCortado),
+                             .status = OrderStatus::FromPending(PendingStatus{.position = 3})};
+  const GetOrderOutput same = order;
+  EXPECT_EQ(std::hash<GetOrderOutput>{}(order), std::hash<GetOrderOutput>{}(same));
+}
+
+TEST(GeneratedTypeHashingTest, EnumsKeyUnorderedSetsIncludingUnknownText) {
+  std::unordered_set<CoffeeType> seen;
+  seen.insert(CoffeeType::Value::kDrip);
+  seen.insert(CoffeeType::FromString("DRIP"));      // equal to the first
+  seen.insert(CoffeeType::FromString("OAT_FOAM"));  // unknown values hash by their text
+  seen.insert(CoffeeType::FromString("OAT_FOAM"));
+  seen.insert(CoffeeType::FromString("SOY_FOAM"));
+  EXPECT_EQ(seen.size(), 3u);
+}
+
+TEST(GeneratedTypeHashingTest, UnionsHashByEngagedMemberAndValue) {
+  std::unordered_set<MilkOption> options;
+  options.insert(MilkOption{});
+  options.insert(MilkOption::FromNone(smithy::Unit{}));  // engaged none != empty
+  options.insert(MilkOption::FromDairy(DairyMilk{.percentFat = 2.0F}));
+  options.insert(MilkOption::FromDairy(DairyMilk{.percentFat = 2.0F}));
+  EXPECT_EQ(options.size(), 3u);
 }
 
 TEST(CafeGeneratedTypesTest, EnumRoundTripsKnownValues) {

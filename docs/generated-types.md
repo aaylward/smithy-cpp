@@ -42,11 +42,19 @@ compatibility contract: changes to it are breaking for consumers of generated co
   it exists to break is a hard error on clang), transitively through members — are
   equality-only: the generator omits `<=>` and leaves an "Equality-only" comment in the
   header. `float`/`double` members make the ordering partial.
+- **Hashing**: a type specializes `std::hash` exactly when it gets `operator<=>`, so it keys
+  `std::unordered_map`/`std::unordered_set` the same way it keys `std::map` (equality-only
+  types get neither). Structs hash member-wise, enums hash their (value, unknown-text) pair,
+  unions and `<Op>Errors` listings hash (engaged index, engaged member); list/map/optional
+  members hash element-wise via `smithy::HashValue`, and the runtime types (`smithy::Blob`,
+  `smithy::Timestamp`, `smithy::Unit`) carry `std::hash` in their own headers. The
+  specializations sit after the namespace's closing brace in the same generated header.
+  Hash values are **process-local**: they build on `std::hash`, so never persist them or
+  compare them across processes, builds, or library versions.
 - **Deliberately not generated**:
   - builders — C++20 designated initializers are the construction story:
     `GetOrderInput{.orderId = "o-1"}`;
-  - `std::hash`, `operator<<`, `std::format` — deferred until the runtime types have a
-    hashing/printing story (`<=>` already unblocks ordered containers, the stated pain);
+  - `operator<<`, `std::format` — deferred until the runtime types have a printing story;
   - a distinct "absent" state for `@required` members — they stay plain members; presence is
     enforced by server-side validation (see Optionality above).
 - **Docs**: `@documentation` becomes `///` comments.

@@ -3,8 +3,12 @@
 #pragma once
 
 #include <compare>
+#include <cstddef>
+#include <functional>
 #include <optional>
 #include <string>
+
+#include "smithy/core/hash.h"
 
 namespace example::calculator {
 
@@ -51,3 +55,55 @@ struct DivisionByZero {
 };
 
 }  // namespace example::calculator
+
+// std::hash so generated types key std::unordered_map/std::unordered_set —
+// emitted exactly for the types that get operator<=> (issue #49). Hash
+// values are process-local: never persist or compare them across runs.
+
+template <>
+struct std::hash<example::calculator::AddInput> {
+  std::size_t operator()(const example::calculator::AddInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.a));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.b));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::calculator::AddOutput> {
+  std::size_t operator()(const example::calculator::AddOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.sum));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::calculator::DivideInput> {
+  std::size_t operator()(const example::calculator::DivideInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.dividend));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.divisor));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.requestToken));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::calculator::DivideOutput> {
+  std::size_t operator()(const example::calculator::DivideOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.quotient));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::calculator::DivisionByZero> {
+  std::size_t operator()(const example::calculator::DivisionByZero& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.message));
+    return seed;
+  }
+};

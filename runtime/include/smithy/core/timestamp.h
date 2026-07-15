@@ -2,7 +2,9 @@
 #define SMITHY_CORE_TIMESTAMP_H_
 
 #include <compare>
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <string_view>
 
@@ -59,5 +61,15 @@ class Timestamp {
 };
 
 }  // namespace smithy
+
+// Hashes by the instant (epoch milliseconds), matching operator==, so
+// timestamp-bearing generated structs can key unordered containers
+// (issue #49). Process-local: never persist hash values.
+template <>
+struct std::hash<smithy::Timestamp> {
+  std::size_t operator()(smithy::Timestamp timestamp) const noexcept {
+    return std::hash<std::int64_t>{}(timestamp.epoch_milliseconds());
+  }
+};
 
 #endif  // SMITHY_CORE_TIMESTAMP_H_

@@ -3,6 +3,8 @@
 
 #include <compare>
 #include <concepts>
+#include <cstddef>
+#include <functional>
 #include <string_view>
 #include <utility>
 #include <variant>
@@ -113,5 +115,12 @@ class Outcome {
 };
 
 }  // namespace smithy
+
+// One value, one hash — so Unit union members don't block a generated type's
+// std::hash, mirroring Unit's trivial operator<=> (issue #49).
+template <>
+struct std::hash<smithy::Unit> {
+  std::size_t operator()(smithy::Unit /*unit*/) const noexcept { return 0; }
+};
 
 #endif  // SMITHY_CORE_OUTCOME_H_

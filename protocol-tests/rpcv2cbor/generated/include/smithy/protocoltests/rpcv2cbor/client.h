@@ -4,6 +4,7 @@
 
 #include <compare>
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -11,6 +12,7 @@
 
 #include "smithy/client/config.h"
 #include "smithy/core/fatal.h"
+#include "smithy/core/hash.h"
 #include "smithy/core/outcome.h"
 #include "smithy/http/transport.h"
 #include "smithy/protocoltests/rpcv2cbor/types.h"
@@ -127,6 +129,7 @@ class GreetingWithErrorsErrors {
 
     friend bool operator==(const GreetingWithErrorsErrors&, const GreetingWithErrorsErrors&) = default;
     friend auto operator<=>(const GreetingWithErrorsErrors&, const GreetingWithErrorsErrors&) = default;
+    friend struct std::hash<GreetingWithErrorsErrors>;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -186,6 +189,7 @@ class OperationWithDefaultsErrors {
 
     friend bool operator==(const OperationWithDefaultsErrors&, const OperationWithDefaultsErrors&) = default;
     friend auto operator<=>(const OperationWithDefaultsErrors&, const OperationWithDefaultsErrors&) = default;
+    friend struct std::hash<OperationWithDefaultsErrors>;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -245,6 +249,7 @@ class RpcV2CborDenseMapsErrors {
 
     friend bool operator==(const RpcV2CborDenseMapsErrors&, const RpcV2CborDenseMapsErrors&) = default;
     friend auto operator<=>(const RpcV2CborDenseMapsErrors&, const RpcV2CborDenseMapsErrors&) = default;
+    friend struct std::hash<RpcV2CborDenseMapsErrors>;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -304,6 +309,7 @@ class RpcV2CborListsErrors {
 
     friend bool operator==(const RpcV2CborListsErrors&, const RpcV2CborListsErrors&) = default;
     friend auto operator<=>(const RpcV2CborListsErrors&, const RpcV2CborListsErrors&) = default;
+    friend struct std::hash<RpcV2CborListsErrors>;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -363,6 +369,7 @@ class RpcV2CborSparseMapsErrors {
 
     friend bool operator==(const RpcV2CborSparseMapsErrors&, const RpcV2CborSparseMapsErrors&) = default;
     friend auto operator<=>(const RpcV2CborSparseMapsErrors&, const RpcV2CborSparseMapsErrors&) = default;
+    friend struct std::hash<RpcV2CborSparseMapsErrors>;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -375,3 +382,52 @@ class RpcV2CborSparseMapsErrors {
 };
 
 }  // namespace smithy::protocoltests::rpcv2cbor
+
+// std::hash so generated types key std::unordered_map/std::unordered_set —
+// emitted exactly for the types that get operator<=> (issue #49). Hash
+// values are process-local: never persist or compare them across runs.
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::GreetingWithErrorsErrors> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::GreetingWithErrorsErrors& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::OperationWithDefaultsErrors> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::OperationWithDefaultsErrors& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::RpcV2CborDenseMapsErrors> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::RpcV2CborDenseMapsErrors& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::RpcV2CborListsErrors> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::RpcV2CborListsErrors& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::RpcV2CborSparseMapsErrors> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::RpcV2CborSparseMapsErrors& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};

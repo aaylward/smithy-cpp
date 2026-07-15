@@ -3,11 +3,14 @@
 #pragma once
 
 #include <compare>
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
 
+#include "smithy/core/hash.h"
 #include "smithy/core/timestamp.h"
 
 namespace example::weather {
@@ -135,3 +138,140 @@ struct GetReportOutput {
 };
 
 }  // namespace example::weather
+
+// std::hash so generated types key std::unordered_map/std::unordered_set —
+// emitted exactly for the types that get operator<=> (issue #49). Hash
+// values are process-local: never persist or compare them across runs.
+
+template <>
+struct std::hash<example::weather::DeleteCityInput> {
+  std::size_t operator()(const example::weather::DeleteCityInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.cityId));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::weather::DeleteCityOutput> {
+  std::size_t operator()(const example::weather::DeleteCityOutput& /*value*/) const noexcept { return 0; }
+};
+
+template <>
+struct std::hash<example::weather::NoSuchResource> {
+  std::size_t operator()(const example::weather::NoSuchResource& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.resourceType));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::weather::GetForecastInput> {
+  std::size_t operator()(const example::weather::GetForecastInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.cityId));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::weather::GetForecastOutput> {
+  std::size_t operator()(const example::weather::GetForecastOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.chanceOfRain));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::weather::GetCityInput> {
+  std::size_t operator()(const example::weather::GetCityInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.cityId));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::weather::CityCoordinates> {
+  std::size_t operator()(const example::weather::CityCoordinates& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.latitude));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.longitude));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::weather::GetCityOutput> {
+  std::size_t operator()(const example::weather::GetCityOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.name));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.coordinates));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::weather::ListCitiesInput> {
+  std::size_t operator()(const example::weather::ListCitiesInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.nextToken));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.pageSize));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::weather::CitySummary> {
+  std::size_t operator()(const example::weather::CitySummary& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.cityId));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.name));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::weather::ListCitiesOutput> {
+  std::size_t operator()(const example::weather::ListCitiesOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.nextToken));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.items));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::weather::GetCurrentTimeInput> {
+  std::size_t operator()(const example::weather::GetCurrentTimeInput& /*value*/) const noexcept { return 0; }
+};
+
+template <>
+struct std::hash<example::weather::GetCurrentTimeOutput> {
+  std::size_t operator()(const example::weather::GetCurrentTimeOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.time));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::weather::GetReportInput> {
+  std::size_t operator()(const example::weather::GetReportInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.reportPath));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::weather::GetReportOutput> {
+  std::size_t operator()(const example::weather::GetReportOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.path));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.sizeBytes));
+    return seed;
+  }
+};

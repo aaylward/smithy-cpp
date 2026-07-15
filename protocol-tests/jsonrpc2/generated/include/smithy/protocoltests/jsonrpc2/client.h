@@ -4,6 +4,7 @@
 
 #include <compare>
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -11,6 +12,7 @@
 
 #include "smithy/client/config.h"
 #include "smithy/core/fatal.h"
+#include "smithy/core/hash.h"
 #include "smithy/core/outcome.h"
 #include "smithy/http/transport.h"
 #include "smithy/protocoltests/jsonrpc2/types.h"
@@ -101,6 +103,7 @@ class EchoPayloadErrors {
 
     friend bool operator==(const EchoPayloadErrors&, const EchoPayloadErrors&) = default;
     friend auto operator<=>(const EchoPayloadErrors&, const EchoPayloadErrors&) = default;
+    friend struct std::hash<EchoPayloadErrors>;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -113,3 +116,16 @@ class EchoPayloadErrors {
 };
 
 }  // namespace smithy::protocoltests::jsonrpc2
+
+// std::hash so generated types key std::unordered_map/std::unordered_set —
+// emitted exactly for the types that get operator<=> (issue #49). Hash
+// values are process-local: never persist or compare them across runs.
+
+template <>
+struct std::hash<smithy::protocoltests::jsonrpc2::EchoPayloadErrors> {
+  std::size_t operator()(const smithy::protocoltests::jsonrpc2::EchoPayloadErrors& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};

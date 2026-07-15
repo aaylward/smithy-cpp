@@ -123,6 +123,13 @@ TEST(BlobTest, RoundTripsThroughString) {
   EXPECT_FALSE(blob == Blob::FromString("world"));
 }
 
+TEST(BlobTest, OrdersLexicographicallyByBytes) {
+  // operator<=> so blob-bearing generated structs stay orderable (issue #49).
+  EXPECT_TRUE(Blob::FromString("abc") < Blob::FromString("abd"));
+  EXPECT_TRUE(Blob::FromString("ab") < Blob::FromString("abc"));
+  EXPECT_TRUE(Blob::FromString("b") > Blob::FromString("abc"));
+}
+
 TEST(Base64Test, EncodesRfc4648Vectors) {
   EXPECT_EQ(Base64Encode(Blob::FromString("")), "");
   EXPECT_EQ(Base64Encode(Blob::FromString("f")), "Zg==");

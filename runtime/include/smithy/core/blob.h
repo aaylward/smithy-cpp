@@ -1,6 +1,7 @@
 #ifndef SMITHY_CORE_BLOB_H_
 #define SMITHY_CORE_BLOB_H_
 
+#include <compare>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -29,6 +30,8 @@ class Blob {
   bool empty() const { return bytes_.empty(); }
 
   friend bool operator==(const Blob& a, const Blob& b) { return a.bytes_ == b.bytes_; }
+  // Lexicographic by bytes, so blob-bearing generated structs stay orderable.
+  friend auto operator<=>(const Blob& a, const Blob& b) { return a.bytes_ <=> b.bytes_; }
 
  private:
   std::vector<std::uint8_t> bytes_;

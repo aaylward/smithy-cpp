@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <compare>
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -40,6 +41,10 @@ class PizzaBase {
 
     Value value() const { return value_; }
 
+    /// Implicit so `switch (x)` works without .value(); the Value equality
+    /// overload below keeps comparisons unambiguous despite the conversion.
+    operator Value() const { return value_; }  // NOLINT(*-explicit-*)
+
     /// The wire text, including the original text of unknown values.
     std::string_view ToString() const {
       switch (value_) {
@@ -51,6 +56,8 @@ class PizzaBase {
     }
 
     friend bool operator==(const PizzaBase&, const PizzaBase&) = default;
+    friend bool operator==(const PizzaBase& a, Value b) { return a.value_ == b; }
+    friend auto operator<=>(const PizzaBase&, const PizzaBase&) = default;
 
   private:
     Value value_ = Value::kUnknown;
@@ -98,6 +105,10 @@ class Ingredient {
 
     Value value() const { return value_; }
 
+    /// Implicit so `switch (x)` works without .value(); the Value equality
+    /// overload below keeps comparisons unambiguous despite the conversion.
+    operator Value() const { return value_; }  // NOLINT(*-explicit-*)
+
     /// The wire text, including the original text of unknown values.
     std::string_view ToString() const {
       switch (value_) {
@@ -118,6 +129,8 @@ class Ingredient {
     }
 
     friend bool operator==(const Ingredient&, const Ingredient&) = default;
+    friend bool operator==(const Ingredient& a, Value b) { return a.value_ == b; }
+    friend auto operator<=>(const Ingredient&, const Ingredient&) = default;
 
   private:
     Value value_ = Value::kUnknown;
@@ -131,6 +144,7 @@ struct Pizza {
   std::vector<Ingredient> toppings{};
 
   friend bool operator==(const Pizza&, const Pizza&) = default;
+  friend auto operator<=>(const Pizza&, const Pizza&) = default;
 };
 
 
@@ -139,6 +153,7 @@ struct Salad {
   std::vector<Ingredient> ingredients{};
 
   friend bool operator==(const Salad&, const Salad&) = default;
+  friend auto operator<=>(const Salad&, const Salad&) = default;
 };
 
 
@@ -189,6 +204,7 @@ class Food {
     }
 
     friend bool operator==(const Food&, const Food&) = default;
+    friend auto operator<=>(const Food&, const Food&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -206,6 +222,7 @@ struct MenuItem {
   float price{};
 
   friend bool operator==(const MenuItem&, const MenuItem&) = default;
+  friend auto operator<=>(const MenuItem&, const MenuItem&) = default;
 };
 
 
@@ -214,6 +231,7 @@ struct AddMenuItemInput {
   MenuItem menuItem{};
 
   friend bool operator==(const AddMenuItemInput&, const AddMenuItemInput&) = default;
+  friend auto operator<=>(const AddMenuItemInput&, const AddMenuItemInput&) = default;
 };
 
 
@@ -222,6 +240,7 @@ struct AddMenuItemOutput {
   smithy::Timestamp added{};
 
   friend bool operator==(const AddMenuItemOutput&, const AddMenuItemOutput&) = default;
+  friend auto operator<=>(const AddMenuItemOutput&, const AddMenuItemOutput&) = default;
 };
 
 
@@ -229,6 +248,7 @@ struct GenericClientError {
   std::string message{};
 
   friend bool operator==(const GenericClientError&, const GenericClientError&) = default;
+  friend auto operator<=>(const GenericClientError&, const GenericClientError&) = default;
 };
 
 
@@ -236,6 +256,7 @@ struct GenericServerError {
   std::string message{};
 
   friend bool operator==(const GenericServerError&, const GenericServerError&) = default;
+  friend auto operator<=>(const GenericServerError&, const GenericServerError&) = default;
 };
 
 
@@ -244,6 +265,7 @@ struct PriceError {
   std::int32_t code{};
 
   friend bool operator==(const PriceError&, const PriceError&) = default;
+  friend auto operator<=>(const PriceError&, const PriceError&) = default;
 };
 
 
@@ -251,6 +273,7 @@ struct CustomCodeInput {
   std::int32_t code{};
 
   friend bool operator==(const CustomCodeInput&, const CustomCodeInput&) = default;
+  friend auto operator<=>(const CustomCodeInput&, const CustomCodeInput&) = default;
 };
 
 
@@ -258,6 +281,7 @@ struct CustomCodeOutput {
   std::optional<std::int32_t> code{};
 
   friend bool operator==(const CustomCodeOutput&, const CustomCodeOutput&) = default;
+  friend auto operator<=>(const CustomCodeOutput&, const CustomCodeOutput&) = default;
 };
 
 
@@ -281,6 +305,10 @@ class UnknownServerErrorCode {
 
     Value value() const { return value_; }
 
+    /// Implicit so `switch (x)` works without .value(); the Value equality
+    /// overload below keeps comparisons unambiguous despite the conversion.
+    operator Value() const { return value_; }  // NOLINT(*-explicit-*)
+
     /// The wire text, including the original text of unknown values.
     std::string_view ToString() const {
       switch (value_) {
@@ -291,6 +319,8 @@ class UnknownServerErrorCode {
     }
 
     friend bool operator==(const UnknownServerErrorCode&, const UnknownServerErrorCode&) = default;
+    friend bool operator==(const UnknownServerErrorCode& a, Value b) { return a.value_ == b; }
+    friend auto operator<=>(const UnknownServerErrorCode&, const UnknownServerErrorCode&) = default;
 
   private:
     Value value_ = Value::kUnknown;
@@ -304,6 +334,7 @@ struct UnknownServerError {
   std::optional<std::string> stateHash{};
 
   friend bool operator==(const UnknownServerError&, const UnknownServerError&) = default;
+  friend auto operator<=>(const UnknownServerError&, const UnknownServerError&) = default;
 };
 
 
@@ -317,6 +348,7 @@ struct FallbackError {
   std::string error{};
 
   friend bool operator==(const FallbackError&, const FallbackError&) = default;
+  friend auto operator<=>(const FallbackError&, const FallbackError&) = default;
 };
 
 
@@ -342,6 +374,10 @@ class TheEnum {
 
     Value value() const { return value_; }
 
+    /// Implicit so `switch (x)` works without .value(); the Value equality
+    /// overload below keeps comparisons unambiguous despite the conversion.
+    operator Value() const { return value_; }  // NOLINT(*-explicit-*)
+
     /// The wire text, including the original text of unknown values.
     std::string_view ToString() const {
       switch (value_) {
@@ -353,6 +389,8 @@ class TheEnum {
     }
 
     friend bool operator==(const TheEnum&, const TheEnum&) = default;
+    friend bool operator==(const TheEnum& a, Value b) { return a.value_ == b; }
+    friend auto operator<=>(const TheEnum&, const TheEnum&) = default;
 
   private:
     Value value_ = Value::kUnknown;
@@ -364,6 +402,7 @@ struct GetEnumInput {
   TheEnum aa{};
 
   friend bool operator==(const GetEnumInput&, const GetEnumInput&) = default;
+  friend auto operator<=>(const GetEnumInput&, const GetEnumInput&) = default;
 };
 
 
@@ -371,6 +410,7 @@ struct GetEnumOutput {
   std::optional<std::string> result{};
 
   friend bool operator==(const GetEnumOutput&, const GetEnumOutput&) = default;
+  friend auto operator<=>(const GetEnumOutput&, const GetEnumOutput&) = default;
 };
 
 
@@ -378,6 +418,7 @@ struct GetIntEnumInput {
   EnumResult aa{};
 
   friend bool operator==(const GetIntEnumInput&, const GetIntEnumInput&) = default;
+  friend auto operator<=>(const GetIntEnumInput&, const GetIntEnumInput&) = default;
 };
 
 
@@ -385,6 +426,7 @@ struct GetIntEnumOutput {
   EnumResult result{};
 
   friend bool operator==(const GetIntEnumOutput&, const GetIntEnumOutput&) = default;
+  friend auto operator<=>(const GetIntEnumOutput&, const GetIntEnumOutput&) = default;
 };
 
 
@@ -392,6 +434,7 @@ struct GetMenuInput {
   std::string restaurant{};
 
   friend bool operator==(const GetMenuInput&, const GetMenuInput&) = default;
+  friend auto operator<=>(const GetMenuInput&, const GetMenuInput&) = default;
 };
 
 
@@ -399,6 +442,7 @@ struct GetMenuOutput {
   std::map<std::string, MenuItem> menu{};
 
   friend bool operator==(const GetMenuOutput&, const GetMenuOutput&) = default;
+  friend auto operator<=>(const GetMenuOutput&, const GetMenuOutput&) = default;
 };
 
 
@@ -406,6 +450,7 @@ struct NotFoundError {
   std::string name{};
 
   friend bool operator==(const NotFoundError&, const NotFoundError&) = default;
+  friend auto operator<=>(const NotFoundError&, const NotFoundError&) = default;
 };
 
 
@@ -416,6 +461,7 @@ struct HeaderEndpointInput {
   std::optional<std::string> mixedHeader{};
 
   friend bool operator==(const HeaderEndpointInput&, const HeaderEndpointInput&) = default;
+  friend auto operator<=>(const HeaderEndpointInput&, const HeaderEndpointInput&) = default;
 };
 
 
@@ -426,6 +472,7 @@ struct HeaderEndpointOutput {
   std::optional<std::string> mixedHeader{};
 
   friend bool operator==(const HeaderEndpointOutput&, const HeaderEndpointOutput&) = default;
+  friend auto operator<=>(const HeaderEndpointOutput&, const HeaderEndpointOutput&) = default;
 };
 
 
@@ -433,6 +480,7 @@ struct HealthInput {
   std::optional<std::string> query{};
 
   friend bool operator==(const HealthInput&, const HealthInput&) = default;
+  friend auto operator<=>(const HealthInput&, const HealthInput&) = default;
 };
 
 
@@ -440,6 +488,7 @@ struct HealthOutput {
   std::string status{};
 
   friend bool operator==(const HealthOutput&, const HealthOutput&) = default;
+  friend auto operator<=>(const HealthOutput&, const HealthOutput&) = default;
 };
 
 
@@ -447,6 +496,7 @@ struct HttpPayloadRequiredWithDefaultInput {
   std::string body = "default value";
 
   friend bool operator==(const HttpPayloadRequiredWithDefaultInput&, const HttpPayloadRequiredWithDefaultInput&) = default;
+  friend auto operator<=>(const HttpPayloadRequiredWithDefaultInput&, const HttpPayloadRequiredWithDefaultInput&) = default;
 };
 
 
@@ -454,6 +504,7 @@ struct HttpPayloadRequiredWithDefaultOutput {
   std::string body = "default value";
 
   friend bool operator==(const HttpPayloadRequiredWithDefaultOutput&, const HttpPayloadRequiredWithDefaultOutput&) = default;
+  friend auto operator<=>(const HttpPayloadRequiredWithDefaultOutput&, const HttpPayloadRequiredWithDefaultOutput&) = default;
 };
 
 
@@ -461,6 +512,7 @@ struct HttpPayloadWithDefaultInput {
   std::optional<std::string> body{};
 
   friend bool operator==(const HttpPayloadWithDefaultInput&, const HttpPayloadWithDefaultInput&) = default;
+  friend auto operator<=>(const HttpPayloadWithDefaultInput&, const HttpPayloadWithDefaultInput&) = default;
 };
 
 
@@ -468,6 +520,7 @@ struct HttpPayloadWithDefaultOutput {
   std::string body = "default value";
 
   friend bool operator==(const HttpPayloadWithDefaultOutput&, const HttpPayloadWithDefaultOutput&) = default;
+  friend auto operator<=>(const HttpPayloadWithDefaultOutput&, const HttpPayloadWithDefaultOutput&) = default;
 };
 
 
@@ -475,6 +528,7 @@ struct SmallStruct {
   std::string content{};
 
   friend bool operator==(const SmallStruct&, const SmallStruct&) = default;
+  friend auto operator<=>(const SmallStruct&, const SmallStruct&) = default;
 };
 
 
@@ -525,6 +579,7 @@ class OpenDiscriminatedUnion {
     }
 
     friend bool operator==(const OpenDiscriminatedUnion&, const OpenDiscriminatedUnion&) = default;
+    friend auto operator<=>(const OpenDiscriminatedUnion&, const OpenDiscriminatedUnion&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -584,6 +639,7 @@ class OpenTaggedUnion {
     }
 
     friend bool operator==(const OpenTaggedUnion&, const OpenTaggedUnion&) = default;
+    friend auto operator<=>(const OpenTaggedUnion&, const OpenTaggedUnion&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -643,6 +699,7 @@ class OpenUnionsPayload {
     }
 
     friend bool operator==(const OpenUnionsPayload&, const OpenUnionsPayload&) = default;
+    friend auto operator<=>(const OpenUnionsPayload&, const OpenUnionsPayload&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -659,6 +716,7 @@ struct OpenUnionsInput {
   OpenUnionsPayload data{};
 
   friend bool operator==(const OpenUnionsInput&, const OpenUnionsInput&) = default;
+  friend auto operator<=>(const OpenUnionsInput&, const OpenUnionsInput&) = default;
 };
 
 
@@ -666,6 +724,7 @@ struct OpenUnionsOutput {
   OpenUnionsPayload data{};
 
   friend bool operator==(const OpenUnionsOutput&, const OpenUnionsOutput&) = default;
+  friend auto operator<=>(const OpenUnionsOutput&, const OpenUnionsOutput&) = default;
 };
 
 
@@ -676,6 +735,7 @@ struct RoundTripInput {
   std::optional<std::string> body{};
 
   friend bool operator==(const RoundTripInput&, const RoundTripInput&) = default;
+  friend auto operator<=>(const RoundTripInput&, const RoundTripInput&) = default;
 };
 
 
@@ -686,11 +746,13 @@ struct RoundTripOutput {
   std::optional<std::string> body{};
 
   friend bool operator==(const RoundTripOutput&, const RoundTripOutput&) = default;
+  friend auto operator<=>(const RoundTripOutput&, const RoundTripOutput&) = default;
 };
 
 
 struct VersionInput {
   friend bool operator==(const VersionInput&, const VersionInput&) = default;
+  friend auto operator<=>(const VersionInput&, const VersionInput&) = default;
 };
 
 
@@ -698,6 +760,7 @@ struct VersionOutput {
   std::string version{};
 
   friend bool operator==(const VersionOutput&, const VersionOutput&) = default;
+  friend auto operator<=>(const VersionOutput&, const VersionOutput&) = default;
 };
 
 }  // namespace smithy::protocoltests::simplerestjson

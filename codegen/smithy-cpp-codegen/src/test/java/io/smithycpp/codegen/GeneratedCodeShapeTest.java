@@ -121,6 +121,49 @@ class GeneratedCodeShapeTest {
     assertFalse(client.contains("FromNotFound"), client);
   }
 
+  private static final String ORDERING_MODEL =
+      """
+      $version: "2.0"
+      namespace test.shape
+      use alloy#simpleRestJson
+
+      @simpleRestJson
+      service Svc { version: "1", operations: [Ping] }
+
+      @http(method: "POST", uri: "/ping")
+      operation Ping { input := { status: Status, size: Size } }
+
+      union Status { pending: Pending, ready: Ready }
+      structure Pending { position: Integer }
+      structure Ready { at: Timestamp }
+      enum Size { SMALL, LARGE }
+      """;
+
+  @Test
+  void generatedTypesAreOrderedAndEnumsSwitchDirectly() {
+    // Issue #49: generated types offered only operator==, so they couldn't
+    // key a std::map, and enums needed .value() before a switch. Structs,
+    // unions, and enums now default operator<=> beside operator==, and the
+    // enum wrapper converts implicitly to its Value so `switch (size)` works
+    // — with explicit Value equality friends so the conversion introduces no
+    // overload ambiguity.
+    String types =
+        PluginTestHarness.generate(ORDERING_MODEL, "test.shape#Svc", "test::shape")
+            .expectFileString("/include/test/shape/types.h");
+    assertTrue(types.contains("#include <compare>"), types);
+    assertTrue(
+        types.contains("friend auto operator<=>(const Pending&, const Pending&) = default;"),
+        types);
+    assertTrue(
+        types.contains("friend auto operator<=>(const Status&, const Status&) = default;"), types);
+    assertTrue(
+        types.contains("friend auto operator<=>(const Size&, const Size&) = default;"), types);
+    assertTrue(types.contains("operator Value() const { return value_; }"), types);
+    assertTrue(
+        types.contains("friend bool operator==(const Size& a, Value b) { return a.value_ == b; }"),
+        types);
+  }
+
   @Test
   void typedErrorListingNameCollisionFailsWithContext() {
     // The listing's synthetic name <Op>Errors can collide with a modeled

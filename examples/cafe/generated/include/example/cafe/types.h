@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <compare>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -20,6 +21,7 @@ struct AlternativeMilk {
   std::string kind{};
 
   friend bool operator==(const AlternativeMilk&, const AlternativeMilk&) = default;
+  friend auto operator<=>(const AlternativeMilk&, const AlternativeMilk&) = default;
 };
 
 
@@ -27,6 +29,7 @@ struct GetOrderInput {
   std::string orderId{};
 
   friend bool operator==(const GetOrderInput&, const GetOrderInput&) = default;
+  friend auto operator<=>(const GetOrderInput&, const GetOrderInput&) = default;
 };
 
 
@@ -56,6 +59,10 @@ class CoffeeType {
 
     Value value() const { return value_; }
 
+    /// Implicit so `switch (x)` works without .value(); the Value equality
+    /// overload below keeps comparisons unambiguous despite the conversion.
+    operator Value() const { return value_; }  // NOLINT(*-explicit-*)
+
     /// The wire text, including the original text of unknown values.
     std::string_view ToString() const {
       switch (value_) {
@@ -69,6 +76,8 @@ class CoffeeType {
     }
 
     friend bool operator==(const CoffeeType&, const CoffeeType&) = default;
+    friend bool operator==(const CoffeeType& a, Value b) { return a.value_ == b; }
+    friend auto operator<=>(const CoffeeType&, const CoffeeType&) = default;
 
   private:
     Value value_ = Value::kUnknown;
@@ -80,6 +89,7 @@ struct CancelledStatus {
   std::optional<std::string> reason{};
 
   friend bool operator==(const CancelledStatus&, const CancelledStatus&) = default;
+  friend auto operator<=>(const CancelledStatus&, const CancelledStatus&) = default;
 };
 
 
@@ -87,6 +97,7 @@ struct PendingStatus {
   std::int32_t position{};
 
   friend bool operator==(const PendingStatus&, const PendingStatus&) = default;
+  friend auto operator<=>(const PendingStatus&, const PendingStatus&) = default;
 };
 
 
@@ -94,6 +105,7 @@ struct ReadyStatus {
   smithy::Timestamp readyAt{};
 
   friend bool operator==(const ReadyStatus&, const ReadyStatus&) = default;
+  friend auto operator<=>(const ReadyStatus&, const ReadyStatus&) = default;
 };
 
 
@@ -157,6 +169,7 @@ class OrderStatus {
     }
 
     friend bool operator==(const OrderStatus&, const OrderStatus&) = default;
+    friend auto operator<=>(const OrderStatus&, const OrderStatus&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -175,6 +188,7 @@ struct GetOrderOutput {
   OrderStatus status{};
 
   friend bool operator==(const GetOrderOutput&, const GetOrderOutput&) = default;
+  friend auto operator<=>(const GetOrderOutput&, const GetOrderOutput&) = default;
 };
 
 
@@ -183,6 +197,7 @@ struct OrderNotFound {
   std::string orderId{};
 
   friend bool operator==(const OrderNotFound&, const OrderNotFound&) = default;
+  friend auto operator<=>(const OrderNotFound&, const OrderNotFound&) = default;
 };
 
 
@@ -190,6 +205,7 @@ struct DairyMilk {
   float percentFat{};
 
   friend bool operator==(const DairyMilk&, const DairyMilk&) = default;
+  friend auto operator<=>(const DairyMilk&, const DairyMilk&) = default;
 };
 
 
@@ -254,6 +270,7 @@ class MilkOption {
     }
 
     friend bool operator==(const MilkOption&, const MilkOption&) = default;
+    friend auto operator<=>(const MilkOption&, const MilkOption&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -272,6 +289,7 @@ struct OrderCoffeeInput {
   std::optional<std::string> clientToken{};
 
   friend bool operator==(const OrderCoffeeInput&, const OrderCoffeeInput&) = default;
+  friend auto operator<=>(const OrderCoffeeInput&, const OrderCoffeeInput&) = default;
 };
 
 
@@ -280,6 +298,7 @@ struct OrderCoffeeOutput {
   OrderStatus status{};
 
   friend bool operator==(const OrderCoffeeOutput&, const OrderCoffeeOutput&) = default;
+  friend auto operator<=>(const OrderCoffeeOutput&, const OrderCoffeeOutput&) = default;
 };
 
 
@@ -288,6 +307,7 @@ struct OutOfBeans {
   std::optional<std::string> message{};
 
   friend bool operator==(const OutOfBeans&, const OutOfBeans&) = default;
+  friend auto operator<=>(const OutOfBeans&, const OutOfBeans&) = default;
 };
 
 }  // namespace example::cafe

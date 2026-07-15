@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <compare>
 #include <optional>
 #include <string>
 
@@ -12,6 +13,7 @@ struct AddInput {
   double b{};
 
   friend bool operator==(const AddInput&, const AddInput&) = default;
+  friend auto operator<=>(const AddInput&, const AddInput&) = default;
 };
 
 
@@ -19,6 +21,7 @@ struct AddOutput {
   double sum{};
 
   friend bool operator==(const AddOutput&, const AddOutput&) = default;
+  friend auto operator<=>(const AddOutput&, const AddOutput&) = default;
 };
 
 
@@ -28,6 +31,7 @@ struct DivideInput {
   std::optional<std::string> requestToken{};
 
   friend bool operator==(const DivideInput&, const DivideInput&) = default;
+  friend auto operator<=>(const DivideInput&, const DivideInput&) = default;
 };
 
 
@@ -35,6 +39,7 @@ struct DivideOutput {
   double quotient{};
 
   friend bool operator==(const DivideOutput&, const DivideOutput&) = default;
+  friend auto operator<=>(const DivideOutput&, const DivideOutput&) = default;
 };
 
 
@@ -42,6 +47,7 @@ struct DivisionByZero {
   std::string message{};
 
   friend bool operator==(const DivisionByZero&, const DivisionByZero&) = default;
+  friend auto operator<=>(const DivisionByZero&, const DivisionByZero&) = default;
 };
 
 }  // namespace example::calculator

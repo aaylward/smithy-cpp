@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <compare>
 #include <cstdint>
 #include <map>
 #include <optional>
@@ -17,6 +18,7 @@ struct Nested {
   std::optional<std::int32_t> depth{};
 
   friend bool operator==(const Nested&, const Nested&) = default;
+  friend auto operator<=>(const Nested&, const Nested&) = default;
 };
 
 
@@ -33,6 +35,7 @@ struct EchoPayloadInput {
   std::optional<Nested> nested{};
 
   friend bool operator==(const EchoPayloadInput&, const EchoPayloadInput&) = default;
+  friend auto operator<=>(const EchoPayloadInput&, const EchoPayloadInput&) = default;
 };
 
 
@@ -42,6 +45,7 @@ struct EchoPayloadOutput {
   std::optional<Nested> nested{};
 
   friend bool operator==(const EchoPayloadOutput&, const EchoPayloadOutput&) = default;
+  friend auto operator<=>(const EchoPayloadOutput&, const EchoPayloadOutput&) = default;
 };
 
 
@@ -50,6 +54,7 @@ struct NotFoundError {
   std::optional<std::string> resourceType{};
 
   friend bool operator==(const NotFoundError&, const NotFoundError&) = default;
+  friend auto operator<=>(const NotFoundError&, const NotFoundError&) = default;
 };
 
 
@@ -57,16 +62,19 @@ struct ThrottledError {
   std::optional<std::string> message{};
 
   friend bool operator==(const ThrottledError&, const ThrottledError&) = default;
+  friend auto operator<=>(const ThrottledError&, const ThrottledError&) = default;
 };
 
 
 struct NoArgsInput {
   friend bool operator==(const NoArgsInput&, const NoArgsInput&) = default;
+  friend auto operator<=>(const NoArgsInput&, const NoArgsInput&) = default;
 };
 
 
 struct NoArgsOutput {
   friend bool operator==(const NoArgsOutput&, const NoArgsOutput&) = default;
+  friend auto operator<=>(const NoArgsOutput&, const NoArgsOutput&) = default;
 };
 
 
@@ -77,6 +85,7 @@ struct PutConstrainedInput {
   std::optional<std::string> evilDigits{};
 
   friend bool operator==(const PutConstrainedInput&, const PutConstrainedInput&) = default;
+  friend auto operator<=>(const PutConstrainedInput&, const PutConstrainedInput&) = default;
 };
 
 
@@ -84,6 +93,7 @@ struct PutConstrainedOutput {
   bool accepted{};
 
   friend bool operator==(const PutConstrainedOutput&, const PutConstrainedOutput&) = default;
+  friend auto operator<=>(const PutConstrainedOutput&, const PutConstrainedOutput&) = default;
 };
 
 }  // namespace smithy::protocoltests::jsonrpc2

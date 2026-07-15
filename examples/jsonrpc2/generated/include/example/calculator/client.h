@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <compare>
 #include <cstddef>
 #include <memory>
 #include <string>
@@ -87,6 +88,7 @@ class DivideErrors {
     }
 
     friend bool operator==(const DivideErrors&, const DivideErrors&) = default;
+    friend auto operator<=>(const DivideErrors&, const DivideErrors&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {

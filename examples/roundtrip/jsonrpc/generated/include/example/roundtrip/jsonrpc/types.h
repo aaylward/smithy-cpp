@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <compare>
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -23,6 +24,7 @@ struct NestedConfig {
   std::optional<std::int32_t> depth{};
 
   friend bool operator==(const NestedConfig&, const NestedConfig&) = default;
+  friend auto operator<=>(const NestedConfig&, const NestedConfig&) = default;
 };
 
 
@@ -86,6 +88,7 @@ class SinkChoice {
     }
 
     friend bool operator==(const SinkChoice&, const SinkChoice&) = default;
+    friend auto operator<=>(const SinkChoice&, const SinkChoice&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -122,6 +125,10 @@ class Priority {
 
     Value value() const { return value_; }
 
+    /// Implicit so `switch (x)` works without .value(); the Value equality
+    /// overload below keeps comparisons unambiguous despite the conversion.
+    operator Value() const { return value_; }  // NOLINT(*-explicit-*)
+
     /// The wire text, including the original text of unknown values.
     std::string_view ToString() const {
       switch (value_) {
@@ -134,6 +141,8 @@ class Priority {
     }
 
     friend bool operator==(const Priority&, const Priority&) = default;
+    friend bool operator==(const Priority& a, Value b) { return a.value_ == b; }
+    friend auto operator<=>(const Priority&, const Priority&) = default;
 
   private:
     Value value_ = Value::kUnknown;
@@ -170,6 +179,7 @@ struct KitchenSink {
   std::optional<SinkChoice> choice{};
 
   friend bool operator==(const KitchenSink&, const KitchenSink&) = default;
+  friend auto operator<=>(const KitchenSink&, const KitchenSink&) = default;
 };
 
 
@@ -178,6 +188,7 @@ struct SinkNotFound {
   std::optional<std::string> resourceType{};
 
   friend bool operator==(const SinkNotFound&, const SinkNotFound&) = default;
+  friend auto operator<=>(const SinkNotFound&, const SinkNotFound&) = default;
 };
 
 
@@ -186,6 +197,7 @@ struct SinkQuotaExceeded {
   std::optional<std::int32_t> retryAfterSeconds{};
 
   friend bool operator==(const SinkQuotaExceeded&, const SinkQuotaExceeded&) = default;
+  friend auto operator<=>(const SinkQuotaExceeded&, const SinkQuotaExceeded&) = default;
 };
 
 
@@ -194,6 +206,7 @@ struct PutSinkRpcInput {
   std::optional<KitchenSink> sink{};
 
   friend bool operator==(const PutSinkRpcInput&, const PutSinkRpcInput&) = default;
+  friend auto operator<=>(const PutSinkRpcInput&, const PutSinkRpcInput&) = default;
 };
 
 
@@ -202,6 +215,7 @@ struct PutSinkRpcOutput {
   std::optional<KitchenSink> sink{};
 
   friend bool operator==(const PutSinkRpcOutput&, const PutSinkRpcOutput&) = default;
+  friend auto operator<=>(const PutSinkRpcOutput&, const PutSinkRpcOutput&) = default;
 };
 
 }  // namespace example::roundtrip::jsonrpc

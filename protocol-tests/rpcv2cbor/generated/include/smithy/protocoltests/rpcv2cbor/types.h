@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <compare>
 #include <cstdint>
 #include <map>
 #include <optional>
@@ -21,6 +22,7 @@ struct ValidationExceptionField {
   std::string message{};
 
   friend bool operator==(const ValidationExceptionField&, const ValidationExceptionField&) = default;
+  friend auto operator<=>(const ValidationExceptionField&, const ValidationExceptionField&) = default;
 };
 
 
@@ -32,6 +34,7 @@ struct ValidationException {
   std::optional<std::vector<ValidationExceptionField>> fieldList{};
 
   friend bool operator==(const ValidationException&, const ValidationException&) = default;
+  friend auto operator<=>(const ValidationException&, const ValidationException&) = default;
 };
 
 
@@ -39,6 +42,7 @@ struct ClientOptionalDefaults {
   std::optional<std::int32_t> member{};
 
   friend bool operator==(const ClientOptionalDefaults&, const ClientOptionalDefaults&) = default;
+  friend auto operator<=>(const ClientOptionalDefaults&, const ClientOptionalDefaults&) = default;
 };
 
 
@@ -46,6 +50,7 @@ struct ComplexNestedErrorData {
   std::optional<std::string> Foo{};
 
   friend bool operator==(const ComplexNestedErrorData&, const ComplexNestedErrorData&) = default;
+  friend auto operator<=>(const ComplexNestedErrorData&, const ComplexNestedErrorData&) = default;
 };
 
 
@@ -55,6 +60,7 @@ struct ComplexError {
   std::optional<ComplexNestedErrorData> Nested{};
 
   friend bool operator==(const ComplexError&, const ComplexError&) = default;
+  friend auto operator<=>(const ComplexError&, const ComplexError&) = default;
 };
 
 
@@ -82,6 +88,10 @@ class TestEnum {
 
     Value value() const { return value_; }
 
+    /// Implicit so `switch (x)` works without .value(); the Value equality
+    /// overload below keeps comparisons unambiguous despite the conversion.
+    operator Value() const { return value_; }  // NOLINT(*-explicit-*)
+
     /// The wire text, including the original text of unknown values.
     std::string_view ToString() const {
       switch (value_) {
@@ -94,6 +104,8 @@ class TestEnum {
     }
 
     friend bool operator==(const TestEnum&, const TestEnum&) = default;
+    friend bool operator==(const TestEnum& a, Value b) { return a.value_ == b; }
+    friend auto operator<=>(const TestEnum&, const TestEnum&) = default;
 
   private:
     Value value_ = Value::kUnknown;
@@ -133,6 +145,7 @@ struct Defaults {
   double zeroDouble = 0.0;
 
   friend bool operator==(const Defaults&, const Defaults&) = default;
+  friend auto operator<=>(const Defaults&, const Defaults&) = default;
 };
 
 
@@ -140,21 +153,25 @@ struct GreetingStruct {
   std::optional<std::string> hi{};
 
   friend bool operator==(const GreetingStruct&, const GreetingStruct&) = default;
+  friend auto operator<=>(const GreetingStruct&, const GreetingStruct&) = default;
 };
 
 
 struct EmptyInputOutputInput {
   friend bool operator==(const EmptyInputOutputInput&, const EmptyInputOutputInput&) = default;
+  friend auto operator<=>(const EmptyInputOutputInput&, const EmptyInputOutputInput&) = default;
 };
 
 
 struct EmptyInputOutputOutput {
   friend bool operator==(const EmptyInputOutputOutput&, const EmptyInputOutputOutput&) = default;
+  friend auto operator<=>(const EmptyInputOutputOutput&, const EmptyInputOutputOutput&) = default;
 };
 
 
 struct Float16Input {
   friend bool operator==(const Float16Input&, const Float16Input&) = default;
+  friend auto operator<=>(const Float16Input&, const Float16Input&) = default;
 };
 
 
@@ -162,11 +179,13 @@ struct Float16Output {
   std::optional<double> value{};
 
   friend bool operator==(const Float16Output&, const Float16Output&) = default;
+  friend auto operator<=>(const Float16Output&, const Float16Output&) = default;
 };
 
 
 struct FractionalSecondsInput {
   friend bool operator==(const FractionalSecondsInput&, const FractionalSecondsInput&) = default;
+  friend auto operator<=>(const FractionalSecondsInput&, const FractionalSecondsInput&) = default;
 };
 
 
@@ -174,11 +193,13 @@ struct FractionalSecondsOutput {
   std::optional<smithy::Timestamp> datetime{};
 
   friend bool operator==(const FractionalSecondsOutput&, const FractionalSecondsOutput&) = default;
+  friend auto operator<=>(const FractionalSecondsOutput&, const FractionalSecondsOutput&) = default;
 };
 
 
 struct GreetingWithErrorsInput {
   friend bool operator==(const GreetingWithErrorsInput&, const GreetingWithErrorsInput&) = default;
+  friend auto operator<=>(const GreetingWithErrorsInput&, const GreetingWithErrorsInput&) = default;
 };
 
 
@@ -186,6 +207,7 @@ struct GreetingWithErrorsOutput {
   std::optional<std::string> greeting{};
 
   friend bool operator==(const GreetingWithErrorsOutput&, const GreetingWithErrorsOutput&) = default;
+  friend auto operator<=>(const GreetingWithErrorsOutput&, const GreetingWithErrorsOutput&) = default;
 };
 
 
@@ -194,16 +216,19 @@ struct InvalidGreeting {
   std::optional<std::string> Message{};
 
   friend bool operator==(const InvalidGreeting&, const InvalidGreeting&) = default;
+  friend auto operator<=>(const InvalidGreeting&, const InvalidGreeting&) = default;
 };
 
 
 struct NoInputOutputInput {
   friend bool operator==(const NoInputOutputInput&, const NoInputOutputInput&) = default;
+  friend auto operator<=>(const NoInputOutputInput&, const NoInputOutputInput&) = default;
 };
 
 
 struct NoInputOutputOutput {
   friend bool operator==(const NoInputOutputOutput&, const NoInputOutputOutput&) = default;
+  friend auto operator<=>(const NoInputOutputOutput&, const NoInputOutputOutput&) = default;
 };
 
 
@@ -214,6 +239,7 @@ struct OperationWithDefaultsInput {
   std::optional<std::int32_t> otherTopLevelDefault{};
 
   friend bool operator==(const OperationWithDefaultsInput&, const OperationWithDefaultsInput&) = default;
+  friend auto operator<=>(const OperationWithDefaultsInput&, const OperationWithDefaultsInput&) = default;
 };
 
 
@@ -243,6 +269,7 @@ struct OperationWithDefaultsOutput {
   double zeroDouble = 0.0;
 
   friend bool operator==(const OperationWithDefaultsOutput&, const OperationWithDefaultsOutput&) = default;
+  friend auto operator<=>(const OperationWithDefaultsOutput&, const OperationWithDefaultsOutput&) = default;
 };
 
 
@@ -250,6 +277,7 @@ struct OptionalInputOutputInput {
   std::optional<std::string> value{};
 
   friend bool operator==(const OptionalInputOutputInput&, const OptionalInputOutputInput&) = default;
+  friend auto operator<=>(const OptionalInputOutputInput&, const OptionalInputOutputInput&) = default;
 };
 
 
@@ -257,6 +285,7 @@ struct OptionalInputOutputOutput {
   std::optional<std::string> value{};
 
   friend bool operator==(const OptionalInputOutputOutput&, const OptionalInputOutputOutput&) = default;
+  friend auto operator<=>(const OptionalInputOutputOutput&, const OptionalInputOutputOutput&) = default;
 };
 
 
@@ -268,6 +297,7 @@ struct RpcV2CborDenseMapsInput {
   std::optional<std::map<std::string, std::vector<std::string>>> denseSetMap{};
 
   friend bool operator==(const RpcV2CborDenseMapsInput&, const RpcV2CborDenseMapsInput&) = default;
+  friend auto operator<=>(const RpcV2CborDenseMapsInput&, const RpcV2CborDenseMapsInput&) = default;
 };
 
 
@@ -279,6 +309,7 @@ struct RpcV2CborDenseMapsOutput {
   std::optional<std::map<std::string, std::vector<std::string>>> denseSetMap{};
 
   friend bool operator==(const RpcV2CborDenseMapsOutput&, const RpcV2CborDenseMapsOutput&) = default;
+  friend auto operator<=>(const RpcV2CborDenseMapsOutput&, const RpcV2CborDenseMapsOutput&) = default;
 };
 
 
@@ -310,6 +341,10 @@ class FooEnum {
 
     Value value() const { return value_; }
 
+    /// Implicit so `switch (x)` works without .value(); the Value equality
+    /// overload below keeps comparisons unambiguous despite the conversion.
+    operator Value() const { return value_; }  // NOLINT(*-explicit-*)
+
     /// The wire text, including the original text of unknown values.
     std::string_view ToString() const {
       switch (value_) {
@@ -324,6 +359,8 @@ class FooEnum {
     }
 
     friend bool operator==(const FooEnum&, const FooEnum&) = default;
+    friend bool operator==(const FooEnum& a, Value b) { return a.value_ == b; }
+    friend auto operator<=>(const FooEnum&, const FooEnum&) = default;
 
   private:
     Value value_ = Value::kUnknown;
@@ -343,6 +380,7 @@ struct StructureListMember {
   std::optional<std::string> b{};
 
   friend bool operator==(const StructureListMember&, const StructureListMember&) = default;
+  friend auto operator<=>(const StructureListMember&, const StructureListMember&) = default;
 };
 
 
@@ -359,6 +397,7 @@ struct RpcV2CborListsInput {
   std::optional<std::vector<smithy::Blob>> blobList{};
 
   friend bool operator==(const RpcV2CborListsInput&, const RpcV2CborListsInput&) = default;
+  friend auto operator<=>(const RpcV2CborListsInput&, const RpcV2CborListsInput&) = default;
 };
 
 
@@ -375,6 +414,7 @@ struct RpcV2CborListsOutput {
   std::optional<std::vector<smithy::Blob>> blobList{};
 
   friend bool operator==(const RpcV2CborListsOutput&, const RpcV2CborListsOutput&) = default;
+  friend auto operator<=>(const RpcV2CborListsOutput&, const RpcV2CborListsOutput&) = default;
 };
 
 
@@ -386,6 +426,7 @@ struct RpcV2CborSparseMapsInput {
   std::optional<std::map<std::string, std::optional<std::vector<std::string>>>> sparseSetMap{};
 
   friend bool operator==(const RpcV2CborSparseMapsInput&, const RpcV2CborSparseMapsInput&) = default;
+  friend auto operator<=>(const RpcV2CborSparseMapsInput&, const RpcV2CborSparseMapsInput&) = default;
 };
 
 
@@ -397,6 +438,7 @@ struct RpcV2CborSparseMapsOutput {
   std::optional<std::map<std::string, std::optional<std::vector<std::string>>>> sparseSetMap{};
 
   friend bool operator==(const RpcV2CborSparseMapsOutput&, const RpcV2CborSparseMapsOutput&) = default;
+  friend auto operator<=>(const RpcV2CborSparseMapsOutput&, const RpcV2CborSparseMapsOutput&) = default;
 };
 
 
@@ -413,6 +455,7 @@ struct SimpleScalarPropertiesInput {
   std::optional<smithy::Blob> blobValue{};
 
   friend bool operator==(const SimpleScalarPropertiesInput&, const SimpleScalarPropertiesInput&) = default;
+  friend auto operator<=>(const SimpleScalarPropertiesInput&, const SimpleScalarPropertiesInput&) = default;
 };
 
 
@@ -429,6 +472,7 @@ struct SimpleScalarPropertiesOutput {
   std::optional<smithy::Blob> blobValue{};
 
   friend bool operator==(const SimpleScalarPropertiesOutput&, const SimpleScalarPropertiesOutput&) = default;
+  friend auto operator<=>(const SimpleScalarPropertiesOutput&, const SimpleScalarPropertiesOutput&) = default;
 };
 
 
@@ -437,6 +481,7 @@ struct SparseNullsOperationInput {
   std::optional<std::map<std::string, std::optional<std::string>>> sparseStringMap{};
 
   friend bool operator==(const SparseNullsOperationInput&, const SparseNullsOperationInput&) = default;
+  friend auto operator<=>(const SparseNullsOperationInput&, const SparseNullsOperationInput&) = default;
 };
 
 
@@ -445,6 +490,7 @@ struct SparseNullsOperationOutput {
   std::optional<std::map<std::string, std::optional<std::string>>> sparseStringMap{};
 
   friend bool operator==(const SparseNullsOperationOutput&, const SparseNullsOperationOutput&) = default;
+  friend auto operator<=>(const SparseNullsOperationOutput&, const SparseNullsOperationOutput&) = default;
 };
 
 
@@ -455,6 +501,7 @@ struct RecursiveShapesInputOutputNested1 {
   std::optional<smithy::Boxed<RecursiveShapesInputOutputNested2>> nested{};
 
   friend bool operator==(const RecursiveShapesInputOutputNested1&, const RecursiveShapesInputOutputNested1&) = default;
+  friend auto operator<=>(const RecursiveShapesInputOutputNested1&, const RecursiveShapesInputOutputNested1&) = default;
 };
 
 
@@ -465,6 +512,7 @@ struct RecursiveShapesInputOutputNested2 {
   std::optional<smithy::Boxed<RecursiveShapesInputOutputNested1>> recursiveMember{};
 
   friend bool operator==(const RecursiveShapesInputOutputNested2&, const RecursiveShapesInputOutputNested2&) = default;
+  friend auto operator<=>(const RecursiveShapesInputOutputNested2&, const RecursiveShapesInputOutputNested2&) = default;
 };
 
 
@@ -472,6 +520,7 @@ struct RecursiveShapesInput {
   std::optional<RecursiveShapesInputOutputNested1> nested{};
 
   friend bool operator==(const RecursiveShapesInput&, const RecursiveShapesInput&) = default;
+  friend auto operator<=>(const RecursiveShapesInput&, const RecursiveShapesInput&) = default;
 };
 
 
@@ -479,6 +528,7 @@ struct RecursiveShapesOutput {
   std::optional<RecursiveShapesInputOutputNested1> nested{};
 
   friend bool operator==(const RecursiveShapesOutput&, const RecursiveShapesOutput&) = default;
+  friend auto operator<=>(const RecursiveShapesOutput&, const RecursiveShapesOutput&) = default;
 };
 
 }  // namespace smithy::protocoltests::rpcv2cbor

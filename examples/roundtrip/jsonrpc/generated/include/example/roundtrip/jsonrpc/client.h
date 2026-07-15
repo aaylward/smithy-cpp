@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <compare>
 #include <cstddef>
 #include <memory>
 #include <string>
@@ -100,6 +101,7 @@ class PutSinkRpcErrors {
     }
 
     friend bool operator==(const PutSinkRpcErrors&, const PutSinkRpcErrors&) = default;
+    friend auto operator<=>(const PutSinkRpcErrors&, const PutSinkRpcErrors&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {

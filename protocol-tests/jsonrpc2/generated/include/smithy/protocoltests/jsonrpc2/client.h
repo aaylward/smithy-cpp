@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <compare>
 #include <cstddef>
 #include <memory>
 #include <string>
@@ -99,6 +100,7 @@ class EchoPayloadErrors {
     }
 
     friend bool operator==(const EchoPayloadErrors&, const EchoPayloadErrors&) = default;
+    friend auto operator<=>(const EchoPayloadErrors&, const EchoPayloadErrors&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {

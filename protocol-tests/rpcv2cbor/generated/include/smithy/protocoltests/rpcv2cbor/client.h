@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <compare>
 #include <cstddef>
 #include <memory>
 #include <string>
@@ -125,6 +126,7 @@ class GreetingWithErrorsErrors {
     }
 
     friend bool operator==(const GreetingWithErrorsErrors&, const GreetingWithErrorsErrors&) = default;
+    friend auto operator<=>(const GreetingWithErrorsErrors&, const GreetingWithErrorsErrors&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -183,6 +185,7 @@ class OperationWithDefaultsErrors {
     }
 
     friend bool operator==(const OperationWithDefaultsErrors&, const OperationWithDefaultsErrors&) = default;
+    friend auto operator<=>(const OperationWithDefaultsErrors&, const OperationWithDefaultsErrors&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -241,6 +244,7 @@ class RpcV2CborDenseMapsErrors {
     }
 
     friend bool operator==(const RpcV2CborDenseMapsErrors&, const RpcV2CborDenseMapsErrors&) = default;
+    friend auto operator<=>(const RpcV2CborDenseMapsErrors&, const RpcV2CborDenseMapsErrors&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -299,6 +303,7 @@ class RpcV2CborListsErrors {
     }
 
     friend bool operator==(const RpcV2CborListsErrors&, const RpcV2CborListsErrors&) = default;
+    friend auto operator<=>(const RpcV2CborListsErrors&, const RpcV2CborListsErrors&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -357,6 +362,7 @@ class RpcV2CborSparseMapsErrors {
     }
 
     friend bool operator==(const RpcV2CborSparseMapsErrors&, const RpcV2CborSparseMapsErrors&) = default;
+    friend auto operator<=>(const RpcV2CborSparseMapsErrors&, const RpcV2CborSparseMapsErrors&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {

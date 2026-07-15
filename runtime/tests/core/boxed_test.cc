@@ -52,6 +52,16 @@ Nested1 MakeChain() {
   return root;
 }
 
+TEST(BoxedTest, DeepOrdering) {
+  // Ordering is deep like equality, so boxed members don't block a struct's
+  // defaulted operator<=> (issue #49).
+  const Boxed<std::string> a(std::string("a"));
+  const Boxed<std::string> b(std::string("b"));
+  EXPECT_TRUE(a < b);
+  EXPECT_FALSE(b < a);
+  EXPECT_TRUE(a <= Boxed<std::string>(std::string("a")));
+}
+
 TEST(BoxedTest, DeepEquality) {
   EXPECT_EQ(MakeChain(), MakeChain());
   Nested1 other = MakeChain();

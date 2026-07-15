@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <compare>
 #include <cstddef>
 #include <memory>
 #include <string>
@@ -121,6 +122,7 @@ class AddMenuItemErrors {
     }
 
     friend bool operator==(const AddMenuItemErrors&, const AddMenuItemErrors&) = default;
+    friend auto operator<=>(const AddMenuItemErrors&, const AddMenuItemErrors&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -205,6 +207,7 @@ class CustomCodeErrors {
     }
 
     friend bool operator==(const CustomCodeErrors&, const CustomCodeErrors&) = default;
+    friend auto operator<=>(const CustomCodeErrors&, const CustomCodeErrors&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -289,6 +292,7 @@ class GetEnumErrors {
     }
 
     friend bool operator==(const GetEnumErrors&, const GetEnumErrors&) = default;
+    friend auto operator<=>(const GetEnumErrors&, const GetEnumErrors&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -373,6 +377,7 @@ class GetIntEnumErrors {
     }
 
     friend bool operator==(const GetIntEnumErrors&, const GetIntEnumErrors&) = default;
+    friend auto operator<=>(const GetIntEnumErrors&, const GetIntEnumErrors&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -470,6 +475,7 @@ class GetMenuErrors {
     }
 
     friend bool operator==(const GetMenuErrors&, const GetMenuErrors&) = default;
+    friend auto operator<=>(const GetMenuErrors&, const GetMenuErrors&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -541,6 +547,7 @@ class HeaderEndpointErrors {
     }
 
     friend bool operator==(const HeaderEndpointErrors&, const HeaderEndpointErrors&) = default;
+    friend auto operator<=>(const HeaderEndpointErrors&, const HeaderEndpointErrors&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -625,6 +632,7 @@ class HealthErrors {
     }
 
     friend bool operator==(const HealthErrors&, const HealthErrors&) = default;
+    friend auto operator<=>(const HealthErrors&, const HealthErrors&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -696,6 +704,7 @@ class HttpPayloadRequiredWithDefaultErrors {
     }
 
     friend bool operator==(const HttpPayloadRequiredWithDefaultErrors&, const HttpPayloadRequiredWithDefaultErrors&) = default;
+    friend auto operator<=>(const HttpPayloadRequiredWithDefaultErrors&, const HttpPayloadRequiredWithDefaultErrors&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -767,6 +776,7 @@ class HttpPayloadWithDefaultErrors {
     }
 
     friend bool operator==(const HttpPayloadWithDefaultErrors&, const HttpPayloadWithDefaultErrors&) = default;
+    friend auto operator<=>(const HttpPayloadWithDefaultErrors&, const HttpPayloadWithDefaultErrors&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -838,6 +848,7 @@ class OpenUnionsErrors {
     }
 
     friend bool operator==(const OpenUnionsErrors&, const OpenUnionsErrors&) = default;
+    friend auto operator<=>(const OpenUnionsErrors&, const OpenUnionsErrors&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -909,6 +920,7 @@ class RoundTripErrors {
     }
 
     friend bool operator==(const RoundTripErrors&, const RoundTripErrors&) = default;
+    friend auto operator<=>(const RoundTripErrors&, const RoundTripErrors&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -980,6 +992,7 @@ class VersionErrors {
     }
 
     friend bool operator==(const VersionErrors&, const VersionErrors&) = default;
+    friend auto operator<=>(const VersionErrors&, const VersionErrors&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {

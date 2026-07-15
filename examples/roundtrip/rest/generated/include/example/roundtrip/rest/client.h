@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <compare>
 #include <cstddef>
 #include <memory>
 #include <string>
@@ -106,6 +107,7 @@ class DescribeSinkErrors {
     }
 
     friend bool operator==(const DescribeSinkErrors&, const DescribeSinkErrors&) = default;
+    friend auto operator<=>(const DescribeSinkErrors&, const DescribeSinkErrors&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -177,6 +179,7 @@ class PutSinkErrors {
     }
 
     friend bool operator==(const PutSinkErrors&, const PutSinkErrors&) = default;
+    friend auto operator<=>(const PutSinkErrors&, const PutSinkErrors&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -235,6 +238,7 @@ class UploadAttachmentErrors {
     }
 
     friend bool operator==(const UploadAttachmentErrors&, const UploadAttachmentErrors&) = default;
+    friend auto operator<=>(const UploadAttachmentErrors&, const UploadAttachmentErrors&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {

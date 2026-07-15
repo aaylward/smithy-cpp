@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <compare>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -13,6 +14,7 @@ struct AddBookInput {
   std::string title{};
 
   friend bool operator==(const AddBookInput&, const AddBookInput&) = default;
+  friend auto operator<=>(const AddBookInput&, const AddBookInput&) = default;
 };
 
 
@@ -21,6 +23,7 @@ struct AddBookOutput {
   std::string isbn{};
 
   friend bool operator==(const AddBookOutput&, const AddBookOutput&) = default;
+  friend auto operator<=>(const AddBookOutput&, const AddBookOutput&) = default;
 };
 
 
@@ -29,6 +32,7 @@ struct BookNotFound {
   std::string isbn{};
 
   friend bool operator==(const BookNotFound&, const BookNotFound&) = default;
+  friend auto operator<=>(const BookNotFound&, const BookNotFound&) = default;
 };
 
 
@@ -37,6 +41,7 @@ struct GetBookInput {
   std::optional<std::string> currency{};
 
   friend bool operator==(const GetBookInput&, const GetBookInput&) = default;
+  friend auto operator<=>(const GetBookInput&, const GetBookInput&) = default;
 };
 
 
@@ -46,6 +51,7 @@ struct GetBookOutput {
   std::optional<float> price{};
 
   friend bool operator==(const GetBookOutput&, const GetBookOutput&) = default;
+  friend auto operator<=>(const GetBookOutput&, const GetBookOutput&) = default;
 };
 
 }  // namespace example::bookstore

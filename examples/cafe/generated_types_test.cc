@@ -3,10 +3,66 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <map>
+#include <string>
+#include <vector>
+
 #include "example/cafe/types.h"
 
 namespace example::cafe {
 namespace {
+
+// Generated types are ordered (issue #49): operator<=> is defaulted beside
+// operator==, so structs, unions, and enums key std::map/std::set and sort.
+
+TEST(GeneratedTypeOrderingTest, StructsKeyOrderedMaps) {
+  std::map<GetOrderInput, int> by_input;
+  by_input[GetOrderInput{.orderId = "b"}] = 2;
+  by_input[GetOrderInput{.orderId = "a"}] = 1;
+  EXPECT_EQ(by_input.begin()->first.orderId, "a");
+  EXPECT_TRUE(GetOrderInput{.orderId = "a"} < GetOrderInput{.orderId = "b"});
+}
+
+TEST(GeneratedTypeOrderingTest, StructsWithEnumAndUnionMembersSort) {
+  std::vector<GetOrderOutput> orders;
+  orders.push_back(GetOrderOutput{.orderId = "z"});
+  orders.push_back(GetOrderOutput{.orderId = "a"});
+  std::sort(orders.begin(), orders.end());
+  EXPECT_EQ(orders.front().orderId, "a");
+}
+
+TEST(GeneratedTypeOrderingTest, UnionsOrderByEngagedMemberThenValue) {
+  // monostate < first member < second member; same member orders by value.
+  EXPECT_TRUE(OrderStatus{} < OrderStatus::FromPending(PendingStatus{.position = 1}));
+  EXPECT_TRUE(OrderStatus::FromPending(PendingStatus{.position = 1}) <
+              OrderStatus::FromPending(PendingStatus{.position = 2}));
+  EXPECT_TRUE(OrderStatus::FromPending(PendingStatus{.position = 9}) <
+              OrderStatus::FromReady(ReadyStatus{}));
+}
+
+TEST(GeneratedTypeOrderingTest, EnumsOrderAndCompareAgainstValues) {
+  EXPECT_TRUE(CoffeeType(CoffeeType::Value::kDrip) < CoffeeType(CoffeeType::Value::kEspresso));
+  // The explicit Value equality friends keep comparisons unambiguous even
+  // though the wrapper now converts implicitly to Value.
+  EXPECT_TRUE(CoffeeType(CoffeeType::Value::kDrip) == CoffeeType::Value::kDrip);
+  EXPECT_TRUE(CoffeeType::Value::kDrip == CoffeeType(CoffeeType::Value::kDrip));
+  EXPECT_FALSE(CoffeeType::FromString("OAT_FOAM") == CoffeeType::Value::kDrip);
+}
+
+TEST(GeneratedTypeOrderingTest, EnumsSwitchDirectlyWithoutValueCalls) {
+  const CoffeeType coffee = CoffeeType::FromString("ESPRESSO");
+  std::string picked;
+  switch (coffee) {  // issue #49: no `.value()` needed before a switch
+    case CoffeeType::Value::kEspresso:
+      picked = "espresso";
+      break;
+    default:
+      picked = "other";
+      break;
+  }
+  EXPECT_EQ(picked, "espresso");
+}
 
 TEST(CafeGeneratedTypesTest, EnumRoundTripsKnownValues) {
   const CoffeeType drip = CoffeeType::FromString("DRIP");

@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <compare>
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -27,6 +28,7 @@ struct DescribeSinkError {
   std::string message{};
 
   friend bool operator==(const DescribeSinkError&, const DescribeSinkError&) = default;
+  friend auto operator<=>(const DescribeSinkError&, const DescribeSinkError&) = default;
 };
 
 
@@ -34,6 +36,7 @@ struct DescribeSinkInput {
   std::string sinkId{};
 
   friend bool operator==(const DescribeSinkInput&, const DescribeSinkInput&) = default;
+  friend auto operator<=>(const DescribeSinkInput&, const DescribeSinkInput&) = default;
 };
 
 
@@ -42,6 +45,7 @@ struct NestedConfig {
   std::optional<std::int32_t> depth{};
 
   friend bool operator==(const NestedConfig&, const NestedConfig&) = default;
+  friend auto operator<=>(const NestedConfig&, const NestedConfig&) = default;
 };
 
 
@@ -105,6 +109,7 @@ class SinkChoice {
     }
 
     friend bool operator==(const SinkChoice&, const SinkChoice&) = default;
+    friend auto operator<=>(const SinkChoice&, const SinkChoice&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -141,6 +146,10 @@ class Priority {
 
     Value value() const { return value_; }
 
+    /// Implicit so `switch (x)` works without .value(); the Value equality
+    /// overload below keeps comparisons unambiguous despite the conversion.
+    operator Value() const { return value_; }  // NOLINT(*-explicit-*)
+
     /// The wire text, including the original text of unknown values.
     std::string_view ToString() const {
       switch (value_) {
@@ -153,6 +162,8 @@ class Priority {
     }
 
     friend bool operator==(const Priority&, const Priority&) = default;
+    friend bool operator==(const Priority& a, Value b) { return a.value_ == b; }
+    friend auto operator<=>(const Priority&, const Priority&) = default;
 
   private:
     Value value_ = Value::kUnknown;
@@ -189,6 +200,7 @@ struct KitchenSink {
   std::optional<SinkChoice> choice{};
 
   friend bool operator==(const KitchenSink&, const KitchenSink&) = default;
+  friend auto operator<=>(const KitchenSink&, const KitchenSink&) = default;
 };
 
 
@@ -196,6 +208,7 @@ struct DescribeSinkOutput {
   std::optional<KitchenSink> sink{};
 
   friend bool operator==(const DescribeSinkOutput&, const DescribeSinkOutput&) = default;
+  friend auto operator<=>(const DescribeSinkOutput&, const DescribeSinkOutput&) = default;
 };
 
 
@@ -204,6 +217,7 @@ struct SinkNotFound {
   std::optional<std::string> resourceType{};
 
   friend bool operator==(const SinkNotFound&, const SinkNotFound&) = default;
+  friend auto operator<=>(const SinkNotFound&, const SinkNotFound&) = default;
 };
 
 
@@ -218,6 +232,7 @@ struct PutSinkInput {
   std::optional<smithy::Document> freeform{};
 
   friend bool operator==(const PutSinkInput&, const PutSinkInput&) = default;
+  friend auto operator<=>(const PutSinkInput&, const PutSinkInput&) = default;
 };
 
 
@@ -226,6 +241,7 @@ struct PutSinkResponse {
   std::optional<std::string> note{};
 
   friend bool operator==(const PutSinkResponse&, const PutSinkResponse&) = default;
+  friend auto operator<=>(const PutSinkResponse&, const PutSinkResponse&) = default;
 };
 
 
@@ -237,6 +253,7 @@ struct PutSinkOutput {
   std::optional<PutSinkResponse> echo{};
 
   friend bool operator==(const PutSinkOutput&, const PutSinkOutput&) = default;
+  friend auto operator<=>(const PutSinkOutput&, const PutSinkOutput&) = default;
 };
 
 
@@ -245,6 +262,7 @@ struct SinkQuotaExceeded {
   std::optional<std::int32_t> retryAfterSeconds{};
 
   friend bool operator==(const SinkQuotaExceeded&, const SinkQuotaExceeded&) = default;
+  friend auto operator<=>(const SinkQuotaExceeded&, const SinkQuotaExceeded&) = default;
 };
 
 
@@ -253,6 +271,7 @@ struct Receipt {
   std::optional<std::int64_t> size{};
 
   friend bool operator==(const Receipt&, const Receipt&) = default;
+  friend auto operator<=>(const Receipt&, const Receipt&) = default;
 };
 
 
@@ -262,6 +281,7 @@ struct UploadAttachmentInput {
   std::optional<smithy::Blob> data{};
 
   friend bool operator==(const UploadAttachmentInput&, const UploadAttachmentInput&) = default;
+  friend auto operator<=>(const UploadAttachmentInput&, const UploadAttachmentInput&) = default;
 };
 
 
@@ -269,6 +289,7 @@ struct UploadAttachmentOutput {
   std::optional<Receipt> receipt{};
 
   friend bool operator==(const UploadAttachmentOutput&, const UploadAttachmentOutput&) = default;
+  friend auto operator<=>(const UploadAttachmentOutput&, const UploadAttachmentOutput&) = default;
 };
 
 }  // namespace example::roundtrip::rest

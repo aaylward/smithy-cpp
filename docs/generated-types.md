@@ -16,7 +16,7 @@ compatibility contract: changes to it are breaking for consumers of generated co
 | `document` | `smithy::Document` | |
 | `list<T>` | `std::vector<T>` | `@sparse` ⇒ `std::vector<std::optional<T>>` |
 | `map<string, T>` | `std::map<std::string, T>` | `@sparse` ⇒ optional values; `std::map` keeps output deterministic |
-| `structure` | `struct` with public members | Aggregate; `friend operator== = default`; every member value-initialized with `{}` |
+| `structure` | `struct` with public members | Aggregate; `operator==` and `operator<=>` defaulted; every member value-initialized with `{}` |
 | `union` | class over `std::variant` | See below |
 | `enum` | class with nested `enum class Value` | See below; unknown wire values preserved |
 | `intEnum` | `enum class X : std::int32_t` | |
@@ -35,6 +35,16 @@ compatibility contract: changes to it are breaking for consumers of generated co
   default when absent from the wire. Members of `@input` structures stay client-optional per
   the spec (clients skip unset members; servers fill the default while parsing), and
   `@required` + `@default` reads absence as the default instead of failing.
+- **Ordering**: every generated type defaults `operator<=>` beside `operator==`, so structs,
+  unions, and enums key `std::map`/`std::set` and sort (issue #49). Caveats: a struct with a
+  member that isn't three-way-comparable (notably `smithy::Document`) gets a deleted `<=>` —
+  equality still works, ordering doesn't; `float`/`double` members make the ordering partial.
+- **Deliberately not generated**: builders (C++20 designated initializers are the construction
+  story: `GetOrderInput{.orderId = "o-1"}`); `std::hash`, `operator<<`, and `std::format`
+  support (deferred until the runtime types have a hashing/printing story — `<=>` already
+  unblocks ordered containers, the stated pain); a distinct "absent" state for `@required`
+  members (they stay plain members; presence is enforced by server-side validation, see
+  Optionality above).
 - **Docs**: `@documentation` becomes `///` comments.
 - **Files**: per module, `include/<namespace path>/types.h`, `serde.h` + `src/serde.cc`,
   `client.h` + `src/client.cc`, and a generated `BUILD.bazel` exposing `cc_library ":types"`
@@ -50,9 +60,14 @@ class CoffeeType {
   CoffeeType(Value value);                          // implicit, by design
   static CoffeeType FromString(std::string_view);   // unknown text => Value::kUnknown
   Value value() const;
+  operator Value() const;                           // implicit: `switch (coffee)` works directly
   std::string_view ToString() const;                // unknown values keep their original text
+  // == and <=> against CoffeeType; == against Value (keeps the implicit
+  // conversion from making comparisons ambiguous).
 };
 ```
+
+`switch (coffee) { case CoffeeType::Value::kDrip: ... }` needs no `.value()` call.
 
 Constants are `k` + PascalCase of the member name (`DRIP` → `kDrip`, `OAT_MILK` → `kOatMilk`).
 Unknown-value preservation means a round trip through an old client never corrupts data written

@@ -160,7 +160,9 @@ final class TypeGenerators {
     if (!shape.members().isEmpty()) {
       writer.write("");
     }
+    writer.addInclude("<compare>");
     writer.write("friend bool operator==(const $1L&, const $1L&) = default;", name);
+    writer.write("friend auto operator<=>(const $1L&, const $1L&) = default;", name);
     writer.closeBlock("};");
     writer.write("");
   }
@@ -208,6 +210,10 @@ final class TypeGenerators {
 
     writer.write("Value value() const { return value_; }");
     writer.write("");
+    writer.write("/// Implicit so `switch (x)` works without .value(); the Value equality");
+    writer.write("/// overload below keeps comparisons unambiguous despite the conversion.");
+    writer.write("operator Value() const { return value_; }  // NOLINT(*-explicit-*)");
+    writer.write("");
     writer.write("/// The wire text, including the original text of unknown values.");
     writer.openBlock("std::string_view ToString() const {");
     writer.openBlock("switch (value_) {");
@@ -219,7 +225,10 @@ final class TypeGenerators {
     writer.write("return unknown_;");
     writer.closeBlock("}");
     writer.write("");
+    writer.addInclude("<compare>");
     writer.write("friend bool operator==(const $1L&, const $1L&) = default;", name);
+    writer.write("friend bool operator==(const $L& a, Value b) { return a.value_ == b; }", name);
+    writer.write("friend auto operator<=>(const $1L&, const $1L&) = default;", name);
     writer.write("").dedent();
 
     writer.write("private:").indent();
@@ -292,7 +301,8 @@ final class TypeGenerators {
       String emptyDoc,
       String caseNameDoc,
       Runnable extraPublic) {
-    writer.addInclude("<cstddef>").addInclude("<utility>").addInclude("<variant>");
+    writer.addInclude("<compare>").addInclude("<cstddef>").addInclude("<utility>");
+    writer.addInclude("<variant>");
     writer.addInclude("\"smithy/core/fatal.h\"");
 
     writer.openBlock("class $L {", name);
@@ -354,6 +364,7 @@ final class TypeGenerators {
     writer.closeBlock("}");
     writer.write("");
     writer.write("friend bool operator==(const $1L&, const $1L&) = default;", name);
+    writer.write("friend auto operator<=>(const $1L&, const $1L&) = default;", name);
     writer.write("").dedent();
 
     writer.write("private:").indent();

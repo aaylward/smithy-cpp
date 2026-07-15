@@ -1,6 +1,7 @@
 #ifndef SMITHY_CORE_TIMESTAMP_H_
 #define SMITHY_CORE_TIMESTAMP_H_
 
+#include <compare>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -47,8 +48,9 @@ class Timestamp {
   static Outcome<Timestamp> Parse(std::string_view text, TimestampFormat format);
 
   friend bool operator==(Timestamp a, Timestamp b) { return a.ms_ == b.ms_; }
-  friend bool operator!=(Timestamp a, Timestamp b) { return a.ms_ != b.ms_; }
-  friend bool operator<(Timestamp a, Timestamp b) { return a.ms_ < b.ms_; }
+  // The full comparison set, so timestamp-bearing generated structs can
+  // default their own operator<=> (issue #49).
+  friend std::strong_ordering operator<=>(Timestamp a, Timestamp b) { return a.ms_ <=> b.ms_; }
 
  private:
   explicit Timestamp(std::int64_t ms) : ms_(ms) {}

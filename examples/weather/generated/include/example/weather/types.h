@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <compare>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -15,11 +16,13 @@ struct DeleteCityInput {
   std::string cityId{};
 
   friend bool operator==(const DeleteCityInput&, const DeleteCityInput&) = default;
+  friend auto operator<=>(const DeleteCityInput&, const DeleteCityInput&) = default;
 };
 
 
 struct DeleteCityOutput {
   friend bool operator==(const DeleteCityOutput&, const DeleteCityOutput&) = default;
+  friend auto operator<=>(const DeleteCityOutput&, const DeleteCityOutput&) = default;
 };
 
 
@@ -28,6 +31,7 @@ struct NoSuchResource {
   std::string resourceType{};
 
   friend bool operator==(const NoSuchResource&, const NoSuchResource&) = default;
+  friend auto operator<=>(const NoSuchResource&, const NoSuchResource&) = default;
 };
 
 
@@ -35,6 +39,7 @@ struct GetForecastInput {
   std::string cityId{};
 
   friend bool operator==(const GetForecastInput&, const GetForecastInput&) = default;
+  friend auto operator<=>(const GetForecastInput&, const GetForecastInput&) = default;
 };
 
 
@@ -42,6 +47,7 @@ struct GetForecastOutput {
   std::optional<float> chanceOfRain{};
 
   friend bool operator==(const GetForecastOutput&, const GetForecastOutput&) = default;
+  friend auto operator<=>(const GetForecastOutput&, const GetForecastOutput&) = default;
 };
 
 
@@ -49,6 +55,7 @@ struct GetCityInput {
   std::string cityId{};
 
   friend bool operator==(const GetCityInput&, const GetCityInput&) = default;
+  friend auto operator<=>(const GetCityInput&, const GetCityInput&) = default;
 };
 
 
@@ -57,6 +64,7 @@ struct CityCoordinates {
   float longitude{};
 
   friend bool operator==(const CityCoordinates&, const CityCoordinates&) = default;
+  friend auto operator<=>(const CityCoordinates&, const CityCoordinates&) = default;
 };
 
 
@@ -65,6 +73,7 @@ struct GetCityOutput {
   CityCoordinates coordinates{};
 
   friend bool operator==(const GetCityOutput&, const GetCityOutput&) = default;
+  friend auto operator<=>(const GetCityOutput&, const GetCityOutput&) = default;
 };
 
 
@@ -73,6 +82,7 @@ struct ListCitiesInput {
   std::optional<std::int32_t> pageSize{};
 
   friend bool operator==(const ListCitiesInput&, const ListCitiesInput&) = default;
+  friend auto operator<=>(const ListCitiesInput&, const ListCitiesInput&) = default;
 };
 
 
@@ -81,6 +91,7 @@ struct CitySummary {
   std::string name{};
 
   friend bool operator==(const CitySummary&, const CitySummary&) = default;
+  friend auto operator<=>(const CitySummary&, const CitySummary&) = default;
 };
 
 
@@ -89,11 +100,13 @@ struct ListCitiesOutput {
   std::vector<CitySummary> items{};
 
   friend bool operator==(const ListCitiesOutput&, const ListCitiesOutput&) = default;
+  friend auto operator<=>(const ListCitiesOutput&, const ListCitiesOutput&) = default;
 };
 
 
 struct GetCurrentTimeInput {
   friend bool operator==(const GetCurrentTimeInput&, const GetCurrentTimeInput&) = default;
+  friend auto operator<=>(const GetCurrentTimeInput&, const GetCurrentTimeInput&) = default;
 };
 
 
@@ -101,6 +114,7 @@ struct GetCurrentTimeOutput {
   smithy::Timestamp time{};
 
   friend bool operator==(const GetCurrentTimeOutput&, const GetCurrentTimeOutput&) = default;
+  friend auto operator<=>(const GetCurrentTimeOutput&, const GetCurrentTimeOutput&) = default;
 };
 
 
@@ -108,6 +122,7 @@ struct GetReportInput {
   std::string reportPath{};
 
   friend bool operator==(const GetReportInput&, const GetReportInput&) = default;
+  friend auto operator<=>(const GetReportInput&, const GetReportInput&) = default;
 };
 
 
@@ -116,6 +131,7 @@ struct GetReportOutput {
   std::int64_t sizeBytes{};
 
   friend bool operator==(const GetReportOutput&, const GetReportOutput&) = default;
+  friend auto operator<=>(const GetReportOutput&, const GetReportOutput&) = default;
 };
 
 }  // namespace example::weather

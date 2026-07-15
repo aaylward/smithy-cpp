@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <compare>
 #include <cstddef>
 #include <memory>
 #include <optional>
@@ -113,6 +114,7 @@ class DeleteCityErrors {
     }
 
     friend bool operator==(const DeleteCityErrors&, const DeleteCityErrors&) = default;
+    friend auto operator<=>(const DeleteCityErrors&, const DeleteCityErrors&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -171,6 +173,7 @@ class GetCityErrors {
     }
 
     friend bool operator==(const GetCityErrors&, const GetCityErrors&) = default;
+    friend auto operator<=>(const GetCityErrors&, const GetCityErrors&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -229,6 +232,7 @@ class GetForecastErrors {
     }
 
     friend bool operator==(const GetForecastErrors&, const GetForecastErrors&) = default;
+    friend auto operator<=>(const GetForecastErrors&, const GetForecastErrors&) = default;
 
   private:
     void require_is(std::size_t index, const char* requested) const {

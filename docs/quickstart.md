@@ -89,15 +89,14 @@ try-import %workspace%/.bazelrc.user
 `QuickstartMirrorTest` fails the build if this page and the example ever diverge.)
 
 Pin your Bazel track with a `.bazelversion` so bazelisk resolves the same major version
-everywhere — the CI-tested example (like this repo) pins `9.x`.
+everywhere — the CI-tested example carries the same pin as this repo's own
+[`.bazelversion`](../.bazelversion).
 
 ## 2. Write the model
 
 (When a model is invalid, the generation action fails and the `cpp-codegen:` line at the top of
-its stderr names the problem — a Smithy validation failure lists every event. You never need to
-read the Java stack trace below it; if there is no `cpp-codegen:` line at all, you have found a
-generator bug worth reporting. [Troubleshooting generation failures](#troubleshooting-generation-failures)
-covers the full failure-reading guide.)
+its stderr names the problem; [Troubleshooting generation failures](#troubleshooting-generation-failures)
+is the full failure-reading guide.)
 
 `model/todo.smithy` — a deliberately small task tracker: add a task, fetch it back, and one
 thing that can go wrong. This is the entire file:

@@ -2,10 +2,8 @@
 
 load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
 load("@rules_testing//lib:analysis_test.bzl", "analysis_test", "test_suite")
-load("@rules_testing//lib:truth.bzl", "matching")
-load("//bazel:defs.bzl", "validation_for_testing")
-
-_v = validation_for_testing
+load("@rules_testing//lib:truth.bzl", "matching", "subjects")
+load("//bazel/private:validation.bzl", "namespace_error", "service_error")
 
 _NS = "include/smithy/cpp/ruletest"
 
@@ -79,25 +77,20 @@ def _client_cc_library_impl(env, target):
             found = True
     env.expect.that_bool(found).equals(True)
 
-# Unit tests for the validation helpers themselves: the full accept/reject
-# matrix, table-driven. The analysis-failure tests below then prove the rule
-# actually fails with these messages.
-
-def test_is_identifier_matrix(env):
-    for ok in ["a", "A", "_", "_x", "a1", "snake_case", "CamelCase9"]:
-        env.expect.that_bool(_v.is_identifier(ok)).equals(True)
-    for bad in ["", "9a", "a-b", "a.b", "a b", "a::b", "ü"]:
-        env.expect.that_bool(_v.is_identifier(bad)).equals(False)
+# Unit tests for the validation helpers: the full accept/reject matrix,
+# table-driven. The two wiring tests further down prove the rule actually
+# fails with these helpers' messages, so message text lives only in
+# //bazel/private:validation.bzl.
 
 def test_namespace_error_accepts_valid_cpp_namespaces(env):
-    for ns in ["acme", "acme::todo", "a1::b_2", "_x::y9", "smithy::cpp::ruletest"]:
-        env.expect.that_str(_v.namespace_error(ns)).equals(None)
+    for ns in ["acme", "_", "acme::todo", "a1::b_2", "_x::y9", "smithy::cpp::ruletest"]:
+        env.expect.that_str(namespace_error(ns)).equals(None)
 
 def test_namespace_error_suggests_colon_form_for_smithy_dots(env):
-    env.expect.that_str(_v.namespace_error("acme.todo")).contains(
+    env.expect.that_str(namespace_error("acme.todo")).contains(
         'did you mean "acme::todo"?',
     )
-    env.expect.that_str(_v.namespace_error("smithy.cpp.ruletest")).contains(
+    env.expect.that_str(namespace_error("smithy.cpp.ruletest")).contains(
         'did you mean "smithy::cpp::ruletest"?',
     )
 
@@ -109,92 +102,75 @@ def test_namespace_error_names_the_bad_segment(env):
         "acme.todo::v1": '"acme.todo"',  # has "::" too, so no dots suggestion
         "acme::": '""',
         "acme::9todo": '"9todo"',
+        "a b": '"a b"',
+        "ü": '"ü"',  # Starlark isalnum is ASCII-only
     }
     for ns, segment in cases.items():
-        env.expect.that_str(_v.namespace_error(ns)).contains(
+        env.expect.that_str(namespace_error(ns)).contains(
             "segment %s is not a C++ identifier" % segment,
         )
 
 def test_service_error_accepts_valid_shape_ids(env):
     for svc in ["acme.todo#Todo", "a#B", "smithy.cpp.ruletest#Greeter", "_ns._sub#_Svc9"]:
-        env.expect.that_str(_v.service_error(svc)).equals(None)
+        env.expect.that_str(service_error(svc)).equals(None)
 
 def test_service_error_explains_the_shape_id_form(env):
     for svc in ["Todo", "a#b#c", "acme todo#Todo", "9a.b#C", "acme.todo#9Todo", "acme.todo#", "#Todo"]:
-        env.expect.that_str(_v.service_error(svc)).contains(
+        env.expect.that_str(service_error(svc)).contains(
             'expected "<namespace>#<ServiceName>"',
         )
 
 def test_service_error_suggests_dotted_form_for_cpp_namespace(env):
-    env.expect.that_str(_v.service_error("acme::todo#Todo")).contains(
+    env.expect.that_str(service_error("acme::todo#Todo")).contains(
         'did you mean "acme.todo#Todo"?',
     )
-    env.expect.that_str(_v.service_error("smithy::cpp::ruletest#Greeter")).contains(
+    env.expect.that_str(service_error("smithy::cpp::ruletest#Greeter")).contains(
         'did you mean "smithy.cpp.ruletest#Greeter"?',
     )
 
-# tags on the macro must reach the internal generate target (that forwarding is
-# what keeps the misconfigured instances below out of wildcard builds).
+# tags/testonly on the macro must reach the internal generate target (that
+# forwarding is what keeps the misconfigured instances below out of wildcard
+# builds).
 
-def _tags_forwarded_impl(env, target):
+def _macro_attrs_forwarded_impl(env, target):
     env.expect.that_target(target).tags().contains("manual")
+    env.expect.that_target(target).attr("testonly", factory = subjects.bool).equals(True)
 
-def tags_forwarded_to_internal_targets_test(name):
+def macro_attrs_forwarded_to_internal_targets_test(name):
     analysis_test(
         name = name,
-        impl = _tags_forwarded_impl,
+        impl = _macro_attrs_forwarded_impl,
         target = "//bazel/tests:greeter_manual_types_smithy_gen",
     )
 
-# Wiring mistakes fail at analysis time with the fix in the message; these
-# pin both the failure and the message's actionable part.
+# Wiring tests: a bad namespace/service fails the rule at analysis time with
+# exactly the helper's message (the needle is computed by the helper itself,
+# so these can't drift from the unit tables above). One test per attribute;
+# message variants are the unit tables' job.
 
-def _expect_failure_containing(env, target, needle):
+def _namespace_wiring_impl(env, target):
     env.expect.that_target(target).failures().contains_predicate(
-        matching.str_matches("*" + needle + "*"),
+        matching.contains(namespace_error("smithy.cpp.ruletest")),
     )
 
-def _smithy_dots_namespace_impl(env, target):
-    _expect_failure_containing(env, target, 'did you mean "smithy::cpp::ruletest"?')
+def _service_wiring_impl(env, target):
+    env.expect.that_target(target).failures().contains_predicate(
+        matching.contains(service_error("Greeter")),
+    )
 
-def _bad_namespace_segment_impl(env, target):
-    _expect_failure_containing(env, target, 'segment "9ruletest" is not a C++ identifier')
-
-def _bare_service_name_impl(env, target):
-    _expect_failure_containing(env, target, 'expected "<namespace>#<ServiceName>"')
-
-def _cpp_namespace_service_impl(env, target):
-    _expect_failure_containing(env, target, 'did you mean "smithy.cpp.ruletest#Greeter"?')
-
-def smithy_dots_namespace_test(name):
+def namespace_wiring_failure_test(name):
     analysis_test(
         name = name,
-        impl = _smithy_dots_namespace_impl,
+        impl = _namespace_wiring_impl,
         target = "//bazel/tests:greeter_smithy_dots_namespace_smithy_gen",
         expect_failure = True,
     )
 
-def bad_namespace_segment_test(name):
+def service_wiring_failure_test(name):
     analysis_test(
         name = name,
-        impl = _bad_namespace_segment_impl,
-        target = "//bazel/tests:greeter_bad_namespace_segment_smithy_gen",
-        expect_failure = True,
-    )
-
-def bare_service_name_test(name):
-    analysis_test(
-        name = name,
-        impl = _bare_service_name_impl,
+        impl = _service_wiring_impl,
         target = "//bazel/tests:greeter_bare_service_name_smithy_gen",
-        expect_failure = True,
-    )
-
-def cpp_namespace_service_test(name):
-    analysis_test(
-        name = name,
-        impl = _cpp_namespace_service_impl,
-        target = "//bazel/tests:greeter_cpp_namespace_service_smithy_gen",
         expect_failure = True,
     )
 
@@ -218,14 +194,11 @@ def defs_test_suite(name):
             server_outputs_test,
             types_outputs_test,
             client_cc_library_test,
-            tags_forwarded_to_internal_targets_test,
-            smithy_dots_namespace_test,
-            bad_namespace_segment_test,
-            bare_service_name_test,
-            cpp_namespace_service_test,
+            macro_attrs_forwarded_to_internal_targets_test,
+            namespace_wiring_failure_test,
+            service_wiring_failure_test,
         ],
         basic_tests = [
-            test_is_identifier_matrix,
             test_namespace_error_accepts_valid_cpp_namespaces,
             test_namespace_error_suggests_colon_form_for_smithy_dots,
             test_namespace_error_names_the_bad_segment,

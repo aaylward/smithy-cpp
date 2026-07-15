@@ -18,6 +18,7 @@ on like any other target. The service's protocol comes from the model itself
 """
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("//bazel/private:validation.bzl", "namespace_error", "service_error")
 
 _GENERATOR = Label("//codegen:generator")
 _RUNTIME_DEPS = [
@@ -29,61 +30,6 @@ _RUNTIME_DEPS = [
     Label("//runtime:json"),
 ]
 _SERVER_RUNTIME_DEPS = [Label("//runtime:server")]
-
-def _is_identifier(s):
-    """True if s is a C/C++-style identifier ([A-Za-z_][A-Za-z0-9_]*)."""
-    if not s:
-        return False
-    for i in range(len(s)):
-        ch = s[i]
-        if ch == "_" or ch.isalpha():
-            continue
-        if i > 0 and ch.isdigit():
-            continue
-        return False
-    return True
-
-def _namespace_error(namespace):
-    """Why `namespace` is not a valid C++ namespace, or None if it is."""
-    segments = namespace.split("::")
-    ok = True
-    for segment in segments:
-        if not _is_identifier(segment):
-            ok = False
-    if ok:
-        return None
-    msg = 'namespace = "%s" is not a "::"-separated C++ namespace (like "acme::todo")' % namespace
-    if "." in namespace and "::" not in namespace:
-        # The classic slip: pasting the model's Smithy namespace verbatim.
-        return msg + ': did you mean "%s"?' % namespace.replace(".", "::")
-    for segment in segments:
-        if not _is_identifier(segment):
-            return msg + ': segment "%s" is not a C++ identifier' % segment
-    return msg
-
-def _service_error(service):
-    """Why `service` is not a valid Smithy shape ID, or None if it is."""
-    msg = 'service = "%s" is not the service\'s Smithy shape ID' % service
-    hint = ' (expected "<namespace>#<ServiceName>" exactly as modeled, like "acme.todo#Todo")'
-    if service.count("#") != 1:
-        return msg + hint
-    shape_ns, _, name = service.partition("#")
-    if "::" in shape_ns:
-        # The reverse slip: the C++ namespace attribute pasted into service.
-        return msg + ': did you mean "%s#%s"?' % (shape_ns.replace("::", "."), name)
-    for segment in shape_ns.split("."):
-        if not _is_identifier(segment):
-            return msg + hint
-    if not _is_identifier(name):
-        return msg + hint
-    return None
-
-# Exposed for bazel/tests/defs_test.bzl only; not part of the public API.
-validation_for_testing = struct(
-    is_identifier = _is_identifier,
-    namespace_error = _namespace_error,
-    service_error = _service_error,
-)
 
 def _generated_files(namespace, mode):
     """The exact files the generator emits for a mode (namespace drives paths)."""
@@ -103,11 +49,10 @@ def _generated_files(namespace, mode):
 
 def _smithy_cpp_generate_impl(ctx):
     # Wiring mistakes fail here, at analysis time, with the fix in the message —
-    # the generator never launches. Model mistakes fail the action itself, whose
-    # stderr leads with the attributed `cpp-codegen:` diagnostic.
-    for err in [_namespace_error(ctx.attr.namespace), _service_error(ctx.attr.service)]:
-        if err:
-            fail(err)
+    # the generator never launches (docs/quickstart.md#troubleshooting-generation-failures).
+    err = namespace_error(ctx.attr.namespace) or service_error(ctx.attr.service)
+    if err:
+        fail(err)
 
     hdr_paths, src_paths = _generated_files(ctx.attr.namespace, ctx.attr.mode)
     hdr_outputs = [ctx.actions.declare_file(ctx.label.name + "/" + p) for p in hdr_paths]

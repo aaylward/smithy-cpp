@@ -1,5 +1,6 @@
 package io.smithycpp.codegen;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -44,6 +45,15 @@ class QuickstartMirrorTest {
         "docs/quickstart.md's .bazelrc block no longer matches"
             + " examples/bazel-consumer/.bazelrc byte-for-byte:\n"
             + bazelrc);
+  }
+
+  @Test
+  void consumerBazelversionMatchesTheRepoRoot() throws IOException {
+    assertEquals(
+        read(".bazelversion").strip(),
+        read("examples/bazel-consumer/.bazelversion").strip(),
+        "examples/bazel-consumer/.bazelversion drifted from the repo root's .bazelversion;"
+            + " the quickstart points consumers at the example's pin");
   }
 
   @Test

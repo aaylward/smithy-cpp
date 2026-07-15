@@ -1,6 +1,7 @@
 #ifndef SMITHY_CORE_PRINT_H_
 #define SMITHY_CORE_PRINT_H_
 
+#include <array>
 #include <charconv>
 #include <cstddef>
 #include <cstdio>
@@ -49,9 +50,9 @@ inline void AppendQuoted(std::string& out, std::string_view text) {
         break;
       default:
         if (static_cast<unsigned char>(c) < 0x20) {
-          char buffer[8];
-          std::snprintf(buffer, sizeof buffer, "\\x%02x", static_cast<unsigned char>(c));
-          out += buffer;
+          std::array<char, 8> buffer{};
+          std::snprintf(buffer.data(), buffer.size(), "\\x%02x", static_cast<unsigned char>(c));
+          out += buffer.data();
         } else {
           out += c;
         }
@@ -63,9 +64,9 @@ inline void AppendQuoted(std::string& out, std::string_view text) {
 // Shortest round-trip rendering for integers and floating point.
 template <typename T>
 void AppendArithmetic(std::string& out, T value) {
-  char buffer[32];
-  const auto result = std::to_chars(buffer, buffer + sizeof buffer, value);
-  out.append(buffer, result.ptr);
+  std::array<char, 32> buffer{};
+  const auto result = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value);
+  out.append(buffer.data(), result.ptr);
 }
 
 }  // namespace internal

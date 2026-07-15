@@ -43,7 +43,7 @@ class Blob {
     out += " bytes";
     if (!bytes_.empty()) {
       out += ": ";
-      static constexpr char kHex[] = "0123456789abcdef";
+      static constexpr std::string_view kHex = "0123456789abcdef";
       static constexpr std::size_t kMaxHexBytes = 16;
       const std::size_t shown = bytes_.size() < kMaxHexBytes ? bytes_.size() : kMaxHexBytes;
       for (std::size_t i = 0; i < shown; ++i) {

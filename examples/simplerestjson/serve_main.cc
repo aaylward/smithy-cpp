@@ -3,9 +3,8 @@
 // mirrors main() below byte-for-byte). Try it:
 //
 //   bazel run //examples/simplerestjson:bookstore_server
-//   curl -X POST localhost:8080/books -H 'Content-Type: application/json' \
-//     -d '{"isbn":"0-306-40615-2","title":"Petriflora"}'
-//   curl localhost:8080/books/0-306-40615-2
+//   curl localhost:8080/books -H 'content-type: application/json' -d '{"isbn":"1","title":"Dune"}'
+//   curl localhost:8080/books/1
 //   kill -TERM <pid>   # or Ctrl-C: drains in-flight requests, then exits 0
 
 #include <csignal>

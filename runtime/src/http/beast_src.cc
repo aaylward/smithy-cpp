@@ -1,18 +1,16 @@
-// The BCR boost.beast module defines BOOST_BEAST_SEPARATE_COMPILATION for its
-// consumers but ships no compiled sources, so exactly one translation unit in
-// the final link must provide Beast's implementation. This is that TU; it may
-// exist only once per binary, which holds because //runtime:http_beast is the
-// sole Beast consumer in this repo.
-//
-// Deliberately NOT included here: <boost/asio/impl/src.hpp>. The BCR
-// boost.asio module (1.87.0.bcr.1+) compiles asio's implementation itself;
-// providing it again is an ODR violation (caught by ASan in CI).
+// Deliberately NOT included here: <boost/beast/src.hpp> and
+// <boost/asio/impl/src.hpp>. The BCR boost.beast module ships its own
+// compiled implementation since 1.90 (boost.beast.src.cpp — at 1.87 this TU
+// had to provide it), and boost.asio has compiled its implementation itself
+// since 1.87.0.bcr.1; providing either again is an ODR violation (both
+// caught by ASan in CI, one per bump).
 //
 // asio's *SSL* implementation IS included here: the BCR module only compiles
 // it behind its `ssl` build flag, which every consumer would have to set on
 // the command line. Compiling it in this TU (against the direct BoringSSL
-// dependency) keeps //runtime:http_beast self-contained — same
-// exactly-one-TU rule as Beast's implementation above.
+// dependency) keeps //runtime:http_beast self-contained; it may exist only
+// once per binary, which holds because //runtime:http_beast is the sole
+// Beast/asio consumer in this repo.
 
 // The module's header glob exports .ipp files but not the src.hpp umbrella,
 // so this replicates <boost/asio/ssl/impl/src.hpp> (asio 1.87) inline.
@@ -29,5 +27,3 @@
 #include <boost/asio/ssl/detail/impl/openssl_init.ipp>
 #include <boost/asio/ssl/impl/host_name_verification.ipp>
 // clang-format on
-
-#include <boost/beast/src.hpp>

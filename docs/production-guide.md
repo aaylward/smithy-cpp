@@ -124,22 +124,24 @@ implement them as an `Interceptor` (below).
 
 Operations modeled with `@paginated` (top-level string tokens) get a
 generated paginator: `client.PaginateListCities(input)` returns a
-`ListCitiesPaginator` whose `Next()` yields one page at a time and
-`std::nullopt` once the service stops returning a next token. The paginator
-owns a copy of the client and input, so it outlives both:
+`ListCitiesPaginator` that is a single-pass range (issue #49) — iteration
+yields one `smithy::Outcome<Page>&` per page, and a failed call is yielded
+exactly once before the range ends by itself, so the loop needs no manual
+token or nullopt protocol:
 
 ```cpp
-auto paginator = client.PaginateListCities({.pageSize = 100});
-while (true) {
-  auto page = paginator.Next();
+for (auto& page : client.PaginateListCities({.pageSize = 100})) {
   if (!page.ok()) return page.error();   // pagination stops on first error
-  if (!page->has_value()) break;         // exhausted
-  for (const auto& city : (*page)->items) Process(city);
+  for (const auto& city : page->items) Process(city);
 }
 ```
 
-An empty-string token is treated as end-of-pagination (defensive: it can
-never loop forever on a server echoing empty tokens).
+The paginator owns a copy of the client and input, so it outlives both; the
+range is single-pass (call `begin()` once — range-for does). The pull API
+remains for manual control: `Next()` yields one page at a time,
+`std::nullopt` once the service stops returning a next token, or the first
+failed call's error. An empty-string token is treated as end-of-pagination
+(defensive: it can never loop forever on a server echoing empty tokens).
 
 ## Client interceptors
 

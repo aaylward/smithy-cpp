@@ -265,6 +265,7 @@ cc_library(
         "include/smithy/client/config.h",
         "include/smithy/client/interceptor.h",
         "include/smithy/client/observability.h",
+        "include/smithy/client/pagination.h",
         "include/smithy/client/retry.h",
     ],
     copts = COPTS,
@@ -279,6 +280,17 @@ cc_test(
     name = "retry_test",
     size = "small",
     srcs = ["tests/client/retry_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":client",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "pagination_test",
+    size = "small",
+    srcs = ["tests/client/pagination_test.cc"],
     copts = COPTS,
     deps = [
         ":client",

@@ -81,6 +81,10 @@ common --java_runtime_version=remotejdk_17
 common --tool_java_runtime_version=remotejdk_17
 test --test_output=errors
 
+# GitHub's archive hosting intermittently 500s; without retries one failed
+# module download aborts the whole build.
+common --experimental_repository_downloader_retries=5
+
 # Personal overrides stay out of version control.
 try-import %workspace%/.bazelrc.user
 ```

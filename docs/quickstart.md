@@ -315,7 +315,10 @@ bazel test //...
 ```
 
 For production serving, plug `server.Handler()` into `smithy::http::BeastServerTransport`
-(`@smithy_cpp//runtime:http_beast`, ADR-0006).
+(`@smithy_cpp//runtime:http_beast`, ADR-0006) — the
+[Serving lifecycle](production-guide.md#serving-lifecycle) walkthrough and its compiled example
+([`examples/simplerestjson/serve_main.cc`](../examples/simplerestjson/serve_main.cc)) wire
+SIGTERM → drain → clean exit.
 
 ## The first build: cost, caching, and locked-down networks
 

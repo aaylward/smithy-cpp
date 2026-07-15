@@ -32,6 +32,7 @@ single_version_override(
     patches = ["//third_party:boost_container_cc_test_load.patch"],
 )
 
+bazel_dep(name = "rules_shell", version = "0.6.1", dev_dependency = True)
 bazel_dep(name = "rules_testing", version = "0.6.0", dev_dependency = True)
 
 # The code generator runs inside the build graph as a hermetic Java action

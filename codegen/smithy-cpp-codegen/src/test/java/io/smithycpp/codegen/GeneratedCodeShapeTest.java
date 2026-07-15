@@ -66,6 +66,40 @@ class GeneratedCodeShapeTest {
   }
 
   @Test
+  void streamingTraitIsIgnoredAndGeneratesThePlainShape() {
+    // The README's "Current limitations" states that @streaming is ignored —
+    // a streaming blob payload generates as an ordinary, fully buffered
+    // smithy::Blob. This pins that claim (and will fail when Phase 8 makes
+    // streaming real, forcing the doc sites to be updated in step).
+    String model =
+        """
+        $version: "2.0"
+        namespace test.shape
+        use alloy#simpleRestJson
+
+        @simpleRestJson
+        service Svc { version: "1", operations: [Upload] }
+
+        @http(method: "POST", uri: "/upload")
+        operation Upload {
+            input := {
+                @httpPayload
+                @required
+                body: StreamingBlob
+            }
+            output := { @required etag: String }
+        }
+
+        @streaming
+        blob StreamingBlob
+        """;
+    String types =
+        PluginTestHarness.generate(model, "test.shape#Svc", "test::shape")
+            .expectFileString("/include/test/shape/types.h");
+    assertTrue(types.contains("smithy::Blob body{};"), types);
+  }
+
+  @Test
   void noInputRpcv2CborRouteDecodesNoBody() {
     // #67 removed the dead body-decode from no-input server routes (clients
     // never send one; the decode could only 400 conforming empty bodies with

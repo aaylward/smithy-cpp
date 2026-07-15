@@ -1,8 +1,8 @@
 load("@rules_cc//cc:defs.bzl", "cc_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
-# The serving-lifecycle example (issue #49): SIGTERM/SIGINT → Start/block/
-# Stop with the Beast transport's drain. docs/production-guide.md walks
-# through it under "Serving lifecycle".
+# The serving-lifecycle example (issue #49); docs/production-guide.md
+# § "Serving lifecycle" is the walkthrough.
 cc_binary(
     name = "bookstore_server",
     srcs = ["serve_main.cc"],
@@ -12,4 +12,14 @@ cc_binary(
         "//runtime:core",
         "//runtime:http_beast",
     ],
+)
+
+# Executes the lifecycle end to end: ephemeral port, POST + GET + modeled
+# 404 over the wire, SIGTERM, clean drained exit.
+sh_test(
+    name = "bookstore_server_lifecycle_test",
+    size = "small",
+    srcs = ["bookstore_server_lifecycle_test.sh"],
+    args = ["$(rootpath :bookstore_server)"],
+    data = [":bookstore_server"],
 )

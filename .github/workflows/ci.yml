@@ -228,9 +228,12 @@ jobs:
       # BOOST_*_SEPARATE_COMPILATION defines (no first-party code in it).
       - name: clang-tidy
         run: |
+          # Example sources include their generated headers short-form; give
+          # tidy every generated include root so new examples need no edit here.
+          GEN_INCLUDES=$(find examples -type d -path '*/generated/include' | sed 's/^/-I/')
           find runtime/src examples -name '*.cc' ! -name '*_test.cc' ! -path '*/src/json/*' \
             ! -name 'beast_src.cc' ! -path '*/generated/*' -print0 \
             | xargs -0 -I{} clang-tidy --quiet {} -- -Iruntime/include -I. \
-              -Iexamples/simplerestjson/generated/include -std=c++20
+              $GEN_INCLUDES -std=c++20
       - name: buildifier
         run: npx -y @bazel/buildifier@8.2.1 --lint=warn --mode=check -r .

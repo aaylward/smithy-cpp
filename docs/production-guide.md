@@ -232,15 +232,14 @@ logged and swallowed.
 
 ## Serving lifecycle
 
-The pattern for a long-running server is SIGTERM/SIGINT → `Start`/block/`Stop`, with the Beast
-transport's drain doing the graceful half: `Stop()` accepts no new connections or keep-alive
-reads, and in-flight requests get `Options.drain_timeout_seconds` to finish before the pool is
-torn down. The compiled, runnable version is
-[`examples/simplerestjson/serve_main.cc`](../examples/simplerestjson/serve_main.cc)
-(`bazel run //examples/simplerestjson:bookstore_server`); the shape:
+The pattern for a long-running server is SIGTERM/SIGINT → `Start`/block/`Stop`, with the drain
+([Server hardening](#server-hardening) has the contract) doing the graceful half. This is
+`main()` from [`examples/simplerestjson/serve_main.cc`](../examples/simplerestjson/serve_main.cc)
+verbatim — compiled, lifecycle-tested in CI, and runnable as
+`bazel run //examples/simplerestjson:bookstore_server`:
 
 ```cpp
-int main() {
+int main(int argc, char** argv) {
   sigset_t shutdown_signals;
   sigemptyset(&shutdown_signals);
   sigaddset(&shutdown_signals, SIGINT);
@@ -252,14 +251,20 @@ int main() {
   BookstoreServer server(std::make_shared<InMemoryBookstore>());
   smithy::http::BeastServerTransport transport({
       .address = "0.0.0.0",
-      .port = 8080,
+      .port = argc > 1 ? std::atoi(argv[1]) : 8080,  // 0 binds an ephemeral port
       .drain_timeout_seconds = 10,
   });
-  auto started = transport.Start(server.Handler());
-  if (!started.ok()) return 1;
+  smithy::Outcome<smithy::Unit> started = transport.Start(server.Handler());
+  if (!started.ok()) {
+    std::fprintf(stderr, "bookstore: start failed: %s\n", started.error().message().c_str());
+    return 1;
+  }
+  std::fprintf(stderr, "bookstore: serving on :%d (SIGTERM or Ctrl-C drains and exits)\n",
+               transport.port());
 
   int signal_number = 0;
   sigwait(&shutdown_signals, &signal_number);  // serve until SIGTERM/SIGINT
+  std::fprintf(stderr, "bookstore: signal %d, draining\n", signal_number);
   transport.Stop();  // in-flight requests get drain_timeout_seconds to finish
   return 0;
 }

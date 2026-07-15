@@ -437,6 +437,46 @@ class GeneratedCodeShapeTest {
     assertTrue(types.contains("smithy::Blob body{};"), types);
   }
 
+  private static final String PAGINATED_MODEL =
+      """
+      $version: "2.0"
+      namespace test.shape
+      use alloy#simpleRestJson
+
+      @simpleRestJson
+      service Svc { version: "1", operations: [ListThings] }
+
+      @paginated(inputToken: "nextToken", outputToken: "nextToken")
+      @readonly
+      @http(method: "GET", uri: "/things")
+      operation ListThings {
+          input := { @httpQuery("nextToken") nextToken: String }
+          output := { nextToken: String, things: StringList }
+      }
+
+      list StringList { member: String }
+      """;
+
+  @Test
+  void paginatorsAreRanges() {
+    // Issue #49: @paginated was pull-only — Next()/nullopt with no
+    // begin()/end(), so `for (page : pages)` didn't compile. Paginators now
+    // expose the single-pass smithy::PageIterator range: iteration yields
+    // Outcome<Page>&, and a failed call ends the range after being seen once.
+    String client =
+        PluginTestHarness.generate(PAGINATED_MODEL, "test.shape#Svc", "test::shape")
+            .expectFileString("/include/test/shape/client.h");
+    assertTrue(client.contains("#include \"smithy/client/pagination.h\""), client);
+    assertTrue(client.contains("using Page = ListThingsOutput;"), client);
+    assertTrue(
+        client.contains(
+            "smithy::PageIterator<ListThingsPaginator> begin() { return"
+                + " smithy::PageIterator<ListThingsPaginator>(this); }"),
+        client);
+    assertTrue(
+        client.contains("smithy::PageIterator<ListThingsPaginator> end() { return {}; }"), client);
+  }
+
   @Test
   void httpsWithoutTransportPointsAtFromConfig() {
     // Issue #49 (knob placement): production TLS/pool knobs live on

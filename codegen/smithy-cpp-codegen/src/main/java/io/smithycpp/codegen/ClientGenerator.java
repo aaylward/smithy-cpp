@@ -48,6 +48,7 @@ final class ClientGenerator {
     if (!paginated.isEmpty()) {
       w.addInclude("<optional>");
       w.addInclude("<utility>");
+      w.addInclude("\"smithy/client/pagination.h\"");
       for (OperationShape operation : paginated) {
         w.write("class $L;", paginatorName(operation));
       }
@@ -123,6 +124,14 @@ final class ClientGenerator {
       w.write("/// The next page, std::nullopt once pagination is complete, or the");
       w.write("/// first failed call's error (pagination then stops).");
       w.write("smithy::Outcome<std::optional<$L>> Next();", outputType);
+      w.write("");
+      w.write("using Page = $L;", outputType);
+      w.write("/// Single-pass range (issue #49): iteration yields Outcome<Page>&, and");
+      w.write("/// a failed call ends the range after being yielded once. The iterator");
+      w.write("/// drives this paginator's state, so call begin() once.");
+      String iterator = "smithy::PageIterator<" + paginatorName(operation) + ">";
+      w.write("$1L begin() { return $1L(this); }", iterator);
+      w.write("$L end() { return {}; }", iterator);
       w.write("").dedent();
       w.write("private:").indent();
       w.write("friend class $L;", name);

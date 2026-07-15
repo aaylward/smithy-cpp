@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -291,6 +292,58 @@ TEST_F(GeneratedServerEndToEndTest, PaginatorWalksAllPages) {
   const auto still_done = paginator.Next();
   ASSERT_TRUE(still_done.ok());
   EXPECT_FALSE(still_done->has_value());
+}
+
+TEST_F(GeneratedServerEndToEndTest, PaginatorRangeForWalksAllPages) {
+  auto loopback = std::make_shared<smithy::http::Loopback>();
+  ASSERT_TRUE(loopback->Start(server_->Handler()).ok());
+  smithy::ClientConfig config;
+  config.http_client = loopback;
+  auto client = example::weather::WeatherClient::Create(std::move(config));
+  ASSERT_TRUE(client.ok());
+
+  // Issue #49: pagination is a range — no manual Next()/nullopt protocol.
+  std::vector<std::string> cities;
+  for (auto& page : client->PaginateListCities(ListCitiesInput{.pageSize = 1})) {
+    ASSERT_TRUE(page.ok()) << page.error().message();
+    for (const auto& city : page->items) cities.push_back(city.cityId);
+  }
+  EXPECT_EQ(cities, (std::vector<std::string>{"seattle", "rain city"}));
+}
+
+TEST_F(GeneratedServerEndToEndTest, PaginatorRangeForYieldsTheErrorOnceThenEnds) {
+  class FailsOnSecondPage final : public ReferenceHandler {
+   public:
+    smithy::Outcome<ListCitiesOutput> ListCities(const ListCitiesInput& input) override {
+      if (input.nextToken.has_value()) {
+        return smithy::Error::Modeled("NoSuchResource", "page evaporated");
+      }
+      ListCitiesOutput out;
+      out.items.push_back(CitySummary{.cityId = "page1", .name = "Page One"});
+      out.nextToken = "more";
+      return out;
+    }
+  };
+  WeatherServer server(std::make_shared<FailsOnSecondPage>());
+  auto loopback = std::make_shared<smithy::http::Loopback>();
+  ASSERT_TRUE(loopback->Start(server.Handler()).ok());
+  smithy::ClientConfig config;
+  config.http_client = loopback;
+  auto client = example::weather::WeatherClient::Create(std::move(config));
+  ASSERT_TRUE(client.ok());
+
+  std::vector<std::string> pages_seen;
+  std::optional<smithy::Error> failure;
+  for (auto& page : client->PaginateListCities(ListCitiesInput{})) {
+    if (!page.ok()) {
+      failure = page.error();
+      continue;  // the range ends by itself after yielding the error
+    }
+    pages_seen.push_back(page->items[0].cityId);
+  }
+  EXPECT_EQ(pages_seen, (std::vector<std::string>{"page1"}));
+  ASSERT_TRUE(failure.has_value());
+  EXPECT_EQ(failure->code(), "NoSuchResource");
 }
 
 // Observability end to end (Phase 7c): the client propagates a W3C trace

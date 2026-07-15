@@ -14,6 +14,7 @@
 
 #include "example/weather/types.h"
 #include "smithy/client/config.h"
+#include "smithy/client/pagination.h"
 #include "smithy/core/fatal.h"
 #include "smithy/core/hash.h"
 #include "smithy/core/outcome.h"
@@ -62,6 +63,13 @@ class ListCitiesPaginator {
     /// The next page, std::nullopt once pagination is complete, or the
     /// first failed call's error (pagination then stops).
     smithy::Outcome<std::optional<ListCitiesOutput>> Next();
+
+    using Page = ListCitiesOutput;
+    /// Single-pass range (issue #49): iteration yields Outcome<Page>&, and
+    /// a failed call ends the range after being yielded once. The iterator
+    /// drives this paginator's state, so call begin() once.
+    smithy::PageIterator<ListCitiesPaginator> begin() { return smithy::PageIterator<ListCitiesPaginator>(this); }
+    smithy::PageIterator<ListCitiesPaginator> end() { return {}; }
 
   private:
     friend class WeatherClient;

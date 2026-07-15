@@ -59,6 +59,12 @@ bazel test //...                     # C++ runtime (requires bazelisk)
 cd codegen && gradle build           # Smithy → C++ generator (JVM)
 ```
 
+Bazel runs through [bazelisk](https://github.com/bazelbuild/bazelisk), which reads
+[`.bazelversion`](.bazelversion) and fetches the pinned release. The first build downloads
+the toolchain and all dependencies — see the quickstart's
+[first-build section](docs/quickstart.md#the-first-build-cost-caching-and-locked-down-networks)
+for what to expect and for proxy/offline setups.
+
 See [`docs/development.md`](docs/development.md) for details and
 [`CONTRIBUTING.md`](CONTRIBUTING.md) for contribution guidelines.
 

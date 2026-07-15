@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "smithy/core/document.h"
+#include "smithy/core/fatal.h"
 #include "smithy/core/timestamp.h"
 
 namespace smithy::protocoltests::simplerestjson {
@@ -150,7 +151,12 @@ class Food {
       return result;
     }
     bool is_pizza() const { return value_.index() == 1; }
-    const Pizza& as_pizza() const { return std::get<1>(value_); }
+    const Pizza& as_pizza() const {
+      if (!is_pizza()) smithy::internal::FatalWrongUnionAccess("Food", "pizza", case_name());
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const Pizza* as_pizza_or_null() const { return std::get_if<1>(&value_); }
 
     static Food FromSalad(Salad value) {
       Food result;
@@ -158,10 +164,28 @@ class Food {
       return result;
     }
     bool is_salad() const { return value_.index() == 2; }
-    const Salad& as_salad() const { return std::get<2>(value_); }
+    const Salad& as_salad() const {
+      if (!is_salad()) smithy::internal::FatalWrongUnionAccess("Food", "salad", case_name());
+      return std::get<2>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const Salad* as_salad_or_null() const { return std::get_if<2>(&value_); }
 
     /// True until one of the From* factories has been used.
     bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" until a From* factory has run.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "pizza", "salad"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
 
     friend bool operator==(const Food&, const Food&) = default;
 
@@ -457,7 +481,12 @@ class OpenDiscriminatedUnion {
       return result;
     }
     bool is_smol() const { return value_.index() == 1; }
-    const SmallStruct& as_smol() const { return std::get<1>(value_); }
+    const SmallStruct& as_smol() const {
+      if (!is_smol()) smithy::internal::FatalWrongUnionAccess("OpenDiscriminatedUnion", "smol", case_name());
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const SmallStruct* as_smol_or_null() const { return std::get_if<1>(&value_); }
 
     static OpenDiscriminatedUnion FromOther(smithy::Document value) {
       OpenDiscriminatedUnion result;
@@ -465,10 +494,28 @@ class OpenDiscriminatedUnion {
       return result;
     }
     bool is_other() const { return value_.index() == 2; }
-    const smithy::Document& as_other() const { return std::get<2>(value_); }
+    const smithy::Document& as_other() const {
+      if (!is_other()) smithy::internal::FatalWrongUnionAccess("OpenDiscriminatedUnion", "other", case_name());
+      return std::get<2>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const smithy::Document* as_other_or_null() const { return std::get_if<2>(&value_); }
 
     /// True until one of the From* factories has been used.
     bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" until a From* factory has run.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "smol", "other"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
 
     friend bool operator==(const OpenDiscriminatedUnion&, const OpenDiscriminatedUnion&) = default;
 
@@ -487,7 +534,12 @@ class OpenTaggedUnion {
       return result;
     }
     bool is_str() const { return value_.index() == 1; }
-    const std::string& as_str() const { return std::get<1>(value_); }
+    const std::string& as_str() const {
+      if (!is_str()) smithy::internal::FatalWrongUnionAccess("OpenTaggedUnion", "str", case_name());
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const std::string* as_str_or_null() const { return std::get_if<1>(&value_); }
 
     static OpenTaggedUnion FromOther(smithy::Document value) {
       OpenTaggedUnion result;
@@ -495,10 +547,28 @@ class OpenTaggedUnion {
       return result;
     }
     bool is_other() const { return value_.index() == 2; }
-    const smithy::Document& as_other() const { return std::get<2>(value_); }
+    const smithy::Document& as_other() const {
+      if (!is_other()) smithy::internal::FatalWrongUnionAccess("OpenTaggedUnion", "other", case_name());
+      return std::get<2>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const smithy::Document* as_other_or_null() const { return std::get_if<2>(&value_); }
 
     /// True until one of the From* factories has been used.
     bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" until a From* factory has run.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "str", "other"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
 
     friend bool operator==(const OpenTaggedUnion&, const OpenTaggedUnion&) = default;
 
@@ -517,7 +587,12 @@ class OpenUnionsPayload {
       return result;
     }
     bool is_tagged() const { return value_.index() == 1; }
-    const OpenTaggedUnion& as_tagged() const { return std::get<1>(value_); }
+    const OpenTaggedUnion& as_tagged() const {
+      if (!is_tagged()) smithy::internal::FatalWrongUnionAccess("OpenUnionsPayload", "tagged", case_name());
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const OpenTaggedUnion* as_tagged_or_null() const { return std::get_if<1>(&value_); }
 
     static OpenUnionsPayload FromDiscriminated(OpenDiscriminatedUnion value) {
       OpenUnionsPayload result;
@@ -525,10 +600,28 @@ class OpenUnionsPayload {
       return result;
     }
     bool is_discriminated() const { return value_.index() == 2; }
-    const OpenDiscriminatedUnion& as_discriminated() const { return std::get<2>(value_); }
+    const OpenDiscriminatedUnion& as_discriminated() const {
+      if (!is_discriminated()) smithy::internal::FatalWrongUnionAccess("OpenUnionsPayload", "discriminated", case_name());
+      return std::get<2>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const OpenDiscriminatedUnion* as_discriminated_or_null() const { return std::get_if<2>(&value_); }
 
     /// True until one of the From* factories has been used.
     bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" until a From* factory has run.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "tagged", "discriminated"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
 
     friend bool operator==(const OpenUnionsPayload&, const OpenUnionsPayload&) = default;
 

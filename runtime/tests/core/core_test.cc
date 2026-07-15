@@ -41,6 +41,48 @@ TEST(OutcomeTest, UnitForVoidLikeOperations) {
   EXPECT_TRUE(outcome.ok());
 }
 
+TEST(OutcomeTest, ValueOrDieReturnsTheValue) {
+  Outcome<int> outcome(42);
+  EXPECT_EQ(outcome.value_or_die("reading the answer"), 42);
+}
+
+// Contract violations die with the error's context instead of throwing a
+// context-free std::bad_variant_access (issue #49).
+
+using OutcomeDeathTest = ::testing::Test;
+
+TEST(OutcomeDeathTest, ValueOnErrorDiesWithCodeAndMessage) {
+  Outcome<int> outcome(Error::Transport("connection refused"));
+  EXPECT_DEATH((void)outcome.value(),
+               "Outcome::value\\(\\) on error: TransportError: connection refused");
+}
+
+TEST(OutcomeDeathTest, DerefOnErrorDiesWithCodeAndMessage) {
+  Outcome<int> outcome(Error::Modeled("OrderNotFound", "no such order"));
+  EXPECT_DEATH((void)*outcome, "Outcome::value\\(\\) on error: OrderNotFound: no such order");
+}
+
+TEST(OutcomeDeathTest, MovedValueOnErrorDies) {
+  EXPECT_DEATH((void)Outcome<std::string>(Error::Validation("bad input")).value(),
+               "ValidationError: bad input");
+}
+
+TEST(OutcomeDeathTest, ValueOrDieCarriesCallerContext) {
+  Outcome<int> outcome(Error::Transport("connection refused"));
+  EXPECT_DEATH((void)outcome.value_or_die("creating cafe client"),
+               "creating cafe client: TransportError: connection refused");
+}
+
+TEST(OutcomeDeathTest, ErrorOnValueDies) {
+  Outcome<int> outcome(42);
+  EXPECT_DEATH((void)outcome.error(), "Outcome::error\\(\\) called on a value");
+}
+
+TEST(OutcomeDeathTest, ErrorTypeWithoutCodeStillDiesWithContext) {
+  Outcome<int, std::string> outcome(std::string("boom"));
+  EXPECT_DEATH((void)outcome.value(), "Outcome::value\\(\\) on error");
+}
+
 TEST(ErrorTest, FactoriesSetKindAndCode) {
   EXPECT_EQ(Error::Serialization("x").kind(), ErrorKind::kSerialization);
   EXPECT_EQ(Error::Validation("x").kind(), ErrorKind::kValidation);

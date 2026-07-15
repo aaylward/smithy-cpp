@@ -25,6 +25,7 @@ cc_library(
         "include/smithy/core/document.h",
         "include/smithy/core/document_serde.h",
         "include/smithy/core/error.h",
+        "include/smithy/core/fatal.h",
         "include/smithy/core/outcome.h",
         "include/smithy/core/regex.h",
         "include/smithy/core/text.h",

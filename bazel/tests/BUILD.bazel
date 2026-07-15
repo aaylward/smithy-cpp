@@ -34,6 +34,37 @@ smithy_cpp_types_library(
     service = "smithy.cpp.ruletest#Greeter",
 )
 
+# Valid but manual-tagged + testonly: the attrs-forwarding analysis test
+# asserts both reach the internal generate target.
+smithy_cpp_types_library(
+    name = "greeter_manual_types",
+    testonly = True,
+    srcs = ["greeter.smithy"],
+    namespace = "smithy::cpp::ruletest",
+    service = "smithy.cpp.ruletest#Greeter",
+    tags = ["manual"],
+)
+
+# Deliberately misconfigured instances for the wiring-failure tests (types
+# mode: the failure happens before mode matters). `manual` keeps them (and
+# the macro's internal targets) out of wildcard builds; only the
+# expect_failure tests analyze them.
+smithy_cpp_types_library(
+    name = "greeter_smithy_dots_namespace",
+    srcs = ["greeter.smithy"],
+    namespace = "smithy.cpp.ruletest",
+    service = "smithy.cpp.ruletest#Greeter",
+    tags = ["manual"],
+)
+
+smithy_cpp_types_library(
+    name = "greeter_bare_service_name",
+    srcs = ["greeter.smithy"],
+    namespace = "smithy::cpp::ruletest",
+    service = "Greeter",
+    tags = ["manual"],
+)
+
 # Functional check that a model assembled from multiple files (base +
 # protocol overlay) generates working code: the generated client round-trips
 # against the generated server in-process.

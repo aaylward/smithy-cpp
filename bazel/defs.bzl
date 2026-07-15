@@ -18,6 +18,7 @@ on like any other target. The service's protocol comes from the model itself
 """
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("//bazel/private:validation.bzl", "namespace_error", "service_error")
 
 _GENERATOR = Label("//codegen:generator")
 _RUNTIME_DEPS = [
@@ -47,6 +48,12 @@ def _generated_files(namespace, mode):
     return hdrs, srcs
 
 def _smithy_cpp_generate_impl(ctx):
+    # Wiring mistakes fail here, at analysis time, with the fix in the message —
+    # the generator never launches (docs/quickstart.md#troubleshooting-generation-failures).
+    err = namespace_error(ctx.attr.namespace) or service_error(ctx.attr.service)
+    if err:
+        fail(err)
+
     hdr_paths, src_paths = _generated_files(ctx.attr.namespace, ctx.attr.mode)
     hdr_outputs = [ctx.actions.declare_file(ctx.label.name + "/" + p) for p in hdr_paths]
     src_outputs = [ctx.actions.declare_file(ctx.label.name + "/" + p) for p in src_paths]
@@ -85,7 +92,11 @@ _smithy_cpp_generate = rule(
         "mode": attr.string(values = ["types", "client", "server", "both"], mandatory = True),
         "namespace": attr.string(mandatory = True),
         "service": attr.string(mandatory = True),
-        "srcs": attr.label_list(allow_files = [".smithy", ".json"], mandatory = True),
+        "srcs": attr.label_list(
+            allow_empty = False,
+            allow_files = [".smithy", ".json"],
+            mandatory = True,
+        ),
         "_generator": attr.label(
             default = _GENERATOR,
             executable = True,
@@ -96,6 +107,10 @@ _smithy_cpp_generate = rule(
 
 def _smithy_cpp_library(name, srcs, service, namespace, mode, deps, **kwargs):
     gen = name + "_smithy_gen"
+
+    # tags/testonly apply to the internal targets too, so e.g. tags = ["manual"]
+    # keeps every piece of the macro out of wildcard builds.
+    inherited = {k: kwargs[k] for k in ("tags", "testonly") if k in kwargs}
     _smithy_cpp_generate(
         name = gen,
         srcs = srcs,
@@ -103,18 +118,21 @@ def _smithy_cpp_library(name, srcs, service, namespace, mode, deps, **kwargs):
         namespace = namespace,
         mode = mode,
         visibility = ["//visibility:private"],
+        **inherited
     )
     native.filegroup(
         name = gen + "_hdrs",
         srcs = [":" + gen],
         output_group = "hdrs",
         visibility = ["//visibility:private"],
+        **inherited
     )
     native.filegroup(
         name = gen + "_srcs",
         srcs = [":" + gen],
         output_group = "srcs",
         visibility = ["//visibility:private"],
+        **inherited
     )
     cc_library(
         name = name,

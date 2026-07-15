@@ -2,8 +2,10 @@
 
 #pragma once
 
+#include <compare>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <optional>
 #include <string>
@@ -14,6 +16,7 @@
 
 #include "smithy/core/blob.h"
 #include "smithy/core/fatal.h"
+#include "smithy/core/hash.h"
 #include "smithy/core/timestamp.h"
 
 namespace example::roundtrip::jsonrpc {
@@ -23,6 +26,7 @@ struct NestedConfig {
   std::optional<std::int32_t> depth{};
 
   friend bool operator==(const NestedConfig&, const NestedConfig&) = default;
+  friend auto operator<=>(const NestedConfig&, const NestedConfig&) = default;
 };
 
 
@@ -86,6 +90,8 @@ class SinkChoice {
     }
 
     friend bool operator==(const SinkChoice&, const SinkChoice&) = default;
+    friend auto operator<=>(const SinkChoice&, const SinkChoice&) = default;
+    friend struct std::hash<SinkChoice>;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -122,6 +128,10 @@ class Priority {
 
     Value value() const { return value_; }
 
+    /// Implicit so `switch (x)` works without .value(); the Value equality
+    /// overload below keeps comparisons unambiguous despite the conversion.
+    operator Value() const { return value_; }  // NOLINT(*-explicit-*)
+
     /// The wire text, including the original text of unknown values.
     std::string_view ToString() const {
       switch (value_) {
@@ -134,6 +144,9 @@ class Priority {
     }
 
     friend bool operator==(const Priority&, const Priority&) = default;
+    friend bool operator==(const Priority& a, Value b) { return a.value_ == b; }
+    friend auto operator<=>(const Priority&, const Priority&) = default;
+    friend struct std::hash<Priority>;
 
   private:
     Value value_ = Value::kUnknown;
@@ -170,6 +183,7 @@ struct KitchenSink {
   std::optional<SinkChoice> choice{};
 
   friend bool operator==(const KitchenSink&, const KitchenSink&) = default;
+  friend auto operator<=>(const KitchenSink&, const KitchenSink&) = default;
 };
 
 
@@ -178,6 +192,7 @@ struct SinkNotFound {
   std::optional<std::string> resourceType{};
 
   friend bool operator==(const SinkNotFound&, const SinkNotFound&) = default;
+  friend auto operator<=>(const SinkNotFound&, const SinkNotFound&) = default;
 };
 
 
@@ -186,6 +201,7 @@ struct SinkQuotaExceeded {
   std::optional<std::int32_t> retryAfterSeconds{};
 
   friend bool operator==(const SinkQuotaExceeded&, const SinkQuotaExceeded&) = default;
+  friend auto operator<=>(const SinkQuotaExceeded&, const SinkQuotaExceeded&) = default;
 };
 
 
@@ -194,6 +210,7 @@ struct PutSinkRpcInput {
   std::optional<KitchenSink> sink{};
 
   friend bool operator==(const PutSinkRpcInput&, const PutSinkRpcInput&) = default;
+  friend auto operator<=>(const PutSinkRpcInput&, const PutSinkRpcInput&) = default;
 };
 
 
@@ -202,6 +219,106 @@ struct PutSinkRpcOutput {
   std::optional<KitchenSink> sink{};
 
   friend bool operator==(const PutSinkRpcOutput&, const PutSinkRpcOutput&) = default;
+  friend auto operator<=>(const PutSinkRpcOutput&, const PutSinkRpcOutput&) = default;
 };
 
 }  // namespace example::roundtrip::jsonrpc
+
+// std::hash so generated types key std::unordered_map/std::unordered_set —
+// emitted exactly for the types that get operator<=> (issue #49). Hash
+// values are process-local: never persist or compare them across runs.
+
+template <>
+struct std::hash<example::roundtrip::jsonrpc::NestedConfig> {
+  std::size_t operator()(const example::roundtrip::jsonrpc::NestedConfig& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.label));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.depth));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::roundtrip::jsonrpc::SinkChoice> {
+  std::size_t operator()(const example::roundtrip::jsonrpc::SinkChoice& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
+
+template <>
+struct std::hash<example::roundtrip::jsonrpc::Priority> {
+  std::size_t operator()(const example::roundtrip::jsonrpc::Priority& value) const noexcept {
+    return smithy::HashCombine(static_cast<std::size_t>(value.value_),
+                               smithy::HashValue(value.unknown_));
+  }
+};
+
+template <>
+struct std::hash<example::roundtrip::jsonrpc::KitchenSink> {
+  std::size_t operator()(const example::roundtrip::jsonrpc::KitchenSink& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.name));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.flag));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.tiny));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.small));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.medium));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.big));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.ratio));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.precise));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.blob));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.priority));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.weight));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.dateTime));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.httpDate));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.epoch));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.names));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.uniqueNames));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.sparseNumbers));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.attributes));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.nested));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.choice));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::roundtrip::jsonrpc::SinkNotFound> {
+  std::size_t operator()(const example::roundtrip::jsonrpc::SinkNotFound& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.message));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.resourceType));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::roundtrip::jsonrpc::SinkQuotaExceeded> {
+  std::size_t operator()(const example::roundtrip::jsonrpc::SinkQuotaExceeded& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.message));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.retryAfterSeconds));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::roundtrip::jsonrpc::PutSinkRpcInput> {
+  std::size_t operator()(const example::roundtrip::jsonrpc::PutSinkRpcInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.sinkId));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.sink));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::roundtrip::jsonrpc::PutSinkRpcOutput> {
+  std::size_t operator()(const example::roundtrip::jsonrpc::PutSinkRpcOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.sinkId));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.sink));
+    return seed;
+  }
+};

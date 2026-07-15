@@ -2,8 +2,10 @@
 
 #pragma once
 
+#include <compare>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <optional>
 #include <string>
@@ -15,6 +17,7 @@
 #include "smithy/core/blob.h"
 #include "smithy/core/document.h"
 #include "smithy/core/fatal.h"
+#include "smithy/core/hash.h"
 #include "smithy/core/timestamp.h"
 
 namespace example::roundtrip::rest {
@@ -27,6 +30,7 @@ struct DescribeSinkError {
   std::string message{};
 
   friend bool operator==(const DescribeSinkError&, const DescribeSinkError&) = default;
+  friend auto operator<=>(const DescribeSinkError&, const DescribeSinkError&) = default;
 };
 
 
@@ -34,6 +38,7 @@ struct DescribeSinkInput {
   std::string sinkId{};
 
   friend bool operator==(const DescribeSinkInput&, const DescribeSinkInput&) = default;
+  friend auto operator<=>(const DescribeSinkInput&, const DescribeSinkInput&) = default;
 };
 
 
@@ -42,6 +47,7 @@ struct NestedConfig {
   std::optional<std::int32_t> depth{};
 
   friend bool operator==(const NestedConfig&, const NestedConfig&) = default;
+  friend auto operator<=>(const NestedConfig&, const NestedConfig&) = default;
 };
 
 
@@ -105,6 +111,8 @@ class SinkChoice {
     }
 
     friend bool operator==(const SinkChoice&, const SinkChoice&) = default;
+    friend auto operator<=>(const SinkChoice&, const SinkChoice&) = default;
+    friend struct std::hash<SinkChoice>;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -141,6 +149,10 @@ class Priority {
 
     Value value() const { return value_; }
 
+    /// Implicit so `switch (x)` works without .value(); the Value equality
+    /// overload below keeps comparisons unambiguous despite the conversion.
+    operator Value() const { return value_; }  // NOLINT(*-explicit-*)
+
     /// The wire text, including the original text of unknown values.
     std::string_view ToString() const {
       switch (value_) {
@@ -153,6 +165,9 @@ class Priority {
     }
 
     friend bool operator==(const Priority&, const Priority&) = default;
+    friend bool operator==(const Priority& a, Value b) { return a.value_ == b; }
+    friend auto operator<=>(const Priority&, const Priority&) = default;
+    friend struct std::hash<Priority>;
 
   private:
     Value value_ = Value::kUnknown;
@@ -189,6 +204,7 @@ struct KitchenSink {
   std::optional<SinkChoice> choice{};
 
   friend bool operator==(const KitchenSink&, const KitchenSink&) = default;
+  friend auto operator<=>(const KitchenSink&, const KitchenSink&) = default;
 };
 
 
@@ -196,6 +212,7 @@ struct DescribeSinkOutput {
   std::optional<KitchenSink> sink{};
 
   friend bool operator==(const DescribeSinkOutput&, const DescribeSinkOutput&) = default;
+  friend auto operator<=>(const DescribeSinkOutput&, const DescribeSinkOutput&) = default;
 };
 
 
@@ -204,6 +221,7 @@ struct SinkNotFound {
   std::optional<std::string> resourceType{};
 
   friend bool operator==(const SinkNotFound&, const SinkNotFound&) = default;
+  friend auto operator<=>(const SinkNotFound&, const SinkNotFound&) = default;
 };
 
 
@@ -218,6 +236,8 @@ struct PutSinkInput {
   std::optional<smithy::Document> freeform{};
 
   friend bool operator==(const PutSinkInput&, const PutSinkInput&) = default;
+  // Equality-only: a member type has no ordering (smithy::Document or
+  // recursion via smithy::Boxed) — see generated-types.md.
 };
 
 
@@ -226,6 +246,7 @@ struct PutSinkResponse {
   std::optional<std::string> note{};
 
   friend bool operator==(const PutSinkResponse&, const PutSinkResponse&) = default;
+  friend auto operator<=>(const PutSinkResponse&, const PutSinkResponse&) = default;
 };
 
 
@@ -237,6 +258,7 @@ struct PutSinkOutput {
   std::optional<PutSinkResponse> echo{};
 
   friend bool operator==(const PutSinkOutput&, const PutSinkOutput&) = default;
+  friend auto operator<=>(const PutSinkOutput&, const PutSinkOutput&) = default;
 };
 
 
@@ -245,6 +267,7 @@ struct SinkQuotaExceeded {
   std::optional<std::int32_t> retryAfterSeconds{};
 
   friend bool operator==(const SinkQuotaExceeded&, const SinkQuotaExceeded&) = default;
+  friend auto operator<=>(const SinkQuotaExceeded&, const SinkQuotaExceeded&) = default;
 };
 
 
@@ -253,6 +276,7 @@ struct Receipt {
   std::optional<std::int64_t> size{};
 
   friend bool operator==(const Receipt&, const Receipt&) = default;
+  friend auto operator<=>(const Receipt&, const Receipt&) = default;
 };
 
 
@@ -262,6 +286,7 @@ struct UploadAttachmentInput {
   std::optional<smithy::Blob> data{};
 
   friend bool operator==(const UploadAttachmentInput&, const UploadAttachmentInput&) = default;
+  friend auto operator<=>(const UploadAttachmentInput&, const UploadAttachmentInput&) = default;
 };
 
 
@@ -269,6 +294,165 @@ struct UploadAttachmentOutput {
   std::optional<Receipt> receipt{};
 
   friend bool operator==(const UploadAttachmentOutput&, const UploadAttachmentOutput&) = default;
+  friend auto operator<=>(const UploadAttachmentOutput&, const UploadAttachmentOutput&) = default;
 };
 
 }  // namespace example::roundtrip::rest
+
+// std::hash so generated types key std::unordered_map/std::unordered_set —
+// emitted exactly for the types that get operator<=> (issue #49). Hash
+// values are process-local: never persist or compare them across runs.
+
+template <>
+struct std::hash<example::roundtrip::rest::DescribeSinkError> {
+  std::size_t operator()(const example::roundtrip::rest::DescribeSinkError& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.message));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::roundtrip::rest::DescribeSinkInput> {
+  std::size_t operator()(const example::roundtrip::rest::DescribeSinkInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.sinkId));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::roundtrip::rest::NestedConfig> {
+  std::size_t operator()(const example::roundtrip::rest::NestedConfig& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.label));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.depth));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::roundtrip::rest::SinkChoice> {
+  std::size_t operator()(const example::roundtrip::rest::SinkChoice& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
+
+template <>
+struct std::hash<example::roundtrip::rest::Priority> {
+  std::size_t operator()(const example::roundtrip::rest::Priority& value) const noexcept {
+    return smithy::HashCombine(static_cast<std::size_t>(value.value_),
+                               smithy::HashValue(value.unknown_));
+  }
+};
+
+template <>
+struct std::hash<example::roundtrip::rest::KitchenSink> {
+  std::size_t operator()(const example::roundtrip::rest::KitchenSink& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.name));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.flag));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.tiny));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.small));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.medium));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.big));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.ratio));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.precise));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.blob));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.priority));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.weight));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.dateTime));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.httpDate));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.epoch));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.names));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.uniqueNames));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.sparseNumbers));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.attributes));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.nested));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.choice));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::roundtrip::rest::DescribeSinkOutput> {
+  std::size_t operator()(const example::roundtrip::rest::DescribeSinkOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.sink));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::roundtrip::rest::SinkNotFound> {
+  std::size_t operator()(const example::roundtrip::rest::SinkNotFound& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.message));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.resourceType));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::roundtrip::rest::PutSinkResponse> {
+  std::size_t operator()(const example::roundtrip::rest::PutSinkResponse& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.note));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::roundtrip::rest::PutSinkOutput> {
+  std::size_t operator()(const example::roundtrip::rest::PutSinkOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.sinkId));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.revision));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.echoedMetadata));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.sink));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.echo));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::roundtrip::rest::SinkQuotaExceeded> {
+  std::size_t operator()(const example::roundtrip::rest::SinkQuotaExceeded& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.message));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.retryAfterSeconds));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::roundtrip::rest::Receipt> {
+  std::size_t operator()(const example::roundtrip::rest::Receipt& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.receiptId));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.size));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::roundtrip::rest::UploadAttachmentInput> {
+  std::size_t operator()(const example::roundtrip::rest::UploadAttachmentInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.sinkId));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.name));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.data));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::roundtrip::rest::UploadAttachmentOutput> {
+  std::size_t operator()(const example::roundtrip::rest::UploadAttachmentOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.receipt));
+    return seed;
+  }
+};

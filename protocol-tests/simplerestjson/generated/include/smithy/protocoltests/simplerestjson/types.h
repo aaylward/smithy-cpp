@@ -2,8 +2,10 @@
 
 #pragma once
 
+#include <compare>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <optional>
 #include <string>
@@ -14,6 +16,7 @@
 
 #include "smithy/core/document.h"
 #include "smithy/core/fatal.h"
+#include "smithy/core/hash.h"
 #include "smithy/core/timestamp.h"
 
 namespace smithy::protocoltests::simplerestjson {
@@ -40,6 +43,10 @@ class PizzaBase {
 
     Value value() const { return value_; }
 
+    /// Implicit so `switch (x)` works without .value(); the Value equality
+    /// overload below keeps comparisons unambiguous despite the conversion.
+    operator Value() const { return value_; }  // NOLINT(*-explicit-*)
+
     /// The wire text, including the original text of unknown values.
     std::string_view ToString() const {
       switch (value_) {
@@ -51,6 +58,9 @@ class PizzaBase {
     }
 
     friend bool operator==(const PizzaBase&, const PizzaBase&) = default;
+    friend bool operator==(const PizzaBase& a, Value b) { return a.value_ == b; }
+    friend auto operator<=>(const PizzaBase&, const PizzaBase&) = default;
+    friend struct std::hash<PizzaBase>;
 
   private:
     Value value_ = Value::kUnknown;
@@ -98,6 +108,10 @@ class Ingredient {
 
     Value value() const { return value_; }
 
+    /// Implicit so `switch (x)` works without .value(); the Value equality
+    /// overload below keeps comparisons unambiguous despite the conversion.
+    operator Value() const { return value_; }  // NOLINT(*-explicit-*)
+
     /// The wire text, including the original text of unknown values.
     std::string_view ToString() const {
       switch (value_) {
@@ -118,6 +132,9 @@ class Ingredient {
     }
 
     friend bool operator==(const Ingredient&, const Ingredient&) = default;
+    friend bool operator==(const Ingredient& a, Value b) { return a.value_ == b; }
+    friend auto operator<=>(const Ingredient&, const Ingredient&) = default;
+    friend struct std::hash<Ingredient>;
 
   private:
     Value value_ = Value::kUnknown;
@@ -131,6 +148,7 @@ struct Pizza {
   std::vector<Ingredient> toppings{};
 
   friend bool operator==(const Pizza&, const Pizza&) = default;
+  friend auto operator<=>(const Pizza&, const Pizza&) = default;
 };
 
 
@@ -139,6 +157,7 @@ struct Salad {
   std::vector<Ingredient> ingredients{};
 
   friend bool operator==(const Salad&, const Salad&) = default;
+  friend auto operator<=>(const Salad&, const Salad&) = default;
 };
 
 
@@ -189,6 +208,8 @@ class Food {
     }
 
     friend bool operator==(const Food&, const Food&) = default;
+    friend auto operator<=>(const Food&, const Food&) = default;
+    friend struct std::hash<Food>;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -206,6 +227,7 @@ struct MenuItem {
   float price{};
 
   friend bool operator==(const MenuItem&, const MenuItem&) = default;
+  friend auto operator<=>(const MenuItem&, const MenuItem&) = default;
 };
 
 
@@ -214,6 +236,7 @@ struct AddMenuItemInput {
   MenuItem menuItem{};
 
   friend bool operator==(const AddMenuItemInput&, const AddMenuItemInput&) = default;
+  friend auto operator<=>(const AddMenuItemInput&, const AddMenuItemInput&) = default;
 };
 
 
@@ -222,6 +245,7 @@ struct AddMenuItemOutput {
   smithy::Timestamp added{};
 
   friend bool operator==(const AddMenuItemOutput&, const AddMenuItemOutput&) = default;
+  friend auto operator<=>(const AddMenuItemOutput&, const AddMenuItemOutput&) = default;
 };
 
 
@@ -229,6 +253,7 @@ struct GenericClientError {
   std::string message{};
 
   friend bool operator==(const GenericClientError&, const GenericClientError&) = default;
+  friend auto operator<=>(const GenericClientError&, const GenericClientError&) = default;
 };
 
 
@@ -236,6 +261,7 @@ struct GenericServerError {
   std::string message{};
 
   friend bool operator==(const GenericServerError&, const GenericServerError&) = default;
+  friend auto operator<=>(const GenericServerError&, const GenericServerError&) = default;
 };
 
 
@@ -244,6 +270,7 @@ struct PriceError {
   std::int32_t code{};
 
   friend bool operator==(const PriceError&, const PriceError&) = default;
+  friend auto operator<=>(const PriceError&, const PriceError&) = default;
 };
 
 
@@ -251,6 +278,7 @@ struct CustomCodeInput {
   std::int32_t code{};
 
   friend bool operator==(const CustomCodeInput&, const CustomCodeInput&) = default;
+  friend auto operator<=>(const CustomCodeInput&, const CustomCodeInput&) = default;
 };
 
 
@@ -258,6 +286,7 @@ struct CustomCodeOutput {
   std::optional<std::int32_t> code{};
 
   friend bool operator==(const CustomCodeOutput&, const CustomCodeOutput&) = default;
+  friend auto operator<=>(const CustomCodeOutput&, const CustomCodeOutput&) = default;
 };
 
 
@@ -281,6 +310,10 @@ class UnknownServerErrorCode {
 
     Value value() const { return value_; }
 
+    /// Implicit so `switch (x)` works without .value(); the Value equality
+    /// overload below keeps comparisons unambiguous despite the conversion.
+    operator Value() const { return value_; }  // NOLINT(*-explicit-*)
+
     /// The wire text, including the original text of unknown values.
     std::string_view ToString() const {
       switch (value_) {
@@ -291,6 +324,9 @@ class UnknownServerErrorCode {
     }
 
     friend bool operator==(const UnknownServerErrorCode&, const UnknownServerErrorCode&) = default;
+    friend bool operator==(const UnknownServerErrorCode& a, Value b) { return a.value_ == b; }
+    friend auto operator<=>(const UnknownServerErrorCode&, const UnknownServerErrorCode&) = default;
+    friend struct std::hash<UnknownServerErrorCode>;
 
   private:
     Value value_ = Value::kUnknown;
@@ -304,6 +340,7 @@ struct UnknownServerError {
   std::optional<std::string> stateHash{};
 
   friend bool operator==(const UnknownServerError&, const UnknownServerError&) = default;
+  friend auto operator<=>(const UnknownServerError&, const UnknownServerError&) = default;
 };
 
 
@@ -317,6 +354,7 @@ struct FallbackError {
   std::string error{};
 
   friend bool operator==(const FallbackError&, const FallbackError&) = default;
+  friend auto operator<=>(const FallbackError&, const FallbackError&) = default;
 };
 
 
@@ -342,6 +380,10 @@ class TheEnum {
 
     Value value() const { return value_; }
 
+    /// Implicit so `switch (x)` works without .value(); the Value equality
+    /// overload below keeps comparisons unambiguous despite the conversion.
+    operator Value() const { return value_; }  // NOLINT(*-explicit-*)
+
     /// The wire text, including the original text of unknown values.
     std::string_view ToString() const {
       switch (value_) {
@@ -353,6 +395,9 @@ class TheEnum {
     }
 
     friend bool operator==(const TheEnum&, const TheEnum&) = default;
+    friend bool operator==(const TheEnum& a, Value b) { return a.value_ == b; }
+    friend auto operator<=>(const TheEnum&, const TheEnum&) = default;
+    friend struct std::hash<TheEnum>;
 
   private:
     Value value_ = Value::kUnknown;
@@ -364,6 +409,7 @@ struct GetEnumInput {
   TheEnum aa{};
 
   friend bool operator==(const GetEnumInput&, const GetEnumInput&) = default;
+  friend auto operator<=>(const GetEnumInput&, const GetEnumInput&) = default;
 };
 
 
@@ -371,6 +417,7 @@ struct GetEnumOutput {
   std::optional<std::string> result{};
 
   friend bool operator==(const GetEnumOutput&, const GetEnumOutput&) = default;
+  friend auto operator<=>(const GetEnumOutput&, const GetEnumOutput&) = default;
 };
 
 
@@ -378,6 +425,7 @@ struct GetIntEnumInput {
   EnumResult aa{};
 
   friend bool operator==(const GetIntEnumInput&, const GetIntEnumInput&) = default;
+  friend auto operator<=>(const GetIntEnumInput&, const GetIntEnumInput&) = default;
 };
 
 
@@ -385,6 +433,7 @@ struct GetIntEnumOutput {
   EnumResult result{};
 
   friend bool operator==(const GetIntEnumOutput&, const GetIntEnumOutput&) = default;
+  friend auto operator<=>(const GetIntEnumOutput&, const GetIntEnumOutput&) = default;
 };
 
 
@@ -392,6 +441,7 @@ struct GetMenuInput {
   std::string restaurant{};
 
   friend bool operator==(const GetMenuInput&, const GetMenuInput&) = default;
+  friend auto operator<=>(const GetMenuInput&, const GetMenuInput&) = default;
 };
 
 
@@ -399,6 +449,7 @@ struct GetMenuOutput {
   std::map<std::string, MenuItem> menu{};
 
   friend bool operator==(const GetMenuOutput&, const GetMenuOutput&) = default;
+  friend auto operator<=>(const GetMenuOutput&, const GetMenuOutput&) = default;
 };
 
 
@@ -406,6 +457,7 @@ struct NotFoundError {
   std::string name{};
 
   friend bool operator==(const NotFoundError&, const NotFoundError&) = default;
+  friend auto operator<=>(const NotFoundError&, const NotFoundError&) = default;
 };
 
 
@@ -416,6 +468,7 @@ struct HeaderEndpointInput {
   std::optional<std::string> mixedHeader{};
 
   friend bool operator==(const HeaderEndpointInput&, const HeaderEndpointInput&) = default;
+  friend auto operator<=>(const HeaderEndpointInput&, const HeaderEndpointInput&) = default;
 };
 
 
@@ -426,6 +479,7 @@ struct HeaderEndpointOutput {
   std::optional<std::string> mixedHeader{};
 
   friend bool operator==(const HeaderEndpointOutput&, const HeaderEndpointOutput&) = default;
+  friend auto operator<=>(const HeaderEndpointOutput&, const HeaderEndpointOutput&) = default;
 };
 
 
@@ -433,6 +487,7 @@ struct HealthInput {
   std::optional<std::string> query{};
 
   friend bool operator==(const HealthInput&, const HealthInput&) = default;
+  friend auto operator<=>(const HealthInput&, const HealthInput&) = default;
 };
 
 
@@ -440,6 +495,7 @@ struct HealthOutput {
   std::string status{};
 
   friend bool operator==(const HealthOutput&, const HealthOutput&) = default;
+  friend auto operator<=>(const HealthOutput&, const HealthOutput&) = default;
 };
 
 
@@ -447,6 +503,7 @@ struct HttpPayloadRequiredWithDefaultInput {
   std::string body = "default value";
 
   friend bool operator==(const HttpPayloadRequiredWithDefaultInput&, const HttpPayloadRequiredWithDefaultInput&) = default;
+  friend auto operator<=>(const HttpPayloadRequiredWithDefaultInput&, const HttpPayloadRequiredWithDefaultInput&) = default;
 };
 
 
@@ -454,6 +511,7 @@ struct HttpPayloadRequiredWithDefaultOutput {
   std::string body = "default value";
 
   friend bool operator==(const HttpPayloadRequiredWithDefaultOutput&, const HttpPayloadRequiredWithDefaultOutput&) = default;
+  friend auto operator<=>(const HttpPayloadRequiredWithDefaultOutput&, const HttpPayloadRequiredWithDefaultOutput&) = default;
 };
 
 
@@ -461,6 +519,7 @@ struct HttpPayloadWithDefaultInput {
   std::optional<std::string> body{};
 
   friend bool operator==(const HttpPayloadWithDefaultInput&, const HttpPayloadWithDefaultInput&) = default;
+  friend auto operator<=>(const HttpPayloadWithDefaultInput&, const HttpPayloadWithDefaultInput&) = default;
 };
 
 
@@ -468,6 +527,7 @@ struct HttpPayloadWithDefaultOutput {
   std::string body = "default value";
 
   friend bool operator==(const HttpPayloadWithDefaultOutput&, const HttpPayloadWithDefaultOutput&) = default;
+  friend auto operator<=>(const HttpPayloadWithDefaultOutput&, const HttpPayloadWithDefaultOutput&) = default;
 };
 
 
@@ -475,6 +535,7 @@ struct SmallStruct {
   std::string content{};
 
   friend bool operator==(const SmallStruct&, const SmallStruct&) = default;
+  friend auto operator<=>(const SmallStruct&, const SmallStruct&) = default;
 };
 
 
@@ -525,6 +586,8 @@ class OpenDiscriminatedUnion {
     }
 
     friend bool operator==(const OpenDiscriminatedUnion&, const OpenDiscriminatedUnion&) = default;
+    // Equality-only: a member type has no ordering (smithy::Document or
+    // recursion via smithy::Boxed) — see generated-types.md.
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -584,6 +647,8 @@ class OpenTaggedUnion {
     }
 
     friend bool operator==(const OpenTaggedUnion&, const OpenTaggedUnion&) = default;
+    // Equality-only: a member type has no ordering (smithy::Document or
+    // recursion via smithy::Boxed) — see generated-types.md.
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -643,6 +708,8 @@ class OpenUnionsPayload {
     }
 
     friend bool operator==(const OpenUnionsPayload&, const OpenUnionsPayload&) = default;
+    // Equality-only: a member type has no ordering (smithy::Document or
+    // recursion via smithy::Boxed) — see generated-types.md.
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -659,6 +726,8 @@ struct OpenUnionsInput {
   OpenUnionsPayload data{};
 
   friend bool operator==(const OpenUnionsInput&, const OpenUnionsInput&) = default;
+  // Equality-only: a member type has no ordering (smithy::Document or
+  // recursion via smithy::Boxed) — see generated-types.md.
 };
 
 
@@ -666,6 +735,8 @@ struct OpenUnionsOutput {
   OpenUnionsPayload data{};
 
   friend bool operator==(const OpenUnionsOutput&, const OpenUnionsOutput&) = default;
+  // Equality-only: a member type has no ordering (smithy::Document or
+  // recursion via smithy::Boxed) — see generated-types.md.
 };
 
 
@@ -676,6 +747,7 @@ struct RoundTripInput {
   std::optional<std::string> body{};
 
   friend bool operator==(const RoundTripInput&, const RoundTripInput&) = default;
+  friend auto operator<=>(const RoundTripInput&, const RoundTripInput&) = default;
 };
 
 
@@ -686,11 +758,13 @@ struct RoundTripOutput {
   std::optional<std::string> body{};
 
   friend bool operator==(const RoundTripOutput&, const RoundTripOutput&) = default;
+  friend auto operator<=>(const RoundTripOutput&, const RoundTripOutput&) = default;
 };
 
 
 struct VersionInput {
   friend bool operator==(const VersionInput&, const VersionInput&) = default;
+  friend auto operator<=>(const VersionInput&, const VersionInput&) = default;
 };
 
 
@@ -698,6 +772,357 @@ struct VersionOutput {
   std::string version{};
 
   friend bool operator==(const VersionOutput&, const VersionOutput&) = default;
+  friend auto operator<=>(const VersionOutput&, const VersionOutput&) = default;
 };
 
 }  // namespace smithy::protocoltests::simplerestjson
+
+// std::hash so generated types key std::unordered_map/std::unordered_set —
+// emitted exactly for the types that get operator<=> (issue #49). Hash
+// values are process-local: never persist or compare them across runs.
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::PizzaBase> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::PizzaBase& value) const noexcept {
+    return smithy::HashCombine(static_cast<std::size_t>(value.value_),
+                               smithy::HashValue(value.unknown_));
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::Ingredient> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::Ingredient& value) const noexcept {
+    return smithy::HashCombine(static_cast<std::size_t>(value.value_),
+                               smithy::HashValue(value.unknown_));
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::Pizza> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::Pizza& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.name));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.base));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.toppings));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::Salad> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::Salad& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.name));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.ingredients));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::Food> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::Food& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::MenuItem> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::MenuItem& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.food));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.price));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::AddMenuItemInput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::AddMenuItemInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.restaurant));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.menuItem));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::AddMenuItemOutput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::AddMenuItemOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.itemId));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.added));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::GenericClientError> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::GenericClientError& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.message));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::GenericServerError> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::GenericServerError& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.message));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::PriceError> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::PriceError& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.message));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.code));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::CustomCodeInput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::CustomCodeInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.code));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::CustomCodeOutput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::CustomCodeOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.code));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::UnknownServerErrorCode> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::UnknownServerErrorCode& value) const noexcept {
+    return smithy::HashCombine(static_cast<std::size_t>(value.value_),
+                               smithy::HashValue(value.unknown_));
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::UnknownServerError> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::UnknownServerError& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.errorCode));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.description));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.stateHash));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::FallbackError> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::FallbackError& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.error));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::TheEnum> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::TheEnum& value) const noexcept {
+    return smithy::HashCombine(static_cast<std::size_t>(value.value_),
+                               smithy::HashValue(value.unknown_));
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::GetEnumInput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::GetEnumInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.aa));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::GetEnumOutput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::GetEnumOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.result));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::GetIntEnumInput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::GetIntEnumInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.aa));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::GetIntEnumOutput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::GetIntEnumOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.result));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::GetMenuInput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::GetMenuInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.restaurant));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::GetMenuOutput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::GetMenuOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.menu));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::NotFoundError> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::NotFoundError& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.name));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::HeaderEndpointInput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::HeaderEndpointInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.uppercaseHeader));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.capitalizedHeader));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.lowercaseHeader));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.mixedHeader));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::HeaderEndpointOutput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::HeaderEndpointOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.uppercaseHeader));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.capitalizedHeader));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.lowercaseHeader));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.mixedHeader));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::HealthInput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::HealthInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.query));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::HealthOutput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::HealthOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.status));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::HttpPayloadRequiredWithDefaultInput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::HttpPayloadRequiredWithDefaultInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.body));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::HttpPayloadRequiredWithDefaultOutput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::HttpPayloadRequiredWithDefaultOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.body));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::HttpPayloadWithDefaultInput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::HttpPayloadWithDefaultInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.body));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::HttpPayloadWithDefaultOutput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::HttpPayloadWithDefaultOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.body));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::SmallStruct> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::SmallStruct& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.content));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::RoundTripInput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::RoundTripInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.label));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.header));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.query));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.body));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::RoundTripOutput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::RoundTripOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.label));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.header));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.query));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.body));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::VersionInput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::VersionInput& /*value*/) const noexcept { return 0; }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::VersionOutput> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::VersionOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.version));
+    return seed;
+  }
+};

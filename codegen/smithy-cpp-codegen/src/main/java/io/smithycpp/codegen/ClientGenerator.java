@@ -181,11 +181,13 @@ final class ClientGenerator {
     w.write("/// typed and exhaustive instead of string-compared. FromError() is empty()");
     w.write("/// when the error is none of this operation's modeled errors (transport,");
     w.write("/// serialization, unknown, or another operation's error).");
+    boolean withOrdering = errors.stream().allMatch(e -> context.cppSymbols().orderable(e));
     TypeGenerators.emitTaggedVariant(
         w,
         listingName,
         members,
         /* withFactories= */ false,
+        withOrdering,
         "/// True when the error is none of this operation's modeled errors.",
         "/// Name of the engaged member, \"(empty)\" when none matched.",
         () -> writeFromError(w, listingName, errors));

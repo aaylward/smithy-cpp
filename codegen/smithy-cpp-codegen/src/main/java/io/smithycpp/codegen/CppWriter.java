@@ -14,13 +14,41 @@ public final class CppWriter extends SymbolWriter<CppWriter, CppWriter.IncludeCo
 
   private final String filename;
   private final String cppNamespace;
+  private CppWriter epilogue;
 
   public CppWriter(String filename, String cppNamespace) {
-    super(new IncludeContainer());
+    this(new IncludeContainer(), filename, cppNamespace);
+  }
+
+  private CppWriter(IncludeContainer includes, String filename, String cppNamespace) {
+    super(includes);
     this.filename = filename;
     this.cppNamespace = cppNamespace;
     trimTrailingSpaces();
     setIndentText("  ");
+  }
+
+  /** The C++ namespace this file's body is wrapped in. */
+  public String cppNamespace() {
+    return cppNamespace;
+  }
+
+  /** True once something has written to the {@link #epilogue()}. */
+  public boolean hasEpilogue() {
+    return epilogue != null;
+  }
+
+  /**
+   * Writer for content after the closing namespace brace — std::hash specializations must live at
+   * global scope. Shares this file's include container; rendered in write order, so per-type
+   * emissions land in definition order (a nested type's hash is declared before an outer type's
+   * operator() uses it).
+   */
+  public CppWriter epilogue() {
+    if (epilogue == null) {
+      epilogue = new CppWriter(getImportContainer(), filename, cppNamespace);
+    }
+    return epilogue;
   }
 
   /** Factory used by the writer delegator. */
@@ -74,7 +102,15 @@ public final class CppWriter extends SymbolWriter<CppWriter, CppWriter.IncludeCo
       out.append('\n');
     }
     out.append("}  // namespace ").append(cppNamespace).append('\n');
+    String extra = epilogue == null ? "" : epilogue.body().stripTrailing();
+    if (!extra.isEmpty()) {
+      out.append('\n').append(extra).append('\n');
+    }
     return out.toString();
+  }
+
+  private String body() {
+    return super.toString();
   }
 
   /** Include set with deterministic rendering. */

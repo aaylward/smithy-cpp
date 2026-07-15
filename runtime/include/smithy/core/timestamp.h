@@ -1,7 +1,10 @@
 #ifndef SMITHY_CORE_TIMESTAMP_H_
 #define SMITHY_CORE_TIMESTAMP_H_
 
+#include <compare>
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <string_view>
 
@@ -47,8 +50,9 @@ class Timestamp {
   static Outcome<Timestamp> Parse(std::string_view text, TimestampFormat format);
 
   friend bool operator==(Timestamp a, Timestamp b) { return a.ms_ == b.ms_; }
-  friend bool operator!=(Timestamp a, Timestamp b) { return a.ms_ != b.ms_; }
-  friend bool operator<(Timestamp a, Timestamp b) { return a.ms_ < b.ms_; }
+  // The full comparison set, so timestamp-bearing generated structs can
+  // default their own operator<=> (issue #49).
+  friend std::strong_ordering operator<=>(Timestamp a, Timestamp b) { return a.ms_ <=> b.ms_; }
 
  private:
   explicit Timestamp(std::int64_t ms) : ms_(ms) {}
@@ -57,5 +61,15 @@ class Timestamp {
 };
 
 }  // namespace smithy
+
+// Hashes by the instant (epoch milliseconds), matching operator==, so
+// timestamp-bearing generated structs can key unordered containers
+// (issue #49). Process-local: never persist hash values.
+template <>
+struct std::hash<smithy::Timestamp> {
+  std::size_t operator()(smithy::Timestamp timestamp) const noexcept {
+    return std::hash<std::int64_t>{}(timestamp.epoch_milliseconds());
+  }
+};
 
 #endif  // SMITHY_CORE_TIMESTAMP_H_

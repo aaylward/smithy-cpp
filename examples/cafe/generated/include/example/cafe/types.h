@@ -2,8 +2,10 @@
 
 #pragma once
 
+#include <compare>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -11,6 +13,7 @@
 #include <variant>
 
 #include "smithy/core/fatal.h"
+#include "smithy/core/hash.h"
 #include "smithy/core/outcome.h"
 #include "smithy/core/timestamp.h"
 
@@ -20,6 +23,7 @@ struct AlternativeMilk {
   std::string kind{};
 
   friend bool operator==(const AlternativeMilk&, const AlternativeMilk&) = default;
+  friend auto operator<=>(const AlternativeMilk&, const AlternativeMilk&) = default;
 };
 
 
@@ -27,6 +31,7 @@ struct GetOrderInput {
   std::string orderId{};
 
   friend bool operator==(const GetOrderInput&, const GetOrderInput&) = default;
+  friend auto operator<=>(const GetOrderInput&, const GetOrderInput&) = default;
 };
 
 
@@ -56,6 +61,10 @@ class CoffeeType {
 
     Value value() const { return value_; }
 
+    /// Implicit so `switch (x)` works without .value(); the Value equality
+    /// overload below keeps comparisons unambiguous despite the conversion.
+    operator Value() const { return value_; }  // NOLINT(*-explicit-*)
+
     /// The wire text, including the original text of unknown values.
     std::string_view ToString() const {
       switch (value_) {
@@ -69,6 +78,9 @@ class CoffeeType {
     }
 
     friend bool operator==(const CoffeeType&, const CoffeeType&) = default;
+    friend bool operator==(const CoffeeType& a, Value b) { return a.value_ == b; }
+    friend auto operator<=>(const CoffeeType&, const CoffeeType&) = default;
+    friend struct std::hash<CoffeeType>;
 
   private:
     Value value_ = Value::kUnknown;
@@ -80,6 +92,7 @@ struct CancelledStatus {
   std::optional<std::string> reason{};
 
   friend bool operator==(const CancelledStatus&, const CancelledStatus&) = default;
+  friend auto operator<=>(const CancelledStatus&, const CancelledStatus&) = default;
 };
 
 
@@ -87,6 +100,7 @@ struct PendingStatus {
   std::int32_t position{};
 
   friend bool operator==(const PendingStatus&, const PendingStatus&) = default;
+  friend auto operator<=>(const PendingStatus&, const PendingStatus&) = default;
 };
 
 
@@ -94,6 +108,7 @@ struct ReadyStatus {
   smithy::Timestamp readyAt{};
 
   friend bool operator==(const ReadyStatus&, const ReadyStatus&) = default;
+  friend auto operator<=>(const ReadyStatus&, const ReadyStatus&) = default;
 };
 
 
@@ -157,6 +172,8 @@ class OrderStatus {
     }
 
     friend bool operator==(const OrderStatus&, const OrderStatus&) = default;
+    friend auto operator<=>(const OrderStatus&, const OrderStatus&) = default;
+    friend struct std::hash<OrderStatus>;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -175,6 +192,7 @@ struct GetOrderOutput {
   OrderStatus status{};
 
   friend bool operator==(const GetOrderOutput&, const GetOrderOutput&) = default;
+  friend auto operator<=>(const GetOrderOutput&, const GetOrderOutput&) = default;
 };
 
 
@@ -183,6 +201,7 @@ struct OrderNotFound {
   std::string orderId{};
 
   friend bool operator==(const OrderNotFound&, const OrderNotFound&) = default;
+  friend auto operator<=>(const OrderNotFound&, const OrderNotFound&) = default;
 };
 
 
@@ -190,6 +209,7 @@ struct DairyMilk {
   float percentFat{};
 
   friend bool operator==(const DairyMilk&, const DairyMilk&) = default;
+  friend auto operator<=>(const DairyMilk&, const DairyMilk&) = default;
 };
 
 
@@ -254,6 +274,8 @@ class MilkOption {
     }
 
     friend bool operator==(const MilkOption&, const MilkOption&) = default;
+    friend auto operator<=>(const MilkOption&, const MilkOption&) = default;
+    friend struct std::hash<MilkOption>;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -272,6 +294,7 @@ struct OrderCoffeeInput {
   std::optional<std::string> clientToken{};
 
   friend bool operator==(const OrderCoffeeInput&, const OrderCoffeeInput&) = default;
+  friend auto operator<=>(const OrderCoffeeInput&, const OrderCoffeeInput&) = default;
 };
 
 
@@ -280,6 +303,7 @@ struct OrderCoffeeOutput {
   OrderStatus status{};
 
   friend bool operator==(const OrderCoffeeOutput&, const OrderCoffeeOutput&) = default;
+  friend auto operator<=>(const OrderCoffeeOutput&, const OrderCoffeeOutput&) = default;
 };
 
 
@@ -288,6 +312,141 @@ struct OutOfBeans {
   std::optional<std::string> message{};
 
   friend bool operator==(const OutOfBeans&, const OutOfBeans&) = default;
+  friend auto operator<=>(const OutOfBeans&, const OutOfBeans&) = default;
 };
 
 }  // namespace example::cafe
+
+// std::hash so generated types key std::unordered_map/std::unordered_set —
+// emitted exactly for the types that get operator<=> (issue #49). Hash
+// values are process-local: never persist or compare them across runs.
+
+template <>
+struct std::hash<example::cafe::AlternativeMilk> {
+  std::size_t operator()(const example::cafe::AlternativeMilk& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.kind));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::cafe::GetOrderInput> {
+  std::size_t operator()(const example::cafe::GetOrderInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.orderId));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::cafe::CoffeeType> {
+  std::size_t operator()(const example::cafe::CoffeeType& value) const noexcept {
+    return smithy::HashCombine(static_cast<std::size_t>(value.value_),
+                               smithy::HashValue(value.unknown_));
+  }
+};
+
+template <>
+struct std::hash<example::cafe::CancelledStatus> {
+  std::size_t operator()(const example::cafe::CancelledStatus& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.reason));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::cafe::PendingStatus> {
+  std::size_t operator()(const example::cafe::PendingStatus& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.position));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::cafe::ReadyStatus> {
+  std::size_t operator()(const example::cafe::ReadyStatus& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.readyAt));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::cafe::OrderStatus> {
+  std::size_t operator()(const example::cafe::OrderStatus& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
+
+template <>
+struct std::hash<example::cafe::GetOrderOutput> {
+  std::size_t operator()(const example::cafe::GetOrderOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.orderId));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.coffeeType));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.status));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::cafe::OrderNotFound> {
+  std::size_t operator()(const example::cafe::OrderNotFound& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.orderId));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::cafe::DairyMilk> {
+  std::size_t operator()(const example::cafe::DairyMilk& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.percentFat));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::cafe::MilkOption> {
+  std::size_t operator()(const example::cafe::MilkOption& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
+
+template <>
+struct std::hash<example::cafe::OrderCoffeeInput> {
+  std::size_t operator()(const example::cafe::OrderCoffeeInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.coffeeType));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.milk));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.clientToken));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::cafe::OrderCoffeeOutput> {
+  std::size_t operator()(const example::cafe::OrderCoffeeOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.orderId));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.status));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::cafe::OutOfBeans> {
+  std::size_t operator()(const example::cafe::OutOfBeans& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.message));
+    return seed;
+  }
+};

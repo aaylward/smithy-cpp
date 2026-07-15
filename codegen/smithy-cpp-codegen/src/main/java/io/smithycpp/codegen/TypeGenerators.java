@@ -161,8 +161,80 @@ final class TypeGenerators {
       writer.write("");
     }
     writer.write("friend bool operator==(const $1L&, const $1L&) = default;", name);
+    writeOrdering(writer, name, orderable(shape));
     writer.closeBlock("};");
     writer.write("");
+    if (orderable(shape)) {
+      writeStructHash(shape, name);
+    }
+  }
+
+  private boolean orderable(Shape shape) {
+    return symbols().orderable(shape);
+  }
+
+  /**
+   * Opens the file's post-namespace epilogue for a std::hash specialization (they must live at
+   * global scope), writing the banner and includes on first use. Hashing follows ordering: callers
+   * emit a specialization exactly for the types {@link #writeOrdering} gave an {@code operator<=>},
+   * so ordered- and unordered-container keyability never diverge.
+   */
+  private static CppWriter hashEpilogue(CppWriter writer) {
+    writer.addInclude("<cstddef>").addInclude("<functional>").addInclude("\"smithy/core/hash.h\"");
+    boolean first = !writer.hasEpilogue();
+    CppWriter epilogue = writer.epilogue();
+    if (first) {
+      epilogue.write("// std::hash so generated types key std::unordered_map/std::unordered_set —");
+      epilogue.write("// emitted exactly for the types that get operator<=> (issue #49). Hash");
+      epilogue.write("// values are process-local: never persist or compare them across runs.");
+      epilogue.write("");
+    }
+    return epilogue;
+  }
+
+  /** Member-wise hash for a struct, mirroring its defaulted member-wise operator==. */
+  private void writeStructHash(StructureShape shape, String name) {
+    CppWriter epilogue = hashEpilogue(writer);
+    epilogue.write("template <>");
+    epilogue.openBlock("struct std::hash<$L::$L> {", writer.cppNamespace(), name);
+    if (shape.members().isEmpty()) {
+      // No members to mix (and naming the parameter would trip -Wunused-parameter).
+      epilogue.write(
+          "std::size_t operator()(const $L::$L& /*value*/) const noexcept { return 0; }",
+          writer.cppNamespace(),
+          name);
+    } else {
+      epilogue.openBlock(
+          "std::size_t operator()(const $L::$L& value) const noexcept {",
+          writer.cppNamespace(),
+          name);
+      epilogue.write("std::size_t seed = 0;");
+      for (MemberShape member : shape.members()) {
+        epilogue.write(
+            "seed = smithy::HashCombine(seed, smithy::HashValue(value.$L));",
+            symbols().toMemberName(member));
+      }
+      epilogue.write("return seed;");
+      epilogue.closeBlock("}");
+    }
+    epilogue.closeBlock("};");
+    epilogue.write("");
+  }
+
+  /**
+   * Emits the defaulted operator<=> when every member is orderable — otherwise a comment, so the
+   * generated header never carries a defaulted-but-deleted operator (clang warns on those, and an
+   * auto-returning deep <=> around a recursion cycle is a hard error; see generated-types.md's
+   * ordering caveats).
+   */
+  static void writeOrdering(CppWriter writer, String name, boolean orderable) {
+    if (orderable) {
+      writer.addInclude("<compare>");
+      writer.write("friend auto operator<=>(const $1L&, const $1L&) = default;", name);
+    } else {
+      writer.write("// Equality-only: a member type has no ordering (smithy::Document or");
+      writer.write("// recursion via smithy::Boxed) — see generated-types.md.");
+    }
   }
 
   void generateEnum(EnumShape shape) {
@@ -208,6 +280,10 @@ final class TypeGenerators {
 
     writer.write("Value value() const { return value_; }");
     writer.write("");
+    writer.write("/// Implicit so `switch (x)` works without .value(); the Value equality");
+    writer.write("/// overload below keeps comparisons unambiguous despite the conversion.");
+    writer.write("operator Value() const { return value_; }  // NOLINT(*-explicit-*)");
+    writer.write("");
     writer.write("/// The wire text, including the original text of unknown values.");
     writer.openBlock("std::string_view ToString() const {");
     writer.openBlock("switch (value_) {");
@@ -220,6 +296,9 @@ final class TypeGenerators {
     writer.closeBlock("}");
     writer.write("");
     writer.write("friend bool operator==(const $1L&, const $1L&) = default;", name);
+    writer.write("friend bool operator==(const $L& a, Value b) { return a.value_ == b; }", name);
+    writeOrdering(writer, name, true);
+    writer.write("friend struct std::hash<$L>;", name);
     writer.write("").dedent();
 
     writer.write("private:").indent();
@@ -227,6 +306,23 @@ final class TypeGenerators {
     writer.write("std::string unknown_;").dedent();
     writer.closeBlock("};");
     writer.write("");
+    writeEnumHash(name);
+  }
+
+  /** Hash over the (value, unknown-text) pair — the fields the defaulted operator== compares. */
+  private void writeEnumHash(String name) {
+    CppWriter epilogue = hashEpilogue(writer);
+    epilogue.write("template <>");
+    epilogue.openBlock("struct std::hash<$L::$L> {", writer.cppNamespace(), name);
+    epilogue.openBlock(
+        "std::size_t operator()(const $L::$L& value) const noexcept {",
+        writer.cppNamespace(),
+        name);
+    epilogue.write("return smithy::HashCombine(static_cast<std::size_t>(value.value_),");
+    epilogue.write("                           smithy::HashValue(value.unknown_));");
+    epilogue.closeBlock("}");
+    epilogue.closeBlock("};");
+    epilogue.write("");
   }
 
   void generateIntEnum(IntEnumShape shape) {
@@ -269,6 +365,7 @@ final class TypeGenerators {
         name,
         tagged,
         /* withFactories= */ true,
+        orderable(shape),
         "/// True until one of the From* factories has been used.",
         "/// Name of the engaged member, \"(empty)\" until a From* factory has run.",
         null);
@@ -289,6 +386,7 @@ final class TypeGenerators {
       String name,
       List<TaggedMember> members,
       boolean withFactories,
+      boolean withOrdering,
       String emptyDoc,
       String caseNameDoc,
       Runnable extraPublic) {
@@ -354,6 +452,10 @@ final class TypeGenerators {
     writer.closeBlock("}");
     writer.write("");
     writer.write("friend bool operator==(const $1L&, const $1L&) = default;", name);
+    writeOrdering(writer, name, withOrdering);
+    if (withOrdering) {
+      writer.write("friend struct std::hash<$L>;", name);
+    }
     writer.write("").dedent();
 
     writer.write("private:").indent();
@@ -372,5 +474,26 @@ final class TypeGenerators {
     writer.write("$L", variant).dedent();
     writer.closeBlock("};");
     writer.write("");
+    if (withOrdering) {
+      writeTaggedVariantHash(writer, name);
+    }
+  }
+
+  /** Hash over (engaged index, engaged member) — what the defaulted operator== compares. */
+  private static void writeTaggedVariantHash(CppWriter writer, String name) {
+    CppWriter epilogue = hashEpilogue(writer);
+    epilogue.write("template <>");
+    epilogue.openBlock("struct std::hash<$L::$L> {", writer.cppNamespace(), name);
+    epilogue.openBlock(
+        "std::size_t operator()(const $L::$L& value) const noexcept {",
+        writer.cppNamespace(),
+        name);
+    epilogue.write("const std::size_t member =");
+    epilogue.write(
+        "    std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);");
+    epilogue.write("return smithy::HashCombine(value.value_.index(), member);");
+    epilogue.closeBlock("}");
+    epilogue.closeBlock("};");
+    epilogue.write("");
   }
 }

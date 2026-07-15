@@ -2,7 +2,9 @@
 
 #pragma once
 
+#include <compare>
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -11,6 +13,7 @@
 #include "example/roundtrip/rest/types.h"
 #include "smithy/client/config.h"
 #include "smithy/core/fatal.h"
+#include "smithy/core/hash.h"
 #include "smithy/core/outcome.h"
 #include "smithy/http/transport.h"
 
@@ -106,6 +109,8 @@ class DescribeSinkErrors {
     }
 
     friend bool operator==(const DescribeSinkErrors&, const DescribeSinkErrors&) = default;
+    friend auto operator<=>(const DescribeSinkErrors&, const DescribeSinkErrors&) = default;
+    friend struct std::hash<DescribeSinkErrors>;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -177,6 +182,8 @@ class PutSinkErrors {
     }
 
     friend bool operator==(const PutSinkErrors&, const PutSinkErrors&) = default;
+    friend auto operator<=>(const PutSinkErrors&, const PutSinkErrors&) = default;
+    friend struct std::hash<PutSinkErrors>;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -235,6 +242,8 @@ class UploadAttachmentErrors {
     }
 
     friend bool operator==(const UploadAttachmentErrors&, const UploadAttachmentErrors&) = default;
+    friend auto operator<=>(const UploadAttachmentErrors&, const UploadAttachmentErrors&) = default;
+    friend struct std::hash<UploadAttachmentErrors>;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -247,3 +256,34 @@ class UploadAttachmentErrors {
 };
 
 }  // namespace example::roundtrip::rest
+
+// std::hash so generated types key std::unordered_map/std::unordered_set —
+// emitted exactly for the types that get operator<=> (issue #49). Hash
+// values are process-local: never persist or compare them across runs.
+
+template <>
+struct std::hash<example::roundtrip::rest::DescribeSinkErrors> {
+  std::size_t operator()(const example::roundtrip::rest::DescribeSinkErrors& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
+
+template <>
+struct std::hash<example::roundtrip::rest::PutSinkErrors> {
+  std::size_t operator()(const example::roundtrip::rest::PutSinkErrors& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
+
+template <>
+struct std::hash<example::roundtrip::rest::UploadAttachmentErrors> {
+  std::size_t operator()(const example::roundtrip::rest::UploadAttachmentErrors& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};

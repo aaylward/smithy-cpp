@@ -61,6 +61,25 @@ final class CppSymbolProvider implements SymbolProvider {
     return recursion;
   }
 
+  private final java.util.Map<software.amazon.smithy.model.shapes.ShapeId, Boolean> orderable =
+      new java.util.HashMap<>();
+
+  /**
+   * Whether the shape's C++ type is three-way-comparable, i.e. whether the generators emit a
+   * defaulted operator<=> for it (docs/generated-types.md's ordering caveats): nothing in its
+   * member closure is a document (smithy::Document has no ordering) or on a recursion cycle
+   * (smithy::Boxed is deliberately equality-only — an auto-returning deep <=> is a hard error to
+   * deduce around a cycle on clang). Memoized for the run.
+   */
+  boolean orderable(Shape shape) {
+    return orderable.computeIfAbsent(
+        shape.getId(),
+        id ->
+            new software.amazon.smithy.model.neighbor.Walker(model)
+                .walkShapes(shape).stream()
+                    .noneMatch(s -> s.isDocumentShape() || recursion.inCycle(s.getId())));
+  }
+
   @Override
   public Symbol toSymbol(Shape shape) {
     return shape.accept(visitor);

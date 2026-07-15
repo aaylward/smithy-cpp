@@ -2,7 +2,9 @@
 
 #pragma once
 
+#include <compare>
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -10,6 +12,7 @@
 
 #include "smithy/client/config.h"
 #include "smithy/core/fatal.h"
+#include "smithy/core/hash.h"
 #include "smithy/core/outcome.h"
 #include "smithy/http/transport.h"
 #include "smithy/protocoltests/simplerestjson/types.h"
@@ -121,6 +124,8 @@ class AddMenuItemErrors {
     }
 
     friend bool operator==(const AddMenuItemErrors&, const AddMenuItemErrors&) = default;
+    friend auto operator<=>(const AddMenuItemErrors&, const AddMenuItemErrors&) = default;
+    friend struct std::hash<AddMenuItemErrors>;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -205,6 +210,8 @@ class CustomCodeErrors {
     }
 
     friend bool operator==(const CustomCodeErrors&, const CustomCodeErrors&) = default;
+    friend auto operator<=>(const CustomCodeErrors&, const CustomCodeErrors&) = default;
+    friend struct std::hash<CustomCodeErrors>;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -289,6 +296,8 @@ class GetEnumErrors {
     }
 
     friend bool operator==(const GetEnumErrors&, const GetEnumErrors&) = default;
+    friend auto operator<=>(const GetEnumErrors&, const GetEnumErrors&) = default;
+    friend struct std::hash<GetEnumErrors>;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -373,6 +382,8 @@ class GetIntEnumErrors {
     }
 
     friend bool operator==(const GetIntEnumErrors&, const GetIntEnumErrors&) = default;
+    friend auto operator<=>(const GetIntEnumErrors&, const GetIntEnumErrors&) = default;
+    friend struct std::hash<GetIntEnumErrors>;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -470,6 +481,8 @@ class GetMenuErrors {
     }
 
     friend bool operator==(const GetMenuErrors&, const GetMenuErrors&) = default;
+    friend auto operator<=>(const GetMenuErrors&, const GetMenuErrors&) = default;
+    friend struct std::hash<GetMenuErrors>;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -541,6 +554,8 @@ class HeaderEndpointErrors {
     }
 
     friend bool operator==(const HeaderEndpointErrors&, const HeaderEndpointErrors&) = default;
+    friend auto operator<=>(const HeaderEndpointErrors&, const HeaderEndpointErrors&) = default;
+    friend struct std::hash<HeaderEndpointErrors>;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -625,6 +640,8 @@ class HealthErrors {
     }
 
     friend bool operator==(const HealthErrors&, const HealthErrors&) = default;
+    friend auto operator<=>(const HealthErrors&, const HealthErrors&) = default;
+    friend struct std::hash<HealthErrors>;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -696,6 +713,8 @@ class HttpPayloadRequiredWithDefaultErrors {
     }
 
     friend bool operator==(const HttpPayloadRequiredWithDefaultErrors&, const HttpPayloadRequiredWithDefaultErrors&) = default;
+    friend auto operator<=>(const HttpPayloadRequiredWithDefaultErrors&, const HttpPayloadRequiredWithDefaultErrors&) = default;
+    friend struct std::hash<HttpPayloadRequiredWithDefaultErrors>;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -767,6 +786,8 @@ class HttpPayloadWithDefaultErrors {
     }
 
     friend bool operator==(const HttpPayloadWithDefaultErrors&, const HttpPayloadWithDefaultErrors&) = default;
+    friend auto operator<=>(const HttpPayloadWithDefaultErrors&, const HttpPayloadWithDefaultErrors&) = default;
+    friend struct std::hash<HttpPayloadWithDefaultErrors>;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -838,6 +859,8 @@ class OpenUnionsErrors {
     }
 
     friend bool operator==(const OpenUnionsErrors&, const OpenUnionsErrors&) = default;
+    friend auto operator<=>(const OpenUnionsErrors&, const OpenUnionsErrors&) = default;
+    friend struct std::hash<OpenUnionsErrors>;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -909,6 +932,8 @@ class RoundTripErrors {
     }
 
     friend bool operator==(const RoundTripErrors&, const RoundTripErrors&) = default;
+    friend auto operator<=>(const RoundTripErrors&, const RoundTripErrors&) = default;
+    friend struct std::hash<RoundTripErrors>;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -980,6 +1005,8 @@ class VersionErrors {
     }
 
     friend bool operator==(const VersionErrors&, const VersionErrors&) = default;
+    friend auto operator<=>(const VersionErrors&, const VersionErrors&) = default;
+    friend struct std::hash<VersionErrors>;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -992,3 +1019,115 @@ class VersionErrors {
 };
 
 }  // namespace smithy::protocoltests::simplerestjson
+
+// std::hash so generated types key std::unordered_map/std::unordered_set —
+// emitted exactly for the types that get operator<=> (issue #49). Hash
+// values are process-local: never persist or compare them across runs.
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::AddMenuItemErrors> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::AddMenuItemErrors& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::CustomCodeErrors> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::CustomCodeErrors& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::GetEnumErrors> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::GetEnumErrors& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::GetIntEnumErrors> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::GetIntEnumErrors& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::GetMenuErrors> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::GetMenuErrors& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::HeaderEndpointErrors> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::HeaderEndpointErrors& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::HealthErrors> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::HealthErrors& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::HttpPayloadRequiredWithDefaultErrors> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::HttpPayloadRequiredWithDefaultErrors& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::HttpPayloadWithDefaultErrors> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::HttpPayloadWithDefaultErrors& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::OpenUnionsErrors> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::OpenUnionsErrors& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::RoundTripErrors> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::RoundTripErrors& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::VersionErrors> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::VersionErrors& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};

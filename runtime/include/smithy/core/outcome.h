@@ -1,7 +1,10 @@
 #ifndef SMITHY_CORE_OUTCOME_H_
 #define SMITHY_CORE_OUTCOME_H_
 
+#include <compare>
 #include <concepts>
+#include <cstddef>
+#include <functional>
 #include <string_view>
 #include <utility>
 #include <variant>
@@ -14,6 +17,11 @@ namespace smithy {
 // Marker value for operations that succeed without producing anything.
 struct Unit {
   friend bool operator==(Unit /*lhs*/, Unit /*rhs*/) { return true; }
+  // Trivially ordered (one value), so Unit union members don't block a
+  // generated type's defaulted operator<=> (issue #49).
+  friend std::strong_ordering operator<=>(Unit /*lhs*/, Unit /*rhs*/) {
+    return std::strong_ordering::equal;
+  }
 };
 
 // Result of an operation that can fail: holds either a value T or an error E.
@@ -107,5 +115,12 @@ class Outcome {
 };
 
 }  // namespace smithy
+
+// One value, one hash — so Unit union members don't block a generated type's
+// std::hash, mirroring Unit's trivial operator<=> (issue #49).
+template <>
+struct std::hash<smithy::Unit> {
+  std::size_t operator()(smithy::Unit /*unit*/) const noexcept { return 0; }
+};
 
 #endif  // SMITHY_CORE_OUTCOME_H_

@@ -2,7 +2,10 @@
 
 #pragma once
 
+#include <compare>
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <optional>
 #include <string>
@@ -11,6 +14,7 @@
 
 #include "smithy/core/blob.h"
 #include "smithy/core/boxed.h"
+#include "smithy/core/hash.h"
 #include "smithy/core/timestamp.h"
 
 namespace smithy::protocoltests::rpcv2cbor {
@@ -21,6 +25,7 @@ struct ValidationExceptionField {
   std::string message{};
 
   friend bool operator==(const ValidationExceptionField&, const ValidationExceptionField&) = default;
+  friend auto operator<=>(const ValidationExceptionField&, const ValidationExceptionField&) = default;
 };
 
 
@@ -32,6 +37,7 @@ struct ValidationException {
   std::optional<std::vector<ValidationExceptionField>> fieldList{};
 
   friend bool operator==(const ValidationException&, const ValidationException&) = default;
+  friend auto operator<=>(const ValidationException&, const ValidationException&) = default;
 };
 
 
@@ -39,6 +45,7 @@ struct ClientOptionalDefaults {
   std::optional<std::int32_t> member{};
 
   friend bool operator==(const ClientOptionalDefaults&, const ClientOptionalDefaults&) = default;
+  friend auto operator<=>(const ClientOptionalDefaults&, const ClientOptionalDefaults&) = default;
 };
 
 
@@ -46,6 +53,7 @@ struct ComplexNestedErrorData {
   std::optional<std::string> Foo{};
 
   friend bool operator==(const ComplexNestedErrorData&, const ComplexNestedErrorData&) = default;
+  friend auto operator<=>(const ComplexNestedErrorData&, const ComplexNestedErrorData&) = default;
 };
 
 
@@ -55,6 +63,7 @@ struct ComplexError {
   std::optional<ComplexNestedErrorData> Nested{};
 
   friend bool operator==(const ComplexError&, const ComplexError&) = default;
+  friend auto operator<=>(const ComplexError&, const ComplexError&) = default;
 };
 
 
@@ -82,6 +91,10 @@ class TestEnum {
 
     Value value() const { return value_; }
 
+    /// Implicit so `switch (x)` works without .value(); the Value equality
+    /// overload below keeps comparisons unambiguous despite the conversion.
+    operator Value() const { return value_; }  // NOLINT(*-explicit-*)
+
     /// The wire text, including the original text of unknown values.
     std::string_view ToString() const {
       switch (value_) {
@@ -94,6 +107,9 @@ class TestEnum {
     }
 
     friend bool operator==(const TestEnum&, const TestEnum&) = default;
+    friend bool operator==(const TestEnum& a, Value b) { return a.value_ == b; }
+    friend auto operator<=>(const TestEnum&, const TestEnum&) = default;
+    friend struct std::hash<TestEnum>;
 
   private:
     Value value_ = Value::kUnknown;
@@ -133,6 +149,7 @@ struct Defaults {
   double zeroDouble = 0.0;
 
   friend bool operator==(const Defaults&, const Defaults&) = default;
+  friend auto operator<=>(const Defaults&, const Defaults&) = default;
 };
 
 
@@ -140,21 +157,25 @@ struct GreetingStruct {
   std::optional<std::string> hi{};
 
   friend bool operator==(const GreetingStruct&, const GreetingStruct&) = default;
+  friend auto operator<=>(const GreetingStruct&, const GreetingStruct&) = default;
 };
 
 
 struct EmptyInputOutputInput {
   friend bool operator==(const EmptyInputOutputInput&, const EmptyInputOutputInput&) = default;
+  friend auto operator<=>(const EmptyInputOutputInput&, const EmptyInputOutputInput&) = default;
 };
 
 
 struct EmptyInputOutputOutput {
   friend bool operator==(const EmptyInputOutputOutput&, const EmptyInputOutputOutput&) = default;
+  friend auto operator<=>(const EmptyInputOutputOutput&, const EmptyInputOutputOutput&) = default;
 };
 
 
 struct Float16Input {
   friend bool operator==(const Float16Input&, const Float16Input&) = default;
+  friend auto operator<=>(const Float16Input&, const Float16Input&) = default;
 };
 
 
@@ -162,11 +183,13 @@ struct Float16Output {
   std::optional<double> value{};
 
   friend bool operator==(const Float16Output&, const Float16Output&) = default;
+  friend auto operator<=>(const Float16Output&, const Float16Output&) = default;
 };
 
 
 struct FractionalSecondsInput {
   friend bool operator==(const FractionalSecondsInput&, const FractionalSecondsInput&) = default;
+  friend auto operator<=>(const FractionalSecondsInput&, const FractionalSecondsInput&) = default;
 };
 
 
@@ -174,11 +197,13 @@ struct FractionalSecondsOutput {
   std::optional<smithy::Timestamp> datetime{};
 
   friend bool operator==(const FractionalSecondsOutput&, const FractionalSecondsOutput&) = default;
+  friend auto operator<=>(const FractionalSecondsOutput&, const FractionalSecondsOutput&) = default;
 };
 
 
 struct GreetingWithErrorsInput {
   friend bool operator==(const GreetingWithErrorsInput&, const GreetingWithErrorsInput&) = default;
+  friend auto operator<=>(const GreetingWithErrorsInput&, const GreetingWithErrorsInput&) = default;
 };
 
 
@@ -186,6 +211,7 @@ struct GreetingWithErrorsOutput {
   std::optional<std::string> greeting{};
 
   friend bool operator==(const GreetingWithErrorsOutput&, const GreetingWithErrorsOutput&) = default;
+  friend auto operator<=>(const GreetingWithErrorsOutput&, const GreetingWithErrorsOutput&) = default;
 };
 
 
@@ -194,16 +220,19 @@ struct InvalidGreeting {
   std::optional<std::string> Message{};
 
   friend bool operator==(const InvalidGreeting&, const InvalidGreeting&) = default;
+  friend auto operator<=>(const InvalidGreeting&, const InvalidGreeting&) = default;
 };
 
 
 struct NoInputOutputInput {
   friend bool operator==(const NoInputOutputInput&, const NoInputOutputInput&) = default;
+  friend auto operator<=>(const NoInputOutputInput&, const NoInputOutputInput&) = default;
 };
 
 
 struct NoInputOutputOutput {
   friend bool operator==(const NoInputOutputOutput&, const NoInputOutputOutput&) = default;
+  friend auto operator<=>(const NoInputOutputOutput&, const NoInputOutputOutput&) = default;
 };
 
 
@@ -214,6 +243,7 @@ struct OperationWithDefaultsInput {
   std::optional<std::int32_t> otherTopLevelDefault{};
 
   friend bool operator==(const OperationWithDefaultsInput&, const OperationWithDefaultsInput&) = default;
+  friend auto operator<=>(const OperationWithDefaultsInput&, const OperationWithDefaultsInput&) = default;
 };
 
 
@@ -243,6 +273,7 @@ struct OperationWithDefaultsOutput {
   double zeroDouble = 0.0;
 
   friend bool operator==(const OperationWithDefaultsOutput&, const OperationWithDefaultsOutput&) = default;
+  friend auto operator<=>(const OperationWithDefaultsOutput&, const OperationWithDefaultsOutput&) = default;
 };
 
 
@@ -250,6 +281,7 @@ struct OptionalInputOutputInput {
   std::optional<std::string> value{};
 
   friend bool operator==(const OptionalInputOutputInput&, const OptionalInputOutputInput&) = default;
+  friend auto operator<=>(const OptionalInputOutputInput&, const OptionalInputOutputInput&) = default;
 };
 
 
@@ -257,6 +289,7 @@ struct OptionalInputOutputOutput {
   std::optional<std::string> value{};
 
   friend bool operator==(const OptionalInputOutputOutput&, const OptionalInputOutputOutput&) = default;
+  friend auto operator<=>(const OptionalInputOutputOutput&, const OptionalInputOutputOutput&) = default;
 };
 
 
@@ -268,6 +301,7 @@ struct RpcV2CborDenseMapsInput {
   std::optional<std::map<std::string, std::vector<std::string>>> denseSetMap{};
 
   friend bool operator==(const RpcV2CborDenseMapsInput&, const RpcV2CborDenseMapsInput&) = default;
+  friend auto operator<=>(const RpcV2CborDenseMapsInput&, const RpcV2CborDenseMapsInput&) = default;
 };
 
 
@@ -279,6 +313,7 @@ struct RpcV2CborDenseMapsOutput {
   std::optional<std::map<std::string, std::vector<std::string>>> denseSetMap{};
 
   friend bool operator==(const RpcV2CborDenseMapsOutput&, const RpcV2CborDenseMapsOutput&) = default;
+  friend auto operator<=>(const RpcV2CborDenseMapsOutput&, const RpcV2CborDenseMapsOutput&) = default;
 };
 
 
@@ -310,6 +345,10 @@ class FooEnum {
 
     Value value() const { return value_; }
 
+    /// Implicit so `switch (x)` works without .value(); the Value equality
+    /// overload below keeps comparisons unambiguous despite the conversion.
+    operator Value() const { return value_; }  // NOLINT(*-explicit-*)
+
     /// The wire text, including the original text of unknown values.
     std::string_view ToString() const {
       switch (value_) {
@@ -324,6 +363,9 @@ class FooEnum {
     }
 
     friend bool operator==(const FooEnum&, const FooEnum&) = default;
+    friend bool operator==(const FooEnum& a, Value b) { return a.value_ == b; }
+    friend auto operator<=>(const FooEnum&, const FooEnum&) = default;
+    friend struct std::hash<FooEnum>;
 
   private:
     Value value_ = Value::kUnknown;
@@ -343,6 +385,7 @@ struct StructureListMember {
   std::optional<std::string> b{};
 
   friend bool operator==(const StructureListMember&, const StructureListMember&) = default;
+  friend auto operator<=>(const StructureListMember&, const StructureListMember&) = default;
 };
 
 
@@ -359,6 +402,7 @@ struct RpcV2CborListsInput {
   std::optional<std::vector<smithy::Blob>> blobList{};
 
   friend bool operator==(const RpcV2CborListsInput&, const RpcV2CborListsInput&) = default;
+  friend auto operator<=>(const RpcV2CborListsInput&, const RpcV2CborListsInput&) = default;
 };
 
 
@@ -375,6 +419,7 @@ struct RpcV2CborListsOutput {
   std::optional<std::vector<smithy::Blob>> blobList{};
 
   friend bool operator==(const RpcV2CborListsOutput&, const RpcV2CborListsOutput&) = default;
+  friend auto operator<=>(const RpcV2CborListsOutput&, const RpcV2CborListsOutput&) = default;
 };
 
 
@@ -386,6 +431,7 @@ struct RpcV2CborSparseMapsInput {
   std::optional<std::map<std::string, std::optional<std::vector<std::string>>>> sparseSetMap{};
 
   friend bool operator==(const RpcV2CborSparseMapsInput&, const RpcV2CborSparseMapsInput&) = default;
+  friend auto operator<=>(const RpcV2CborSparseMapsInput&, const RpcV2CborSparseMapsInput&) = default;
 };
 
 
@@ -397,6 +443,7 @@ struct RpcV2CborSparseMapsOutput {
   std::optional<std::map<std::string, std::optional<std::vector<std::string>>>> sparseSetMap{};
 
   friend bool operator==(const RpcV2CborSparseMapsOutput&, const RpcV2CborSparseMapsOutput&) = default;
+  friend auto operator<=>(const RpcV2CborSparseMapsOutput&, const RpcV2CborSparseMapsOutput&) = default;
 };
 
 
@@ -413,6 +460,7 @@ struct SimpleScalarPropertiesInput {
   std::optional<smithy::Blob> blobValue{};
 
   friend bool operator==(const SimpleScalarPropertiesInput&, const SimpleScalarPropertiesInput&) = default;
+  friend auto operator<=>(const SimpleScalarPropertiesInput&, const SimpleScalarPropertiesInput&) = default;
 };
 
 
@@ -429,6 +477,7 @@ struct SimpleScalarPropertiesOutput {
   std::optional<smithy::Blob> blobValue{};
 
   friend bool operator==(const SimpleScalarPropertiesOutput&, const SimpleScalarPropertiesOutput&) = default;
+  friend auto operator<=>(const SimpleScalarPropertiesOutput&, const SimpleScalarPropertiesOutput&) = default;
 };
 
 
@@ -437,6 +486,7 @@ struct SparseNullsOperationInput {
   std::optional<std::map<std::string, std::optional<std::string>>> sparseStringMap{};
 
   friend bool operator==(const SparseNullsOperationInput&, const SparseNullsOperationInput&) = default;
+  friend auto operator<=>(const SparseNullsOperationInput&, const SparseNullsOperationInput&) = default;
 };
 
 
@@ -445,6 +495,7 @@ struct SparseNullsOperationOutput {
   std::optional<std::map<std::string, std::optional<std::string>>> sparseStringMap{};
 
   friend bool operator==(const SparseNullsOperationOutput&, const SparseNullsOperationOutput&) = default;
+  friend auto operator<=>(const SparseNullsOperationOutput&, const SparseNullsOperationOutput&) = default;
 };
 
 
@@ -455,6 +506,8 @@ struct RecursiveShapesInputOutputNested1 {
   std::optional<smithy::Boxed<RecursiveShapesInputOutputNested2>> nested{};
 
   friend bool operator==(const RecursiveShapesInputOutputNested1&, const RecursiveShapesInputOutputNested1&) = default;
+  // Equality-only: a member type has no ordering (smithy::Document or
+  // recursion via smithy::Boxed) — see generated-types.md.
 };
 
 
@@ -465,6 +518,8 @@ struct RecursiveShapesInputOutputNested2 {
   std::optional<smithy::Boxed<RecursiveShapesInputOutputNested1>> recursiveMember{};
 
   friend bool operator==(const RecursiveShapesInputOutputNested2&, const RecursiveShapesInputOutputNested2&) = default;
+  // Equality-only: a member type has no ordering (smithy::Document or
+  // recursion via smithy::Boxed) — see generated-types.md.
 };
 
 
@@ -472,6 +527,8 @@ struct RecursiveShapesInput {
   std::optional<RecursiveShapesInputOutputNested1> nested{};
 
   friend bool operator==(const RecursiveShapesInput&, const RecursiveShapesInput&) = default;
+  // Equality-only: a member type has no ordering (smithy::Document or
+  // recursion via smithy::Boxed) — see generated-types.md.
 };
 
 
@@ -479,6 +536,402 @@ struct RecursiveShapesOutput {
   std::optional<RecursiveShapesInputOutputNested1> nested{};
 
   friend bool operator==(const RecursiveShapesOutput&, const RecursiveShapesOutput&) = default;
+  // Equality-only: a member type has no ordering (smithy::Document or
+  // recursion via smithy::Boxed) — see generated-types.md.
 };
 
 }  // namespace smithy::protocoltests::rpcv2cbor
+
+// std::hash so generated types key std::unordered_map/std::unordered_set —
+// emitted exactly for the types that get operator<=> (issue #49). Hash
+// values are process-local: never persist or compare them across runs.
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::ValidationExceptionField> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::ValidationExceptionField& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.path));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.message));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::ValidationException> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::ValidationException& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.message));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.fieldList));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::ClientOptionalDefaults> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::ClientOptionalDefaults& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.member));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::ComplexNestedErrorData> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::ComplexNestedErrorData& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.Foo));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::ComplexError> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::ComplexError& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.TopLevel));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.Nested));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::TestEnum> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::TestEnum& value) const noexcept {
+    return smithy::HashCombine(static_cast<std::size_t>(value.value_),
+                               smithy::HashValue(value.unknown_));
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::Defaults> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::Defaults& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.defaultString));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.defaultBoolean));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.defaultList));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.defaultTimestamp));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.defaultBlob));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.defaultByte));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.defaultShort));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.defaultInteger));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.defaultLong));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.defaultFloat));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.defaultDouble));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.defaultMap));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.defaultEnum));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.defaultIntEnum));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.emptyString));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.falseBoolean));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.emptyBlob));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.zeroByte));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.zeroShort));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.zeroInteger));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.zeroLong));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.zeroFloat));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.zeroDouble));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::GreetingStruct> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::GreetingStruct& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.hi));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::EmptyInputOutputInput> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::EmptyInputOutputInput& /*value*/) const noexcept { return 0; }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::EmptyInputOutputOutput> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::EmptyInputOutputOutput& /*value*/) const noexcept { return 0; }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::Float16Input> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::Float16Input& /*value*/) const noexcept { return 0; }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::Float16Output> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::Float16Output& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.value));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::FractionalSecondsInput> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::FractionalSecondsInput& /*value*/) const noexcept { return 0; }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::FractionalSecondsOutput> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::FractionalSecondsOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.datetime));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::GreetingWithErrorsInput> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::GreetingWithErrorsInput& /*value*/) const noexcept { return 0; }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::GreetingWithErrorsOutput> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::GreetingWithErrorsOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.greeting));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::InvalidGreeting> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::InvalidGreeting& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.Message));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::NoInputOutputInput> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::NoInputOutputInput& /*value*/) const noexcept { return 0; }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::NoInputOutputOutput> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::NoInputOutputOutput& /*value*/) const noexcept { return 0; }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::OperationWithDefaultsInput> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::OperationWithDefaultsInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.defaults));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.clientOptionalDefaults));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.topLevelDefault));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.otherTopLevelDefault));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::OperationWithDefaultsOutput> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::OperationWithDefaultsOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.defaultString));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.defaultBoolean));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.defaultList));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.defaultTimestamp));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.defaultBlob));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.defaultByte));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.defaultShort));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.defaultInteger));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.defaultLong));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.defaultFloat));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.defaultDouble));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.defaultMap));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.defaultEnum));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.defaultIntEnum));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.emptyString));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.falseBoolean));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.emptyBlob));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.zeroByte));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.zeroShort));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.zeroInteger));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.zeroLong));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.zeroFloat));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.zeroDouble));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::OptionalInputOutputInput> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::OptionalInputOutputInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.value));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::OptionalInputOutputOutput> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::OptionalInputOutputOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.value));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::RpcV2CborDenseMapsInput> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::RpcV2CborDenseMapsInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.denseStructMap));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.denseNumberMap));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.denseBooleanMap));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.denseStringMap));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.denseSetMap));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::RpcV2CborDenseMapsOutput> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::RpcV2CborDenseMapsOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.denseStructMap));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.denseNumberMap));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.denseBooleanMap));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.denseStringMap));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.denseSetMap));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::FooEnum> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::FooEnum& value) const noexcept {
+    return smithy::HashCombine(static_cast<std::size_t>(value.value_),
+                               smithy::HashValue(value.unknown_));
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::StructureListMember> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::StructureListMember& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.a));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.b));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::RpcV2CborListsInput> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::RpcV2CborListsInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.stringList));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.stringSet));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.integerList));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.booleanList));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.timestampList));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.enumList));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.intEnumList));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.nestedStringList));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.structureList));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.blobList));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::RpcV2CborListsOutput> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::RpcV2CborListsOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.stringList));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.stringSet));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.integerList));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.booleanList));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.timestampList));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.enumList));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.intEnumList));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.nestedStringList));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.structureList));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.blobList));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::RpcV2CborSparseMapsInput> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::RpcV2CborSparseMapsInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.sparseStructMap));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.sparseNumberMap));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.sparseBooleanMap));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.sparseStringMap));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.sparseSetMap));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::RpcV2CborSparseMapsOutput> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::RpcV2CborSparseMapsOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.sparseStructMap));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.sparseNumberMap));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.sparseBooleanMap));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.sparseStringMap));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.sparseSetMap));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::SimpleScalarPropertiesInput> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::SimpleScalarPropertiesInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.trueBooleanValue));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.falseBooleanValue));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.byteValue));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.doubleValue));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.floatValue));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.integerValue));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.longValue));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.shortValue));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.stringValue));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.blobValue));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::SimpleScalarPropertiesOutput> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::SimpleScalarPropertiesOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.trueBooleanValue));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.falseBooleanValue));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.byteValue));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.doubleValue));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.floatValue));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.integerValue));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.longValue));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.shortValue));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.stringValue));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.blobValue));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::SparseNullsOperationInput> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::SparseNullsOperationInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.sparseStringList));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.sparseStringMap));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::rpcv2cbor::SparseNullsOperationOutput> {
+  std::size_t operator()(const smithy::protocoltests::rpcv2cbor::SparseNullsOperationOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.sparseStringList));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.sparseStringMap));
+    return seed;
+  }
+};

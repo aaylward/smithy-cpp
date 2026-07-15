@@ -2,7 +2,9 @@
 
 #pragma once
 
+#include <compare>
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -11,6 +13,7 @@
 #include "example/cafe/types.h"
 #include "smithy/client/config.h"
 #include "smithy/core/fatal.h"
+#include "smithy/core/hash.h"
 #include "smithy/core/outcome.h"
 #include "smithy/http/transport.h"
 
@@ -85,6 +88,8 @@ class GetOrderErrors {
     }
 
     friend bool operator==(const GetOrderErrors&, const GetOrderErrors&) = default;
+    friend auto operator<=>(const GetOrderErrors&, const GetOrderErrors&) = default;
+    friend struct std::hash<GetOrderErrors>;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -143,6 +148,8 @@ class OrderCoffeeErrors {
     }
 
     friend bool operator==(const OrderCoffeeErrors&, const OrderCoffeeErrors&) = default;
+    friend auto operator<=>(const OrderCoffeeErrors&, const OrderCoffeeErrors&) = default;
+    friend struct std::hash<OrderCoffeeErrors>;
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -155,3 +162,25 @@ class OrderCoffeeErrors {
 };
 
 }  // namespace example::cafe
+
+// std::hash so generated types key std::unordered_map/std::unordered_set —
+// emitted exactly for the types that get operator<=> (issue #49). Hash
+// values are process-local: never persist or compare them across runs.
+
+template <>
+struct std::hash<example::cafe::GetOrderErrors> {
+  std::size_t operator()(const example::cafe::GetOrderErrors& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
+
+template <>
+struct std::hash<example::cafe::OrderCoffeeErrors> {
+  std::size_t operator()(const example::cafe::OrderCoffeeErrors& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};

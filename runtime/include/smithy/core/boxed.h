@@ -41,6 +41,11 @@ class Boxed {
 
   friend bool operator==(const Boxed& a, const Boxed& b) { return *a.value_ == *b.value_; }
   friend bool operator!=(const Boxed& a, const Boxed& b) { return !(a == b); }
+  // Deliberately NO operator<=>: an auto-returning deep <=> must deduce its
+  // type through the recursive chain Boxed exists to break, and clang
+  // hard-errors on the cycle (std::optional's constraint check instantiates
+  // it eagerly). Without one, a recursive struct's defaulted <=> is cleanly
+  // deleted instead: recursion keeps deep equality only.
 
  private:
   std::unique_ptr<T> value_;

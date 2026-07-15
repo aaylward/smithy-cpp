@@ -2,12 +2,16 @@
 
 #pragma once
 
+#include <compare>
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <optional>
 #include <string>
 #include <vector>
 
+#include "smithy/core/hash.h"
 #include "smithy/core/timestamp.h"
 
 namespace smithy::protocoltests::jsonrpc2 {
@@ -17,6 +21,7 @@ struct Nested {
   std::optional<std::int32_t> depth{};
 
   friend bool operator==(const Nested&, const Nested&) = default;
+  friend auto operator<=>(const Nested&, const Nested&) = default;
 };
 
 
@@ -33,6 +38,7 @@ struct EchoPayloadInput {
   std::optional<Nested> nested{};
 
   friend bool operator==(const EchoPayloadInput&, const EchoPayloadInput&) = default;
+  friend auto operator<=>(const EchoPayloadInput&, const EchoPayloadInput&) = default;
 };
 
 
@@ -42,6 +48,7 @@ struct EchoPayloadOutput {
   std::optional<Nested> nested{};
 
   friend bool operator==(const EchoPayloadOutput&, const EchoPayloadOutput&) = default;
+  friend auto operator<=>(const EchoPayloadOutput&, const EchoPayloadOutput&) = default;
 };
 
 
@@ -50,6 +57,7 @@ struct NotFoundError {
   std::optional<std::string> resourceType{};
 
   friend bool operator==(const NotFoundError&, const NotFoundError&) = default;
+  friend auto operator<=>(const NotFoundError&, const NotFoundError&) = default;
 };
 
 
@@ -57,16 +65,19 @@ struct ThrottledError {
   std::optional<std::string> message{};
 
   friend bool operator==(const ThrottledError&, const ThrottledError&) = default;
+  friend auto operator<=>(const ThrottledError&, const ThrottledError&) = default;
 };
 
 
 struct NoArgsInput {
   friend bool operator==(const NoArgsInput&, const NoArgsInput&) = default;
+  friend auto operator<=>(const NoArgsInput&, const NoArgsInput&) = default;
 };
 
 
 struct NoArgsOutput {
   friend bool operator==(const NoArgsOutput&, const NoArgsOutput&) = default;
+  friend auto operator<=>(const NoArgsOutput&, const NoArgsOutput&) = default;
 };
 
 
@@ -77,6 +88,7 @@ struct PutConstrainedInput {
   std::optional<std::string> evilDigits{};
 
   friend bool operator==(const PutConstrainedInput&, const PutConstrainedInput&) = default;
+  friend auto operator<=>(const PutConstrainedInput&, const PutConstrainedInput&) = default;
 };
 
 
@@ -84,6 +96,100 @@ struct PutConstrainedOutput {
   bool accepted{};
 
   friend bool operator==(const PutConstrainedOutput&, const PutConstrainedOutput&) = default;
+  friend auto operator<=>(const PutConstrainedOutput&, const PutConstrainedOutput&) = default;
 };
 
 }  // namespace smithy::protocoltests::jsonrpc2
+
+// std::hash so generated types key std::unordered_map/std::unordered_set —
+// emitted exactly for the types that get operator<=> (issue #49). Hash
+// values are process-local: never persist or compare them across runs.
+
+template <>
+struct std::hash<smithy::protocoltests::jsonrpc2::Nested> {
+  std::size_t operator()(const smithy::protocoltests::jsonrpc2::Nested& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.label));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.depth));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::jsonrpc2::EchoPayloadInput> {
+  std::size_t operator()(const smithy::protocoltests::jsonrpc2::EchoPayloadInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.string));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.aliased));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.integer));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.boolean));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.double_));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.timestamp));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.dateTime));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.names));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.attributes));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.nested));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::jsonrpc2::EchoPayloadOutput> {
+  std::size_t operator()(const smithy::protocoltests::jsonrpc2::EchoPayloadOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.echo));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.count));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.nested));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::jsonrpc2::NotFoundError> {
+  std::size_t operator()(const smithy::protocoltests::jsonrpc2::NotFoundError& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.message));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.resourceType));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::jsonrpc2::ThrottledError> {
+  std::size_t operator()(const smithy::protocoltests::jsonrpc2::ThrottledError& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.message));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::jsonrpc2::NoArgsInput> {
+  std::size_t operator()(const smithy::protocoltests::jsonrpc2::NoArgsInput& /*value*/) const noexcept { return 0; }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::jsonrpc2::NoArgsOutput> {
+  std::size_t operator()(const smithy::protocoltests::jsonrpc2::NoArgsOutput& /*value*/) const noexcept { return 0; }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::jsonrpc2::PutConstrainedInput> {
+  std::size_t operator()(const smithy::protocoltests::jsonrpc2::PutConstrainedInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.name));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.limit));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.slug));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.evilDigits));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::jsonrpc2::PutConstrainedOutput> {
+  std::size_t operator()(const smithy::protocoltests::jsonrpc2::PutConstrainedOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.accepted));
+    return seed;
+  }
+};

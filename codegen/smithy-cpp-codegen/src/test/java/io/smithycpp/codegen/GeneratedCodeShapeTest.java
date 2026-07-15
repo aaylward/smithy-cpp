@@ -121,6 +121,145 @@ class GeneratedCodeShapeTest {
     assertFalse(client.contains("FromNotFound"), client);
   }
 
+  private static final String ORDERING_MODEL =
+      """
+      $version: "2.0"
+      namespace test.shape
+      use alloy#simpleRestJson
+
+      @simpleRestJson
+      service Svc { version: "1", operations: [Ping] }
+
+      @http(method: "POST", uri: "/ping")
+      operation Ping { input := { status: Status, size: Size, empty: Empty } }
+
+      union Status { pending: Pending, ready: Ready }
+      structure Pending { position: Integer }
+      structure Ready { at: Timestamp }
+      structure Empty {}
+      enum Size { SMALL, LARGE }
+      """;
+
+  @Test
+  void generatedTypesAreOrderedAndEnumsSwitchDirectly() {
+    // Issue #49: generated types offered only operator==, so they couldn't
+    // key a std::map, and enums needed .value() before a switch. Structs,
+    // unions, and enums now default operator<=> beside operator==, and the
+    // enum wrapper converts implicitly to its Value so `switch (size)` works
+    // — with explicit Value equality friends so the conversion introduces no
+    // overload ambiguity.
+    String types =
+        PluginTestHarness.generate(ORDERING_MODEL, "test.shape#Svc", "test::shape")
+            .expectFileString("/include/test/shape/types.h");
+    assertTrue(types.contains("#include <compare>"), types);
+    assertTrue(
+        types.contains("friend auto operator<=>(const Pending&, const Pending&) = default;"),
+        types);
+    assertTrue(
+        types.contains("friend auto operator<=>(const Status&, const Status&) = default;"), types);
+    assertTrue(
+        types.contains("friend auto operator<=>(const Size&, const Size&) = default;"), types);
+    assertTrue(types.contains("operator Value() const { return value_; }"), types);
+    assertTrue(
+        types.contains("friend bool operator==(const Size& a, Value b) { return a.value_ == b; }"),
+        types);
+  }
+
+  @Test
+  void generatedTypesHashForUnorderedContainers() {
+    // Issue #49 follow-up: <=> unblocked ordered containers; unordered ones
+    // need std::hash. A type gets std::hash exactly when it gets <=>. The
+    // specializations must live at global scope, so they're emitted after the
+    // namespace closes, in definition order (nested hashes before outer ones).
+    var manifest = PluginTestHarness.generate(ORDERING_MODEL, "test.shape#Svc", "test::shape");
+    String types = manifest.expectFileString("/include/test/shape/types.h");
+    assertTrue(types.contains("#include \"smithy/core/hash.h\""), types);
+    // Structs hash member-wise through smithy::HashValue (containers and
+    // optionals have no std::hash of their own).
+    assertTrue(types.contains("struct std::hash<test::shape::Pending> {"), types);
+    assertTrue(
+        types.contains("seed = smithy::HashCombine(seed, smithy::HashValue(value.position));"),
+        types);
+    // Member-less structs have nothing to mix — and must not name the unused
+    // parameter (clang's -Wunused-parameter fires in every including TU).
+    assertTrue(
+        types.contains(
+            "std::size_t operator()(const test::shape::Empty& /*value*/) const noexcept"
+                + " { return 0; }"),
+        types);
+    // Enums hash their private (value, unknown-text) pair; unions hash the
+    // engaged index + member — both need the friend declaration.
+    assertTrue(types.contains("friend struct std::hash<Size>;"), types);
+    assertTrue(types.contains("struct std::hash<test::shape::Size> {"), types);
+    assertTrue(types.contains("friend struct std::hash<Status>;"), types);
+    assertTrue(types.contains("struct std::hash<test::shape::Status> {"), types);
+    // All specializations sit outside the namespace block.
+    assertTrue(
+        types.indexOf("}  // namespace test::shape") < types.indexOf("std::hash<test::shape::"),
+        types);
+    // Error listings share the tagged-variant shape, so they hash too.
+    String client =
+        PluginTestHarness.generate(ERRORS_MODEL, "test.shape#Svc", "test::shape")
+            .expectFileString("/include/test/shape/client.h");
+    assertTrue(client.contains("struct std::hash<test::shape::PingErrors> {"), client);
+  }
+
+  @Test
+  void nonOrderableMembersSkipTheDefaultedOrdering() {
+    // clang hard-errors deducing a deep <=> around a Boxed recursion cycle,
+    // and warns on any defaulted-but-deleted operator — so shapes that can't
+    // order (recursion, Document members, transitively) get an equality-only
+    // comment instead of a defaulted operator<=> (caught by CI on PR #84).
+    String model =
+        """
+        $version: "2.0"
+        namespace test.shape
+        use alloy#simpleRestJson
+
+        @simpleRestJson
+        service Svc { version: "1", operations: [Ping] }
+
+        @http(method: "POST", uri: "/ping")
+        operation Ping {
+            input := { tree: Node, wrapper: Wrapper, plain: Plain }
+            errors: [Opaque]
+        }
+
+        structure Node { value: Integer, next: Node }
+        structure Meta { data: Document }
+        structure Wrapper { meta: Meta }
+        structure Plain { id: String }
+
+        @error("client")
+        @httpError(400)
+        structure Opaque { data: Document }
+        """;
+    var manifest = PluginTestHarness.generate(model, "test.shape#Svc", "test::shape");
+    String types = manifest.expectFileString("/include/test/shape/types.h");
+    assertTrue(
+        types.contains("friend bool operator==(const Node&, const Node&) = default;"), types);
+    assertFalse(types.contains("operator<=>(const Node&"), types);
+    assertFalse(types.contains("operator<=>(const Meta&"), types);
+    assertFalse(types.contains("operator<=>(const Wrapper&"), types);
+    assertTrue(types.contains("// Equality-only: a member type has no ordering"), types);
+    // Non-orderability propagates: the input struct contains Node/Wrapper, so
+    // it skips too — while the plain sibling keeps its ordering.
+    assertFalse(types.contains("operator<=>(const PingInput&"), types);
+    assertTrue(
+        types.contains("friend auto operator<=>(const Plain&, const Plain&) = default;"), types);
+    // Hashing follows ordering: non-orderable shapes get no std::hash either,
+    // transitively — while the plain sibling keeps its specialization.
+    assertFalse(types.contains("std::hash<test::shape::Node>"), types);
+    assertFalse(types.contains("std::hash<test::shape::Wrapper>"), types);
+    assertFalse(types.contains("std::hash<test::shape::PingInput>"), types);
+    assertTrue(types.contains("struct std::hash<test::shape::Plain> {"), types);
+    // The client's error listing skips too when a modeled error can't order.
+    String client = manifest.expectFileString("/include/test/shape/client.h");
+    assertFalse(client.contains("operator<=>(const PingErrors&"), client);
+    assertTrue(client.contains("// Equality-only: a member type has no ordering"), client);
+    assertFalse(client.contains("std::hash<test::shape::PingErrors>"), client);
+  }
+
   @Test
   void typedErrorListingNameCollisionFailsWithContext() {
     // The listing's synthetic name <Op>Errors can collide with a modeled

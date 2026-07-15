@@ -8,6 +8,17 @@
 namespace smithy {
 namespace {
 
+TEST(TimestampOrderingTest, ProvidesTheFullComparisonSet) {
+  // operator<=> (not just the old ==/<) so timestamp-bearing generated
+  // structs can default their own <=> (issue #49).
+  const Timestamp early = Timestamp::FromEpochSeconds(1);
+  const Timestamp late = Timestamp::FromEpochSeconds(2);
+  EXPECT_TRUE(early < late);
+  EXPECT_TRUE(late > early);
+  EXPECT_TRUE(early <= Timestamp::FromEpochSeconds(1));
+  EXPECT_TRUE(early >= Timestamp::FromEpochSeconds(1));
+}
+
 TEST(TimestampParseTest, EpochSecondsIsStrict) {
   using smithy::Timestamp;
   using smithy::TimestampFormat;

@@ -16,7 +16,7 @@ compatibility contract: changes to it are breaking for consumers of generated co
 | `document` | `smithy::Document` | |
 | `list<T>` | `std::vector<T>` | `@sparse` ⇒ `std::vector<std::optional<T>>` |
 | `map<string, T>` | `std::map<std::string, T>` | `@sparse` ⇒ optional values; `std::map` keeps output deterministic |
-| `structure` | `struct` with public members | Aggregate; `friend operator== = default`; every member value-initialized with `{}` |
+| `structure` | `struct` with public members | Aggregate; `operator==` and `operator<=>` defaulted; every member value-initialized with `{}` |
 | `union` | class over `std::variant` | See below |
 | `enum` | class with nested `enum class Value` | See below; unknown wire values preserved |
 | `intEnum` | `enum class X : std::int32_t` | |
@@ -35,6 +35,28 @@ compatibility contract: changes to it are breaking for consumers of generated co
   default when absent from the wire. Members of `@input` structures stay client-optional per
   the spec (clients skip unset members; servers fill the default while parsing), and
   `@required` + `@default` reads absence as the default instead of failing.
+- **Ordering**: generated types default `operator<=>` beside `operator==` whenever every member
+  is three-way-comparable, so structs, unions, and enums key `std::map`/`std::set` and sort
+  (issue #49). Types that can't order — a `smithy::Document` member, or recursion (via
+  `smithy::Boxed`, which deliberately has no `<=>`: deducing a deep ordering around the cycle
+  it exists to break is a hard error on clang), transitively through members — are
+  equality-only: the generator omits `<=>` and leaves an "Equality-only" comment in the
+  header. `float`/`double` members make the ordering partial.
+- **Hashing**: a type specializes `std::hash` exactly when it gets `operator<=>`, so it keys
+  `std::unordered_map`/`std::unordered_set` the same way it keys `std::map` (equality-only
+  types get neither). Structs hash member-wise, enums hash their (value, unknown-text) pair,
+  unions and `<Op>Errors` listings hash (engaged index, engaged member); list/map/optional
+  members hash element-wise via `smithy::HashValue`, and the runtime types (`smithy::Blob`,
+  `smithy::Timestamp`, `smithy::Unit`) carry `std::hash` in their own headers. The
+  specializations sit after the namespace's closing brace in the same generated header.
+  Hash values are **process-local**: they build on `std::hash`, so never persist them or
+  compare them across processes, builds, or library versions.
+- **Deliberately not generated**:
+  - builders — C++20 designated initializers are the construction story:
+    `GetOrderInput{.orderId = "o-1"}`;
+  - `operator<<`, `std::format` — deferred until the runtime types have a printing story;
+  - a distinct "absent" state for `@required` members — they stay plain members; presence is
+    enforced by server-side validation (see Optionality above).
 - **Docs**: `@documentation` becomes `///` comments.
 - **Files**: per module, `include/<namespace path>/types.h`, `serde.h` + `src/serde.cc`,
   `client.h` + `src/client.cc`, and a generated `BUILD.bazel` exposing `cc_library ":types"`
@@ -50,7 +72,10 @@ class CoffeeType {
   CoffeeType(Value value);                          // implicit, by design
   static CoffeeType FromString(std::string_view);   // unknown text => Value::kUnknown
   Value value() const;
+  operator Value() const;                           // implicit: `switch (coffee)` works directly
   std::string_view ToString() const;                // unknown values keep their original text
+  // == and <=> against CoffeeType; == against Value (keeps the implicit
+  // conversion from making comparisons ambiguous).
 };
 ```
 

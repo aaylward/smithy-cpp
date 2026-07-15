@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <compare>
 #include <string>
 #include <utility>
 
@@ -40,6 +41,11 @@ TEST(OutcomeTest, UnitForVoidLikeOperations) {
   Outcome<Unit> outcome(Unit{});
   EXPECT_TRUE(outcome.ok());
 }
+
+// Unit must stay orderable: a union with a Unit member would otherwise
+// silently lose its defaulted <=> (the generator emits one because the Unit
+// shape itself is orderable).
+static_assert(std::three_way_comparable<Unit>);
 
 TEST(OutcomeTest, ValueOrDieReturnsTheValue) {
   Outcome<int> outcome(42);
@@ -121,6 +127,13 @@ TEST(BlobTest, RoundTripsThroughString) {
   EXPECT_EQ(blob.ToString(), "hello");
   EXPECT_EQ(blob, Blob::FromString("hello"));
   EXPECT_FALSE(blob == Blob::FromString("world"));
+}
+
+TEST(BlobTest, OrdersLexicographicallyByBytes) {
+  // operator<=> so blob-bearing generated structs stay orderable (issue #49).
+  EXPECT_TRUE(Blob::FromString("abc") < Blob::FromString("abd"));
+  EXPECT_TRUE(Blob::FromString("ab") < Blob::FromString("abc"));
+  EXPECT_TRUE(Blob::FromString("b") > Blob::FromString("abc"));
 }
 
 TEST(Base64Test, EncodesRfc4648Vectors) {

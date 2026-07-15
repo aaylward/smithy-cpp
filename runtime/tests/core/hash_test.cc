@@ -49,6 +49,16 @@ TEST(HashValueTest, VectorsHashByContentInOrder) {
   EXPECT_NE(HashValue(ab), HashValue(std::vector<std::string>{"a"}));
 }
 
+TEST(HashValueTest, VectorBoolHashesThroughTheProxyReference) {
+  // vector<bool> iteration yields a proxy, not bool& — and libc++'s proxy has
+  // no std::hash (deleted; caught by macOS CI on PR #84). Elements must be
+  // bound as value_type so the proxy decays to bool before dispatch.
+  EXPECT_EQ(HashValue(std::vector<bool>{true, false}), HashValue(std::vector<bool>{true, false}));
+  EXPECT_NE(HashValue(std::vector<bool>{true}), HashValue(std::vector<bool>{false}));
+  const std::optional<std::vector<bool>> engaged{{true}};
+  EXPECT_EQ(HashValue(engaged), HashValue(std::optional<std::vector<bool>>{{true}}));
+}
+
 TEST(HashValueTest, MapsHashByEntries) {
   const std::map<std::string, int> menu{{"drip", 3}, {"latte", 5}};
   EXPECT_EQ(HashValue(menu), HashValue(std::map<std::string, int>{{"latte", 5}, {"drip", 3}}));

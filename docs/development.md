@@ -49,7 +49,11 @@ Extend its `model/gauntlet.smithy` when adding a new escaping/naming rule.
 When a change touches what generated *headers* declare (operators, templates,
 constraints), also build with `CC=clang CXX=clang++`: gcc accepts forms clang
 rejects (e.g. deducing a defaulted `operator<=>` around a recursion cycle), and
-the local default toolchain is gcc while half the CI matrix is clang.
+the local default toolchain is gcc while half the CI matrix is clang. Note the
+sweep's blind spot: local clang still uses libstdc++, while the macOS CI jobs
+use libc++ — standard-library divergences (classically `vector<bool>`'s proxy
+reference, whose libc++ form has no `std::hash`) only surface there, so
+generic code should never assume container iteration yields real references.
 
 ## Benchmarks
 

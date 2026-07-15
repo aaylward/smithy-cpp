@@ -55,7 +55,11 @@ template <typename T>
 std::size_t HashValue(const T& value) noexcept {
   if constexpr (internal::IsVector<T>::value) {
     std::size_t seed = value.size();
-    for (const auto& element : value) {
+    // Bind elements as value_type, not auto&: vector<bool> iteration yields a
+    // proxy reference, and libc++'s proxy has no std::hash. Binding through
+    // const value_type& converts the proxy to bool (and adds no copy for any
+    // other element type).
+    for (const typename T::value_type& element : value) {
       seed = HashCombine(seed, HashValue(element));
     }
     return seed;

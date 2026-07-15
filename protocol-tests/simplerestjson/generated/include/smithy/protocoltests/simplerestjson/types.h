@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <optional>
@@ -152,7 +153,7 @@ class Food {
     }
     bool is_pizza() const { return value_.index() == 1; }
     const Pizza& as_pizza() const {
-      if (!is_pizza()) smithy::internal::FatalWrongUnionAccess("Food", "pizza", case_name());
+      require_is(1, "pizza");
       return std::get<1>(value_);
     }
     /// The engaged member, or nullptr when another member (or none) is set.
@@ -165,7 +166,7 @@ class Food {
     }
     bool is_salad() const { return value_.index() == 2; }
     const Salad& as_salad() const {
-      if (!is_salad()) smithy::internal::FatalWrongUnionAccess("Food", "salad", case_name());
+      require_is(2, "salad");
       return std::get<2>(value_);
     }
     /// The engaged member, or nullptr when another member (or none) is set.
@@ -190,6 +191,12 @@ class Food {
     friend bool operator==(const Food&, const Food&) = default;
 
   private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("Food", requested, case_name());
+      }
+    }
+
     std::variant<std::monostate, Pizza, Salad> value_;
 };
 
@@ -482,7 +489,7 @@ class OpenDiscriminatedUnion {
     }
     bool is_smol() const { return value_.index() == 1; }
     const SmallStruct& as_smol() const {
-      if (!is_smol()) smithy::internal::FatalWrongUnionAccess("OpenDiscriminatedUnion", "smol", case_name());
+      require_is(1, "smol");
       return std::get<1>(value_);
     }
     /// The engaged member, or nullptr when another member (or none) is set.
@@ -495,7 +502,7 @@ class OpenDiscriminatedUnion {
     }
     bool is_other() const { return value_.index() == 2; }
     const smithy::Document& as_other() const {
-      if (!is_other()) smithy::internal::FatalWrongUnionAccess("OpenDiscriminatedUnion", "other", case_name());
+      require_is(2, "other");
       return std::get<2>(value_);
     }
     /// The engaged member, or nullptr when another member (or none) is set.
@@ -520,6 +527,12 @@ class OpenDiscriminatedUnion {
     friend bool operator==(const OpenDiscriminatedUnion&, const OpenDiscriminatedUnion&) = default;
 
   private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("OpenDiscriminatedUnion", requested, case_name());
+      }
+    }
+
     std::variant<std::monostate, SmallStruct, smithy::Document> value_;
 };
 
@@ -535,7 +548,7 @@ class OpenTaggedUnion {
     }
     bool is_str() const { return value_.index() == 1; }
     const std::string& as_str() const {
-      if (!is_str()) smithy::internal::FatalWrongUnionAccess("OpenTaggedUnion", "str", case_name());
+      require_is(1, "str");
       return std::get<1>(value_);
     }
     /// The engaged member, or nullptr when another member (or none) is set.
@@ -548,7 +561,7 @@ class OpenTaggedUnion {
     }
     bool is_other() const { return value_.index() == 2; }
     const smithy::Document& as_other() const {
-      if (!is_other()) smithy::internal::FatalWrongUnionAccess("OpenTaggedUnion", "other", case_name());
+      require_is(2, "other");
       return std::get<2>(value_);
     }
     /// The engaged member, or nullptr when another member (or none) is set.
@@ -573,6 +586,12 @@ class OpenTaggedUnion {
     friend bool operator==(const OpenTaggedUnion&, const OpenTaggedUnion&) = default;
 
   private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("OpenTaggedUnion", requested, case_name());
+      }
+    }
+
     std::variant<std::monostate, std::string, smithy::Document> value_;
 };
 
@@ -588,7 +607,7 @@ class OpenUnionsPayload {
     }
     bool is_tagged() const { return value_.index() == 1; }
     const OpenTaggedUnion& as_tagged() const {
-      if (!is_tagged()) smithy::internal::FatalWrongUnionAccess("OpenUnionsPayload", "tagged", case_name());
+      require_is(1, "tagged");
       return std::get<1>(value_);
     }
     /// The engaged member, or nullptr when another member (or none) is set.
@@ -601,7 +620,7 @@ class OpenUnionsPayload {
     }
     bool is_discriminated() const { return value_.index() == 2; }
     const OpenDiscriminatedUnion& as_discriminated() const {
-      if (!is_discriminated()) smithy::internal::FatalWrongUnionAccess("OpenUnionsPayload", "discriminated", case_name());
+      require_is(2, "discriminated");
       return std::get<2>(value_);
     }
     /// The engaged member, or nullptr when another member (or none) is set.
@@ -626,6 +645,12 @@ class OpenUnionsPayload {
     friend bool operator==(const OpenUnionsPayload&, const OpenUnionsPayload&) = default;
 
   private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("OpenUnionsPayload", requested, case_name());
+      }
+    }
+
     std::variant<std::monostate, OpenTaggedUnion, OpenDiscriminatedUnion> value_;
 };
 

@@ -2,7 +2,6 @@
 #define SMITHY_CORE_OUTCOME_H_
 
 #include <concepts>
-#include <string>
 #include <string_view>
 #include <utility>
 #include <variant>
@@ -25,10 +24,10 @@ struct Unit {
 //   if (auto n = Parse(s)) use(*n); else log(n.error().message());
 //
 // Accessing the side that isn't held is a contract violation and terminates
-// the process with the error's code and message (never a context-free
-// std::bad_variant_access). Prefer value_or_die("context") over a bare
-// deref when there is no ok() check in sight — the context string lands in
-// the crash report.
+// the process with the error's code and message (ADR-0009) — never a
+// context-free std::bad_variant_access. Prefer value_or_die("context") over
+// a bare deref when there is no ok() check in sight: the context string
+// lands on the crash line.
 template <typename T, typename E = Error>
 class Outcome {
  public:
@@ -38,20 +37,10 @@ class Outcome {
   bool ok() const { return storage_.index() == 0; }
   explicit operator bool() const { return ok(); }
 
-  // Precondition for value()/operator*/operator->: ok() is true. A violation
-  // dies with the held error's context.
-  T& value() & {
-    RequireValue("Outcome::value() on error");
-    return std::get<0>(storage_);
-  }
-  const T& value() const& {
-    RequireValue("Outcome::value() on error");
-    return std::get<0>(storage_);
-  }
-  T&& value() && {
-    RequireValue("Outcome::value() on error");
-    return std::get<0>(std::move(storage_));
-  }
+  // Precondition for value()/operator*/operator->: ok() is true.
+  T& value() & { return value_or_die("Outcome::value() on error"); }
+  const T& value() const& { return value_or_die("Outcome::value() on error"); }
+  T&& value() && { return std::move(*this).value_or_die("Outcome::value() on error"); }
 
   // value() with caller-supplied context: dies as
   // "<context>: <code>: <message>" when the outcome holds an error.
@@ -99,23 +88,19 @@ class Outcome {
  private:
   void RequireValue(std::string_view context) const {
     if (ok()) return;
-    std::string message(context);
     if constexpr (requires(const E& e) {
                     { e.code() } -> std::convertible_to<std::string_view>;
                     { e.message() } -> std::convertible_to<std::string_view>;
                   }) {
       const E& e = std::get<1>(storage_);
-      message += ": ";
-      message += e.code();
-      message += ": ";
-      message += e.message();
+      internal::FatalOutcomeError(context, e.code(), e.message());
+    } else {
+      internal::FatalOutcomeError(context, {}, {});
     }
-    internal::Fatal(message);
   }
 
   void RequireError() const {
-    if (!ok()) return;
-    internal::Fatal("Outcome::error() called on a value");
+    if (ok()) internal::Fatal("Outcome::error() called on a value");
   }
 
   std::variant<T, E> storage_;

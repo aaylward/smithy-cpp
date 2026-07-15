@@ -49,10 +49,10 @@ class GeneratedCodeShapeTest {
         PluginTestHarness.generate(UNION_MODEL, "test.shape#Svc", "test::shape")
             .expectFileString("/include/test/shape/types.h");
     assertTrue(types.contains("#include \"smithy/core/fatal.h\""), types);
+    assertTrue(types.contains("require_is(1, \"pending\");"), types);
     assertTrue(
         types.contains(
-            "if (!is_pending()) smithy::internal::FatalWrongUnionAccess(\"Status\","
-                + " \"pending\", case_name());"),
+            "smithy::internal::FatalWrongUnionAccess(\"Status\", requested," + " case_name());"),
         types);
     assertTrue(
         types.contains(

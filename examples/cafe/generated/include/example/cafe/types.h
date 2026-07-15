@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -107,7 +108,7 @@ class OrderStatus {
     }
     bool is_pending() const { return value_.index() == 1; }
     const PendingStatus& as_pending() const {
-      if (!is_pending()) smithy::internal::FatalWrongUnionAccess("OrderStatus", "pending", case_name());
+      require_is(1, "pending");
       return std::get<1>(value_);
     }
     /// The engaged member, or nullptr when another member (or none) is set.
@@ -120,7 +121,7 @@ class OrderStatus {
     }
     bool is_ready() const { return value_.index() == 2; }
     const ReadyStatus& as_ready() const {
-      if (!is_ready()) smithy::internal::FatalWrongUnionAccess("OrderStatus", "ready", case_name());
+      require_is(2, "ready");
       return std::get<2>(value_);
     }
     /// The engaged member, or nullptr when another member (or none) is set.
@@ -133,7 +134,7 @@ class OrderStatus {
     }
     bool is_cancelled() const { return value_.index() == 3; }
     const CancelledStatus& as_cancelled() const {
-      if (!is_cancelled()) smithy::internal::FatalWrongUnionAccess("OrderStatus", "cancelled", case_name());
+      require_is(3, "cancelled");
       return std::get<3>(value_);
     }
     /// The engaged member, or nullptr when another member (or none) is set.
@@ -158,6 +159,12 @@ class OrderStatus {
     friend bool operator==(const OrderStatus&, const OrderStatus&) = default;
 
   private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("OrderStatus", requested, case_name());
+      }
+    }
+
     std::variant<std::monostate, PendingStatus, ReadyStatus, CancelledStatus> value_;
 };
 
@@ -198,7 +205,7 @@ class MilkOption {
     }
     bool is_none() const { return value_.index() == 1; }
     const smithy::Unit& as_none() const {
-      if (!is_none()) smithy::internal::FatalWrongUnionAccess("MilkOption", "none", case_name());
+      require_is(1, "none");
       return std::get<1>(value_);
     }
     /// The engaged member, or nullptr when another member (or none) is set.
@@ -211,7 +218,7 @@ class MilkOption {
     }
     bool is_dairy() const { return value_.index() == 2; }
     const DairyMilk& as_dairy() const {
-      if (!is_dairy()) smithy::internal::FatalWrongUnionAccess("MilkOption", "dairy", case_name());
+      require_is(2, "dairy");
       return std::get<2>(value_);
     }
     /// The engaged member, or nullptr when another member (or none) is set.
@@ -224,7 +231,7 @@ class MilkOption {
     }
     bool is_alternative() const { return value_.index() == 3; }
     const AlternativeMilk& as_alternative() const {
-      if (!is_alternative()) smithy::internal::FatalWrongUnionAccess("MilkOption", "alternative", case_name());
+      require_is(3, "alternative");
       return std::get<3>(value_);
     }
     /// The engaged member, or nullptr when another member (or none) is set.
@@ -249,6 +256,12 @@ class MilkOption {
     friend bool operator==(const MilkOption&, const MilkOption&) = default;
 
   private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("MilkOption", requested, case_name());
+      }
+    }
+
     std::variant<std::monostate, smithy::Unit, DairyMilk, AlternativeMilk> value_;
 };
 

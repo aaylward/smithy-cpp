@@ -49,8 +49,6 @@ TEST(OutcomeTest, ValueOrDieReturnsTheValue) {
 // Contract violations die with the error's context instead of throwing a
 // context-free std::bad_variant_access (issue #49).
 
-using OutcomeDeathTest = ::testing::Test;
-
 TEST(OutcomeDeathTest, ValueOnErrorDiesWithCodeAndMessage) {
   Outcome<int> outcome(Error::Transport("connection refused"));
   EXPECT_DEATH((void)outcome.value(),

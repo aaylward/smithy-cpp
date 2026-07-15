@@ -10,6 +10,7 @@
 #include <variant>
 
 #include "example/cafe/types.h"
+#include "smithy/core/overloaded.h"
 
 namespace {
 
@@ -17,13 +18,6 @@ using example::cafe::CancelledStatus;
 using example::cafe::OrderStatus;
 using example::cafe::PendingStatus;
 using example::cafe::ReadyStatus;
-
-template <class... Ts>
-struct Overloaded : Ts... {
-  using Ts::operator()...;
-};
-template <class... Ts>
-Overloaded(Ts...) -> Overloaded<Ts...>;
 
 TEST(UnionAccessorTest, RightCaseAccessReturnsTheMember) {
   const OrderStatus status = OrderStatus::FromPending(PendingStatus{.position = 3});
@@ -33,8 +27,9 @@ TEST(UnionAccessorTest, RightCaseAccessReturnsTheMember) {
 
 TEST(UnionAccessorTest, PointerAccessorReturnsEngagedMemberOrNull) {
   const OrderStatus status = OrderStatus::FromPending(PendingStatus{.position = 3});
-  ASSERT_NE(status.as_pending_or_null(), nullptr);
-  EXPECT_EQ(status.as_pending_or_null()->position, 3);
+  const PendingStatus* pending = status.as_pending_or_null();
+  ASSERT_NE(pending, nullptr);
+  EXPECT_EQ(pending->position, 3);
   EXPECT_EQ(status.as_ready_or_null(), nullptr);
   EXPECT_EQ(status.as_cancelled_or_null(), nullptr);
   EXPECT_EQ(OrderStatus{}.as_pending_or_null(), nullptr);
@@ -47,7 +42,7 @@ TEST(UnionAccessorTest, CaseNameTracksTheEngagedMember) {
 }
 
 TEST(UnionAccessorTest, VisitDispatchesOverMembersAndEmptyState) {
-  const auto describe = Overloaded{
+  const auto describe = smithy::Overloaded{
       [](const PendingStatus& p) { return "pending:" + std::to_string(p.position); },
       [](const ReadyStatus&) { return std::string("ready"); },
       [](const CancelledStatus&) { return std::string("cancelled"); },
@@ -56,8 +51,6 @@ TEST(UnionAccessorTest, VisitDispatchesOverMembersAndEmptyState) {
   EXPECT_EQ(OrderStatus::FromPending(PendingStatus{.position = 7}).visit(describe), "pending:7");
   EXPECT_EQ(OrderStatus{}.visit(describe), "empty");
 }
-
-using UnionAccessorDeathTest = ::testing::Test;
 
 TEST(UnionAccessorDeathTest, WrongCaseDiesNamingRequestedAndEngagedMembers) {
   const OrderStatus status = OrderStatus::FromPending(PendingStatus{.position = 3});

@@ -41,24 +41,25 @@ class PageIterator {
   Outcome<Page>* operator->() { return &*current_; }
 
   PageIterator& operator++() {
-    if (current_.has_value() && !current_->ok()) {
-      // The error was yielded; end the range without touching Next() again.
-      paginator_ = nullptr;
-      current_.reset();
-    } else {
+    if (paginator_ != nullptr) {
       Advance();
+    } else {
+      // The error was already yielded; the range ends without another Next().
+      current_.reset();
     }
     return *this;
   }
 
   friend bool operator==(const PageIterator& a, const PageIterator& b) {
-    return a.paginator_ == b.paginator_ && a.current_.has_value() == b.current_.has_value();
+    return a.current_.has_value() == b.current_.has_value();
   }
 
  private:
   void Advance() {
     auto next = paginator_->Next();
     if (!next.ok()) {
+      // Yield the error once; the nulled paginator ends the range on ++.
+      paginator_ = nullptr;
       current_.emplace(std::move(next).error());
       return;
     }
@@ -70,6 +71,8 @@ class PageIterator {
     current_.emplace(*std::move(*next));
   }
 
+  // paginator_: Next() may still be called. current_: a page or error to
+  // yield. Each member function consults exactly one of them.
   Paginator* paginator_ = nullptr;
   std::optional<Outcome<Page>> current_;
 };

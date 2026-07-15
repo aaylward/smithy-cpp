@@ -48,7 +48,9 @@ TEST(PageIteratorTest, WalksPagesThenEnds) {
   std::vector<std::string> seen;
   for (auto& page : pages) {
     ASSERT_TRUE(page.ok());
-    seen.push_back(*std::move(page));
+    // Note the spelling: `*std::move(page)` would copy (Outcome derefs are
+    // lvalue-only); the && overload of value() actually moves.
+    seen.push_back(std::move(page).value());
   }
   EXPECT_EQ(seen, (std::vector<std::string>{"one", "two"}));
   EXPECT_EQ(pages.calls, 3);

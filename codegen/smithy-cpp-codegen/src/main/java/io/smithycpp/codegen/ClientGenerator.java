@@ -126,9 +126,7 @@ final class ClientGenerator {
       w.write("smithy::Outcome<std::optional<$L>> Next();", outputType);
       w.write("");
       w.write("using Page = $L;", outputType);
-      w.write("/// Single-pass range (issue #49): iteration yields Outcome<Page>&, and");
-      w.write("/// a failed call ends the range after being yielded once. The iterator");
-      w.write("/// drives this paginator's state, so call begin() once.");
+      w.write("/// Single-pass range over pages — contract in smithy/client/pagination.h.");
       String iterator = "smithy::PageIterator<" + paginatorName(operation) + ">";
       w.write("$1L begin() { return $1L(this); }", iterator);
       w.write("$L end() { return {}; }", iterator);

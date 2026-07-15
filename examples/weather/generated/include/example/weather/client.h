@@ -65,9 +65,7 @@ class ListCitiesPaginator {
     smithy::Outcome<std::optional<ListCitiesOutput>> Next();
 
     using Page = ListCitiesOutput;
-    /// Single-pass range (issue #49): iteration yields Outcome<Page>&, and
-    /// a failed call ends the range after being yielded once. The iterator
-    /// drives this paginator's state, so call begin() once.
+    /// Single-pass range over pages — contract in smithy/client/pagination.h.
     smithy::PageIterator<ListCitiesPaginator> begin() { return smithy::PageIterator<ListCitiesPaginator>(this); }
     smithy::PageIterator<ListCitiesPaginator> end() { return {}; }
 

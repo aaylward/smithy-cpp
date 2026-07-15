@@ -294,17 +294,23 @@ TEST_F(GeneratedServerEndToEndTest, PaginatorWalksAllPages) {
   EXPECT_FALSE(still_done->has_value());
 }
 
-TEST_F(GeneratedServerEndToEndTest, PaginatorRangeForWalksAllPages) {
+// Loopback-backed generated client over `handler`; the client's config keeps
+// the loopback transport alive.
+example::weather::WeatherClient MakeGeneratedClient(const smithy::http::RequestHandler& handler) {
   auto loopback = std::make_shared<smithy::http::Loopback>();
-  ASSERT_TRUE(loopback->Start(server_->Handler()).ok());
+  loopback->Start(handler).value_or_die("starting loopback");
   smithy::ClientConfig config;
-  config.http_client = loopback;
-  auto client = example::weather::WeatherClient::Create(std::move(config));
-  ASSERT_TRUE(client.ok());
+  config.http_client = std::move(loopback);
+  return example::weather::WeatherClient::Create(std::move(config))
+      .value_or_die("creating generated weather client");
+}
+
+TEST_F(GeneratedServerEndToEndTest, PaginatorRangeForWalksAllPages) {
+  auto client = MakeGeneratedClient(server_->Handler());
 
   // Issue #49: pagination is a range — no manual Next()/nullopt protocol.
   std::vector<std::string> cities;
-  for (auto& page : client->PaginateListCities(ListCitiesInput{.pageSize = 1})) {
+  for (auto& page : client.PaginateListCities(ListCitiesInput{.pageSize = 1})) {
     ASSERT_TRUE(page.ok()) << page.error().message();
     for (const auto& city : page->items) cities.push_back(city.cityId);
   }
@@ -325,16 +331,11 @@ TEST_F(GeneratedServerEndToEndTest, PaginatorRangeForYieldsTheErrorOnceThenEnds)
     }
   };
   WeatherServer server(std::make_shared<FailsOnSecondPage>());
-  auto loopback = std::make_shared<smithy::http::Loopback>();
-  ASSERT_TRUE(loopback->Start(server.Handler()).ok());
-  smithy::ClientConfig config;
-  config.http_client = loopback;
-  auto client = example::weather::WeatherClient::Create(std::move(config));
-  ASSERT_TRUE(client.ok());
+  auto client = MakeGeneratedClient(server.Handler());
 
   std::vector<std::string> pages_seen;
   std::optional<smithy::Error> failure;
-  for (auto& page : client->PaginateListCities(ListCitiesInput{})) {
+  for (auto& page : client.PaginateListCities(ListCitiesInput{})) {
     if (!page.ok()) {
       failure = page.error();
       continue;  // the range ends by itself after yielding the error

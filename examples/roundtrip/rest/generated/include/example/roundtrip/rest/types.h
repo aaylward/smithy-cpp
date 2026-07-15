@@ -232,7 +232,8 @@ struct PutSinkInput {
   std::optional<smithy::Document> freeform{};
 
   friend bool operator==(const PutSinkInput&, const PutSinkInput&) = default;
-  friend auto operator<=>(const PutSinkInput&, const PutSinkInput&) = default;
+  // Equality-only: a member type has no ordering (smithy::Document or
+  // recursion via smithy::Boxed) — see generated-types.md.
 };
 
 

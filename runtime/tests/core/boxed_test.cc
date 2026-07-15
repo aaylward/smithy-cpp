@@ -6,6 +6,7 @@
 
 #include <gtest/gtest.h>
 
+#include <compare>
 #include <optional>
 #include <string>
 #include <utility>
@@ -52,15 +53,14 @@ Nested1 MakeChain() {
   return root;
 }
 
-TEST(BoxedTest, DeepOrdering) {
-  // Ordering is deep like equality, so boxed members don't block a struct's
-  // defaulted operator<=> (issue #49).
-  const Boxed<std::string> a(std::string("a"));
-  const Boxed<std::string> b(std::string("b"));
-  EXPECT_TRUE(a < b);
-  EXPECT_FALSE(b < a);
-  EXPECT_TRUE(a <= Boxed<std::string>(std::string("a")));
-}
+// Boxed deliberately has no operator<=>: with one, clang hard-errors
+// deducing the deep <=>'s return type around the recursive chain Boxed
+// exists to break (caught by CI on PR #84). The generator therefore skips
+// the defaulted <=> for recursive structs — they are equality-only — and
+// this pin keeps Boxed from ever regaining an ordering.
+static_assert(!std::three_way_comparable<Boxed<std::string>>,
+              "Boxed must stay equality-only: a deep <=> is a hard error to deduce around "
+              "recursion cycles, so generated recursive structs order never, not sometimes");
 
 TEST(BoxedTest, DeepEquality) {
   EXPECT_EQ(MakeChain(), MakeChain());

@@ -1,7 +1,6 @@
 #ifndef SMITHY_CORE_BOXED_H_
 #define SMITHY_CORE_BOXED_H_
 
-#include <compare>
 #include <memory>
 #include <utility>
 
@@ -42,9 +41,11 @@ class Boxed {
 
   friend bool operator==(const Boxed& a, const Boxed& b) { return *a.value_ == *b.value_; }
   friend bool operator!=(const Boxed& a, const Boxed& b) { return !(a == b); }
-  // Deep like equality, so boxed members don't block a struct's defaulted
-  // operator<=> (issue #49).
-  friend auto operator<=>(const Boxed& a, const Boxed& b) { return *a.value_ <=> *b.value_; }
+  // Deliberately NO operator<=>: an auto-returning deep <=> must deduce its
+  // type through the recursive chain Boxed exists to break, and clang
+  // hard-errors on the cycle (std::optional's constraint check instantiates
+  // it eagerly). Without one, a recursive struct's defaulted <=> is cleanly
+  // deleted instead: recursion keeps deep equality only.
 
  private:
   std::unique_ptr<T> value_;

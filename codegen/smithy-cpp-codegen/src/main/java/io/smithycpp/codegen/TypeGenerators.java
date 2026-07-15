@@ -160,11 +160,81 @@ final class TypeGenerators {
     if (!shape.members().isEmpty()) {
       writer.write("");
     }
-    writer.addInclude("<compare>");
     writer.write("friend bool operator==(const $1L&, const $1L&) = default;", name);
-    writer.write("friend auto operator<=>(const $1L&, const $1L&) = default;", name);
+    writeOrdering(writer, name, orderable(shape));
     writer.closeBlock("};");
     writer.write("");
+  }
+
+  private final java.util.Map<software.amazon.smithy.model.shapes.ShapeId, Boolean> orderableCache =
+      new java.util.HashMap<>();
+
+  private boolean orderable(Shape shape) {
+    return orderable(context, shape, orderableCache);
+  }
+
+  /**
+   * Emits the defaulted operator<=> when every member is orderable — otherwise a comment, so the
+   * generated header never carries a defaulted-but-deleted operator (clang warns on those, and an
+   * auto-returning deep <=> around a recursion cycle is a hard error; see generated-types.md's
+   * ordering caveats).
+   */
+  static void writeOrdering(CppWriter writer, String name, boolean orderable) {
+    if (orderable) {
+      writer.addInclude("<compare>");
+      writer.write("friend auto operator<=>(const $1L&, const $1L&) = default;", name);
+    } else {
+      writer.write("// Equality-only: a member type has no ordering (smithy::Document or");
+      writer.write("// recursion via smithy::Boxed) — see generated-types.md.");
+    }
+  }
+
+  /**
+   * Whether the shape's generated (or mapped) C++ type is three-way-comparable. Documents never
+   * are; boxed (recursive) members never are; aggregates require every member to be. Cycles resolve
+   * to false via the in-progress cache entry, matching Boxed's deliberate lack of <=>. Callers hold
+   * the memo map, so repeated queries stay linear in the model.
+   */
+  static boolean orderable(
+      CppContext context,
+      Shape shape,
+      java.util.Map<software.amazon.smithy.model.shapes.ShapeId, Boolean> cache) {
+    Boolean cached = cache.get(shape.getId());
+    if (cached != null) {
+      return cached;
+    }
+    cache.put(shape.getId(), false); // in-progress: recursion is not orderable
+    boolean result;
+    if (shape.isDocumentShape()) {
+      result = false;
+    } else if (shape.isListShape()) {
+      result =
+          orderable(
+              context,
+              context.model().expectShape(shape.asListShape().get().getMember().getTarget()),
+              cache);
+    } else if (shape.isMapShape()) {
+      result =
+          orderable(
+              context,
+              context.model().expectShape(shape.asMapShape().get().getValue().getTarget()),
+              cache);
+    } else if (shape.isStructureShape() || shape.isUnionShape()) {
+      result = true;
+      for (MemberShape member : shape.members()) {
+        boolean boxed =
+            shape.isStructureShape()
+                && context.cppSymbols().toMemberSymbol(member).getName().contains("smithy::Boxed<");
+        if (boxed || !orderable(context, context.model().expectShape(member.getTarget()), cache)) {
+          result = false;
+          break;
+        }
+      }
+    } else {
+      result = true;
+    }
+    cache.put(shape.getId(), result);
+    return result;
   }
 
   void generateEnum(EnumShape shape) {
@@ -278,6 +348,7 @@ final class TypeGenerators {
         name,
         tagged,
         /* withFactories= */ true,
+        orderable(shape),
         "/// True until one of the From* factories has been used.",
         "/// Name of the engaged member, \"(empty)\" until a From* factory has run.",
         null);
@@ -298,11 +369,11 @@ final class TypeGenerators {
       String name,
       List<TaggedMember> members,
       boolean withFactories,
+      boolean withOrdering,
       String emptyDoc,
       String caseNameDoc,
       Runnable extraPublic) {
-    writer.addInclude("<compare>").addInclude("<cstddef>").addInclude("<utility>");
-    writer.addInclude("<variant>");
+    writer.addInclude("<cstddef>").addInclude("<utility>").addInclude("<variant>");
     writer.addInclude("\"smithy/core/fatal.h\"");
 
     writer.openBlock("class $L {", name);
@@ -364,7 +435,7 @@ final class TypeGenerators {
     writer.closeBlock("}");
     writer.write("");
     writer.write("friend bool operator==(const $1L&, const $1L&) = default;", name);
-    writer.write("friend auto operator<=>(const $1L&, const $1L&) = default;", name);
+    writeOrdering(writer, name, withOrdering);
     writer.write("").dedent();
 
     writer.write("private:").indent();

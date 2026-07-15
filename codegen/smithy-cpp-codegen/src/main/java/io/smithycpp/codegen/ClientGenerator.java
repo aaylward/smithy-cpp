@@ -181,15 +181,21 @@ final class ClientGenerator {
     w.write("/// typed and exhaustive instead of string-compared. FromError() is empty()");
     w.write("/// when the error is none of this operation's modeled errors (transport,");
     w.write("/// serialization, unknown, or another operation's error).");
+    boolean withOrdering =
+        errors.stream().allMatch(e -> TypeGenerators.orderable(context, e, clientOrderableCache));
     TypeGenerators.emitTaggedVariant(
         w,
         listingName,
         members,
         /* withFactories= */ false,
+        withOrdering,
         "/// True when the error is none of this operation's modeled errors.",
         "/// Name of the engaged member, \"(empty)\" when none matched.",
         () -> writeFromError(w, listingName, errors));
   }
+
+  private final java.util.Map<software.amazon.smithy.model.shapes.ShapeId, Boolean>
+      clientOrderableCache = new java.util.HashMap<>();
 
   private void writeFromError(CppWriter w, String listingName, List<StructureShape> errors) {
     w.write("/// Matches `error` against this operation's modeled errors. An engaged");

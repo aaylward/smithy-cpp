@@ -579,7 +579,8 @@ class OpenDiscriminatedUnion {
     }
 
     friend bool operator==(const OpenDiscriminatedUnion&, const OpenDiscriminatedUnion&) = default;
-    friend auto operator<=>(const OpenDiscriminatedUnion&, const OpenDiscriminatedUnion&) = default;
+    // Equality-only: a member type has no ordering (smithy::Document or
+    // recursion via smithy::Boxed) — see generated-types.md.
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -639,7 +640,8 @@ class OpenTaggedUnion {
     }
 
     friend bool operator==(const OpenTaggedUnion&, const OpenTaggedUnion&) = default;
-    friend auto operator<=>(const OpenTaggedUnion&, const OpenTaggedUnion&) = default;
+    // Equality-only: a member type has no ordering (smithy::Document or
+    // recursion via smithy::Boxed) — see generated-types.md.
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -699,7 +701,8 @@ class OpenUnionsPayload {
     }
 
     friend bool operator==(const OpenUnionsPayload&, const OpenUnionsPayload&) = default;
-    friend auto operator<=>(const OpenUnionsPayload&, const OpenUnionsPayload&) = default;
+    // Equality-only: a member type has no ordering (smithy::Document or
+    // recursion via smithy::Boxed) — see generated-types.md.
 
   private:
     void require_is(std::size_t index, const char* requested) const {
@@ -716,7 +719,8 @@ struct OpenUnionsInput {
   OpenUnionsPayload data{};
 
   friend bool operator==(const OpenUnionsInput&, const OpenUnionsInput&) = default;
-  friend auto operator<=>(const OpenUnionsInput&, const OpenUnionsInput&) = default;
+  // Equality-only: a member type has no ordering (smithy::Document or
+  // recursion via smithy::Boxed) — see generated-types.md.
 };
 
 
@@ -724,7 +728,8 @@ struct OpenUnionsOutput {
   OpenUnionsPayload data{};
 
   friend bool operator==(const OpenUnionsOutput&, const OpenUnionsOutput&) = default;
-  friend auto operator<=>(const OpenUnionsOutput&, const OpenUnionsOutput&) = default;
+  // Equality-only: a member type has no ordering (smithy::Document or
+  // recursion via smithy::Boxed) — see generated-types.md.
 };
 
 

@@ -165,6 +165,45 @@ class GeneratedCodeShapeTest {
   }
 
   @Test
+  void nonOrderableMembersSkipTheDefaultedOrdering() {
+    // clang hard-errors deducing a deep <=> around a Boxed recursion cycle,
+    // and warns on any defaulted-but-deleted operator — so shapes that can't
+    // order (recursion, Document members, transitively) get an equality-only
+    // comment instead of a defaulted operator<=> (caught by CI on PR #84).
+    String model =
+        """
+        $version: "2.0"
+        namespace test.shape
+        use alloy#simpleRestJson
+
+        @simpleRestJson
+        service Svc { version: "1", operations: [Ping] }
+
+        @http(method: "POST", uri: "/ping")
+        operation Ping { input := { tree: Node, wrapper: Wrapper, plain: Plain } }
+
+        structure Node { value: Integer, next: Node }
+        structure Meta { data: Document }
+        structure Wrapper { meta: Meta }
+        structure Plain { id: String }
+        """;
+    String types =
+        PluginTestHarness.generate(model, "test.shape#Svc", "test::shape")
+            .expectFileString("/include/test/shape/types.h");
+    assertTrue(
+        types.contains("friend bool operator==(const Node&, const Node&) = default;"), types);
+    assertFalse(types.contains("operator<=>(const Node&"), types);
+    assertFalse(types.contains("operator<=>(const Meta&"), types);
+    assertFalse(types.contains("operator<=>(const Wrapper&"), types);
+    assertTrue(types.contains("// Equality-only: a member type has no ordering"), types);
+    // Non-orderability propagates: the input struct contains Node/Wrapper, so
+    // it skips too — while the plain sibling keeps its ordering.
+    assertFalse(types.contains("operator<=>(const PingInput&"), types);
+    assertTrue(
+        types.contains("friend auto operator<=>(const Plain&, const Plain&) = default;"), types);
+  }
+
+  @Test
   void typedErrorListingNameCollisionFailsWithContext() {
     // The listing's synthetic name <Op>Errors can collide with a modeled
     // shape; that must be an attributed cpp-codegen diagnostic, not silent

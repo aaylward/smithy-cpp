@@ -37,8 +37,10 @@ compatibility contract: changes to it are breaking for consumers of generated co
   `@required` + `@default` reads absence as the default instead of failing.
 - **Ordering**: every generated type defaults `operator<=>` beside `operator==`, so structs,
   unions, and enums key `std::map`/`std::set` and sort (issue #49). Caveats: a struct with a
-  member that isn't three-way-comparable (notably `smithy::Document`) gets a deleted `<=>` —
-  equality still works, ordering doesn't; `float`/`double` members make the ordering partial.
+  member that isn't three-way-comparable gets a deleted `<=>` — equality still works, ordering
+  doesn't. That covers `smithy::Document` members and recursive structures (`smithy::Boxed`
+  deliberately has no `<=>`: deducing a deep ordering around the cycle it exists to break is a
+  hard error on clang). `float`/`double` members make the ordering partial.
 - **Deliberately not generated**: builders (C++20 designated initializers are the construction
   story: `GetOrderInput{.orderId = "o-1"}`); `std::hash`, `operator<<`, and `std::format`
   support (deferred until the runtime types have a hashing/printing story — `<=>` already

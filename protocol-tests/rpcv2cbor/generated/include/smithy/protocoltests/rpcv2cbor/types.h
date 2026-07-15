@@ -501,7 +501,8 @@ struct RecursiveShapesInputOutputNested1 {
   std::optional<smithy::Boxed<RecursiveShapesInputOutputNested2>> nested{};
 
   friend bool operator==(const RecursiveShapesInputOutputNested1&, const RecursiveShapesInputOutputNested1&) = default;
-  friend auto operator<=>(const RecursiveShapesInputOutputNested1&, const RecursiveShapesInputOutputNested1&) = default;
+  // Equality-only: a member type has no ordering (smithy::Document or
+  // recursion via smithy::Boxed) — see generated-types.md.
 };
 
 
@@ -512,7 +513,8 @@ struct RecursiveShapesInputOutputNested2 {
   std::optional<smithy::Boxed<RecursiveShapesInputOutputNested1>> recursiveMember{};
 
   friend bool operator==(const RecursiveShapesInputOutputNested2&, const RecursiveShapesInputOutputNested2&) = default;
-  friend auto operator<=>(const RecursiveShapesInputOutputNested2&, const RecursiveShapesInputOutputNested2&) = default;
+  // Equality-only: a member type has no ordering (smithy::Document or
+  // recursion via smithy::Boxed) — see generated-types.md.
 };
 
 
@@ -520,7 +522,8 @@ struct RecursiveShapesInput {
   std::optional<RecursiveShapesInputOutputNested1> nested{};
 
   friend bool operator==(const RecursiveShapesInput&, const RecursiveShapesInput&) = default;
-  friend auto operator<=>(const RecursiveShapesInput&, const RecursiveShapesInput&) = default;
+  // Equality-only: a member type has no ordering (smithy::Document or
+  // recursion via smithy::Boxed) — see generated-types.md.
 };
 
 
@@ -528,7 +531,8 @@ struct RecursiveShapesOutput {
   std::optional<RecursiveShapesInputOutputNested1> nested{};
 
   friend bool operator==(const RecursiveShapesOutput&, const RecursiveShapesOutput&) = default;
-  friend auto operator<=>(const RecursiveShapesOutput&, const RecursiveShapesOutput&) = default;
+  // Equality-only: a member type has no ordering (smithy::Document or
+  // recursion via smithy::Boxed) — see generated-types.md.
 };
 
 }  // namespace smithy::protocoltests::rpcv2cbor

@@ -47,25 +47,6 @@ std::function<http::HttpResponse(const http::HttpRequest&)> TooManyRequests(
   };
 }
 
-Middleware HealthEndpoint(std::string path) {
-  return [path = std::move(path)](http::RequestHandler next) {
-    return [path, next = std::move(next)](const http::HttpRequest& request) {
-      const std::string_view target(request.target);
-      if ((request.method == "GET" || request.method == "HEAD") &&
-          target.substr(0, target.find('?')) == path) {
-        http::HttpResponse response;
-        response.status = 200;
-        response.headers.Set("content-type", "application/json");
-        if (request.method == "GET") {
-          response.body = R"({"status":"healthy"})";
-        }
-        return response;
-      }
-      return next(request);
-    };
-  };
-}
-
 namespace {
 
 // A throwing observation sink (e.g. a metrics backend under backpressure)
@@ -82,7 +63,71 @@ void CallContained(const Callback& callback, const Observation& observation, con
   }
 }
 
+// Same containment policy for readiness probes: a throw is a failing
+// dependency, never an unwind into the transport — but the exception
+// message is the one clue to why /readyz is flapping, so keep the log
+// trail.
+bool ProbeContained(const ReadinessCheck& check) {
+  try {
+    return check.probe();
+  } catch (const std::exception& e) {
+    std::clog << "smithy: readiness probe '" << check.name << "' threw: " << e.what() << "\n";
+  } catch (...) {
+    std::clog << "smithy: readiness probe '" << check.name << "' threw a non-std exception\n";
+  }
+  return false;
+}
+
 }  // namespace
+
+Middleware HealthEndpoint(std::string path, std::vector<ReadinessCheck> checks) {
+  // Composition-time validation, like Observe's null-sink check: a null
+  // probe would otherwise present as a permanent dependency outage, and a
+  // name with JSON syntax in it would corrupt the failing list exactly when
+  // monitoring is parsing it.
+  for (const ReadinessCheck& check : checks) {
+    if (check.probe == nullptr) {
+      throw std::invalid_argument("smithy::server::HealthEndpoint: check '" + check.name +
+                                  "' has a null probe");
+    }
+    for (const char c : check.name) {
+      if (c == '"' || c == '\\' || static_cast<unsigned char>(c) < 0x20) {
+        throw std::invalid_argument("smithy::server::HealthEndpoint: check name '" + check.name +
+                                    "' contains a quote, backslash, or control character");
+      }
+    }
+  }
+  return [path = std::move(path), checks = std::move(checks)](http::RequestHandler next) {
+    return [path, checks, next = std::move(next)](const http::HttpRequest& request) {
+      const std::string_view target(request.target);
+      if ((request.method == "GET" || request.method == "HEAD") &&
+          target.substr(0, target.find('?')) == path) {
+        // Probes run per request: a readiness endpoint that caches would
+        // keep answering 200 while a dependency is down.
+        std::string failing;
+        for (const ReadinessCheck& check : checks) {
+          if (!ProbeContained(check)) {
+            if (!failing.empty()) {
+              failing += ',';
+            }
+            failing += '"';
+            failing += check.name;
+            failing += '"';
+          }
+        }
+        http::HttpResponse response;
+        response.status = failing.empty() ? 200 : 503;
+        response.headers.Set("content-type", "application/json");
+        if (request.method == "GET") {
+          response.body = failing.empty() ? R"({"status":"healthy"})"
+                                          : R"({"status":"unhealthy","failing":[)" + failing + "]}";
+        }
+        return response;
+      }
+      return next(request);
+    };
+  };
+}
 
 Middleware Observe(std::function<void(const RequestObservation&)> on_complete,
                    std::function<void(const RequestStart&)> on_start,

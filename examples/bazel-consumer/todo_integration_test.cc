@@ -196,13 +196,14 @@ TEST(TodoJsonRpcTest, SameModelServesJsonRpc2) {
 }
 
 // The production middleware chain from the guide — Guard, then Observe, then
-// HealthEndpoint — composed around a generated server and driven by the
-// generated client.
+// liveness and readiness HealthEndpoints — composed around a generated server
+// and driven by the generated client.
 TEST(TodoMiddlewareTest, GuardObserveAndHealthComposeAroundTheServer) {
   TodoServer server(std::make_shared<InMemoryHandler>());
   int started = 0;
   int completed = 0;
   bool admit = true;
+  bool ready = true;
   auto handler = smithy::server::Chain(
       {smithy::server::Guard([&admit](const smithy::http::HttpRequest&) { return admit; },
                              smithy::server::TooManyRequests(std::chrono::seconds(1))),
@@ -210,7 +211,8 @@ TEST(TodoMiddlewareTest, GuardObserveAndHealthComposeAroundTheServer) {
        smithy::server::Observe(
            [&completed](const smithy::server::RequestObservation&) { ++completed; },
            [&started](const smithy::server::RequestStart&) { ++started; }),
-       smithy::server::HealthEndpoint()},
+       smithy::server::HealthEndpoint(),
+       smithy::server::HealthEndpoint("/readyz", {{"db", [&ready] { return ready; }}})},
       server.Handler());
 
   auto loopback = std::make_shared<smithy::http::Loopback>();
@@ -224,6 +226,20 @@ TEST(TodoMiddlewareTest, GuardObserveAndHealthComposeAroundTheServer) {
   ASSERT_TRUE(health_response.ok());
   EXPECT_EQ(health_response->status, 200);
   EXPECT_EQ(health_response->body, R"({"status":"healthy"})");
+
+  // Readiness re-probes on every request: 200 while the dependency serves,
+  // 503 naming it once it stops.
+  smithy::http::HttpRequest readyz;
+  readyz.method = "GET";
+  readyz.target = "/readyz";
+  const auto ready_response = loopback->Send(readyz);
+  ASSERT_TRUE(ready_response.ok());
+  EXPECT_EQ(ready_response->status, 200);
+  ready = false;
+  const auto unready_response = loopback->Send(readyz);
+  ASSERT_TRUE(unready_response.ok());
+  EXPECT_EQ(unready_response->status, 503);
+  EXPECT_EQ(unready_response->body, R"({"status":"unhealthy","failing":["db"]})");
 
   // The generated client works through the chain.
   smithy::ClientConfig config;
@@ -245,8 +261,9 @@ TEST(TodoMiddlewareTest, GuardObserveAndHealthComposeAroundTheServer) {
   EXPECT_EQ(denied_response->status, 429);
   EXPECT_EQ(denied_response->headers.Get("retry-after").value_or(""), "1");
 
-  EXPECT_EQ(started, 2);  // health + AddTask; the rejected request never reached Observe
-  EXPECT_EQ(completed, 2);
+  // health + two readyz + AddTask; the rejected request never reached Observe.
+  EXPECT_EQ(started, 4);
+  EXPECT_EQ(completed, 4);
 }
 
 }  // namespace

@@ -3,6 +3,8 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -341,6 +343,105 @@ TEST(HealthEndpointTest, CustomPath) {
 
   request.target = "/health";
   EXPECT_EQ(handler(request).body, "router");
+}
+
+TEST(HealthEndpointTest, ReadinessPassesWhenEveryCheckPasses) {
+  auto handler = Chain(
+      {HealthEndpoint("/readyz", {{"db", [] { return true; }}, {"cache", [] { return true; }}})},
+      [](const http::HttpRequest&) { return Ok("router"); });
+  http::HttpRequest request;
+  request.method = "GET";
+  request.target = "/readyz";
+  const auto response = handler(request);
+  EXPECT_EQ(response.status, 200);
+  EXPECT_EQ(response.body, R"({"status":"healthy"})");
+}
+
+TEST(HealthEndpointTest, ReadinessIs503NamingEveryFailingCheck) {
+  auto handler = Chain({HealthEndpoint("/readyz", {{"db", [] { return false; }},
+                                                   {"cache", [] { return true; }},
+                                                   {"queue", [] { return false; }}})},
+                       [](const http::HttpRequest&) { return Ok("router"); });
+  http::HttpRequest request;
+  request.method = "GET";
+  request.target = "/readyz";
+  const auto response = handler(request);
+  EXPECT_EQ(response.status, 503);
+  EXPECT_EQ(response.headers.Get("content-type").value_or(""), "application/json");
+  EXPECT_EQ(response.body, R"({"status":"unhealthy","failing":["db","queue"]})");
+}
+
+TEST(HealthEndpointTest, ReadinessProbesRunPerRequestNotOnce) {
+  // A cached answer would keep saying 200 while a dependency is down.
+  bool ready = true;
+  auto handler = Chain({HealthEndpoint("/readyz", {{"db", [&] { return ready; }}})},
+                       [](const http::HttpRequest&) { return Ok("router"); });
+  http::HttpRequest request;
+  request.method = "GET";
+  request.target = "/readyz";
+  EXPECT_EQ(handler(request).status, 200);
+  ready = false;
+  EXPECT_EQ(handler(request).status, 503);
+  ready = true;
+  EXPECT_EQ(handler(request).status, 200);
+}
+
+TEST(HealthEndpointTest, AThrowingProbeIsAFailingCheckNotAnUnwind) {
+  auto handler = Chain(
+      {HealthEndpoint("/readyz", {{"db", []() -> bool { throw std::runtime_error("down"); }}})},
+      [](const http::HttpRequest&) { return Ok("router"); });
+  http::HttpRequest request;
+  request.method = "GET";
+  request.target = "/readyz";
+  const auto response = handler(request);
+  EXPECT_EQ(response.status, 503);
+  EXPECT_EQ(response.body, R"({"status":"unhealthy","failing":["db"]})");
+}
+
+TEST(HealthEndpointTest, AThrowingProbeLogsTheCheckNameAndReason) {
+  // The exception message is the one clue to why /readyz is flapping; the
+  // 503 body names the check but containment must not discard the why.
+  auto handler = Chain(
+      {HealthEndpoint("/readyz",
+                      {{"db", []() -> bool { throw std::runtime_error("connection refused"); }}})},
+      [](const http::HttpRequest&) { return Ok("router"); });
+  http::HttpRequest request;
+  request.method = "GET";
+  request.target = "/readyz";
+
+  std::ostringstream log;
+  std::streambuf* previous = std::clog.rdbuf(log.rdbuf());
+  (void)handler(request);
+  std::clog.rdbuf(previous);
+
+  EXPECT_NE(log.str().find("readiness probe 'db'"), std::string::npos) << log.str();
+  EXPECT_NE(log.str().find("connection refused"), std::string::npos) << log.str();
+}
+
+TEST(HealthEndpointTest, NullProbeThrowsAtComposition) {
+  // Contained per-request, a null probe would read as a permanent outage.
+  EXPECT_THROW(HealthEndpoint("/readyz", {{"db", nullptr}}), std::invalid_argument);
+}
+
+TEST(HealthEndpointTest, NameThatWouldCorruptTheJsonThrowsAtComposition) {
+  // Names land verbatim between the failing list's quotes; reject at
+  // composition time what would produce invalid JSON during an outage.
+  for (const std::string name : {"d\"b", "d\\b", "d\nb"}) {
+    EXPECT_THROW(HealthEndpoint("/readyz", {{name, [] { return true; }}}), std::invalid_argument)
+        << name;
+  }
+  EXPECT_NO_THROW(HealthEndpoint("/readyz", {{"db:primary/us-east 1", [] { return true; }}}));
+}
+
+TEST(HealthEndpointTest, ReadinessAnswersHeadWithStatusOnly) {
+  auto handler = Chain({HealthEndpoint("/readyz", {{"db", [] { return false; }}})},
+                       [](const http::HttpRequest&) { return Ok("router"); });
+  http::HttpRequest request;
+  request.method = "HEAD";
+  request.target = "/readyz";
+  const auto response = handler(request);
+  EXPECT_EQ(response.status, 503);
+  EXPECT_EQ(response.body, "");
 }
 
 TEST(HealthEndpointTest, AnswersHeadWithoutABody) {

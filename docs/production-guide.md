@@ -230,6 +230,51 @@ reports a 500 completion before the exception reaches the transport's
 containment, so an in-flight gauge can never leak. Throwing callbacks are
 logged and swallowed.
 
+## Serving lifecycle
+
+The pattern for a long-running server is SIGTERM/SIGINT → `Start`/block/`Stop`, with the drain
+([Server hardening](#server-hardening) has the contract) doing the graceful half. This is
+`main()` from [`examples/simplerestjson/serve_main.cc`](../examples/simplerestjson/serve_main.cc)
+verbatim — compiled, lifecycle-tested in CI, and runnable as
+`bazel run //examples/simplerestjson:bookstore_server`:
+
+```cpp
+int main(int argc, char** argv) {
+  sigset_t shutdown_signals;
+  sigemptyset(&shutdown_signals);
+  sigaddset(&shutdown_signals, SIGINT);
+  sigaddset(&shutdown_signals, SIGTERM);
+  // Before Start(): threads the transport creates inherit this mask, so the
+  // shutdown signals reach only the sigwait() below.
+  pthread_sigmask(SIG_BLOCK, &shutdown_signals, nullptr);
+
+  BookstoreServer server(std::make_shared<InMemoryBookstore>());
+  smithy::http::BeastServerTransport transport({
+      .address = "0.0.0.0",
+      .port = argc > 1 ? std::atoi(argv[1]) : 8080,  // 0 binds an ephemeral port
+      .drain_timeout_seconds = 10,
+  });
+  smithy::Outcome<smithy::Unit> started = transport.Start(server.Handler());
+  if (!started.ok()) {
+    std::fprintf(stderr, "bookstore: start failed: %s\n", started.error().message().c_str());
+    return 1;
+  }
+  std::fprintf(stderr, "bookstore: serving on :%d (SIGTERM or Ctrl-C drains and exits)\n",
+               transport.port());
+
+  int signal_number = 0;
+  sigwait(&shutdown_signals, &signal_number);  // serve until SIGTERM/SIGINT
+  std::fprintf(stderr, "bookstore: signal %d, draining\n", signal_number);
+  transport.Stop();  // in-flight requests get drain_timeout_seconds to finish
+  return 0;
+}
+```
+
+Under Kubernetes: SIGTERM is exactly what the kubelet sends, so size
+`terminationGracePeriodSeconds` above `drain_timeout_seconds`, and compose the `/livez` +
+`/readyz` probes from the middleware chain above in front of the handler — readiness flips
+traffic away while the drain finishes.
+
 ## Observability
 
 The runtime's observability story is deliberately SDK-free: enriched hooks

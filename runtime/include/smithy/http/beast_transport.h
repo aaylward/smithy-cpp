@@ -11,8 +11,11 @@
 #include "smithy/http/transport.h"
 
 namespace smithy {
-struct ClientConfig;  // smithy/client/config.h; kept out of this header so
-                      // the transport layer's include graph stays one-way.
+// smithy/client/config.h — forward-declared so this header stays includable
+// without the client headers. The library dependency is deliberate:
+// FromConfig is the ClientConfig→transport bridge, and it lives here because
+// only this side can construct a Beast client while :client stays Boost-free.
+struct ClientConfig;
 }  // namespace smithy
 
 namespace smithy::http {
@@ -86,12 +89,9 @@ class BeastHttpClient : public HttpClient {
     std::string host;
     int port = 80;
     bool tls = false;
-    // Certificate + hostname verification is on by default. `ca_pem`
-    // replaces the system trust roots (private CAs, tests); setting
-    // `verify_peer = false` disables verification entirely — never do that
-    // in production.
-    bool verify_peer = true;
-    std::string ca_pem;
+    // Verification knobs when `tls` is true — the same struct ClientConfig
+    // carries, so FromConfig copies it wholesale and the two can't drift.
+    TlsOptions tls_options;
     int request_timeout_ms = 30000;
     // Idle keep-alive connections retained for reuse.
     std::size_t max_idle_connections = 4;

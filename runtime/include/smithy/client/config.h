@@ -31,16 +31,9 @@ struct ClientConfig {
   // TLS knobs for transports constructed from this config (issue #49):
   // BeastHttpClient::FromConfig honors them; the built-in socket transport is
   // plaintext-only, and generated Create() rejects https endpoints without an
-  // injected transport.
-  struct TlsOptions {
-    // Certificate + hostname verification is on by default. `ca_pem`
-    // replaces the system trust roots (PEM text, not a file path — private
-    // CAs, tests); setting `verify_peer = false` disables verification
-    // entirely — never do that in production.
-    bool verify_peer = true;
-    std::string ca_pem;
-  };
-  TlsOptions tls;
+  // injected transport. Semantics and defaults live on the shared struct
+  // (smithy/http/transport.h).
+  http::TlsOptions tls;
 
   // Idle keep-alive connections a pooling transport (FromConfig-built)
   // retains for reuse; the built-in socket transport opens one connection

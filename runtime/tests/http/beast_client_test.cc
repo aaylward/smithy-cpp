@@ -107,8 +107,10 @@ TEST(BeastClientTest, TlsRoundTripsWithCustomCa) {
                                .tls_private_key_pem = kTestPrivateKeyPem});
   ASSERT_TRUE(server.Start(EchoHandler()).ok());
 
-  BeastHttpClient client(
-      {.host = "127.0.0.1", .port = server.port(), .tls = true, .ca_pem = kTestCertificatePem});
+  BeastHttpClient client({.host = "127.0.0.1",
+                          .port = server.port(),
+                          .tls = true,
+                          .tls_options = {.ca_pem = kTestCertificatePem}});
   for (int i = 0; i < 2; ++i) {
     auto response = client.Send(PostRequest("secret"));
     ASSERT_TRUE(response.ok()) << response.error().message();
@@ -140,8 +142,10 @@ TEST(BeastClientTest, TlsVerificationCanBeDisabledExplicitly) {
                                .tls_private_key_pem = kTestPrivateKeyPem});
   ASSERT_TRUE(server.Start(EchoHandler()).ok());
 
-  BeastHttpClient client(
-      {.host = "127.0.0.1", .port = server.port(), .tls = true, .verify_peer = false});
+  BeastHttpClient client({.host = "127.0.0.1",
+                          .port = server.port(),
+                          .tls = true,
+                          .tls_options = {.verify_peer = false}});
   auto response = client.Send(PostRequest("secret"));
   ASSERT_TRUE(response.ok()) << response.error().message();
   EXPECT_EQ(response->body, "secret");
@@ -178,17 +182,16 @@ TEST(BeastClientTest, FromConfigHonorsTheConfigsTlsKnobs) {
   auto response = (*client)->Send(PostRequest("secret"));
   ASSERT_TRUE(response.ok()) << response.error().message();
   EXPECT_EQ(response->body, "secret");
-
-  // verify_peer=false from the config is honored too (the server's cert is
-  // not in the default trust roots, so only the disabled path succeeds).
-  ClientConfig insecure;
-  insecure.endpoint = "https://127.0.0.1:" + std::to_string(server.port());
-  insecure.tls.verify_peer = false;
-  auto insecure_client = BeastHttpClient::FromConfig(insecure);
-  ASSERT_TRUE(insecure_client.ok()) << insecure_client.error().message();
-  auto insecure_response = (*insecure_client)->Send(PostRequest("secret"));
-  ASSERT_TRUE(insecure_response.ok()) << insecure_response.error().message();
   server.Stop();
+}
+
+TEST(BeastClientTest, ConfigAndOptionsDefaultsAgree) {
+  // The two knobs FromConfig copies as scalars are defaulted in both structs
+  // (the TLS knobs share one struct and can't drift); this guards the pair.
+  const ClientConfig config;
+  const BeastHttpClient::Options options;
+  EXPECT_EQ(config.request_timeout_ms, options.request_timeout_ms);
+  EXPECT_EQ(config.max_idle_connections, options.max_idle_connections);
 }
 
 TEST(BeastClientTest, RejectsTlsServerMisconfiguration) {

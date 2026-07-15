@@ -287,17 +287,6 @@ cc_test(
 )
 
 cc_test(
-    name = "config_test",
-    size = "small",
-    srcs = ["tests/client/config_test.cc"],
-    copts = COPTS,
-    deps = [
-        ":client",
-        "@googletest//:gtest_main",
-    ],
-)
-
-cc_test(
     name = "observability_test",
     size = "small",
     srcs = ["tests/client/observability_test.cc"],

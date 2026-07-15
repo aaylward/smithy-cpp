@@ -82,7 +82,8 @@ terminates the process with the union, requested, and engaged member named (e.g.
 `smithy: MilkOption::as_dairy(): engaged member is oat`) — never a context-free
 `std::bad_variant_access`. For access that can't die, branch on `is_x()`, use
 `as_x_or_null()` (`if (const auto* dairy = milk.as_dairy_or_null()) …`), or `visit()` with a
-visitor that covers every member plus `std::monostate` for the empty state.
+visitor that covers every member plus `std::monostate` for the empty state —
+`smithy::Overloaded` (`smithy/core/overloaded.h`) builds one from lambdas.
 
 ## Serde (Phase 3)
 

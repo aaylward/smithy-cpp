@@ -255,7 +255,7 @@ final class TypeGenerators {
           member.getMemberName(), "From" + CaseUtils.toPascalCase(symbols().toMemberName(member)));
     }
     requireDistinctNames("union", shape.getId(), folded, java.util.Set.of());
-    writer.addInclude("<utility>").addInclude("<variant>");
+    writer.addInclude("<cstddef>").addInclude("<utility>").addInclude("<variant>");
     writer.addInclude("\"smithy/core/fatal.h\"");
 
     writeDocs(shape);
@@ -278,11 +278,7 @@ final class TypeGenerators {
       writer.closeBlock("}");
       writer.write("bool is_$L() const { return value_.index() == $L; }", memberName, index);
       writer.openBlock("const $L& as_$L() const {", type.getName(), memberName);
-      writer.write(
-          "if (!is_$L()) smithy::internal::FatalWrongUnionAccess(\"$L\", \"$L\", case_name());",
-          memberName,
-          name,
-          memberName);
+      writer.write("require_is($L, $S);", index, memberName);
       writer.write("return std::get<$L>(value_);", index);
       writer.closeBlock("}");
       writer.write("/// The engaged member, or nullptr when another member (or none) is set.");
@@ -296,10 +292,12 @@ final class TypeGenerators {
     writer.write("/// True until one of the From* factories has been used.");
     writer.write("bool empty() const { return value_.index() == 0; }");
     writer.write("");
-    StringBuilder caseNames = new StringBuilder("\"(empty)\"");
-    for (MemberShape member : members) {
-      caseNames.append(", \"").append(symbols().toMemberName(member)).append("\"");
-    }
+    String caseNames =
+        java.util.stream.Stream.concat(
+                java.util.stream.Stream.of("(empty)"),
+                members.stream().map(m -> symbols().toMemberName(m)))
+            .map(CppLiterals::stringLiteral)
+            .collect(java.util.stream.Collectors.joining(", "));
     writer.write("/// Name of the engaged member, \"(empty)\" until a From* factory has run.");
     writer.openBlock("const char* case_name() const {");
     writer.write("static constexpr const char* kNames[] = {$L};", caseNames);
@@ -317,6 +315,12 @@ final class TypeGenerators {
     writer.write("").dedent();
 
     writer.write("private:").indent();
+    writer.openBlock("void require_is(std::size_t index, const char* requested) const {");
+    writer.openBlock("if (value_.index() != index) {");
+    writer.write("smithy::internal::FatalWrongUnionAccess($S, requested, case_name());", name);
+    writer.closeBlock("}");
+    writer.closeBlock("}");
+    writer.write("");
     StringBuilder variant = new StringBuilder("std::variant<std::monostate");
     for (MemberShape member : members) {
       variant

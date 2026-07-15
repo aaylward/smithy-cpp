@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <optional>
@@ -36,7 +37,7 @@ class SinkChoice {
     }
     bool is_text() const { return value_.index() == 1; }
     const std::string& as_text() const {
-      if (!is_text()) smithy::internal::FatalWrongUnionAccess("SinkChoice", "text", case_name());
+      require_is(1, "text");
       return std::get<1>(value_);
     }
     /// The engaged member, or nullptr when another member (or none) is set.
@@ -49,7 +50,7 @@ class SinkChoice {
     }
     bool is_count() const { return value_.index() == 2; }
     const std::int32_t& as_count() const {
-      if (!is_count()) smithy::internal::FatalWrongUnionAccess("SinkChoice", "count", case_name());
+      require_is(2, "count");
       return std::get<2>(value_);
     }
     /// The engaged member, or nullptr when another member (or none) is set.
@@ -62,7 +63,7 @@ class SinkChoice {
     }
     bool is_nested() const { return value_.index() == 3; }
     const NestedConfig& as_nested() const {
-      if (!is_nested()) smithy::internal::FatalWrongUnionAccess("SinkChoice", "nested", case_name());
+      require_is(3, "nested");
       return std::get<3>(value_);
     }
     /// The engaged member, or nullptr when another member (or none) is set.
@@ -87,6 +88,12 @@ class SinkChoice {
     friend bool operator==(const SinkChoice&, const SinkChoice&) = default;
 
   private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("SinkChoice", requested, case_name());
+      }
+    }
+
     std::variant<std::monostate, std::string, std::int32_t, NestedConfig> value_;
 };
 

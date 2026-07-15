@@ -21,10 +21,13 @@ crates (PLAN §3.2a).
 - **Errors are values.** Everything that can fail returns
   `Outcome<T>`; exceptions never cross public boundaries (ADR-0003). Modeled
   service errors carry `ErrorKind::kModeled` and the error shape name in
-  `Error::code()`. Dereferencing the side an `Outcome` doesn't hold is a
-  contract violation that terminates with the error's code and message
-  (never a bare `std::bad_variant_access`); `value_or_die("context")` adds
-  caller context to that crash line.
+  `Error::code()`. Dereferencing the side an `Outcome` doesn't hold — or a
+  generated union's wrong case — is a contract violation that terminates the
+  process with context (ADR-0009); `value_or_die("context")` adds caller
+  context to that crash line. Note the server consequence: a handler's
+  wrong-side deref used to surface as a contained 500, and is now fatal —
+  a contract bug is a bug, not a request-scoped failure. (`Document`'s
+  `as_*` accessors are outside this rule for now; see ADR-0009.)
 - **`Document` is the serde pivot** (ADR-0005): typed structs ⇄ `Document` ⇄
   bytes. Blob and timestamp nodes let each codec apply its own wire rules.
 - **Transports are interfaces.** Generated code only sees

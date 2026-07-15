@@ -35,18 +35,20 @@ compatibility contract: changes to it are breaking for consumers of generated co
   default when absent from the wire. Members of `@input` structures stay client-optional per
   the spec (clients skip unset members; servers fill the default while parsing), and
   `@required` + `@default` reads absence as the default instead of failing.
-- **Ordering**: every generated type defaults `operator<=>` beside `operator==`, so structs,
-  unions, and enums key `std::map`/`std::set` and sort (issue #49). Caveats: a struct with a
-  member that isn't three-way-comparable gets a deleted `<=>` — equality still works, ordering
-  doesn't. That covers `smithy::Document` members and recursive structures (`smithy::Boxed`
-  deliberately has no `<=>`: deducing a deep ordering around the cycle it exists to break is a
-  hard error on clang). `float`/`double` members make the ordering partial.
-- **Deliberately not generated**: builders (C++20 designated initializers are the construction
-  story: `GetOrderInput{.orderId = "o-1"}`); `std::hash`, `operator<<`, and `std::format`
-  support (deferred until the runtime types have a hashing/printing story — `<=>` already
-  unblocks ordered containers, the stated pain); a distinct "absent" state for `@required`
-  members (they stay plain members; presence is enforced by server-side validation, see
-  Optionality above).
+- **Ordering**: generated types default `operator<=>` beside `operator==` whenever every member
+  is three-way-comparable, so structs, unions, and enums key `std::map`/`std::set` and sort
+  (issue #49). Types that can't order — a `smithy::Document` member, or recursion (via
+  `smithy::Boxed`, which deliberately has no `<=>`: deducing a deep ordering around the cycle
+  it exists to break is a hard error on clang), transitively through members — are
+  equality-only: the generator omits `<=>` and leaves an "Equality-only" comment in the
+  header. `float`/`double` members make the ordering partial.
+- **Deliberately not generated**:
+  - builders — C++20 designated initializers are the construction story:
+    `GetOrderInput{.orderId = "o-1"}`;
+  - `std::hash`, `operator<<`, `std::format` — deferred until the runtime types have a
+    hashing/printing story (`<=>` already unblocks ordered containers, the stated pain);
+  - a distinct "absent" state for `@required` members — they stay plain members; presence is
+    enforced by server-side validation (see Optionality above).
 - **Docs**: `@documentation` becomes `///` comments.
 - **Files**: per module, `include/<namespace path>/types.h`, `serde.h` + `src/serde.cc`,
   `client.h` + `src/client.cc`, and a generated `BUILD.bazel` exposing `cc_library ":types"`
@@ -68,8 +70,6 @@ class CoffeeType {
   // conversion from making comparisons ambiguous).
 };
 ```
-
-`switch (coffee) { case CoffeeType::Value::kDrip: ... }` needs no `.value()` call.
 
 Constants are `k` + PascalCase of the member name (`DRIP` → `kDrip`, `OAT_MILK` → `kOatMilk`).
 Unknown-value preservation means a round trip through an old client never corrupts data written

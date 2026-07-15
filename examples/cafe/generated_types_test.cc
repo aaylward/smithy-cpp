@@ -41,12 +41,20 @@ TEST(GeneratedTypeOrderingTest, UnionsOrderByEngagedMemberThenValue) {
               OrderStatus::FromReady(ReadyStatus{}));
 }
 
+TEST(GeneratedTypeOrderingTest, UnionsWithUnitMembersStayOrdered) {
+  // MilkOption's `none` member is smithy::Unit; if Unit ever lost its <=>,
+  // this union's defaulted ordering would silently delete.
+  EXPECT_TRUE(MilkOption::FromNone(smithy::Unit{}) <
+              MilkOption::FromDairy(DairyMilk{.percentFat = 2.0f}));
+}
+
 TEST(GeneratedTypeOrderingTest, EnumsOrderAndCompareAgainstValues) {
-  EXPECT_TRUE(CoffeeType(CoffeeType::Value::kDrip) < CoffeeType(CoffeeType::Value::kEspresso));
+  const CoffeeType drip = CoffeeType::Value::kDrip;  // implicit ctor, by design
+  EXPECT_TRUE(drip < CoffeeType(CoffeeType::Value::kEspresso));
   // The explicit Value equality friends keep comparisons unambiguous even
   // though the wrapper now converts implicitly to Value.
-  EXPECT_TRUE(CoffeeType(CoffeeType::Value::kDrip) == CoffeeType::Value::kDrip);
-  EXPECT_TRUE(CoffeeType::Value::kDrip == CoffeeType(CoffeeType::Value::kDrip));
+  EXPECT_TRUE(drip == CoffeeType::Value::kDrip);
+  EXPECT_TRUE(CoffeeType::Value::kDrip == drip);
   EXPECT_FALSE(CoffeeType::FromString("OAT_FOAM") == CoffeeType::Value::kDrip);
 }
 

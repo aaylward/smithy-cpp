@@ -55,12 +55,11 @@ Nested1 MakeChain() {
 
 // Boxed deliberately has no operator<=>: with one, clang hard-errors
 // deducing the deep <=>'s return type around the recursive chain Boxed
-// exists to break (caught by CI on PR #84). The generator therefore skips
-// the defaulted <=> for recursive structs — they are equality-only — and
-// this pin keeps Boxed from ever regaining an ordering.
+// exists to break. The generator therefore skips the defaulted <=> for
+// recursive structs — they are equality-only — and this pin keeps Boxed
+// from ever regaining an ordering.
 static_assert(!std::three_way_comparable<Boxed<std::string>>,
-              "Boxed must stay equality-only: a deep <=> is a hard error to deduce around "
-              "recursion cycles, so generated recursive structs order never, not sometimes");
+              "Boxed is deliberately equality-only; see the comment above");
 
 TEST(BoxedTest, DeepEquality) {
   EXPECT_EQ(MakeChain(), MakeChain());

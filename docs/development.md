@@ -46,6 +46,11 @@ issue #43's class) still *compile*: it runs the generator inside the Bazel
 graph for every protocol, client and server mode both, and builds the result.
 Extend its `model/gauntlet.smithy` when adding a new escaping/naming rule.
 
+When a change touches what generated *headers* declare (operators, templates,
+constraints), also build with `CC=clang CXX=clang++`: gcc accepts forms clang
+rejects (e.g. deducing a defaulted `operator<=>` around a recursion cycle), and
+the local default toolchain is gcc while half the CI matrix is clang.
+
 ## Benchmarks
 
 ```sh

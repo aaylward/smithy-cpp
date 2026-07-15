@@ -166,11 +166,8 @@ final class TypeGenerators {
     writer.write("");
   }
 
-  private final java.util.Map<software.amazon.smithy.model.shapes.ShapeId, Boolean> orderableCache =
-      new java.util.HashMap<>();
-
   private boolean orderable(Shape shape) {
-    return orderable(context, shape, orderableCache);
+    return symbols().orderable(shape);
   }
 
   /**
@@ -187,54 +184,6 @@ final class TypeGenerators {
       writer.write("// Equality-only: a member type has no ordering (smithy::Document or");
       writer.write("// recursion via smithy::Boxed) — see generated-types.md.");
     }
-  }
-
-  /**
-   * Whether the shape's generated (or mapped) C++ type is three-way-comparable. Documents never
-   * are; boxed (recursive) members never are; aggregates require every member to be. Cycles resolve
-   * to false via the in-progress cache entry, matching Boxed's deliberate lack of <=>. Callers hold
-   * the memo map, so repeated queries stay linear in the model.
-   */
-  static boolean orderable(
-      CppContext context,
-      Shape shape,
-      java.util.Map<software.amazon.smithy.model.shapes.ShapeId, Boolean> cache) {
-    Boolean cached = cache.get(shape.getId());
-    if (cached != null) {
-      return cached;
-    }
-    cache.put(shape.getId(), false); // in-progress: recursion is not orderable
-    boolean result;
-    if (shape.isDocumentShape()) {
-      result = false;
-    } else if (shape.isListShape()) {
-      result =
-          orderable(
-              context,
-              context.model().expectShape(shape.asListShape().get().getMember().getTarget()),
-              cache);
-    } else if (shape.isMapShape()) {
-      result =
-          orderable(
-              context,
-              context.model().expectShape(shape.asMapShape().get().getValue().getTarget()),
-              cache);
-    } else if (shape.isStructureShape() || shape.isUnionShape()) {
-      result = true;
-      for (MemberShape member : shape.members()) {
-        boolean boxed =
-            shape.isStructureShape()
-                && context.cppSymbols().toMemberSymbol(member).getName().contains("smithy::Boxed<");
-        if (boxed || !orderable(context, context.model().expectShape(member.getTarget()), cache)) {
-          result = false;
-          break;
-        }
-      }
-    } else {
-      result = true;
-    }
-    cache.put(shape.getId(), result);
-    return result;
   }
 
   void generateEnum(EnumShape shape) {
@@ -295,10 +244,9 @@ final class TypeGenerators {
     writer.write("return unknown_;");
     writer.closeBlock("}");
     writer.write("");
-    writer.addInclude("<compare>");
     writer.write("friend bool operator==(const $1L&, const $1L&) = default;", name);
     writer.write("friend bool operator==(const $L& a, Value b) { return a.value_ == b; }", name);
-    writer.write("friend auto operator<=>(const $1L&, const $1L&) = default;", name);
+    writeOrdering(writer, name, true);
     writer.write("").dedent();
 
     writer.write("private:").indent();

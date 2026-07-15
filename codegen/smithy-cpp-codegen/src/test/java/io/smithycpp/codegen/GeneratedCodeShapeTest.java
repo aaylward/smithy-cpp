@@ -180,16 +180,22 @@ class GeneratedCodeShapeTest {
         service Svc { version: "1", operations: [Ping] }
 
         @http(method: "POST", uri: "/ping")
-        operation Ping { input := { tree: Node, wrapper: Wrapper, plain: Plain } }
+        operation Ping {
+            input := { tree: Node, wrapper: Wrapper, plain: Plain }
+            errors: [Opaque]
+        }
 
         structure Node { value: Integer, next: Node }
         structure Meta { data: Document }
         structure Wrapper { meta: Meta }
         structure Plain { id: String }
+
+        @error("client")
+        @httpError(400)
+        structure Opaque { data: Document }
         """;
-    String types =
-        PluginTestHarness.generate(model, "test.shape#Svc", "test::shape")
-            .expectFileString("/include/test/shape/types.h");
+    var manifest = PluginTestHarness.generate(model, "test.shape#Svc", "test::shape");
+    String types = manifest.expectFileString("/include/test/shape/types.h");
     assertTrue(
         types.contains("friend bool operator==(const Node&, const Node&) = default;"), types);
     assertFalse(types.contains("operator<=>(const Node&"), types);
@@ -201,6 +207,10 @@ class GeneratedCodeShapeTest {
     assertFalse(types.contains("operator<=>(const PingInput&"), types);
     assertTrue(
         types.contains("friend auto operator<=>(const Plain&, const Plain&) = default;"), types);
+    // The client's error listing skips too when a modeled error can't order.
+    String client = manifest.expectFileString("/include/test/shape/client.h");
+    assertFalse(client.contains("operator<=>(const PingErrors&"), client);
+    assertTrue(client.contains("// Equality-only: a member type has no ordering"), client);
   }
 
   @Test

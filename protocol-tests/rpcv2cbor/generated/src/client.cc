@@ -134,7 +134,7 @@ smithy::Outcome<RpcV2ProtocolClient> RpcV2ProtocolClient::Create(smithy::ClientC
       // The built-in socket transport is plaintext-only; https needs a
       // TLS-capable transport (e.g. smithy::http::BeastHttpClient).
       if (endpoint->tls()) {
-        return smithy::Error::Validation("RpcV2ProtocolClient: https endpoints need a TLS-capable transport (set config.http_client, e.g. smithy::http::BeastHttpClient::FromEndpoint)");
+        return smithy::Error::Validation("RpcV2ProtocolClient: https endpoints need a TLS-capable transport (set config.http_client, e.g. smithy::http::BeastHttpClient::FromConfig)");
       }
       transport = std::make_shared<smithy::http::SocketHttpClient>(endpoint->host, endpoint->port, config.request_timeout_ms);
     }

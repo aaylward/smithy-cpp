@@ -438,6 +438,23 @@ class GeneratedCodeShapeTest {
   }
 
   @Test
+  void httpsWithoutTransportPointsAtFromConfig() {
+    // Issue #49 (knob placement): production TLS/pool knobs live on
+    // ClientConfig, and BeastHttpClient::FromConfig is the one-stop
+    // construction path — so the https fail-fast in Create() must point
+    // there, not at the removed FromEndpoint.
+    String client =
+        PluginTestHarness.generate(ERRORS_MODEL, "test.shape#Svc", "test::shape")
+            .expectFileString("/src/client.cc");
+    assertTrue(
+        client.contains(
+            "https endpoints need a TLS-capable transport"
+                + " (set config.http_client, e.g. smithy::http::BeastHttpClient::FromConfig)"),
+        client);
+    assertFalse(client.contains("FromEndpoint"), client);
+  }
+
+  @Test
   void noInputRpcv2CborRouteDecodesNoBody() {
     // #67 removed the dead body-decode from no-input server routes (clients
     // never send one; the decode could only 400 conforming empty bodies with

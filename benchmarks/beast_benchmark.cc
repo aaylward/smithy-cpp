@@ -139,12 +139,12 @@ void BM_BeastTlsRoundTrip(benchmark::State& state) {
     return;
   }
   const std::string origin = "https://127.0.0.1:" + std::to_string(transport.port());
-  auto client = MakeClient(
-      origin, std::make_shared<smithy::http::BeastHttpClient>(
-                  smithy::http::BeastHttpClient::Options{.host = "127.0.0.1",
-                                                         .port = transport.port(),
-                                                         .tls = true,
-                                                         .ca_pem = kTestCertificatePem}));
+  auto client = MakeClient(origin, std::make_shared<smithy::http::BeastHttpClient>(
+                                       smithy::http::BeastHttpClient::Options{
+                                           .host = "127.0.0.1",
+                                           .port = transport.port(),
+                                           .tls = true,
+                                           .tls_options = {.ca_pem = kTestCertificatePem}}));
   RunLoop(state, client);
   transport.Stop();
 }

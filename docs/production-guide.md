@@ -21,8 +21,11 @@ auto client = myservice::MyServiceClient::Create(std::move(config));
 `config.request_timeout_ms` (default 30000) bounds each HTTP attempt —
 connect plus request plus response — on the built-in socket transport. A
 timed-out attempt fails with a retryable transport error, so it feeds the
-retry loop below. If you inject your own `http_client`, the transport owns
-timeout enforcement; the built-in behavior is the reference.
+retry loop below. A `BeastHttpClient` built via `FromConfig` (see
+[Production client transport](#production-client-transport)) honors the
+same value, so the timeout is configured once. If you inject a transport
+you constructed yourself, that transport owns timeout enforcement; the
+built-in behavior is the reference.
 
 Pick a timeout from your service's latency tail (a small multiple of p99),
 not a comfortable-sounding round number: with retries enabled the worst-case
@@ -325,20 +328,30 @@ Production clients should inject `BeastHttpClient` (ADR-0007): keep-alive
 connection pooling, per-request timeouts, and TLS with certificate and
 hostname verification on by default.
 
+Every knob lives on the one `ClientConfig` (issue #49):
+`config.tls.ca_pem` / `config.tls.verify_peer` for trust,
+`config.max_idle_connections` for pooling, and the same
+`config.request_timeout_ms` the rest of this guide tunes.
+`BeastHttpClient::FromConfig` reads them all — endpoint, TLS, timeout, and
+pool size come from the config, so nothing is configured twice:
+
 ```cpp
-auto transport = smithy::http::BeastHttpClient::FromEndpoint("https://api.example.com");
-if (!transport) { /* bad URL */ }
 smithy::ClientConfig config;
-config.endpoint = "https://api.example.com";  // identity + path prefix
-config.http_client = *transport;              // the wire
+config.endpoint = "https://api.example.com";   // identity + path prefix
+config.tls.ca_pem = corp_ca_pem;               // only when not publicly trusted
+auto transport = smithy::http::BeastHttpClient::FromConfig(config);
+if (!transport) { /* bad URL */ }
+config.http_client = *transport;               // the wire
 auto client = MyServiceClient::Create(std::move(config));
 ```
 
-Private CAs pass through `BeastHttpClient::Options::ca_pem`; a
-`verify_peer = false` escape hatch exists for local experiments and must
-never reach production. `//runtime:http_beast` is self-contained — it
-carries the asio SSL implementation and the BoringSSL dependency itself, so
-no extra build flags are needed.
+`ca_pem` (PEM text, not a file path) replaces the system trust roots for
+private CAs; `config.tls.verify_peer = false` exists as an escape hatch for
+local experiments and must never reach production. The lower-level
+`BeastHttpClient::Options` constructor remains for tests and custom wiring
+(loopback ports, deliberately broken TLS). `//runtime:http_beast` is
+self-contained — it carries the asio SSL implementation and the BoringSSL
+dependency itself, so no extra build flags are needed.
 
 ## Server hardening
 

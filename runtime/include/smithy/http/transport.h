@@ -3,11 +3,25 @@
 
 #include <functional>
 #include <future>
+#include <string>
 
 #include "smithy/core/outcome.h"
 #include "smithy/http/message.h"
 
 namespace smithy::http {
+
+// TLS verification knobs, defined once for both sides of the handoff:
+// smithy::ClientConfig carries one (the knob consumers set) and TLS-capable
+// client transports embed the same struct (BeastHttpClient::Options), so the
+// shape, defaults, and semantics can't drift apart. Certificate + hostname
+// verification is on by default. `ca_pem` replaces the system trust roots
+// (PEM text, not a file path — private CAs, tests); setting
+// `verify_peer = false` disables verification entirely — never do that in
+// production.
+struct TlsOptions {
+  bool verify_peer = true;
+  std::string ca_pem;
+};
 
 // Client-side transport. Implementations: SocketHttpClient (built-in HTTP/1.1
 // over TCP), Loopback (in-memory), adapters for libcurl etc. later.

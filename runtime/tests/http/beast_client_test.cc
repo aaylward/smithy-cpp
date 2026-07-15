@@ -8,6 +8,7 @@
 #include <string>
 #include <utility>
 
+#include "smithy/client/config.h"
 #include "smithy/http/beast_transport.h"
 #include "smithy/http/message.h"
 #include "smithy/http/transport.h"
@@ -106,8 +107,10 @@ TEST(BeastClientTest, TlsRoundTripsWithCustomCa) {
                                .tls_private_key_pem = kTestPrivateKeyPem});
   ASSERT_TRUE(server.Start(EchoHandler()).ok());
 
-  BeastHttpClient client(
-      {.host = "127.0.0.1", .port = server.port(), .tls = true, .ca_pem = kTestCertificatePem});
+  BeastHttpClient client({.host = "127.0.0.1",
+                          .port = server.port(),
+                          .tls = true,
+                          .tls_options = {.ca_pem = kTestCertificatePem}});
   for (int i = 0; i < 2; ++i) {
     auto response = client.Send(PostRequest("secret"));
     ASSERT_TRUE(response.ok()) << response.error().message();
@@ -139,20 +142,56 @@ TEST(BeastClientTest, TlsVerificationCanBeDisabledExplicitly) {
                                .tls_private_key_pem = kTestPrivateKeyPem});
   ASSERT_TRUE(server.Start(EchoHandler()).ok());
 
-  BeastHttpClient client(
-      {.host = "127.0.0.1", .port = server.port(), .tls = true, .verify_peer = false});
+  BeastHttpClient client({.host = "127.0.0.1",
+                          .port = server.port(),
+                          .tls = true,
+                          .tls_options = {.verify_peer = false}});
   auto response = client.Send(PostRequest("secret"));
   ASSERT_TRUE(response.ok()) << response.error().message();
   EXPECT_EQ(response->body, "secret");
   server.Stop();
 }
 
-TEST(BeastClientTest, FromEndpointParsesSchemeHostAndPort) {
-  auto https = BeastHttpClient::FromEndpoint("https://api.example.com");
-  ASSERT_TRUE(https.ok());
-  auto http = BeastHttpClient::FromEndpoint("http://api.example.com:8080/prefix");
-  ASSERT_TRUE(http.ok());
-  EXPECT_FALSE(BeastHttpClient::FromEndpoint("ftp://api.example.com").ok());
+TEST(BeastClientTest, FromConfigParsesTheEndpointAndRejectsBadSchemes) {
+  ClientConfig config;
+  config.endpoint = "https://api.example.com";
+  ASSERT_TRUE(BeastHttpClient::FromConfig(config).ok());
+  config.endpoint = "http://api.example.com:8080/prefix";
+  ASSERT_TRUE(BeastHttpClient::FromConfig(config).ok());
+  config.endpoint = "ftp://api.example.com";
+  EXPECT_FALSE(BeastHttpClient::FromConfig(config).ok());
+  config.endpoint = "";
+  EXPECT_FALSE(BeastHttpClient::FromConfig(config).ok());
+}
+
+TEST(BeastClientTest, FromConfigHonorsTheConfigsTlsKnobs) {
+  BeastServerTransport server({.port = 0,
+                               .threads = 2,
+                               .tls_certificate_chain_pem = kTestCertificatePem,
+                               .tls_private_key_pem = kTestPrivateKeyPem});
+  ASSERT_TRUE(server.Start(EchoHandler()).ok());
+
+  // The one-stop production path (issue #49): endpoint, TLS trust, timeout,
+  // and pool size all come from the one ClientConfig the generated client
+  // will also use — nothing is configured twice.
+  ClientConfig config;
+  config.endpoint = "https://127.0.0.1:" + std::to_string(server.port());
+  config.tls.ca_pem = kTestCertificatePem;
+  auto client = BeastHttpClient::FromConfig(config);
+  ASSERT_TRUE(client.ok()) << client.error().message();
+  auto response = (*client)->Send(PostRequest("secret"));
+  ASSERT_TRUE(response.ok()) << response.error().message();
+  EXPECT_EQ(response->body, "secret");
+  server.Stop();
+}
+
+TEST(BeastClientTest, ConfigAndOptionsDefaultsAgree) {
+  // The two knobs FromConfig copies as scalars are defaulted in both structs
+  // (the TLS knobs share one struct and can't drift); this guards the pair.
+  const ClientConfig config;
+  const BeastHttpClient::Options options;
+  EXPECT_EQ(config.request_timeout_ms, options.request_timeout_ms);
+  EXPECT_EQ(config.max_idle_connections, options.max_idle_connections);
 }
 
 TEST(BeastClientTest, RejectsTlsServerMisconfiguration) {

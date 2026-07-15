@@ -37,7 +37,8 @@ Beast-side client foundation anyway.
    dep-light rule (ADR-0005) holds — generated clients do not link Boost. `ParseEndpoint`
    now accepts `https://` (port 443 default, `Endpoint::tls()`), and generated `Create()`
    rejects an https endpoint without an injected transport, pointing at
-   `BeastHttpClient::FromEndpoint`.
+   `BeastHttpClient::FromEndpoint` (since renamed to `FromConfig`, which reads the TLS,
+   timeout, and pool knobs from `ClientConfig` — issue #49's knob-placement fix).
 
 ## Consequences
 

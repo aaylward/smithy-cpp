@@ -193,6 +193,7 @@ cc_library(
     # duplicates the consumers' — ASan flags that as an ODR violation.
     linkstatic = True,
     deps = [
+        ":client",
         ":core",
         ":http",
         "@boost.asio",
@@ -221,6 +222,7 @@ cc_test(
     copts = COPTS,
     tags = ["requires-network"],
     deps = [
+        ":client",
         ":core",
         ":http",
         ":http_beast",

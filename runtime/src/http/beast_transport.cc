@@ -19,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include "smithy/client/config.h"
 #include "smithy/http/server_dispatch.h"
 #include "smithy/http/uri.h"
 
@@ -316,7 +317,7 @@ struct BeastHttpClient::State {
     ssl_context.set_options(asio::ssl::context::default_workarounds | asio::ssl::context::no_sslv2 |
                             asio::ssl::context::no_sslv3);
     boost::system::error_code ec;
-    if (!opts.verify_peer) {
+    if (!opts.tls_options.verify_peer) {
       (void)ssl_context.set_verify_mode(asio::ssl::verify_none, ec);
       return;
     }
@@ -325,8 +326,8 @@ struct BeastHttpClient::State {
       setup_error = "beast client: cannot enable TLS verification: " + ec.message();
       return;
     }
-    if (!opts.ca_pem.empty()) {
-      (void)ssl_context.add_certificate_authority(asio::buffer(opts.ca_pem), ec);
+    if (!opts.tls_options.ca_pem.empty()) {
+      (void)ssl_context.add_certificate_authority(asio::buffer(opts.tls_options.ca_pem), ec);
       if (ec) {
         setup_error = "beast client: invalid ca_pem: " + ec.message();
       }
@@ -384,7 +385,7 @@ struct BeastHttpClient::State {
       if (SSL_set_tlsext_host_name(connection->tls->native_handle(), opts.host.c_str()) != 1) {
         return Error::Transport("beast client: cannot set SNI host name");
       }
-      if (opts.verify_peer) {
+      if (opts.tls_options.verify_peer) {
         boost::system::error_code verify_ec;
         (void)connection->tls->set_verify_callback(asio::ssl::host_name_verification(opts.host),
                                                    verify_ec);
@@ -503,8 +504,8 @@ BeastHttpClient::BeastHttpClient(Options options)
 
 BeastHttpClient::~BeastHttpClient() = default;
 
-Outcome<std::shared_ptr<BeastHttpClient>> BeastHttpClient::FromEndpoint(std::string_view url) {
-  auto endpoint = ParseEndpoint(url);
+Outcome<std::shared_ptr<BeastHttpClient>> BeastHttpClient::FromConfig(const ClientConfig& config) {
+  auto endpoint = ParseEndpoint(config.endpoint);
   if (!endpoint) {
     return std::move(endpoint).error();
   }
@@ -512,6 +513,9 @@ Outcome<std::shared_ptr<BeastHttpClient>> BeastHttpClient::FromEndpoint(std::str
   options.host = endpoint->host;
   options.port = endpoint->port;
   options.tls = endpoint->tls();
+  options.tls_options = config.tls;
+  options.request_timeout_ms = config.request_timeout_ms;
+  options.max_idle_connections = config.max_idle_connections;
   return std::make_shared<BeastHttpClient>(std::move(options));
 }
 

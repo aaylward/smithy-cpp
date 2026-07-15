@@ -3,6 +3,9 @@
 load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
 load("@rules_testing//lib:analysis_test.bzl", "analysis_test", "test_suite")
 load("@rules_testing//lib:truth.bzl", "matching")
+load("//bazel:defs.bzl", "validation_for_testing")
+
+_v = validation_for_testing
 
 _NS = "include/smithy/cpp/ruletest"
 
@@ -76,6 +79,73 @@ def _client_cc_library_impl(env, target):
             found = True
     env.expect.that_bool(found).equals(True)
 
+# Unit tests for the validation helpers themselves: the full accept/reject
+# matrix, table-driven. The analysis-failure tests below then prove the rule
+# actually fails with these messages.
+
+def test_is_identifier_matrix(env):
+    for ok in ["a", "A", "_", "_x", "a1", "snake_case", "CamelCase9"]:
+        env.expect.that_bool(_v.is_identifier(ok)).equals(True)
+    for bad in ["", "9a", "a-b", "a.b", "a b", "a::b", "ü"]:
+        env.expect.that_bool(_v.is_identifier(bad)).equals(False)
+
+def test_namespace_error_accepts_valid_cpp_namespaces(env):
+    for ns in ["acme", "acme::todo", "a1::b_2", "_x::y9", "smithy::cpp::ruletest"]:
+        env.expect.that_str(_v.namespace_error(ns)).equals(None)
+
+def test_namespace_error_suggests_colon_form_for_smithy_dots(env):
+    env.expect.that_str(_v.namespace_error("acme.todo")).contains(
+        'did you mean "acme::todo"?',
+    )
+    env.expect.that_str(_v.namespace_error("smithy.cpp.ruletest")).contains(
+        'did you mean "smithy::cpp::ruletest"?',
+    )
+
+def test_namespace_error_names_the_bad_segment(env):
+    cases = {
+        "": '""',
+        "::acme": '""',
+        "acme-todo": '"acme-todo"',
+        "acme.todo::v1": '"acme.todo"',  # has "::" too, so no dots suggestion
+        "acme::": '""',
+        "acme::9todo": '"9todo"',
+    }
+    for ns, segment in cases.items():
+        env.expect.that_str(_v.namespace_error(ns)).contains(
+            "segment %s is not a C++ identifier" % segment,
+        )
+
+def test_service_error_accepts_valid_shape_ids(env):
+    for svc in ["acme.todo#Todo", "a#B", "smithy.cpp.ruletest#Greeter", "_ns._sub#_Svc9"]:
+        env.expect.that_str(_v.service_error(svc)).equals(None)
+
+def test_service_error_explains_the_shape_id_form(env):
+    for svc in ["Todo", "a#b#c", "acme todo#Todo", "9a.b#C", "acme.todo#9Todo", "acme.todo#", "#Todo"]:
+        env.expect.that_str(_v.service_error(svc)).contains(
+            'expected "<namespace>#<ServiceName>"',
+        )
+
+def test_service_error_suggests_dotted_form_for_cpp_namespace(env):
+    env.expect.that_str(_v.service_error("acme::todo#Todo")).contains(
+        'did you mean "acme.todo#Todo"?',
+    )
+    env.expect.that_str(_v.service_error("smithy::cpp::ruletest#Greeter")).contains(
+        'did you mean "smithy.cpp.ruletest#Greeter"?',
+    )
+
+# tags on the macro must reach the internal generate target (that forwarding is
+# what keeps the misconfigured instances below out of wildcard builds).
+
+def _tags_forwarded_impl(env, target):
+    env.expect.that_target(target).tags().contains("manual")
+
+def tags_forwarded_to_internal_targets_test(name):
+    analysis_test(
+        name = name,
+        impl = _tags_forwarded_impl,
+        target = "//bazel/tests:greeter_manual_types_smithy_gen",
+    )
+
 # Wiring mistakes fail at analysis time with the fix in the message; these
 # pin both the failure and the message's actionable part.
 
@@ -148,9 +218,19 @@ def defs_test_suite(name):
             server_outputs_test,
             types_outputs_test,
             client_cc_library_test,
+            tags_forwarded_to_internal_targets_test,
             smithy_dots_namespace_test,
             bad_namespace_segment_test,
             bare_service_name_test,
             cpp_namespace_service_test,
+        ],
+        basic_tests = [
+            test_is_identifier_matrix,
+            test_namespace_error_accepts_valid_cpp_namespaces,
+            test_namespace_error_suggests_colon_form_for_smithy_dots,
+            test_namespace_error_names_the_bad_segment,
+            test_service_error_accepts_valid_shape_ids,
+            test_service_error_explains_the_shape_id_form,
+            test_service_error_suggests_dotted_form_for_cpp_namespace,
         ],
     )

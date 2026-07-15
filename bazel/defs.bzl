@@ -78,6 +78,13 @@ def _service_error(service):
         return msg + hint
     return None
 
+# Exposed for bazel/tests/defs_test.bzl only; not part of the public API.
+validation_for_testing = struct(
+    is_identifier = _is_identifier,
+    namespace_error = _namespace_error,
+    service_error = _service_error,
+)
+
 def _generated_files(namespace, mode):
     """The exact files the generator emits for a mode (namespace drives paths)."""
     ns_path = namespace.replace("::", "/")

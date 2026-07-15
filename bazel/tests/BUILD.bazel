@@ -34,6 +34,16 @@ smithy_cpp_types_library(
     service = "smithy.cpp.ruletest#Greeter",
 )
 
+# Valid but manual-tagged: the tags-forwarding analysis test asserts the tag
+# reaches the internal generate target.
+smithy_cpp_types_library(
+    name = "greeter_manual_types",
+    srcs = ["greeter.smithy"],
+    namespace = "smithy::cpp::ruletest",
+    service = "smithy.cpp.ruletest#Greeter",
+    tags = ["manual"],
+)
+
 # Deliberately misconfigured instances for the analysis-failure tests below.
 # `manual` keeps them (and the macro's internal targets) out of wildcard
 # builds; only the expect_failure tests analyze them.

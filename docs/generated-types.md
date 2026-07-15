@@ -65,13 +65,24 @@ class MilkOption {
   MilkOption();                                   // empty() until a factory is used
   static MilkOption FromDairy(DairyMilk value);   // From + PascalCase(member)
   bool is_dairy() const;                          // is_<member>
-  const DairyMilk& as_dairy() const;              // as_<member>; UB if not set (variant rules)
+  const DairyMilk& as_dairy() const;              // as_<member>; see below for the wrong-case contract
+  const DairyMilk* as_dairy_or_null() const;      // engaged member or nullptr — never dies
   bool empty() const;
+  const char* case_name() const;                  // engaged member's name; "(empty)" before any factory
+  template <typename Visitor>
+  decltype(auto) visit(Visitor&& visitor) const;  // std::visit over the members + std::monostate
 };
 ```
 
 Backed by `std::variant<std::monostate, ...members>` — index-addressed, so duplicate member
 target types are fine.
+
+Calling `as_x()` while a different member (or none) is engaged is a contract violation: it
+terminates the process with the union, requested, and engaged member named (e.g.
+`smithy: MilkOption::as_dairy(): engaged member is oat`) — never a context-free
+`std::bad_variant_access`. For access that can't die, branch on `is_x()`, use
+`as_x_or_null()` (`if (const auto* dairy = milk.as_dairy_or_null()) …`), or `visit()` with a
+visitor that covers every member plus `std::monostate` for the empty state.
 
 ## Serde (Phase 3)
 
@@ -108,8 +119,11 @@ smithy::Outcome<OrderCoffeeInput> DeserializeOrderCoffeeInput(const smithy::Docu
 `client.h`/`src/client.cc` emit a `<Service>Client` per service:
 
 ```cpp
-auto client = WeatherClient::Create(std::move(config));   // Outcome; validates config
-auto city   = client->GetCity(GetCityInput{.cityId = "seattle"});  // Outcome<GetCityOutput>
+// Create returns an Outcome (it validates config); value_or_die() unwraps it
+// and, on failure, terminates with this context plus the error's code and
+// message — a bare * works too, dying with the error alone.
+auto client = WeatherClient::Create(std::move(config)).value_or_die("creating weather client");
+auto city   = client.GetCity(GetCityInput{.cityId = "seattle"});  // Outcome<GetCityOutput>
 ```
 
 - **Transport-agnostic**: `smithy::ClientConfig` supplies either an `endpoint` (uses the default

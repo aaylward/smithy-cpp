@@ -22,6 +22,49 @@ class GeneratedCodeShapeTest {
       operation Ping {}
       """;
 
+  private static final String UNION_MODEL =
+      """
+      $version: "2.0"
+      namespace test.shape
+      use alloy#simpleRestJson
+
+      @simpleRestJson
+      service Svc { version: "1", operations: [Ping] }
+
+      @http(method: "POST", uri: "/ping")
+      operation Ping { input := { status: Status } }
+
+      union Status { pending: Pending, ready: Ready }
+      structure Pending { position: Integer }
+      structure Ready { at: Timestamp }
+      """;
+
+  @Test
+  void unionAccessorsFailWithContextAndOfferSafeAlternatives() {
+    // Issue #49: wrong-case as_x() must die naming the union, the requested
+    // member, and the engaged member — never throw a context-free
+    // std::bad_variant_access — and consumers get a pointer-returning
+    // accessor, case_name(), and visit() for checked access.
+    String types =
+        PluginTestHarness.generate(UNION_MODEL, "test.shape#Svc", "test::shape")
+            .expectFileString("/include/test/shape/types.h");
+    assertTrue(types.contains("#include \"smithy/core/fatal.h\""), types);
+    assertTrue(
+        types.contains(
+            "if (!is_pending()) smithy::internal::FatalWrongUnionAccess(\"Status\","
+                + " \"pending\", case_name());"),
+        types);
+    assertTrue(
+        types.contains(
+            "const Pending* as_pending_or_null() const" + " { return std::get_if<1>(&value_); }"),
+        types);
+    assertTrue(
+        types.contains(
+            "static constexpr const char* kNames[] =" + " {\"(empty)\", \"pending\", \"ready\"};"),
+        types);
+    assertTrue(types.contains("decltype(auto) visit(Visitor&& visitor) const"), types);
+  }
+
   @Test
   void noInputRpcv2CborRouteDecodesNoBody() {
     // #67 removed the dead body-decode from no-input server routes (clients

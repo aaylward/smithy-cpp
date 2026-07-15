@@ -10,6 +10,19 @@ load("//bazel:defs.bzl", "smithy_cpp_client_library", "smithy_cpp_server_library
 # __type discriminator tolerance. Hand-written (not generated), so they
 # live outside the golden generated/ trees.
 
+# The accessor contract (issue #49): wrong-case as_x() dies with the union,
+# requested, and engaged member named; as_x_or_null/case_name/visit are the
+# never-dying alternatives. Pinned against the cafe example's OrderStatus.
+cc_test(
+    name = "union_accessor_test",
+    size = "small",
+    srcs = ["union_accessor_test.cc"],
+    deps = [
+        "//examples/cafe/generated:types",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_test(
     name = "union_cbor_test",
     size = "small",

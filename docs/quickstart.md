@@ -294,7 +294,9 @@ auto loopback = std::make_shared<smithy::http::Loopback>();
 (void)loopback->Start(server.Handler());
 smithy::ClientConfig config;
 config.http_client = loopback;
-auto client = *TodoClient::Create(std::move(config));
+// Create returns an Outcome; value_or_die unwraps it, and on failure dies
+// with this context plus the error's code and message.
+auto client = TodoClient::Create(std::move(config)).value_or_die("creating todo client");
 
 auto added = client.AddTask(AddTaskInput{.title = "buy milk"});   // Outcome<AddTaskOutput>
 auto missing = client.GetTask(GetTaskInput{.taskId = "nope"});

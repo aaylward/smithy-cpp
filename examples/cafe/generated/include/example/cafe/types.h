@@ -9,6 +9,7 @@
 #include <utility>
 #include <variant>
 
+#include "smithy/core/fatal.h"
 #include "smithy/core/outcome.h"
 #include "smithy/core/timestamp.h"
 
@@ -105,7 +106,12 @@ class OrderStatus {
       return result;
     }
     bool is_pending() const { return value_.index() == 1; }
-    const PendingStatus& as_pending() const { return std::get<1>(value_); }
+    const PendingStatus& as_pending() const {
+      if (!is_pending()) smithy::internal::FatalWrongUnionAccess("OrderStatus", "pending", case_name());
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const PendingStatus* as_pending_or_null() const { return std::get_if<1>(&value_); }
 
     static OrderStatus FromReady(ReadyStatus value) {
       OrderStatus result;
@@ -113,7 +119,12 @@ class OrderStatus {
       return result;
     }
     bool is_ready() const { return value_.index() == 2; }
-    const ReadyStatus& as_ready() const { return std::get<2>(value_); }
+    const ReadyStatus& as_ready() const {
+      if (!is_ready()) smithy::internal::FatalWrongUnionAccess("OrderStatus", "ready", case_name());
+      return std::get<2>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const ReadyStatus* as_ready_or_null() const { return std::get_if<2>(&value_); }
 
     static OrderStatus FromCancelled(CancelledStatus value) {
       OrderStatus result;
@@ -121,10 +132,28 @@ class OrderStatus {
       return result;
     }
     bool is_cancelled() const { return value_.index() == 3; }
-    const CancelledStatus& as_cancelled() const { return std::get<3>(value_); }
+    const CancelledStatus& as_cancelled() const {
+      if (!is_cancelled()) smithy::internal::FatalWrongUnionAccess("OrderStatus", "cancelled", case_name());
+      return std::get<3>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const CancelledStatus* as_cancelled_or_null() const { return std::get_if<3>(&value_); }
 
     /// True until one of the From* factories has been used.
     bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" until a From* factory has run.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "pending", "ready", "cancelled"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
 
     friend bool operator==(const OrderStatus&, const OrderStatus&) = default;
 
@@ -168,7 +197,12 @@ class MilkOption {
       return result;
     }
     bool is_none() const { return value_.index() == 1; }
-    const smithy::Unit& as_none() const { return std::get<1>(value_); }
+    const smithy::Unit& as_none() const {
+      if (!is_none()) smithy::internal::FatalWrongUnionAccess("MilkOption", "none", case_name());
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const smithy::Unit* as_none_or_null() const { return std::get_if<1>(&value_); }
 
     static MilkOption FromDairy(DairyMilk value) {
       MilkOption result;
@@ -176,7 +210,12 @@ class MilkOption {
       return result;
     }
     bool is_dairy() const { return value_.index() == 2; }
-    const DairyMilk& as_dairy() const { return std::get<2>(value_); }
+    const DairyMilk& as_dairy() const {
+      if (!is_dairy()) smithy::internal::FatalWrongUnionAccess("MilkOption", "dairy", case_name());
+      return std::get<2>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const DairyMilk* as_dairy_or_null() const { return std::get_if<2>(&value_); }
 
     static MilkOption FromAlternative(AlternativeMilk value) {
       MilkOption result;
@@ -184,10 +223,28 @@ class MilkOption {
       return result;
     }
     bool is_alternative() const { return value_.index() == 3; }
-    const AlternativeMilk& as_alternative() const { return std::get<3>(value_); }
+    const AlternativeMilk& as_alternative() const {
+      if (!is_alternative()) smithy::internal::FatalWrongUnionAccess("MilkOption", "alternative", case_name());
+      return std::get<3>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const AlternativeMilk* as_alternative_or_null() const { return std::get_if<3>(&value_); }
 
     /// True until one of the From* factories has been used.
     bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" until a From* factory has run.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "none", "dairy", "alternative"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
 
     friend bool operator==(const MilkOption&, const MilkOption&) = default;
 

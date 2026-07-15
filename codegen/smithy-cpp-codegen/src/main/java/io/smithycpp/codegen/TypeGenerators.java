@@ -256,6 +256,7 @@ final class TypeGenerators {
     }
     requireDistinctNames("union", shape.getId(), folded, java.util.Set.of());
     writer.addInclude("<utility>").addInclude("<variant>");
+    writer.addInclude("\"smithy/core/fatal.h\"");
 
     writeDocs(shape);
     writer.openBlock("class $L {", name);
@@ -276,8 +277,17 @@ final class TypeGenerators {
       writer.write("return result;");
       writer.closeBlock("}");
       writer.write("bool is_$L() const { return value_.index() == $L; }", memberName, index);
+      writer.openBlock("const $L& as_$L() const {", type.getName(), memberName);
       writer.write(
-          "const $L& as_$L() const { return std::get<$L>(value_); }",
+          "if (!is_$L()) smithy::internal::FatalWrongUnionAccess(\"$L\", \"$L\", case_name());",
+          memberName,
+          name,
+          memberName);
+      writer.write("return std::get<$L>(value_);", index);
+      writer.closeBlock("}");
+      writer.write("/// The engaged member, or nullptr when another member (or none) is set.");
+      writer.write(
+          "const $L* as_$L_or_null() const { return std::get_if<$L>(&value_); }",
           type.getName(),
           memberName,
           index);
@@ -285,6 +295,23 @@ final class TypeGenerators {
     }
     writer.write("/// True until one of the From* factories has been used.");
     writer.write("bool empty() const { return value_.index() == 0; }");
+    writer.write("");
+    StringBuilder caseNames = new StringBuilder("\"(empty)\"");
+    for (MemberShape member : members) {
+      caseNames.append(", \"").append(symbols().toMemberName(member)).append("\"");
+    }
+    writer.write("/// Name of the engaged member, \"(empty)\" until a From* factory has run.");
+    writer.openBlock("const char* case_name() const {");
+    writer.write("static constexpr const char* kNames[] = {$L};", caseNames);
+    writer.write("return kNames[value_.index()];");
+    writer.closeBlock("}");
+    writer.write("");
+    writer.write("/// Applies `visitor` to the engaged member. The visitor must also accept");
+    writer.write("/// std::monostate, which represents the empty state.");
+    writer.write("template <typename Visitor>");
+    writer.openBlock("decltype(auto) visit(Visitor&& visitor) const {");
+    writer.write("return std::visit(std::forward<Visitor>(visitor), value_);");
+    writer.closeBlock("}");
     writer.write("");
     writer.write("friend bool operator==(const $1L&, const $1L&) = default;", name);
     writer.write("").dedent();

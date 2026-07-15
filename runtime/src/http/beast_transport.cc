@@ -19,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include "smithy/client/config.h"
 #include "smithy/http/server_dispatch.h"
 #include "smithy/http/uri.h"
 
@@ -503,8 +504,8 @@ BeastHttpClient::BeastHttpClient(Options options)
 
 BeastHttpClient::~BeastHttpClient() = default;
 
-Outcome<std::shared_ptr<BeastHttpClient>> BeastHttpClient::FromEndpoint(std::string_view url) {
-  auto endpoint = ParseEndpoint(url);
+Outcome<std::shared_ptr<BeastHttpClient>> BeastHttpClient::FromConfig(const ClientConfig& config) {
+  auto endpoint = ParseEndpoint(config.endpoint);
   if (!endpoint) {
     return std::move(endpoint).error();
   }
@@ -512,6 +513,10 @@ Outcome<std::shared_ptr<BeastHttpClient>> BeastHttpClient::FromEndpoint(std::str
   options.host = endpoint->host;
   options.port = endpoint->port;
   options.tls = endpoint->tls();
+  options.verify_peer = config.tls.verify_peer;
+  options.ca_pem = config.tls.ca_pem;
+  options.request_timeout_ms = config.request_timeout_ms;
+  options.max_idle_connections = config.max_idle_connections;
   return std::make_shared<BeastHttpClient>(std::move(options));
 }
 

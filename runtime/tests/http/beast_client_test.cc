@@ -8,6 +8,7 @@
 #include <string>
 #include <utility>
 
+#include "smithy/client/config.h"
 #include "smithy/http/beast_transport.h"
 #include "smithy/http/message.h"
 #include "smithy/http/transport.h"
@@ -147,12 +148,47 @@ TEST(BeastClientTest, TlsVerificationCanBeDisabledExplicitly) {
   server.Stop();
 }
 
-TEST(BeastClientTest, FromEndpointParsesSchemeHostAndPort) {
-  auto https = BeastHttpClient::FromEndpoint("https://api.example.com");
-  ASSERT_TRUE(https.ok());
-  auto http = BeastHttpClient::FromEndpoint("http://api.example.com:8080/prefix");
-  ASSERT_TRUE(http.ok());
-  EXPECT_FALSE(BeastHttpClient::FromEndpoint("ftp://api.example.com").ok());
+TEST(BeastClientTest, FromConfigParsesTheEndpointAndRejectsBadSchemes) {
+  ClientConfig config;
+  config.endpoint = "https://api.example.com";
+  ASSERT_TRUE(BeastHttpClient::FromConfig(config).ok());
+  config.endpoint = "http://api.example.com:8080/prefix";
+  ASSERT_TRUE(BeastHttpClient::FromConfig(config).ok());
+  config.endpoint = "ftp://api.example.com";
+  EXPECT_FALSE(BeastHttpClient::FromConfig(config).ok());
+  config.endpoint = "";
+  EXPECT_FALSE(BeastHttpClient::FromConfig(config).ok());
+}
+
+TEST(BeastClientTest, FromConfigHonorsTheConfigsTlsKnobs) {
+  BeastServerTransport server({.port = 0,
+                               .threads = 2,
+                               .tls_certificate_chain_pem = kTestCertificatePem,
+                               .tls_private_key_pem = kTestPrivateKeyPem});
+  ASSERT_TRUE(server.Start(EchoHandler()).ok());
+
+  // The one-stop production path (issue #49): endpoint, TLS trust, timeout,
+  // and pool size all come from the one ClientConfig the generated client
+  // will also use — nothing is configured twice.
+  ClientConfig config;
+  config.endpoint = "https://127.0.0.1:" + std::to_string(server.port());
+  config.tls.ca_pem = kTestCertificatePem;
+  auto client = BeastHttpClient::FromConfig(config);
+  ASSERT_TRUE(client.ok()) << client.error().message();
+  auto response = (*client)->Send(PostRequest("secret"));
+  ASSERT_TRUE(response.ok()) << response.error().message();
+  EXPECT_EQ(response->body, "secret");
+
+  // verify_peer=false from the config is honored too (the server's cert is
+  // not in the default trust roots, so only the disabled path succeeds).
+  ClientConfig insecure;
+  insecure.endpoint = "https://127.0.0.1:" + std::to_string(server.port());
+  insecure.tls.verify_peer = false;
+  auto insecure_client = BeastHttpClient::FromConfig(insecure);
+  ASSERT_TRUE(insecure_client.ok()) << insecure_client.error().message();
+  auto insecure_response = (*insecure_client)->Send(PostRequest("secret"));
+  ASSERT_TRUE(insecure_response.ok()) << insecure_response.error().message();
+  server.Stop();
 }
 
 TEST(BeastClientTest, RejectsTlsServerMisconfiguration) {

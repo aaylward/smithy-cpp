@@ -1,6 +1,7 @@
 #ifndef SMITHY_CLIENT_CONFIG_H_
 #define SMITHY_CLIENT_CONFIG_H_
 
+#include <cstddef>
 #include <functional>
 #include <memory>
 #include <string>
@@ -26,6 +27,25 @@ struct ClientConfig {
   // Mirrors smithy::Version() (runtime/src/core/version.cc), the single source
   // of truth for the product version.
   std::string user_agent = "smithy-cpp/0.1.0-dev";
+
+  // TLS knobs for transports constructed from this config (issue #49):
+  // BeastHttpClient::FromConfig honors them; the built-in socket transport is
+  // plaintext-only, and generated Create() rejects https endpoints without an
+  // injected transport.
+  struct TlsOptions {
+    // Certificate + hostname verification is on by default. `ca_pem`
+    // replaces the system trust roots (PEM text, not a file path — private
+    // CAs, tests); setting `verify_peer = false` disables verification
+    // entirely — never do that in production.
+    bool verify_peer = true;
+    std::string ca_pem;
+  };
+  TlsOptions tls;
+
+  // Idle keep-alive connections a pooling transport (FromConfig-built)
+  // retains for reuse; the built-in socket transport opens one connection
+  // per request.
+  std::size_t max_idle_connections = 4;
 
   // Full-jitter exponential backoff for transport failures and transient
   // statuses (429/5xx); retry.max_attempts = 1 disables retries.

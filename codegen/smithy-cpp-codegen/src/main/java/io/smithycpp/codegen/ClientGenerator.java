@@ -342,7 +342,7 @@ final class ClientGenerator {
         "return smithy::Error::Validation($S);",
         name
             + ": https endpoints need a TLS-capable transport"
-            + " (set config.http_client, e.g. smithy::http::BeastHttpClient::FromEndpoint)");
+            + " (set config.http_client, e.g. smithy::http::BeastHttpClient::FromConfig)");
     w.closeBlock("}");
     w.write(
         "transport = std::make_shared<smithy::http::SocketHttpClient>(endpoint->host, "

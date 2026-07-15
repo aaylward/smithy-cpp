@@ -10,6 +10,11 @@
 
 #include "smithy/http/transport.h"
 
+namespace smithy {
+struct ClientConfig;  // smithy/client/config.h; kept out of this header so
+                      // the transport layer's include graph stays one-way.
+}  // namespace smithy
+
 namespace smithy::http {
 
 // Production HTTP/1.1 server transport on Boost.Beast/asio (ADR-0006):
@@ -65,13 +70,18 @@ class BeastServerTransport : public HttpServerTransport {
 // verification on by default. Thread-safe: concurrent Send() calls use
 // distinct connections.
 //
-//   auto transport = smithy::http::BeastHttpClient::FromEndpoint(
-//       "https://api.example.com");
-//   config.endpoint = "https://api.example.com";   // path prefix + identity
+//   smithy::ClientConfig config;
+//   config.endpoint = "https://api.example.com";
+//   config.tls.ca_pem = corp_ca_pem;               // when not publicly trusted
+//   auto transport = smithy::http::BeastHttpClient::FromConfig(config);
+//   if (!transport) { /* bad endpoint */ }
 //   config.http_client = *transport;               // the wire
 //   auto client = MyServiceClient::Create(std::move(config));
 class BeastHttpClient : public HttpClient {
  public:
+  // Direct construction for tests and custom wiring. Production
+  // configuration should flow through FromConfig so every knob lives on the
+  // one ClientConfig (issue #49).
   struct Options {
     std::string host;
     int port = 80;
@@ -90,9 +100,12 @@ class BeastHttpClient : public HttpClient {
   explicit BeastHttpClient(Options options);
   ~BeastHttpClient() override;
 
-  // Convenience: host/port/tls from an "http(s)://host[:port]" URL (any path
-  // prefix belongs to ClientConfig::endpoint, not the transport).
-  static Outcome<std::shared_ptr<BeastHttpClient>> FromEndpoint(std::string_view url);
+  // One-stop construction from the ClientConfig the generated client will
+  // use: endpoint (scheme/host/port), tls.verify_peer/tls.ca_pem,
+  // request_timeout_ms, and max_idle_connections all come from the config,
+  // so nothing is configured twice. Fails on an unparsable or non-http(s)
+  // endpoint. Any endpoint path prefix stays the generated client's job.
+  static Outcome<std::shared_ptr<BeastHttpClient>> FromConfig(const ClientConfig& config);
 
   Outcome<HttpResponse> Send(const HttpRequest& request) override;
 

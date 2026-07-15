@@ -2,7 +2,10 @@
 #define SMITHY_CORE_BOXED_H_
 
 #include <memory>
+#include <string>
 #include <utility>
+
+#include "smithy/core/print.h"
 
 namespace smithy {
 
@@ -41,6 +44,10 @@ class Boxed {
 
   friend bool operator==(const Boxed& a, const Boxed& b) { return *a.value_ == *b.value_; }
   friend bool operator!=(const Boxed& a, const Boxed& b) { return !(a == b); }
+
+  // Debug rendering: the box is invisible — prints the value. Data is
+  // acyclic (value semantics), so recursion through the box terminates.
+  void AppendDebugTo(std::string& out) const { DebugAppend(out, *value_); }
   // Deliberately NO operator<=>: an auto-returning deep <=> must deduce its
   // type through the recursive chain Boxed exists to break, and clang
   // hard-errors on the cycle (std::optional's constraint check instantiates

@@ -27,7 +27,7 @@ operation OrderCoffee {
         milk: MilkOption
 
         @idempotencyToken
-        clientToken: String
+        clientToken: ClientToken
     }
 
     output := {
@@ -64,6 +64,11 @@ operation GetOrder {
 
 @length(min: 1, max: 128)
 string OrderId
+
+/// Idempotency tokens are secret-adjacent: @sensitive keeps them out of
+/// debug output ([REDACTED] in DebugString/operator<<).
+@sensitive
+string ClientToken
 
 enum CoffeeType {
     DRIP

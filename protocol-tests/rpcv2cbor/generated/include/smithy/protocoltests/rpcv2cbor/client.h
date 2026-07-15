@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <functional>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <utility>
 #include <variant>
@@ -14,6 +15,7 @@
 #include "smithy/core/fatal.h"
 #include "smithy/core/hash.h"
 #include "smithy/core/outcome.h"
+#include "smithy/core/print.h"
 #include "smithy/http/transport.h"
 #include "smithy/protocoltests/rpcv2cbor/types.h"
 
@@ -127,6 +129,28 @@ class GreetingWithErrorsErrors {
       return std::visit(std::forward<Visitor>(visitor), value_);
     }
 
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "GreetingWithErrorsErrors(";
+      switch (value_.index()) {
+        case 1:
+          out += "invalid_greeting = ";
+          smithy::DebugAppend(out, std::get<1>(value_));
+          break;
+        case 2:
+          out += "complex_error = ";
+          smithy::DebugAppend(out, std::get<2>(value_));
+          break;
+        default:
+          break;
+      }
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const GreetingWithErrorsErrors& value) {
+      return os << value.DebugString();
+    }
+
     friend bool operator==(const GreetingWithErrorsErrors&, const GreetingWithErrorsErrors&) = default;
     friend auto operator<=>(const GreetingWithErrorsErrors&, const GreetingWithErrorsErrors&) = default;
     friend struct std::hash<GreetingWithErrorsErrors>;
@@ -185,6 +209,24 @@ class OperationWithDefaultsErrors {
     template <typename Visitor>
     decltype(auto) visit(Visitor&& visitor) const {
       return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "OperationWithDefaultsErrors(";
+      switch (value_.index()) {
+        case 1:
+          out += "validation_exception = ";
+          smithy::DebugAppend(out, std::get<1>(value_));
+          break;
+        default:
+          break;
+      }
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const OperationWithDefaultsErrors& value) {
+      return os << value.DebugString();
     }
 
     friend bool operator==(const OperationWithDefaultsErrors&, const OperationWithDefaultsErrors&) = default;
@@ -247,6 +289,24 @@ class RpcV2CborDenseMapsErrors {
       return std::visit(std::forward<Visitor>(visitor), value_);
     }
 
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "RpcV2CborDenseMapsErrors(";
+      switch (value_.index()) {
+        case 1:
+          out += "validation_exception = ";
+          smithy::DebugAppend(out, std::get<1>(value_));
+          break;
+        default:
+          break;
+      }
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const RpcV2CborDenseMapsErrors& value) {
+      return os << value.DebugString();
+    }
+
     friend bool operator==(const RpcV2CborDenseMapsErrors&, const RpcV2CborDenseMapsErrors&) = default;
     friend auto operator<=>(const RpcV2CborDenseMapsErrors&, const RpcV2CborDenseMapsErrors&) = default;
     friend struct std::hash<RpcV2CborDenseMapsErrors>;
@@ -307,6 +367,24 @@ class RpcV2CborListsErrors {
       return std::visit(std::forward<Visitor>(visitor), value_);
     }
 
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "RpcV2CborListsErrors(";
+      switch (value_.index()) {
+        case 1:
+          out += "validation_exception = ";
+          smithy::DebugAppend(out, std::get<1>(value_));
+          break;
+        default:
+          break;
+      }
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const RpcV2CborListsErrors& value) {
+      return os << value.DebugString();
+    }
+
     friend bool operator==(const RpcV2CborListsErrors&, const RpcV2CborListsErrors&) = default;
     friend auto operator<=>(const RpcV2CborListsErrors&, const RpcV2CborListsErrors&) = default;
     friend struct std::hash<RpcV2CborListsErrors>;
@@ -365,6 +443,24 @@ class RpcV2CborSparseMapsErrors {
     template <typename Visitor>
     decltype(auto) visit(Visitor&& visitor) const {
       return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "RpcV2CborSparseMapsErrors(";
+      switch (value_.index()) {
+        case 1:
+          out += "validation_exception = ";
+          smithy::DebugAppend(out, std::get<1>(value_));
+          break;
+        default:
+          break;
+      }
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const RpcV2CborSparseMapsErrors& value) {
+      return os << value.DebugString();
     }
 
     friend bool operator==(const RpcV2CborSparseMapsErrors&, const RpcV2CborSparseMapsErrors&) = default;

@@ -7,10 +7,12 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <ostream>
 #include <string>
 #include <vector>
 
 #include "smithy/core/hash.h"
+#include "smithy/core/print.h"
 #include "smithy/core/timestamp.h"
 
 namespace example::weather {
@@ -18,12 +20,37 @@ namespace example::weather {
 struct DeleteCityInput {
   std::string cityId{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "DeleteCityInput{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".cityId = ";
+    smithy::DebugAppend(out, this->cityId);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const DeleteCityInput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const DeleteCityInput&, const DeleteCityInput&) = default;
   friend auto operator<=>(const DeleteCityInput&, const DeleteCityInput&) = default;
 };
 
 
 struct DeleteCityOutput {
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "DeleteCityOutput{";
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const DeleteCityOutput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const DeleteCityOutput&, const DeleteCityOutput&) = default;
   friend auto operator<=>(const DeleteCityOutput&, const DeleteCityOutput&) = default;
 };
@@ -33,6 +60,21 @@ struct DeleteCityOutput {
 struct NoSuchResource {
   std::string resourceType{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "NoSuchResource{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".resourceType = ";
+    smithy::DebugAppend(out, this->resourceType);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const NoSuchResource& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const NoSuchResource&, const NoSuchResource&) = default;
   friend auto operator<=>(const NoSuchResource&, const NoSuchResource&) = default;
 };
@@ -40,6 +82,21 @@ struct NoSuchResource {
 
 struct GetForecastInput {
   std::string cityId{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "GetForecastInput{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".cityId = ";
+    smithy::DebugAppend(out, this->cityId);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const GetForecastInput& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const GetForecastInput&, const GetForecastInput&) = default;
   friend auto operator<=>(const GetForecastInput&, const GetForecastInput&) = default;
@@ -49,6 +106,23 @@ struct GetForecastInput {
 struct GetForecastOutput {
   std::optional<float> chanceOfRain{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "GetForecastOutput{";
+    const char* sep = "";
+    if (this->chanceOfRain.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".chanceOfRain = ";
+      smithy::DebugAppend(out, *this->chanceOfRain);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const GetForecastOutput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const GetForecastOutput&, const GetForecastOutput&) = default;
   friend auto operator<=>(const GetForecastOutput&, const GetForecastOutput&) = default;
 };
@@ -56,6 +130,21 @@ struct GetForecastOutput {
 
 struct GetCityInput {
   std::string cityId{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "GetCityInput{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".cityId = ";
+    smithy::DebugAppend(out, this->cityId);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const GetCityInput& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const GetCityInput&, const GetCityInput&) = default;
   friend auto operator<=>(const GetCityInput&, const GetCityInput&) = default;
@@ -66,6 +155,25 @@ struct CityCoordinates {
   float latitude{};
   float longitude{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "CityCoordinates{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".latitude = ";
+    smithy::DebugAppend(out, this->latitude);
+    out += sep;
+    sep = ", ";
+    out += ".longitude = ";
+    smithy::DebugAppend(out, this->longitude);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const CityCoordinates& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const CityCoordinates&, const CityCoordinates&) = default;
   friend auto operator<=>(const CityCoordinates&, const CityCoordinates&) = default;
 };
@@ -74,6 +182,25 @@ struct CityCoordinates {
 struct GetCityOutput {
   std::string name{};
   CityCoordinates coordinates{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "GetCityOutput{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".name = ";
+    smithy::DebugAppend(out, this->name);
+    out += sep;
+    sep = ", ";
+    out += ".coordinates = ";
+    smithy::DebugAppend(out, this->coordinates);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const GetCityOutput& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const GetCityOutput&, const GetCityOutput&) = default;
   friend auto operator<=>(const GetCityOutput&, const GetCityOutput&) = default;
@@ -84,6 +211,29 @@ struct ListCitiesInput {
   std::optional<std::string> nextToken{};
   std::optional<std::int32_t> pageSize{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "ListCitiesInput{";
+    const char* sep = "";
+    if (this->nextToken.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".nextToken = ";
+      smithy::DebugAppend(out, *this->nextToken);
+    }
+    if (this->pageSize.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".pageSize = ";
+      smithy::DebugAppend(out, *this->pageSize);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const ListCitiesInput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const ListCitiesInput&, const ListCitiesInput&) = default;
   friend auto operator<=>(const ListCitiesInput&, const ListCitiesInput&) = default;
 };
@@ -92,6 +242,25 @@ struct ListCitiesInput {
 struct CitySummary {
   std::string cityId{};
   std::string name{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "CitySummary{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".cityId = ";
+    smithy::DebugAppend(out, this->cityId);
+    out += sep;
+    sep = ", ";
+    out += ".name = ";
+    smithy::DebugAppend(out, this->name);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const CitySummary& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const CitySummary&, const CitySummary&) = default;
   friend auto operator<=>(const CitySummary&, const CitySummary&) = default;
@@ -102,12 +271,43 @@ struct ListCitiesOutput {
   std::optional<std::string> nextToken{};
   std::vector<CitySummary> items{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "ListCitiesOutput{";
+    const char* sep = "";
+    if (this->nextToken.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".nextToken = ";
+      smithy::DebugAppend(out, *this->nextToken);
+    }
+    out += sep;
+    sep = ", ";
+    out += ".items = ";
+    smithy::DebugAppend(out, this->items);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const ListCitiesOutput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const ListCitiesOutput&, const ListCitiesOutput&) = default;
   friend auto operator<=>(const ListCitiesOutput&, const ListCitiesOutput&) = default;
 };
 
 
 struct GetCurrentTimeInput {
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "GetCurrentTimeInput{";
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const GetCurrentTimeInput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const GetCurrentTimeInput&, const GetCurrentTimeInput&) = default;
   friend auto operator<=>(const GetCurrentTimeInput&, const GetCurrentTimeInput&) = default;
 };
@@ -115,6 +315,21 @@ struct GetCurrentTimeInput {
 
 struct GetCurrentTimeOutput {
   smithy::Timestamp time{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "GetCurrentTimeOutput{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".time = ";
+    smithy::DebugAppend(out, this->time);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const GetCurrentTimeOutput& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const GetCurrentTimeOutput&, const GetCurrentTimeOutput&) = default;
   friend auto operator<=>(const GetCurrentTimeOutput&, const GetCurrentTimeOutput&) = default;
@@ -124,6 +339,21 @@ struct GetCurrentTimeOutput {
 struct GetReportInput {
   std::string reportPath{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "GetReportInput{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".reportPath = ";
+    smithy::DebugAppend(out, this->reportPath);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const GetReportInput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const GetReportInput&, const GetReportInput&) = default;
   friend auto operator<=>(const GetReportInput&, const GetReportInput&) = default;
 };
@@ -132,6 +362,25 @@ struct GetReportInput {
 struct GetReportOutput {
   std::string path{};
   std::int64_t sizeBytes{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "GetReportOutput{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".path = ";
+    smithy::DebugAppend(out, this->path);
+    out += sep;
+    sep = ", ";
+    out += ".sizeBytes = ";
+    smithy::DebugAppend(out, this->sizeBytes);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const GetReportOutput& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const GetReportOutput&, const GetReportOutput&) = default;
   friend auto operator<=>(const GetReportOutput&, const GetReportOutput&) = default;

@@ -173,7 +173,8 @@ final class ClientGenerator {
                 error ->
                     new TypeGenerators.TaggedMember(
                         software.amazon.smithy.utils.CaseUtils.toSnakeCase(error.getId().getName()),
-                        context.cppSymbols().toSymbol(error).getName()))
+                        context.cppSymbols().toSymbol(error).getName(),
+                        error.hasTrait(software.amazon.smithy.model.traits.SensitiveTrait.class)))
             .toList();
 
     String opName = CppReservedWords.escape(operation.getId().getName());
@@ -188,6 +189,7 @@ final class ClientGenerator {
         members,
         /* withFactories= */ false,
         withOrdering,
+        /* redactBody= */ false,
         "/// True when the error is none of this operation's modeled errors.",
         "/// Name of the engaged member, \"(empty)\" when none matched.",
         () -> writeFromError(w, listingName, errors));

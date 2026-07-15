@@ -51,10 +51,27 @@ compatibility contract: changes to it are breaking for consumers of generated co
   specializations sit after the namespace's closing brace in the same generated header.
   Hash values are **process-local**: they build on `std::hash`, so never persist them or
   compare them across processes, builds, or library versions.
+- **Printing**: every generated type carries `AppendDebugTo(std::string&)` (the one printing
+  primitive), with `DebugString()` and `operator<<` as thin adapters — so structs log and show
+  up readably in test failures. Structs render designated-initializer style, omitting
+  disengaged optionals (`GetOrderInput{.orderId = "o-1"}`); enums render their wire text,
+  unknown values included (`CoffeeType(OAT_FOAM)`); unions and `<Op>Errors` render the engaged
+  member (`MilkOption(dairy = DairyMilk{.percentFat = 2.5})`, empty ⇒ `MilkOption()`);
+  intEnums render their numeric value. Members targeting a `@sensitive` shape print
+  `[REDACTED]` — a printing feature that leaked sensitive values into logs would defeat the
+  trait (issue #85; protobuf's `debug_redact` precedent). Unlike ordering/hashing, printing is
+  **not gated**: recursion and `Document` members print fine (value semantics keep the data
+  acyclic). The runtime member types render via the same mechanism: `Blob` as size plus a
+  bounded hex prefix (never full contents), `Timestamp` as RFC 3339, `Document` JSON-ish,
+  `smithy::DebugString(x)`/`DebugAppend` in `smithy/core/print.h` for anything else. Debug
+  output is for **humans and logs only** — it is not a serialization format; never parse it,
+  and never pin exact bytes across library versions.
 - **Deliberately not generated**:
   - builders — C++20 designated initializers are the construction story:
     `GetOrderInput{.orderId = "o-1"}`;
-  - `operator<<`, `std::format` — deferred until the runtime types have a printing story;
+  - `std::formatter` — deferred: `operator<<`/`DebugString()` cover logging and tests without
+    putting `<format>`'s compile cost in every generated TU; when demanded, specializations
+    slot into the same post-namespace epilogue `std::hash` uses;
   - a distinct "absent" state for `@required` members — they stay plain members; presence is
     enforced by server-side validation (see Optionality above).
 - **Docs**: `@documentation` becomes `///` comments.

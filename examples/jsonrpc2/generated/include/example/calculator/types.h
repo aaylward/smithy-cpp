@@ -6,15 +6,36 @@
 #include <cstddef>
 #include <functional>
 #include <optional>
+#include <ostream>
 #include <string>
 
 #include "smithy/core/hash.h"
+#include "smithy/core/print.h"
 
 namespace example::calculator {
 
 struct AddInput {
   double a{};
   double b{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "AddInput{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".a = ";
+    smithy::DebugAppend(out, this->a);
+    out += sep;
+    sep = ", ";
+    out += ".b = ";
+    smithy::DebugAppend(out, this->b);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const AddInput& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const AddInput&, const AddInput&) = default;
   friend auto operator<=>(const AddInput&, const AddInput&) = default;
@@ -23,6 +44,21 @@ struct AddInput {
 
 struct AddOutput {
   double sum{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "AddOutput{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".sum = ";
+    smithy::DebugAppend(out, this->sum);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const AddOutput& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const AddOutput&, const AddOutput&) = default;
   friend auto operator<=>(const AddOutput&, const AddOutput&) = default;
@@ -34,6 +70,31 @@ struct DivideInput {
   double divisor{};
   std::optional<std::string> requestToken{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "DivideInput{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".dividend = ";
+    smithy::DebugAppend(out, this->dividend);
+    out += sep;
+    sep = ", ";
+    out += ".divisor = ";
+    smithy::DebugAppend(out, this->divisor);
+    if (this->requestToken.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".requestToken = ";
+      smithy::DebugAppend(out, *this->requestToken);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const DivideInput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const DivideInput&, const DivideInput&) = default;
   friend auto operator<=>(const DivideInput&, const DivideInput&) = default;
 };
@@ -42,6 +103,21 @@ struct DivideInput {
 struct DivideOutput {
   double quotient{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "DivideOutput{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".quotient = ";
+    smithy::DebugAppend(out, this->quotient);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const DivideOutput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const DivideOutput&, const DivideOutput&) = default;
   friend auto operator<=>(const DivideOutput&, const DivideOutput&) = default;
 };
@@ -49,6 +125,21 @@ struct DivideOutput {
 
 struct DivisionByZero {
   std::string message{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "DivisionByZero{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".message = ";
+    smithy::DebugAppend(out, this->message);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const DivisionByZero& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const DivisionByZero&, const DivisionByZero&) = default;
   friend auto operator<=>(const DivisionByZero&, const DivisionByZero&) = default;

@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <functional>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <utility>
 #include <variant>
@@ -15,6 +16,7 @@
 #include "smithy/core/fatal.h"
 #include "smithy/core/hash.h"
 #include "smithy/core/outcome.h"
+#include "smithy/core/print.h"
 #include "smithy/http/transport.h"
 
 namespace example::roundtrip::jsonrpc {
@@ -100,6 +102,28 @@ class PutSinkRpcErrors {
     template <typename Visitor>
     decltype(auto) visit(Visitor&& visitor) const {
       return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "PutSinkRpcErrors(";
+      switch (value_.index()) {
+        case 1:
+          out += "sink_not_found = ";
+          smithy::DebugAppend(out, std::get<1>(value_));
+          break;
+        case 2:
+          out += "sink_quota_exceeded = ";
+          smithy::DebugAppend(out, std::get<2>(value_));
+          break;
+        default:
+          break;
+      }
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const PutSinkRpcErrors& value) {
+      return os << value.DebugString();
     }
 
     friend bool operator==(const PutSinkRpcErrors&, const PutSinkRpcErrors&) = default;

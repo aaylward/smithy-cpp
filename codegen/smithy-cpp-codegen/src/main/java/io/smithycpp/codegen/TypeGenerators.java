@@ -10,6 +10,7 @@ import software.amazon.smithy.model.shapes.Shape;
 import software.amazon.smithy.model.shapes.StructureShape;
 import software.amazon.smithy.model.shapes.UnionShape;
 import software.amazon.smithy.model.traits.DocumentationTrait;
+import software.amazon.smithy.model.traits.SensitiveTrait;
 import software.amazon.smithy.utils.CaseUtils;
 
 /** Emits C++ declarations for Smithy data shapes (the contract in docs/generated-types.md). */
@@ -138,6 +139,14 @@ final class TypeGenerators {
 
   void generateStructure(StructureShape shape) {
     String name = typeName(shape);
+    java.util.LinkedHashMap<String, String> folded = new java.util.LinkedHashMap<>();
+    for (MemberShape member : shape.members()) {
+      folded.put(member.getMemberName(), symbols().toMemberName(member));
+    }
+    // Structs carry the printing member functions, so those names are
+    // reserved for data members now.
+    requireDistinctNames(
+        "structure", shape.getId(), folded, java.util.Set.of("AppendDebugTo", "DebugString"));
     writeForwardDeclarations(shape);
     writeDocs(shape);
     writer.openBlock("struct $L {", name);
@@ -160,6 +169,7 @@ final class TypeGenerators {
     if (!shape.members().isEmpty()) {
       writer.write("");
     }
+    writeStructPrinting(shape, name);
     writer.write("friend bool operator==(const $1L&, const $1L&) = default;", name);
     writeOrdering(writer, name, orderable(shape));
     writer.closeBlock("};");
@@ -167,6 +177,57 @@ final class TypeGenerators {
     if (orderable(shape)) {
       writeStructHash(shape, name);
     }
+  }
+
+  /**
+   * Designated-initializer-style debug rendering (issue #85): disengaged optionals are omitted,
+   * members targeting a @sensitive shape (and the whole body of a @sensitive struct) print
+   * [REDACTED] instead of leaking into logs. Member reads go through {@code this->} so a member
+   * named {@code out} can't shadow the sink parameter.
+   */
+  private void writeStructPrinting(StructureShape shape, String name) {
+    writer.addInclude("<ostream>").addInclude("<string>").addInclude("\"smithy/core/print.h\"");
+    writer.write("/// Debug rendering for logs and tests — for humans, never parse it.");
+    writer.openBlock("void AppendDebugTo(std::string& out) const {");
+    if (shape.hasTrait(SensitiveTrait.class)) {
+      writer.write("out += $S;", name + "{[REDACTED]}");
+    } else {
+      writer.write("out += $S;", name + "{");
+      if (!shape.members().isEmpty()) {
+        writer.write("const char* sep = \"\";");
+      }
+      for (MemberShape member : shape.members()) {
+        String memberName = symbols().toMemberName(member);
+        boolean optional = symbols().toMemberSymbol(member).getName().startsWith("std::optional<");
+        if (optional) {
+          writer.openBlock("if (this->$L.has_value()) {", memberName);
+        }
+        writer.write("out += sep;");
+        writer.write("sep = \", \";");
+        writer.write("out += $S;", "." + memberName + " = ");
+        if (context.model().expectShape(member.getTarget()).hasTrait(SensitiveTrait.class)) {
+          writer.write("out += \"[REDACTED]\";");
+        } else {
+          writer.write("smithy::DebugAppend(out, $Lthis->$L);", optional ? "*" : "", memberName);
+        }
+        if (optional) {
+          writer.closeBlock("}");
+        }
+      }
+      writer.write("out += '}';");
+    }
+    writer.closeBlock("}");
+    writePrintingAdapters(writer, name);
+    writer.write("");
+  }
+
+  /** DebugString() and operator<<: thin adapters over AppendDebugTo. */
+  static void writePrintingAdapters(CppWriter writer, String name) {
+    writer.write(
+        "std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }");
+    writer.openBlock("friend std::ostream& operator<<(std::ostream& os, const $L& value) {", name);
+    writer.write("return os << value.DebugString();");
+    writer.closeBlock("}");
   }
 
   private boolean orderable(Shape shape) {
@@ -295,6 +356,19 @@ final class TypeGenerators {
     writer.write("return unknown_;");
     writer.closeBlock("}");
     writer.write("");
+    writer.addInclude("<ostream>");
+    writer.write("/// Debug rendering for logs and tests — for humans, never parse it.");
+    writer.openBlock("void AppendDebugTo(std::string& out) const {");
+    writer.write("out += $S;", name + "(");
+    if (shape.hasTrait(SensitiveTrait.class)) {
+      writer.write("out += \"[REDACTED]\";");
+    } else {
+      writer.write("out += ToString();");
+    }
+    writer.write("out += ')';");
+    writer.closeBlock("}");
+    writePrintingAdapters(writer, name);
+    writer.write("");
     writer.write("friend bool operator==(const $1L&, const $1L&) = default;", name);
     writer.write("friend bool operator==(const $L& a, Value b) { return a.value_ == b; }", name);
     writeOrdering(writer, name, true);
@@ -354,10 +428,14 @@ final class TypeGenerators {
 
     List<TaggedMember> tagged = new java.util.ArrayList<>();
     for (MemberShape member : members) {
-      Symbol type =
-          context.symbolProvider().toSymbol(context.model().expectShape(member.getTarget()));
+      Shape target = context.model().expectShape(member.getTarget());
+      Symbol type = context.symbolProvider().toSymbol(target);
       writer.addIncludesFor(type);
-      tagged.add(new TaggedMember(symbols().toMemberName(member), type.getName()));
+      tagged.add(
+          new TaggedMember(
+              symbols().toMemberName(member),
+              type.getName(),
+              target.hasTrait(SensitiveTrait.class)));
     }
     writeDocs(shape);
     emitTaggedVariant(
@@ -366,13 +444,17 @@ final class TypeGenerators {
         tagged,
         /* withFactories= */ true,
         orderable(shape),
+        shape.hasTrait(SensitiveTrait.class),
         "/// True until one of the From* factories has been used.",
         "/// Name of the engaged member, \"(empty)\" until a From* factory has run.",
         null);
   }
 
-  /** One alternative of a tagged-variant class: accessor stem + C++ type name. */
-  record TaggedMember(String memberName, String typeName) {}
+  /**
+   * One alternative of a tagged-variant class: accessor stem + C++ type name, plus whether the
+   * member's target shape is @sensitive (its debug rendering redacts).
+   */
+  record TaggedMember(String memberName, String typeName, boolean sensitive) {}
 
   /**
    * The tagged-variant class shape shared by generated unions and per-operation error listings:
@@ -387,10 +469,12 @@ final class TypeGenerators {
       List<TaggedMember> members,
       boolean withFactories,
       boolean withOrdering,
+      boolean redactBody,
       String emptyDoc,
       String caseNameDoc,
       Runnable extraPublic) {
     writer.addInclude("<cstddef>").addInclude("<utility>").addInclude("<variant>");
+    writer.addInclude("<ostream>").addInclude("<string>").addInclude("\"smithy/core/print.h\"");
     writer.addInclude("\"smithy/core/fatal.h\"");
 
     writer.openBlock("class $L {", name);
@@ -450,6 +534,36 @@ final class TypeGenerators {
     writer.openBlock("decltype(auto) visit(Visitor&& visitor) const {");
     writer.write("return std::visit(std::forward<Visitor>(visitor), value_);");
     writer.closeBlock("}");
+    writer.write("");
+    writer.write("/// Debug rendering for logs and tests — for humans, never parse it.");
+    writer.openBlock("void AppendDebugTo(std::string& out) const {");
+    if (redactBody) {
+      writer.write("out += $S;", name + "([REDACTED])");
+    } else {
+      writer.write("out += $S;", name + "(");
+      writer.openBlock("switch (value_.index()) {");
+      for (int i = 0; i < members.size(); ++i) {
+        TaggedMember member = members.get(i);
+        writer.write("case $L:", i + 1);
+        writer.indent();
+        writer.write("out += $S;", member.memberName() + " = ");
+        if (member.sensitive()) {
+          writer.write("out += \"[REDACTED]\";");
+        } else {
+          writer.write("smithy::DebugAppend(out, std::get<$L>(value_));", i + 1);
+        }
+        writer.write("break;");
+        writer.dedent();
+      }
+      writer.write("default:");
+      writer.indent();
+      writer.write("break;");
+      writer.dedent();
+      writer.closeBlock("}");
+      writer.write("out += ')';");
+    }
+    writer.closeBlock("}");
+    writePrintingAdapters(writer, name);
     writer.write("");
     writer.write("friend bool operator==(const $1L&, const $1L&) = default;", name);
     writeOrdering(writer, name, withOrdering);

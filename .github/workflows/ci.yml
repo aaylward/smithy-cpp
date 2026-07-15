@@ -230,6 +230,7 @@ jobs:
         run: |
           find runtime/src examples -name '*.cc' ! -name '*_test.cc' ! -path '*/src/json/*' \
             ! -name 'beast_src.cc' ! -path '*/generated/*' -print0 \
-            | xargs -0 -I{} clang-tidy --quiet {} -- -Iruntime/include -I. -std=c++20
+            | xargs -0 -I{} clang-tidy --quiet {} -- -Iruntime/include -I. \
+              -Iexamples/simplerestjson/generated/include -std=c++20
       - name: buildifier
         run: npx -y @bazel/buildifier@8.2.1 --lint=warn --mode=check -r .

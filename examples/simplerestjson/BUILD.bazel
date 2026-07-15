@@ -1,0 +1,15 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+
+# The serving-lifecycle example (issue #49): SIGTERM/SIGINT → Start/block/
+# Stop with the Beast transport's drain. docs/production-guide.md walks
+# through it under "Serving lifecycle".
+cc_binary(
+    name = "bookstore_server",
+    srcs = ["serve_main.cc"],
+    deps = [
+        "//examples/simplerestjson/generated:server",
+        "//examples/simplerestjson/generated:types",
+        "//runtime:core",
+        "//runtime:http_beast",
+    ],
+)

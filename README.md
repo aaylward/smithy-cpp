@@ -33,9 +33,21 @@ experience assumed. Day 2 (evolving the model) is
 - **Hardening in CI:** sanitizer jobs, libFuzzer harnesses, hostile-input test banks, and every
   fixture's generated client integration-testing its generated server.
 
-Not yet: bidirectional streaming (event streams/WebSockets) and Bazel Central Registry / Maven
-publishing — consumers pin a git commit for now. Roadmap and per-phase status live in
-[`docs/PLAN.md`](docs/PLAN.md).
+## Current limitations
+
+The consolidated list — if your API needs one of these, check here before adopting:
+
+- **`@streaming` is not modeled yet.** The trait is ignored: a `@streaming` member generates
+  as its plain shape (a streaming blob payload becomes an ordinary `smithy::Blob`, fully
+  buffered in memory), and there is no event-stream or WebSocket transport. Streaming — blob
+  streams and event streams, client and server — is
+  [PLAN Phase 8](docs/PLAN.md): deferred but planned, not an open-ended deferral.
+- **No Bazel Central Registry / Maven publishing** — consumers pin a git commit
+  ([quickstart](docs/quickstart.md)); publishing is deferred until the project is
+  production-validated (#44 tracks release readiness).
+- **Linux and macOS only** ([ADR-0008](docs/adr/0008-drop-windows-support.md) dropped Windows).
+
+Roadmap and per-phase status live in [`docs/PLAN.md`](docs/PLAN.md).
 
 ## Documentation
 

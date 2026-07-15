@@ -230,6 +230,46 @@ reports a 500 completion before the exception reaches the transport's
 containment, so an in-flight gauge can never leak. Throwing callbacks are
 logged and swallowed.
 
+## Serving lifecycle
+
+The pattern for a long-running server is SIGTERM/SIGINT → `Start`/block/`Stop`, with the Beast
+transport's drain doing the graceful half: `Stop()` accepts no new connections or keep-alive
+reads, and in-flight requests get `Options.drain_timeout_seconds` to finish before the pool is
+torn down. The compiled, runnable version is
+[`examples/simplerestjson/serve_main.cc`](../examples/simplerestjson/serve_main.cc)
+(`bazel run //examples/simplerestjson:bookstore_server`); the shape:
+
+```cpp
+int main() {
+  sigset_t shutdown_signals;
+  sigemptyset(&shutdown_signals);
+  sigaddset(&shutdown_signals, SIGINT);
+  sigaddset(&shutdown_signals, SIGTERM);
+  // Before Start(): threads the transport creates inherit this mask, so the
+  // shutdown signals reach only the sigwait() below.
+  pthread_sigmask(SIG_BLOCK, &shutdown_signals, nullptr);
+
+  BookstoreServer server(std::make_shared<InMemoryBookstore>());
+  smithy::http::BeastServerTransport transport({
+      .address = "0.0.0.0",
+      .port = 8080,
+      .drain_timeout_seconds = 10,
+  });
+  auto started = transport.Start(server.Handler());
+  if (!started.ok()) return 1;
+
+  int signal_number = 0;
+  sigwait(&shutdown_signals, &signal_number);  // serve until SIGTERM/SIGINT
+  transport.Stop();  // in-flight requests get drain_timeout_seconds to finish
+  return 0;
+}
+```
+
+Under Kubernetes: SIGTERM is exactly what the kubelet sends, so size
+`terminationGracePeriodSeconds` above `drain_timeout_seconds`, and compose the `/livez` +
+`/readyz` probes from the middleware chain above in front of the handler — readiness flips
+traffic away while the drain finishes.
+
 ## Observability
 
 The runtime's observability story is deliberately SDK-free: enriched hooks

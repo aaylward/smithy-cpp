@@ -22,6 +22,7 @@ compatibility contract: changes to it are breaking for consumers of generated co
 | `intEnum` | `enum class X : std::int32_t` | |
 | `smithy.api#Unit` | `smithy::Unit` | Never declared; maps to the runtime type |
 | `bigInteger` / `bigDecimal` | — | Rejected with a clear error (planned) |
+| `@streaming` member | trait ignored (Phase 8) | Generates as the plain shape — a streaming blob is a fully buffered `smithy::Blob`; see the README's [Current limitations](../README.md#current-limitations) |
 | recursive structures | `smithy::Boxed<T>` member indirection | Deep copy/equality; list cycles ride `std::vector` directly. Cycles through union members or map values are still rejected with a clear error |
 
 ## Conventions

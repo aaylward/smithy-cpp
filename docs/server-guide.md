@@ -119,4 +119,6 @@ serialization error) — see [production-guide.md](production-guide.md).
 
 Nested `@required` absences as `fieldList` entries and a server-strict serde variant (clients
 must skip null dense-map values and accept UTC-offset timestamps in responses; servers share
-that serde today), and `@streaming` payloads (Phase 8).
+that serde today), and `@streaming` payloads (Phase 8 — the README's
+[Current limitations](../README.md#current-limitations) states exactly what the trait does
+today).

@@ -300,7 +300,8 @@ auto client = TodoClient::Create(std::move(config)).value_or_die("creating todo 
 
 auto added = client.AddTask(AddTaskInput{.title = "buy milk"});   // Outcome<AddTaskOutput>
 auto missing = client.GetTask(GetTaskInput{.taskId = "nope"});
-// missing.error().detail<NoSuchTask>() is the typed 404 from the handler.
+// GetTaskErrors::FromError(missing.error()).as_no_such_task_or_null() is the
+// typed 404 from the handler (generated-types.md § Clients has the contract).
 ```
 
 Everything between the client call and your handler — routing, JSON parsing, constraint

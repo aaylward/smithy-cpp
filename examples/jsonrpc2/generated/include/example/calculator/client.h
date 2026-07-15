@@ -2,11 +2,15 @@
 
 #pragma once
 
+#include <cstddef>
 #include <memory>
 #include <string>
+#include <utility>
+#include <variant>
 
 #include "example/calculator/types.h"
 #include "smithy/client/config.h"
+#include "smithy/core/fatal.h"
 #include "smithy/core/outcome.h"
 #include "smithy/http/transport.h"
 
@@ -15,7 +19,8 @@ namespace example::calculator {
 /// jsonRpc2 client for example.calculator#Calculator.
 /// Modeled service errors surface as smithy::Error with kind kModeled,
 /// code() set to the error shape name, and the deserialized error
-/// structure attached: error.detail<TheErrorShape>().
+/// structure attached. Dispatch on them through the per-operation
+/// <Operation>Errors listings below rather than comparing code() text.
 class CalculatorClient {
   public:
     /// Fails when the endpoint cannot be parsed and no transport is injected.
@@ -33,6 +38,64 @@ class CalculatorClient {
     smithy::ClientConfig config_;
     std::shared_ptr<smithy::http::HttpClient> transport_;
     std::string path_prefix_;
+};
+
+/// The modeled errors of Divide, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class DivideErrors {
+  public:
+    DivideErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static DivideErrors FromError(const smithy::Error& error) {
+      DivideErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "DivisionByZero") {
+        const auto* detail = error.detail<DivisionByZero>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : DivisionByZero{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_division_by_zero() const { return value_.index() == 1; }
+    const DivisionByZero& as_division_by_zero() const {
+      require_is(1, "division_by_zero");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const DivisionByZero* as_division_by_zero_or_null() const { return std::get_if<1>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "division_by_zero"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    friend bool operator==(const DivideErrors&, const DivideErrors&) = default;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("DivideErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, DivisionByZero> value_;
 };
 
 }  // namespace example::calculator

@@ -65,6 +65,97 @@ class GeneratedCodeShapeTest {
     assertTrue(types.contains("decltype(auto) visit(Visitor&& visitor) const"), types);
   }
 
+  private static final String ERRORS_MODEL =
+      """
+      $version: "2.0"
+      namespace test.shape
+      use alloy#simpleRestJson
+
+      @simpleRestJson
+      service Svc { version: "1", operations: [Ping] }
+
+      @http(method: "POST", uri: "/ping")
+      operation Ping {
+          input := { @required id: String }
+          errors: [NotFound, Quota]
+      }
+
+      @error("client")
+      @httpError(404)
+      structure NotFound { message: String }
+
+      @error("client")
+      @httpError(429)
+      structure Quota { message: String }
+      """;
+
+  @Test
+  void operationsGrowTypedErrorListings() {
+    // Issue #49: modeled-error dispatch was stringly-typed — consumers
+    // compared Error::code() text and guessed the detail<T>() type. Every
+    // operation with modeled errors now gets a <Op>Errors listing in
+    // client.h: FromError() matches kind + code and carries the typed
+    // detail, and the union accessor surface (is_/as_/or_null/case_name/
+    // visit) makes dispatch exhaustive and typo-proof.
+    String client =
+        PluginTestHarness.generate(ERRORS_MODEL, "test.shape#Svc", "test::shape")
+            .expectFileString("/include/test/shape/client.h");
+    assertTrue(client.contains("class PingErrors {"), client);
+    assertTrue(
+        client.contains("static PingErrors FromError(const smithy::Error& error) {"), client);
+    assertTrue(
+        client.contains("if (error.kind() != smithy::ErrorKind::kModeled) return result;"), client);
+    assertTrue(client.contains("if (error.code() == \"NotFound\")"), client);
+    assertTrue(client.contains("bool is_not_found() const"), client);
+    assertTrue(
+        client.contains(
+            "const Quota* as_quota_or_null() const" + " { return std::get_if<2>(&value_); }"),
+        client);
+    assertTrue(
+        client.contains(
+            "static constexpr const char* kNames[] ="
+                + " {\"(empty)\", \"not_found\", \"quota\"};"),
+        client);
+    // Error listings are matched from a smithy::Error, never hand-assembled:
+    // no From<Member> factories.
+    assertFalse(client.contains("FromNotFound"), client);
+  }
+
+  @Test
+  void typedErrorListingNameCollisionFailsWithContext() {
+    // The listing's synthetic name <Op>Errors can collide with a modeled
+    // shape; that must be an attributed cpp-codegen diagnostic, not silent
+    // misgeneration. (The plural dodges the real DescribeSink /
+    // DescribeSinkError fixture; this pins the guard for the plural too.)
+    String model =
+        """
+        $version: "2.0"
+        namespace test.shape
+        use alloy#simpleRestJson
+
+        @simpleRestJson
+        service Svc { version: "1", operations: [Ping] }
+
+        @http(method: "POST", uri: "/ping")
+        operation Ping {
+            input := { @required id: String, extra: PingErrors }
+            errors: [NotFound]
+        }
+
+        structure PingErrors { note: String }
+
+        @error("client")
+        @httpError(404)
+        structure NotFound { message: String }
+        """;
+    var error =
+        org.junit.jupiter.api.Assertions.assertThrows(
+            software.amazon.smithy.codegen.core.CodegenException.class,
+            () -> PluginTestHarness.generate(model, "test.shape#Svc", "test::shape"));
+    assertTrue(error.getMessage().contains("cpp-codegen"), error.getMessage());
+    assertTrue(error.getMessage().contains("PingErrors"), error.getMessage());
+  }
+
   @Test
   void streamingTraitIsIgnoredAndGeneratesThePlainShape() {
     // The README's "Current limitations" states that @streaming is ignored —

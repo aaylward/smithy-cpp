@@ -141,9 +141,24 @@ auto city   = client.GetCity(GetCityInput{.cityId = "seattle"});  // Outcome<Get
   arrive as JSON-RPC error objects on HTTP 200, discriminated by `error.data.__type`);
   `@retryable` errors and 5xx responses (jsonRpc2: `error.code >= 500`) are marked retryable.
 - **Typed errors**: when the code matches an error the operation declares, the deserialized
-  error structure rides along as the error's detail —
-  `if (const auto* e = outcome.error().detail<OrderNotFound>()) use(e->orderId);`
-  Undeclared codes still surface generically (code + message, no detail).
+  error structure rides along as the error's detail. Every operation with modeled errors also
+  gets a `<Operation>Errors` listing in `client.h` — the typed, typo-proof way to dispatch,
+  with the same accessor surface as unions (`is_x`/`as_x`/`as_x_or_null`/`case_name`/`visit`):
+
+  ```cpp
+  const auto typed = GetOrderErrors::FromError(outcome.error());
+  if (const auto* e = typed.as_order_not_found_or_null()) use(e->orderId);
+  // or exhaustively — the visitor must also cover std::monostate, the
+  // "not one of this operation's modeled errors" state:
+  typed.visit(smithy::Overloaded{
+      [](const OrderNotFound& e) { /* ... */ },
+      [](std::monostate) { /* transport/serialization/unknown */ },
+  });
+  ```
+
+  `FromError` matches only `kModeled` errors by code; an engaged member carries the
+  deserialized detail (default-initialized if the error arrived without one). Undeclared codes
+  still surface generically (code + message, no detail) and leave the listing `empty()`.
 - simpleRestJson honors `@jsonName` body keys, serializes non-finite numbers as
   `"NaN"`/`"Infinity"`/`"-Infinity"`, and binds response `@httpHeader` members (including
   comma-joined lists and base64 `@mediaType` strings).

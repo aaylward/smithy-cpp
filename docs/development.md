@@ -104,6 +104,9 @@ cd codegen && gradle spotlessApply
   nlohmann ships its own BUILD.bazel, so it only needs a MODULE.bazel in the checkout root (copy
   the patched one from the module's page on the Bazel Central Registry). Add
   `--lockfile_mode=off` so local runs don't dirty the checked-in MODULE.bazel.lock.
+  The consumer-facing version of this recipe (including the `repo1.maven.org` fetch every
+  git_override consumer triggers, and air-gapped prefetch) is in
+  [quickstart.md](quickstart.md#the-first-build-cost-caching-and-locked-down-networks).
 - The Boost-dependent targets (`//runtime:http_beast` and the tests that use it) fetch ~30
   modular Boost archives. Behind a proxy that blocks GitHub they won't fetch; exclude them and
   run everything else with

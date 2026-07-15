@@ -88,9 +88,13 @@ try-import %workspace%/.bazelrc.user
 (This is byte-for-byte the CI-tested [`examples/bazel-consumer/.bazelrc`](../examples/bazel-consumer/.bazelrc);
 `QuickstartMirrorTest` fails the build if this page and the example ever diverge.)
 
-Pin your Bazel track with a `.bazelversion` so bazelisk resolves the same major version
-everywhere — the CI-tested example carries the same pin as this repo's own
-[`.bazelversion`](../.bazelversion).
+Pin your Bazel track with a `.bazelversion` so [bazelisk](https://github.com/bazelbuild/bazelisk)
+resolves the same major version everywhere — the CI-tested example carries the same pin as this
+repo's own [`.bazelversion`](../.bazelversion).
+
+Your first build will download the toolchain and every dependency;
+[The first build](#the-first-build-cost-caching-and-locked-down-networks) says what to expect
+and how to build behind a blocking proxy or fully offline.
 
 ## 2. Write the model
 
@@ -310,6 +314,49 @@ bazel test //...
 
 For production serving, plug `server.Handler()` into `smithy::http::BeastServerTransport`
 (`@smithy_cpp//runtime:http_beast`, ADR-0006).
+
+## The first build: cost, caching, and locked-down networks
+
+The first `bazel build` fetches everything the module graph needs: the smithy-cpp sources at
+your `git_override` commit, a hermetic JDK 17, the generator's five Maven jars from
+`repo1.maven.org`, and the C++ runtime's dependencies (BoringSSL, Boost.Beast/asio,
+nlohmann_json, zlib). That's hundreds of MB — expect a multi-minute cold build. It happens
+once: every archive lands in Bazel's caches and later builds fetch nothing. For CI or a team,
+point `--repository_cache=<dir>` at a persisted directory so machines share one download cache
+(this repo's own CI restores its Bazel caches the same way).
+
+On a network that blocks direct downloads, put the workarounds in `.bazelrc.user` (the
+quickstart `.bazelrc` above already `try-import`s it, keeping machine-specific flags out of
+version control):
+
+- **Blocked GitHub archives** — most Bazel module archives are mirrored; add a
+  [`--downloader_config`](https://bazel.build/reference/command-line-reference#flag--downloader_config)
+  rewrite file:
+
+  ```
+  rewrite github.com/(.*) mirror.bazel.build/github.com/$1
+  ```
+
+  For the few modules absent from the mirror (nlohmann_json, at the time of writing),
+  `git clone` the exact release tag — git often works where archive downloads don't — copy the
+  module's patched `MODULE.bazel` from its page on the
+  [Bazel Central Registry](https://registry.bazel.build/), and build with
+  `--override_module=nlohmann_json=<checkout>`. Add `--lockfile_mode=off` while overrides are
+  in effect so they don't rewrite your lockfile.
+- **Blocked `repo1.maven.org`** — the generator's jars come from Maven Central, and the same
+  `--downloader_config` file can rewrite them to an internal mirror (Artifactory, Nexus):
+
+  ```
+  rewrite repo1.maven.org/maven2/(.*) artifacts.example.com/maven-central/$1
+  ```
+- **Fully air-gapped** — prefetch on a connected machine and carry the cache across:
+  `bazel fetch //... --repository_cache=<dir>`, move `<dir>` inside, and build with the same
+  flag; or vendor the dependencies into the workspace with Bazel's
+  [vendor mode](https://bazel.build/external/vendor)
+  (`bazel vendor //... --vendor_dir=<dir>`, then build with the same `--vendor_dir`).
+
+(The same recipes, framed for developing smithy-cpp itself, are in
+[development.md](development.md).)
 
 ## Troubleshooting generation failures
 

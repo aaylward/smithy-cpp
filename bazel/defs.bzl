@@ -30,6 +30,54 @@ _RUNTIME_DEPS = [
 ]
 _SERVER_RUNTIME_DEPS = [Label("//runtime:server")]
 
+def _is_identifier(s):
+    """True if s is a C/C++-style identifier ([A-Za-z_][A-Za-z0-9_]*)."""
+    if not s:
+        return False
+    for i in range(len(s)):
+        ch = s[i]
+        if ch == "_" or ch.isalpha():
+            continue
+        if i > 0 and ch.isdigit():
+            continue
+        return False
+    return True
+
+def _namespace_error(namespace):
+    """Why `namespace` is not a valid C++ namespace, or None if it is."""
+    segments = namespace.split("::")
+    ok = True
+    for segment in segments:
+        if not _is_identifier(segment):
+            ok = False
+    if ok:
+        return None
+    msg = 'namespace = "%s" is not a "::"-separated C++ namespace (like "acme::todo")' % namespace
+    if "." in namespace and "::" not in namespace:
+        # The classic slip: pasting the model's Smithy namespace verbatim.
+        return msg + ': did you mean "%s"?' % namespace.replace(".", "::")
+    for segment in segments:
+        if not _is_identifier(segment):
+            return msg + ': segment "%s" is not a C++ identifier' % segment
+    return msg
+
+def _service_error(service):
+    """Why `service` is not a valid Smithy shape ID, or None if it is."""
+    msg = 'service = "%s" is not the service\'s Smithy shape ID' % service
+    hint = ' (expected "<namespace>#<ServiceName>" exactly as modeled, like "acme.todo#Todo")'
+    if service.count("#") != 1:
+        return msg + hint
+    shape_ns, _, name = service.partition("#")
+    if "::" in shape_ns:
+        # The reverse slip: the C++ namespace attribute pasted into service.
+        return msg + ': did you mean "%s#%s"?' % (shape_ns.replace("::", "."), name)
+    for segment in shape_ns.split("."):
+        if not _is_identifier(segment):
+            return msg + hint
+    if not _is_identifier(name):
+        return msg + hint
+    return None
+
 def _generated_files(namespace, mode):
     """The exact files the generator emits for a mode (namespace drives paths)."""
     ns_path = namespace.replace("::", "/")
@@ -47,6 +95,13 @@ def _generated_files(namespace, mode):
     return hdrs, srcs
 
 def _smithy_cpp_generate_impl(ctx):
+    # Wiring mistakes fail here, at analysis time, with the fix in the message —
+    # the generator never launches. Model mistakes fail the action itself, whose
+    # stderr leads with the attributed `cpp-codegen:` diagnostic.
+    for err in [_namespace_error(ctx.attr.namespace), _service_error(ctx.attr.service)]:
+        if err:
+            fail(err)
+
     hdr_paths, src_paths = _generated_files(ctx.attr.namespace, ctx.attr.mode)
     hdr_outputs = [ctx.actions.declare_file(ctx.label.name + "/" + p) for p in hdr_paths]
     src_outputs = [ctx.actions.declare_file(ctx.label.name + "/" + p) for p in src_paths]
@@ -85,7 +140,11 @@ _smithy_cpp_generate = rule(
         "mode": attr.string(values = ["types", "client", "server", "both"], mandatory = True),
         "namespace": attr.string(mandatory = True),
         "service": attr.string(mandatory = True),
-        "srcs": attr.label_list(allow_files = [".smithy", ".json"], mandatory = True),
+        "srcs": attr.label_list(
+            allow_empty = False,
+            allow_files = [".smithy", ".json"],
+            mandatory = True,
+        ),
         "_generator": attr.label(
             default = _GENERATOR,
             executable = True,
@@ -96,6 +155,10 @@ _smithy_cpp_generate = rule(
 
 def _smithy_cpp_library(name, srcs, service, namespace, mode, deps, **kwargs):
     gen = name + "_smithy_gen"
+
+    # tags/testonly apply to the internal targets too, so e.g. tags = ["manual"]
+    # keeps every piece of the macro out of wildcard builds.
+    inherited = {k: kwargs[k] for k in ("tags", "testonly") if k in kwargs}
     _smithy_cpp_generate(
         name = gen,
         srcs = srcs,
@@ -103,18 +166,21 @@ def _smithy_cpp_library(name, srcs, service, namespace, mode, deps, **kwargs):
         namespace = namespace,
         mode = mode,
         visibility = ["//visibility:private"],
+        **inherited
     )
     native.filegroup(
         name = gen + "_hdrs",
         srcs = [":" + gen],
         output_group = "hdrs",
         visibility = ["//visibility:private"],
+        **inherited
     )
     native.filegroup(
         name = gen + "_srcs",
         srcs = [":" + gen],
         output_group = "srcs",
         visibility = ["//visibility:private"],
+        **inherited
     )
     cc_library(
         name = name,

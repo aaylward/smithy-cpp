@@ -88,12 +88,16 @@ try-import %workspace%/.bazelrc.user
 (This is byte-for-byte the CI-tested [`examples/bazel-consumer/.bazelrc`](../examples/bazel-consumer/.bazelrc);
 `QuickstartMirrorTest` fails the build if this page and the example ever diverge.)
 
+Pin your Bazel track with a `.bazelversion` so bazelisk resolves the same major version
+everywhere — the CI-tested example (like this repo) pins `9.x`.
+
 ## 2. Write the model
 
 (When a model is invalid, the generation action fails and the `cpp-codegen:` line at the top of
 its stderr names the problem — a Smithy validation failure lists every event. You never need to
 read the Java stack trace below it; if there is no `cpp-codegen:` line at all, you have found a
-generator bug worth reporting.)
+generator bug worth reporting. [Troubleshooting generation failures](#troubleshooting-generation-failures)
+covers the full failure-reading guide.)
 
 `model/todo.smithy` — a deliberately small task tracker: add a task, fetch it back, and one
 thing that can go wrong. This is the entire file:
@@ -307,6 +311,33 @@ bazel test //...
 
 For production serving, plug `server.Handler()` into `smithy::http::BeastServerTransport`
 (`@smithy_cpp//runtime:http_beast`, ADR-0006).
+
+## Troubleshooting generation failures
+
+Generation fails in one of two layers, and the shape of the error tells you which:
+
+**Wiring mistakes fail at analysis time — the generator never runs.** The rules validate their
+attributes and fail with the fix in the message, pointing at your BUILD target:
+
+- `namespace` must be the `::`-separated C++ namespace. Pasting the model's Smithy namespace
+  (`acme.todo`) fails with `did you mean "acme::todo"?`.
+- `service` must be the full Smithy shape ID exactly as modeled (`acme.todo#Todo`). A bare name
+  (`Todo`) or a pasted C++ namespace (`acme::todo#Todo`) fails with the corrected form.
+- `srcs` must list at least one `.smithy`/`.json` model file.
+
+**Model mistakes fail the `SmithyCppGenerate` action.** The `cpp-codegen:` line at the top of
+the action's stderr names the problem — a Smithy validation failure prints one line per event,
+and you never need the Java stack trace below it. Run with `--verbose_failures` to also see the
+full generator command line. The usual causes:
+
+- the model is invalid (each validation event names the shape and the rule it breaks),
+- the `service` shape ID names nothing in the model — a typo, or the file that defines the
+  service isn't in `srcs`,
+- the service has no protocol trait because the protocol overlay file isn't in `srcs`
+  (see [§3](#3-declare-the-generated-libraries) — the trait usually lives in an overlay).
+
+If the action fails with **no** `cpp-codegen:` line, you have found a generator bug — please
+[file an issue](https://github.com/aaylward/smithy-cpp/issues) with the stack trace.
 
 ## Generating outside Bazel
 

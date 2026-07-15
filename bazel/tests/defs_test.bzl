@@ -2,6 +2,7 @@
 
 load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
 load("@rules_testing//lib:analysis_test.bzl", "analysis_test", "test_suite")
+load("@rules_testing//lib:truth.bzl", "matching")
 
 _NS = "include/smithy/cpp/ruletest"
 
@@ -75,6 +76,58 @@ def _client_cc_library_impl(env, target):
             found = True
     env.expect.that_bool(found).equals(True)
 
+# Wiring mistakes fail at analysis time with the fix in the message; these
+# pin both the failure and the message's actionable part.
+
+def _expect_failure_containing(env, target, needle):
+    env.expect.that_target(target).failures().contains_predicate(
+        matching.str_matches("*" + needle + "*"),
+    )
+
+def _smithy_dots_namespace_impl(env, target):
+    _expect_failure_containing(env, target, 'did you mean "smithy::cpp::ruletest"?')
+
+def _bad_namespace_segment_impl(env, target):
+    _expect_failure_containing(env, target, 'segment "9ruletest" is not a C++ identifier')
+
+def _bare_service_name_impl(env, target):
+    _expect_failure_containing(env, target, 'expected "<namespace>#<ServiceName>"')
+
+def _cpp_namespace_service_impl(env, target):
+    _expect_failure_containing(env, target, 'did you mean "smithy.cpp.ruletest#Greeter"?')
+
+def smithy_dots_namespace_test(name):
+    analysis_test(
+        name = name,
+        impl = _smithy_dots_namespace_impl,
+        target = "//bazel/tests:greeter_smithy_dots_namespace_smithy_gen",
+        expect_failure = True,
+    )
+
+def bad_namespace_segment_test(name):
+    analysis_test(
+        name = name,
+        impl = _bad_namespace_segment_impl,
+        target = "//bazel/tests:greeter_bad_namespace_segment_smithy_gen",
+        expect_failure = True,
+    )
+
+def bare_service_name_test(name):
+    analysis_test(
+        name = name,
+        impl = _bare_service_name_impl,
+        target = "//bazel/tests:greeter_bare_service_name_smithy_gen",
+        expect_failure = True,
+    )
+
+def cpp_namespace_service_test(name):
+    analysis_test(
+        name = name,
+        impl = _cpp_namespace_service_impl,
+        target = "//bazel/tests:greeter_cpp_namespace_service_smithy_gen",
+        expect_failure = True,
+    )
+
 def client_outputs_test(name):
     analysis_test(name = name, impl = _client_outputs_impl, target = "//bazel/tests:greeter_client_smithy_gen")
 
@@ -95,5 +148,9 @@ def defs_test_suite(name):
             server_outputs_test,
             types_outputs_test,
             client_cc_library_test,
+            smithy_dots_namespace_test,
+            bad_namespace_segment_test,
+            bare_service_name_test,
+            cpp_namespace_service_test,
         ],
     )

@@ -34,6 +34,41 @@ smithy_cpp_types_library(
     service = "smithy.cpp.ruletest#Greeter",
 )
 
+# Deliberately misconfigured instances for the analysis-failure tests below.
+# `manual` keeps them (and the macro's internal targets) out of wildcard
+# builds; only the expect_failure tests analyze them.
+smithy_cpp_client_library(
+    name = "greeter_smithy_dots_namespace",
+    srcs = ["greeter.smithy"],
+    namespace = "smithy.cpp.ruletest",
+    service = "smithy.cpp.ruletest#Greeter",
+    tags = ["manual"],
+)
+
+smithy_cpp_client_library(
+    name = "greeter_bad_namespace_segment",
+    srcs = ["greeter.smithy"],
+    namespace = "smithy::cpp::9ruletest",
+    service = "smithy.cpp.ruletest#Greeter",
+    tags = ["manual"],
+)
+
+smithy_cpp_client_library(
+    name = "greeter_bare_service_name",
+    srcs = ["greeter.smithy"],
+    namespace = "smithy::cpp::ruletest",
+    service = "Greeter",
+    tags = ["manual"],
+)
+
+smithy_cpp_client_library(
+    name = "greeter_cpp_namespace_service",
+    srcs = ["greeter.smithy"],
+    namespace = "smithy::cpp::ruletest",
+    service = "smithy::cpp::ruletest#Greeter",
+    tags = ["manual"],
+)
+
 # Functional check that a model assembled from multiple files (base +
 # protocol overlay) generates working code: the generated client round-trips
 # against the generated server in-process.

@@ -23,6 +23,7 @@ if [ -z "$port" ]; then
 fi
 
 curl -sfS -X POST "localhost:${port}/books" \
+  -H 'Content-Type: application/json' \
   -d '{"isbn":"0-306-40615-2","title":"Petriflora"}' > /dev/null
 curl -sfS "localhost:${port}/books/0-306-40615-2" | grep -q '"title":"Petriflora"'
 curl -sS "localhost:${port}/books/none" | grep -q 'BookNotFound'

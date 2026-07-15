@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <functional>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <utility>
 #include <variant>
@@ -15,6 +16,7 @@
 #include "smithy/core/fatal.h"
 #include "smithy/core/hash.h"
 #include "smithy/core/outcome.h"
+#include "smithy/core/print.h"
 #include "smithy/http/transport.h"
 
 namespace example::cafe {
@@ -87,6 +89,24 @@ class GetOrderErrors {
       return std::visit(std::forward<Visitor>(visitor), value_);
     }
 
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "GetOrderErrors(";
+      switch (value_.index()) {
+        case 1:
+          out += "order_not_found = ";
+          smithy::DebugAppend(out, std::get<1>(value_));
+          break;
+        default:
+          break;
+      }
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const GetOrderErrors& value) {
+      return os << value.DebugString();
+    }
+
     friend bool operator==(const GetOrderErrors&, const GetOrderErrors&) = default;
     friend auto operator<=>(const GetOrderErrors&, const GetOrderErrors&) = default;
     friend struct std::hash<GetOrderErrors>;
@@ -145,6 +165,24 @@ class OrderCoffeeErrors {
     template <typename Visitor>
     decltype(auto) visit(Visitor&& visitor) const {
       return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "OrderCoffeeErrors(";
+      switch (value_.index()) {
+        case 1:
+          out += "out_of_beans = ";
+          smithy::DebugAppend(out, std::get<1>(value_));
+          break;
+        default:
+          break;
+      }
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const OrderCoffeeErrors& value) {
+      return os << value.DebugString();
     }
 
     friend bool operator==(const OrderCoffeeErrors&, const OrderCoffeeErrors&) = default;

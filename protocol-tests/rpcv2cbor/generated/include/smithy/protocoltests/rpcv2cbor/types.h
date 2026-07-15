@@ -8,6 +8,7 @@
 #include <functional>
 #include <map>
 #include <optional>
+#include <ostream>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -15,6 +16,7 @@
 #include "smithy/core/blob.h"
 #include "smithy/core/boxed.h"
 #include "smithy/core/hash.h"
+#include "smithy/core/print.h"
 #include "smithy/core/timestamp.h"
 
 namespace smithy::protocoltests::rpcv2cbor {
@@ -23,6 +25,25 @@ namespace smithy::protocoltests::rpcv2cbor {
 struct ValidationExceptionField {
   std::string path{};
   std::string message{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "ValidationExceptionField{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".path = ";
+    smithy::DebugAppend(out, this->path);
+    out += sep;
+    sep = ", ";
+    out += ".message = ";
+    smithy::DebugAppend(out, this->message);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const ValidationExceptionField& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const ValidationExceptionField&, const ValidationExceptionField&) = default;
   friend auto operator<=>(const ValidationExceptionField&, const ValidationExceptionField&) = default;
@@ -36,6 +57,27 @@ struct ValidationException {
   std::string message{};
   std::optional<std::vector<ValidationExceptionField>> fieldList{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "ValidationException{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".message = ";
+    smithy::DebugAppend(out, this->message);
+    if (this->fieldList.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".fieldList = ";
+      smithy::DebugAppend(out, *this->fieldList);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const ValidationException& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const ValidationException&, const ValidationException&) = default;
   friend auto operator<=>(const ValidationException&, const ValidationException&) = default;
 };
@@ -44,6 +86,23 @@ struct ValidationException {
 struct ClientOptionalDefaults {
   std::optional<std::int32_t> member{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "ClientOptionalDefaults{";
+    const char* sep = "";
+    if (this->member.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".member = ";
+      smithy::DebugAppend(out, *this->member);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const ClientOptionalDefaults& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const ClientOptionalDefaults&, const ClientOptionalDefaults&) = default;
   friend auto operator<=>(const ClientOptionalDefaults&, const ClientOptionalDefaults&) = default;
 };
@@ -51,6 +110,23 @@ struct ClientOptionalDefaults {
 
 struct ComplexNestedErrorData {
   std::optional<std::string> Foo{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "ComplexNestedErrorData{";
+    const char* sep = "";
+    if (this->Foo.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".Foo = ";
+      smithy::DebugAppend(out, *this->Foo);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const ComplexNestedErrorData& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const ComplexNestedErrorData&, const ComplexNestedErrorData&) = default;
   friend auto operator<=>(const ComplexNestedErrorData&, const ComplexNestedErrorData&) = default;
@@ -61,6 +137,29 @@ struct ComplexNestedErrorData {
 struct ComplexError {
   std::optional<std::string> TopLevel{};
   std::optional<ComplexNestedErrorData> Nested{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "ComplexError{";
+    const char* sep = "";
+    if (this->TopLevel.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".TopLevel = ";
+      smithy::DebugAppend(out, *this->TopLevel);
+    }
+    if (this->Nested.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".Nested = ";
+      smithy::DebugAppend(out, *this->Nested);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const ComplexError& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const ComplexError&, const ComplexError&) = default;
   friend auto operator<=>(const ComplexError&, const ComplexError&) = default;
@@ -106,6 +205,17 @@ class TestEnum {
       return unknown_;
     }
 
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "TestEnum(";
+      out += ToString();
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const TestEnum& value) {
+      return os << value.DebugString();
+    }
+
     friend bool operator==(const TestEnum&, const TestEnum&) = default;
     friend bool operator==(const TestEnum& a, Value b) { return a.value_ == b; }
     friend auto operator<=>(const TestEnum&, const TestEnum&) = default;
@@ -148,6 +258,109 @@ struct Defaults {
   float zeroFloat = static_cast<float>(0.0);
   double zeroDouble = 0.0;
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "Defaults{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".defaultString = ";
+    smithy::DebugAppend(out, this->defaultString);
+    out += sep;
+    sep = ", ";
+    out += ".defaultBoolean = ";
+    smithy::DebugAppend(out, this->defaultBoolean);
+    out += sep;
+    sep = ", ";
+    out += ".defaultList = ";
+    smithy::DebugAppend(out, this->defaultList);
+    out += sep;
+    sep = ", ";
+    out += ".defaultTimestamp = ";
+    smithy::DebugAppend(out, this->defaultTimestamp);
+    out += sep;
+    sep = ", ";
+    out += ".defaultBlob = ";
+    smithy::DebugAppend(out, this->defaultBlob);
+    out += sep;
+    sep = ", ";
+    out += ".defaultByte = ";
+    smithy::DebugAppend(out, this->defaultByte);
+    out += sep;
+    sep = ", ";
+    out += ".defaultShort = ";
+    smithy::DebugAppend(out, this->defaultShort);
+    out += sep;
+    sep = ", ";
+    out += ".defaultInteger = ";
+    smithy::DebugAppend(out, this->defaultInteger);
+    out += sep;
+    sep = ", ";
+    out += ".defaultLong = ";
+    smithy::DebugAppend(out, this->defaultLong);
+    out += sep;
+    sep = ", ";
+    out += ".defaultFloat = ";
+    smithy::DebugAppend(out, this->defaultFloat);
+    out += sep;
+    sep = ", ";
+    out += ".defaultDouble = ";
+    smithy::DebugAppend(out, this->defaultDouble);
+    out += sep;
+    sep = ", ";
+    out += ".defaultMap = ";
+    smithy::DebugAppend(out, this->defaultMap);
+    out += sep;
+    sep = ", ";
+    out += ".defaultEnum = ";
+    smithy::DebugAppend(out, this->defaultEnum);
+    out += sep;
+    sep = ", ";
+    out += ".defaultIntEnum = ";
+    smithy::DebugAppend(out, this->defaultIntEnum);
+    out += sep;
+    sep = ", ";
+    out += ".emptyString = ";
+    smithy::DebugAppend(out, this->emptyString);
+    out += sep;
+    sep = ", ";
+    out += ".falseBoolean = ";
+    smithy::DebugAppend(out, this->falseBoolean);
+    out += sep;
+    sep = ", ";
+    out += ".emptyBlob = ";
+    smithy::DebugAppend(out, this->emptyBlob);
+    out += sep;
+    sep = ", ";
+    out += ".zeroByte = ";
+    smithy::DebugAppend(out, this->zeroByte);
+    out += sep;
+    sep = ", ";
+    out += ".zeroShort = ";
+    smithy::DebugAppend(out, this->zeroShort);
+    out += sep;
+    sep = ", ";
+    out += ".zeroInteger = ";
+    smithy::DebugAppend(out, this->zeroInteger);
+    out += sep;
+    sep = ", ";
+    out += ".zeroLong = ";
+    smithy::DebugAppend(out, this->zeroLong);
+    out += sep;
+    sep = ", ";
+    out += ".zeroFloat = ";
+    smithy::DebugAppend(out, this->zeroFloat);
+    out += sep;
+    sep = ", ";
+    out += ".zeroDouble = ";
+    smithy::DebugAppend(out, this->zeroDouble);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const Defaults& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const Defaults&, const Defaults&) = default;
   friend auto operator<=>(const Defaults&, const Defaults&) = default;
 };
@@ -156,24 +369,71 @@ struct Defaults {
 struct GreetingStruct {
   std::optional<std::string> hi{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "GreetingStruct{";
+    const char* sep = "";
+    if (this->hi.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".hi = ";
+      smithy::DebugAppend(out, *this->hi);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const GreetingStruct& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const GreetingStruct&, const GreetingStruct&) = default;
   friend auto operator<=>(const GreetingStruct&, const GreetingStruct&) = default;
 };
 
 
 struct EmptyInputOutputInput {
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "EmptyInputOutputInput{";
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const EmptyInputOutputInput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const EmptyInputOutputInput&, const EmptyInputOutputInput&) = default;
   friend auto operator<=>(const EmptyInputOutputInput&, const EmptyInputOutputInput&) = default;
 };
 
 
 struct EmptyInputOutputOutput {
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "EmptyInputOutputOutput{";
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const EmptyInputOutputOutput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const EmptyInputOutputOutput&, const EmptyInputOutputOutput&) = default;
   friend auto operator<=>(const EmptyInputOutputOutput&, const EmptyInputOutputOutput&) = default;
 };
 
 
 struct Float16Input {
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "Float16Input{";
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const Float16Input& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const Float16Input&, const Float16Input&) = default;
   friend auto operator<=>(const Float16Input&, const Float16Input&) = default;
 };
@@ -182,12 +442,39 @@ struct Float16Input {
 struct Float16Output {
   std::optional<double> value{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "Float16Output{";
+    const char* sep = "";
+    if (this->value.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".value = ";
+      smithy::DebugAppend(out, *this->value);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const Float16Output& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const Float16Output&, const Float16Output&) = default;
   friend auto operator<=>(const Float16Output&, const Float16Output&) = default;
 };
 
 
 struct FractionalSecondsInput {
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "FractionalSecondsInput{";
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const FractionalSecondsInput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const FractionalSecondsInput&, const FractionalSecondsInput&) = default;
   friend auto operator<=>(const FractionalSecondsInput&, const FractionalSecondsInput&) = default;
 };
@@ -196,12 +483,39 @@ struct FractionalSecondsInput {
 struct FractionalSecondsOutput {
   std::optional<smithy::Timestamp> datetime{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "FractionalSecondsOutput{";
+    const char* sep = "";
+    if (this->datetime.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".datetime = ";
+      smithy::DebugAppend(out, *this->datetime);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const FractionalSecondsOutput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const FractionalSecondsOutput&, const FractionalSecondsOutput&) = default;
   friend auto operator<=>(const FractionalSecondsOutput&, const FractionalSecondsOutput&) = default;
 };
 
 
 struct GreetingWithErrorsInput {
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "GreetingWithErrorsInput{";
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const GreetingWithErrorsInput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const GreetingWithErrorsInput&, const GreetingWithErrorsInput&) = default;
   friend auto operator<=>(const GreetingWithErrorsInput&, const GreetingWithErrorsInput&) = default;
 };
@@ -209,6 +523,23 @@ struct GreetingWithErrorsInput {
 
 struct GreetingWithErrorsOutput {
   std::optional<std::string> greeting{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "GreetingWithErrorsOutput{";
+    const char* sep = "";
+    if (this->greeting.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".greeting = ";
+      smithy::DebugAppend(out, *this->greeting);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const GreetingWithErrorsOutput& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const GreetingWithErrorsOutput&, const GreetingWithErrorsOutput&) = default;
   friend auto operator<=>(const GreetingWithErrorsOutput&, const GreetingWithErrorsOutput&) = default;
@@ -219,18 +550,55 @@ struct GreetingWithErrorsOutput {
 struct InvalidGreeting {
   std::optional<std::string> Message{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "InvalidGreeting{";
+    const char* sep = "";
+    if (this->Message.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".Message = ";
+      smithy::DebugAppend(out, *this->Message);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const InvalidGreeting& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const InvalidGreeting&, const InvalidGreeting&) = default;
   friend auto operator<=>(const InvalidGreeting&, const InvalidGreeting&) = default;
 };
 
 
 struct NoInputOutputInput {
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "NoInputOutputInput{";
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const NoInputOutputInput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const NoInputOutputInput&, const NoInputOutputInput&) = default;
   friend auto operator<=>(const NoInputOutputInput&, const NoInputOutputInput&) = default;
 };
 
 
 struct NoInputOutputOutput {
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "NoInputOutputOutput{";
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const NoInputOutputOutput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const NoInputOutputOutput&, const NoInputOutputOutput&) = default;
   friend auto operator<=>(const NoInputOutputOutput&, const NoInputOutputOutput&) = default;
 };
@@ -241,6 +609,41 @@ struct OperationWithDefaultsInput {
   std::optional<ClientOptionalDefaults> clientOptionalDefaults{};
   std::optional<std::string> topLevelDefault{};
   std::optional<std::int32_t> otherTopLevelDefault{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "OperationWithDefaultsInput{";
+    const char* sep = "";
+    if (this->defaults.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".defaults = ";
+      smithy::DebugAppend(out, *this->defaults);
+    }
+    if (this->clientOptionalDefaults.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".clientOptionalDefaults = ";
+      smithy::DebugAppend(out, *this->clientOptionalDefaults);
+    }
+    if (this->topLevelDefault.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".topLevelDefault = ";
+      smithy::DebugAppend(out, *this->topLevelDefault);
+    }
+    if (this->otherTopLevelDefault.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".otherTopLevelDefault = ";
+      smithy::DebugAppend(out, *this->otherTopLevelDefault);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const OperationWithDefaultsInput& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const OperationWithDefaultsInput&, const OperationWithDefaultsInput&) = default;
   friend auto operator<=>(const OperationWithDefaultsInput&, const OperationWithDefaultsInput&) = default;
@@ -272,6 +675,109 @@ struct OperationWithDefaultsOutput {
   float zeroFloat = static_cast<float>(0.0);
   double zeroDouble = 0.0;
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "OperationWithDefaultsOutput{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".defaultString = ";
+    smithy::DebugAppend(out, this->defaultString);
+    out += sep;
+    sep = ", ";
+    out += ".defaultBoolean = ";
+    smithy::DebugAppend(out, this->defaultBoolean);
+    out += sep;
+    sep = ", ";
+    out += ".defaultList = ";
+    smithy::DebugAppend(out, this->defaultList);
+    out += sep;
+    sep = ", ";
+    out += ".defaultTimestamp = ";
+    smithy::DebugAppend(out, this->defaultTimestamp);
+    out += sep;
+    sep = ", ";
+    out += ".defaultBlob = ";
+    smithy::DebugAppend(out, this->defaultBlob);
+    out += sep;
+    sep = ", ";
+    out += ".defaultByte = ";
+    smithy::DebugAppend(out, this->defaultByte);
+    out += sep;
+    sep = ", ";
+    out += ".defaultShort = ";
+    smithy::DebugAppend(out, this->defaultShort);
+    out += sep;
+    sep = ", ";
+    out += ".defaultInteger = ";
+    smithy::DebugAppend(out, this->defaultInteger);
+    out += sep;
+    sep = ", ";
+    out += ".defaultLong = ";
+    smithy::DebugAppend(out, this->defaultLong);
+    out += sep;
+    sep = ", ";
+    out += ".defaultFloat = ";
+    smithy::DebugAppend(out, this->defaultFloat);
+    out += sep;
+    sep = ", ";
+    out += ".defaultDouble = ";
+    smithy::DebugAppend(out, this->defaultDouble);
+    out += sep;
+    sep = ", ";
+    out += ".defaultMap = ";
+    smithy::DebugAppend(out, this->defaultMap);
+    out += sep;
+    sep = ", ";
+    out += ".defaultEnum = ";
+    smithy::DebugAppend(out, this->defaultEnum);
+    out += sep;
+    sep = ", ";
+    out += ".defaultIntEnum = ";
+    smithy::DebugAppend(out, this->defaultIntEnum);
+    out += sep;
+    sep = ", ";
+    out += ".emptyString = ";
+    smithy::DebugAppend(out, this->emptyString);
+    out += sep;
+    sep = ", ";
+    out += ".falseBoolean = ";
+    smithy::DebugAppend(out, this->falseBoolean);
+    out += sep;
+    sep = ", ";
+    out += ".emptyBlob = ";
+    smithy::DebugAppend(out, this->emptyBlob);
+    out += sep;
+    sep = ", ";
+    out += ".zeroByte = ";
+    smithy::DebugAppend(out, this->zeroByte);
+    out += sep;
+    sep = ", ";
+    out += ".zeroShort = ";
+    smithy::DebugAppend(out, this->zeroShort);
+    out += sep;
+    sep = ", ";
+    out += ".zeroInteger = ";
+    smithy::DebugAppend(out, this->zeroInteger);
+    out += sep;
+    sep = ", ";
+    out += ".zeroLong = ";
+    smithy::DebugAppend(out, this->zeroLong);
+    out += sep;
+    sep = ", ";
+    out += ".zeroFloat = ";
+    smithy::DebugAppend(out, this->zeroFloat);
+    out += sep;
+    sep = ", ";
+    out += ".zeroDouble = ";
+    smithy::DebugAppend(out, this->zeroDouble);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const OperationWithDefaultsOutput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const OperationWithDefaultsOutput&, const OperationWithDefaultsOutput&) = default;
   friend auto operator<=>(const OperationWithDefaultsOutput&, const OperationWithDefaultsOutput&) = default;
 };
@@ -280,6 +786,23 @@ struct OperationWithDefaultsOutput {
 struct OptionalInputOutputInput {
   std::optional<std::string> value{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "OptionalInputOutputInput{";
+    const char* sep = "";
+    if (this->value.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".value = ";
+      smithy::DebugAppend(out, *this->value);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const OptionalInputOutputInput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const OptionalInputOutputInput&, const OptionalInputOutputInput&) = default;
   friend auto operator<=>(const OptionalInputOutputInput&, const OptionalInputOutputInput&) = default;
 };
@@ -287,6 +810,23 @@ struct OptionalInputOutputInput {
 
 struct OptionalInputOutputOutput {
   std::optional<std::string> value{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "OptionalInputOutputOutput{";
+    const char* sep = "";
+    if (this->value.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".value = ";
+      smithy::DebugAppend(out, *this->value);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const OptionalInputOutputOutput& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const OptionalInputOutputOutput&, const OptionalInputOutputOutput&) = default;
   friend auto operator<=>(const OptionalInputOutputOutput&, const OptionalInputOutputOutput&) = default;
@@ -300,6 +840,47 @@ struct RpcV2CborDenseMapsInput {
   std::optional<std::map<std::string, std::string>> denseStringMap{};
   std::optional<std::map<std::string, std::vector<std::string>>> denseSetMap{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "RpcV2CborDenseMapsInput{";
+    const char* sep = "";
+    if (this->denseStructMap.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".denseStructMap = ";
+      smithy::DebugAppend(out, *this->denseStructMap);
+    }
+    if (this->denseNumberMap.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".denseNumberMap = ";
+      smithy::DebugAppend(out, *this->denseNumberMap);
+    }
+    if (this->denseBooleanMap.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".denseBooleanMap = ";
+      smithy::DebugAppend(out, *this->denseBooleanMap);
+    }
+    if (this->denseStringMap.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".denseStringMap = ";
+      smithy::DebugAppend(out, *this->denseStringMap);
+    }
+    if (this->denseSetMap.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".denseSetMap = ";
+      smithy::DebugAppend(out, *this->denseSetMap);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const RpcV2CborDenseMapsInput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const RpcV2CborDenseMapsInput&, const RpcV2CborDenseMapsInput&) = default;
   friend auto operator<=>(const RpcV2CborDenseMapsInput&, const RpcV2CborDenseMapsInput&) = default;
 };
@@ -311,6 +892,47 @@ struct RpcV2CborDenseMapsOutput {
   std::optional<std::map<std::string, bool>> denseBooleanMap{};
   std::optional<std::map<std::string, std::string>> denseStringMap{};
   std::optional<std::map<std::string, std::vector<std::string>>> denseSetMap{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "RpcV2CborDenseMapsOutput{";
+    const char* sep = "";
+    if (this->denseStructMap.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".denseStructMap = ";
+      smithy::DebugAppend(out, *this->denseStructMap);
+    }
+    if (this->denseNumberMap.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".denseNumberMap = ";
+      smithy::DebugAppend(out, *this->denseNumberMap);
+    }
+    if (this->denseBooleanMap.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".denseBooleanMap = ";
+      smithy::DebugAppend(out, *this->denseBooleanMap);
+    }
+    if (this->denseStringMap.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".denseStringMap = ";
+      smithy::DebugAppend(out, *this->denseStringMap);
+    }
+    if (this->denseSetMap.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".denseSetMap = ";
+      smithy::DebugAppend(out, *this->denseSetMap);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const RpcV2CborDenseMapsOutput& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const RpcV2CborDenseMapsOutput&, const RpcV2CborDenseMapsOutput&) = default;
   friend auto operator<=>(const RpcV2CborDenseMapsOutput&, const RpcV2CborDenseMapsOutput&) = default;
@@ -362,6 +984,17 @@ class FooEnum {
       return unknown_;
     }
 
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "FooEnum(";
+      out += ToString();
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const FooEnum& value) {
+      return os << value.DebugString();
+    }
+
     friend bool operator==(const FooEnum&, const FooEnum&) = default;
     friend bool operator==(const FooEnum& a, Value b) { return a.value_ == b; }
     friend auto operator<=>(const FooEnum&, const FooEnum&) = default;
@@ -384,6 +1017,29 @@ struct StructureListMember {
   std::optional<std::string> a{};
   std::optional<std::string> b{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "StructureListMember{";
+    const char* sep = "";
+    if (this->a.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".a = ";
+      smithy::DebugAppend(out, *this->a);
+    }
+    if (this->b.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".b = ";
+      smithy::DebugAppend(out, *this->b);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const StructureListMember& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const StructureListMember&, const StructureListMember&) = default;
   friend auto operator<=>(const StructureListMember&, const StructureListMember&) = default;
 };
@@ -400,6 +1056,77 @@ struct RpcV2CborListsInput {
   std::optional<std::vector<std::vector<std::string>>> nestedStringList{};
   std::optional<std::vector<StructureListMember>> structureList{};
   std::optional<std::vector<smithy::Blob>> blobList{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "RpcV2CborListsInput{";
+    const char* sep = "";
+    if (this->stringList.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".stringList = ";
+      smithy::DebugAppend(out, *this->stringList);
+    }
+    if (this->stringSet.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".stringSet = ";
+      smithy::DebugAppend(out, *this->stringSet);
+    }
+    if (this->integerList.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".integerList = ";
+      smithy::DebugAppend(out, *this->integerList);
+    }
+    if (this->booleanList.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".booleanList = ";
+      smithy::DebugAppend(out, *this->booleanList);
+    }
+    if (this->timestampList.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".timestampList = ";
+      smithy::DebugAppend(out, *this->timestampList);
+    }
+    if (this->enumList.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".enumList = ";
+      smithy::DebugAppend(out, *this->enumList);
+    }
+    if (this->intEnumList.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".intEnumList = ";
+      smithy::DebugAppend(out, *this->intEnumList);
+    }
+    if (this->nestedStringList.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".nestedStringList = ";
+      smithy::DebugAppend(out, *this->nestedStringList);
+    }
+    if (this->structureList.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".structureList = ";
+      smithy::DebugAppend(out, *this->structureList);
+    }
+    if (this->blobList.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".blobList = ";
+      smithy::DebugAppend(out, *this->blobList);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const RpcV2CborListsInput& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const RpcV2CborListsInput&, const RpcV2CborListsInput&) = default;
   friend auto operator<=>(const RpcV2CborListsInput&, const RpcV2CborListsInput&) = default;
@@ -418,6 +1145,77 @@ struct RpcV2CborListsOutput {
   std::optional<std::vector<StructureListMember>> structureList{};
   std::optional<std::vector<smithy::Blob>> blobList{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "RpcV2CborListsOutput{";
+    const char* sep = "";
+    if (this->stringList.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".stringList = ";
+      smithy::DebugAppend(out, *this->stringList);
+    }
+    if (this->stringSet.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".stringSet = ";
+      smithy::DebugAppend(out, *this->stringSet);
+    }
+    if (this->integerList.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".integerList = ";
+      smithy::DebugAppend(out, *this->integerList);
+    }
+    if (this->booleanList.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".booleanList = ";
+      smithy::DebugAppend(out, *this->booleanList);
+    }
+    if (this->timestampList.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".timestampList = ";
+      smithy::DebugAppend(out, *this->timestampList);
+    }
+    if (this->enumList.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".enumList = ";
+      smithy::DebugAppend(out, *this->enumList);
+    }
+    if (this->intEnumList.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".intEnumList = ";
+      smithy::DebugAppend(out, *this->intEnumList);
+    }
+    if (this->nestedStringList.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".nestedStringList = ";
+      smithy::DebugAppend(out, *this->nestedStringList);
+    }
+    if (this->structureList.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".structureList = ";
+      smithy::DebugAppend(out, *this->structureList);
+    }
+    if (this->blobList.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".blobList = ";
+      smithy::DebugAppend(out, *this->blobList);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const RpcV2CborListsOutput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const RpcV2CborListsOutput&, const RpcV2CborListsOutput&) = default;
   friend auto operator<=>(const RpcV2CborListsOutput&, const RpcV2CborListsOutput&) = default;
 };
@@ -430,6 +1228,47 @@ struct RpcV2CborSparseMapsInput {
   std::optional<std::map<std::string, std::optional<std::string>>> sparseStringMap{};
   std::optional<std::map<std::string, std::optional<std::vector<std::string>>>> sparseSetMap{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "RpcV2CborSparseMapsInput{";
+    const char* sep = "";
+    if (this->sparseStructMap.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".sparseStructMap = ";
+      smithy::DebugAppend(out, *this->sparseStructMap);
+    }
+    if (this->sparseNumberMap.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".sparseNumberMap = ";
+      smithy::DebugAppend(out, *this->sparseNumberMap);
+    }
+    if (this->sparseBooleanMap.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".sparseBooleanMap = ";
+      smithy::DebugAppend(out, *this->sparseBooleanMap);
+    }
+    if (this->sparseStringMap.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".sparseStringMap = ";
+      smithy::DebugAppend(out, *this->sparseStringMap);
+    }
+    if (this->sparseSetMap.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".sparseSetMap = ";
+      smithy::DebugAppend(out, *this->sparseSetMap);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const RpcV2CborSparseMapsInput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const RpcV2CborSparseMapsInput&, const RpcV2CborSparseMapsInput&) = default;
   friend auto operator<=>(const RpcV2CborSparseMapsInput&, const RpcV2CborSparseMapsInput&) = default;
 };
@@ -441,6 +1280,47 @@ struct RpcV2CborSparseMapsOutput {
   std::optional<std::map<std::string, std::optional<bool>>> sparseBooleanMap{};
   std::optional<std::map<std::string, std::optional<std::string>>> sparseStringMap{};
   std::optional<std::map<std::string, std::optional<std::vector<std::string>>>> sparseSetMap{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "RpcV2CborSparseMapsOutput{";
+    const char* sep = "";
+    if (this->sparseStructMap.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".sparseStructMap = ";
+      smithy::DebugAppend(out, *this->sparseStructMap);
+    }
+    if (this->sparseNumberMap.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".sparseNumberMap = ";
+      smithy::DebugAppend(out, *this->sparseNumberMap);
+    }
+    if (this->sparseBooleanMap.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".sparseBooleanMap = ";
+      smithy::DebugAppend(out, *this->sparseBooleanMap);
+    }
+    if (this->sparseStringMap.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".sparseStringMap = ";
+      smithy::DebugAppend(out, *this->sparseStringMap);
+    }
+    if (this->sparseSetMap.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".sparseSetMap = ";
+      smithy::DebugAppend(out, *this->sparseSetMap);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const RpcV2CborSparseMapsOutput& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const RpcV2CborSparseMapsOutput&, const RpcV2CborSparseMapsOutput&) = default;
   friend auto operator<=>(const RpcV2CborSparseMapsOutput&, const RpcV2CborSparseMapsOutput&) = default;
@@ -459,6 +1339,77 @@ struct SimpleScalarPropertiesInput {
   std::optional<std::string> stringValue{};
   std::optional<smithy::Blob> blobValue{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "SimpleScalarPropertiesInput{";
+    const char* sep = "";
+    if (this->trueBooleanValue.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".trueBooleanValue = ";
+      smithy::DebugAppend(out, *this->trueBooleanValue);
+    }
+    if (this->falseBooleanValue.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".falseBooleanValue = ";
+      smithy::DebugAppend(out, *this->falseBooleanValue);
+    }
+    if (this->byteValue.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".byteValue = ";
+      smithy::DebugAppend(out, *this->byteValue);
+    }
+    if (this->doubleValue.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".doubleValue = ";
+      smithy::DebugAppend(out, *this->doubleValue);
+    }
+    if (this->floatValue.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".floatValue = ";
+      smithy::DebugAppend(out, *this->floatValue);
+    }
+    if (this->integerValue.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".integerValue = ";
+      smithy::DebugAppend(out, *this->integerValue);
+    }
+    if (this->longValue.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".longValue = ";
+      smithy::DebugAppend(out, *this->longValue);
+    }
+    if (this->shortValue.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".shortValue = ";
+      smithy::DebugAppend(out, *this->shortValue);
+    }
+    if (this->stringValue.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".stringValue = ";
+      smithy::DebugAppend(out, *this->stringValue);
+    }
+    if (this->blobValue.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".blobValue = ";
+      smithy::DebugAppend(out, *this->blobValue);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const SimpleScalarPropertiesInput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const SimpleScalarPropertiesInput&, const SimpleScalarPropertiesInput&) = default;
   friend auto operator<=>(const SimpleScalarPropertiesInput&, const SimpleScalarPropertiesInput&) = default;
 };
@@ -476,6 +1427,77 @@ struct SimpleScalarPropertiesOutput {
   std::optional<std::string> stringValue{};
   std::optional<smithy::Blob> blobValue{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "SimpleScalarPropertiesOutput{";
+    const char* sep = "";
+    if (this->trueBooleanValue.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".trueBooleanValue = ";
+      smithy::DebugAppend(out, *this->trueBooleanValue);
+    }
+    if (this->falseBooleanValue.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".falseBooleanValue = ";
+      smithy::DebugAppend(out, *this->falseBooleanValue);
+    }
+    if (this->byteValue.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".byteValue = ";
+      smithy::DebugAppend(out, *this->byteValue);
+    }
+    if (this->doubleValue.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".doubleValue = ";
+      smithy::DebugAppend(out, *this->doubleValue);
+    }
+    if (this->floatValue.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".floatValue = ";
+      smithy::DebugAppend(out, *this->floatValue);
+    }
+    if (this->integerValue.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".integerValue = ";
+      smithy::DebugAppend(out, *this->integerValue);
+    }
+    if (this->longValue.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".longValue = ";
+      smithy::DebugAppend(out, *this->longValue);
+    }
+    if (this->shortValue.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".shortValue = ";
+      smithy::DebugAppend(out, *this->shortValue);
+    }
+    if (this->stringValue.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".stringValue = ";
+      smithy::DebugAppend(out, *this->stringValue);
+    }
+    if (this->blobValue.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".blobValue = ";
+      smithy::DebugAppend(out, *this->blobValue);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const SimpleScalarPropertiesOutput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const SimpleScalarPropertiesOutput&, const SimpleScalarPropertiesOutput&) = default;
   friend auto operator<=>(const SimpleScalarPropertiesOutput&, const SimpleScalarPropertiesOutput&) = default;
 };
@@ -485,6 +1507,29 @@ struct SparseNullsOperationInput {
   std::optional<std::vector<std::optional<std::string>>> sparseStringList{};
   std::optional<std::map<std::string, std::optional<std::string>>> sparseStringMap{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "SparseNullsOperationInput{";
+    const char* sep = "";
+    if (this->sparseStringList.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".sparseStringList = ";
+      smithy::DebugAppend(out, *this->sparseStringList);
+    }
+    if (this->sparseStringMap.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".sparseStringMap = ";
+      smithy::DebugAppend(out, *this->sparseStringMap);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const SparseNullsOperationInput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const SparseNullsOperationInput&, const SparseNullsOperationInput&) = default;
   friend auto operator<=>(const SparseNullsOperationInput&, const SparseNullsOperationInput&) = default;
 };
@@ -493,6 +1538,29 @@ struct SparseNullsOperationInput {
 struct SparseNullsOperationOutput {
   std::optional<std::vector<std::optional<std::string>>> sparseStringList{};
   std::optional<std::map<std::string, std::optional<std::string>>> sparseStringMap{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "SparseNullsOperationOutput{";
+    const char* sep = "";
+    if (this->sparseStringList.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".sparseStringList = ";
+      smithy::DebugAppend(out, *this->sparseStringList);
+    }
+    if (this->sparseStringMap.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".sparseStringMap = ";
+      smithy::DebugAppend(out, *this->sparseStringMap);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const SparseNullsOperationOutput& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const SparseNullsOperationOutput&, const SparseNullsOperationOutput&) = default;
   friend auto operator<=>(const SparseNullsOperationOutput&, const SparseNullsOperationOutput&) = default;
@@ -504,6 +1572,29 @@ struct RecursiveShapesInputOutputNested2;
 struct RecursiveShapesInputOutputNested1 {
   std::optional<std::string> foo{};
   std::optional<smithy::Boxed<RecursiveShapesInputOutputNested2>> nested{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "RecursiveShapesInputOutputNested1{";
+    const char* sep = "";
+    if (this->foo.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".foo = ";
+      smithy::DebugAppend(out, *this->foo);
+    }
+    if (this->nested.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".nested = ";
+      smithy::DebugAppend(out, *this->nested);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const RecursiveShapesInputOutputNested1& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const RecursiveShapesInputOutputNested1&, const RecursiveShapesInputOutputNested1&) = default;
   // Equality-only: a member type has no ordering (smithy::Document or
@@ -517,6 +1608,29 @@ struct RecursiveShapesInputOutputNested2 {
   std::optional<std::string> bar{};
   std::optional<smithy::Boxed<RecursiveShapesInputOutputNested1>> recursiveMember{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "RecursiveShapesInputOutputNested2{";
+    const char* sep = "";
+    if (this->bar.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".bar = ";
+      smithy::DebugAppend(out, *this->bar);
+    }
+    if (this->recursiveMember.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".recursiveMember = ";
+      smithy::DebugAppend(out, *this->recursiveMember);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const RecursiveShapesInputOutputNested2& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const RecursiveShapesInputOutputNested2&, const RecursiveShapesInputOutputNested2&) = default;
   // Equality-only: a member type has no ordering (smithy::Document or
   // recursion via smithy::Boxed) — see generated-types.md.
@@ -526,6 +1640,23 @@ struct RecursiveShapesInputOutputNested2 {
 struct RecursiveShapesInput {
   std::optional<RecursiveShapesInputOutputNested1> nested{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "RecursiveShapesInput{";
+    const char* sep = "";
+    if (this->nested.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".nested = ";
+      smithy::DebugAppend(out, *this->nested);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const RecursiveShapesInput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const RecursiveShapesInput&, const RecursiveShapesInput&) = default;
   // Equality-only: a member type has no ordering (smithy::Document or
   // recursion via smithy::Boxed) — see generated-types.md.
@@ -534,6 +1665,23 @@ struct RecursiveShapesInput {
 
 struct RecursiveShapesOutput {
   std::optional<RecursiveShapesInputOutputNested1> nested{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "RecursiveShapesOutput{";
+    const char* sep = "";
+    if (this->nested.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".nested = ";
+      smithy::DebugAppend(out, *this->nested);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const RecursiveShapesOutput& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const RecursiveShapesOutput&, const RecursiveShapesOutput&) = default;
   // Equality-only: a member type has no ordering (smithy::Document or

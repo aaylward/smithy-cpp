@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <functional>
 #include <map>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -114,6 +115,52 @@ TEST(GeneratedTypeHashingTest, UnionsHashByEngagedMemberAndValue) {
   options.insert(MilkOption::FromDairy(DairyMilk{.percentFat = 2.0F}));
   options.insert(MilkOption::FromDairy(DairyMilk{.percentFat = 2.0F}));
   EXPECT_EQ(options.size(), 3u);
+}
+
+// Generated types print (issue #85): DebugString() and operator<< render
+// designated-initializer style, omitting disengaged optionals, with enums as
+// their wire text and unions by engaged member. Debug output is for humans —
+// never parse it or pin it across library versions (see generated-types.md).
+
+TEST(GeneratedTypePrintingTest, StructsPrintDesignatedInitializerStyle) {
+  const GetOrderInput input{.orderId = "o-1"};
+  EXPECT_EQ(input.DebugString(), "GetOrderInput{.orderId = \"o-1\"}");
+  std::ostringstream os;
+  os << input;
+  EXPECT_EQ(os.str(), input.DebugString());
+}
+
+TEST(GeneratedTypePrintingTest, DisengagedOptionalsAreOmitted) {
+  const OrderCoffeeInput input{.coffeeType = CoffeeType(CoffeeType::Value::kEspresso)};
+  EXPECT_EQ(input.DebugString(), "OrderCoffeeInput{.coffeeType = CoffeeType(ESPRESSO)}");
+  const OrderCoffeeInput with_milk{.coffeeType = CoffeeType(CoffeeType::Value::kDrip),
+                                   .milk = MilkOption::FromDairy(DairyMilk{.percentFat = 2.5F})};
+  EXPECT_EQ(with_milk.DebugString(),
+            "OrderCoffeeInput{.coffeeType = CoffeeType(DRIP), "
+            ".milk = MilkOption(dairy = DairyMilk{.percentFat = 2.5})}");
+}
+
+TEST(GeneratedTypePrintingTest, EnumsPrintWireTextIncludingUnknownValues) {
+  EXPECT_EQ(CoffeeType(CoffeeType::Value::kDrip).DebugString(), "CoffeeType(DRIP)");
+  EXPECT_EQ(CoffeeType::FromString("OAT_FOAM").DebugString(), "CoffeeType(OAT_FOAM)");
+}
+
+TEST(GeneratedTypePrintingTest, UnionsPrintEngagedMemberOrEmpty) {
+  EXPECT_EQ(MilkOption{}.DebugString(), "MilkOption()");
+  EXPECT_EQ(MilkOption::FromNone(smithy::Unit{}).DebugString(), "MilkOption(none = Unit{})");
+  EXPECT_EQ(OrderStatus::FromPending(PendingStatus{.position = 3}).DebugString(),
+            "OrderStatus(pending = PendingStatus{.position = 3})");
+}
+
+TEST(GeneratedTypePrintingTest, SensitiveMembersRedact) {
+  // clientToken targets the @sensitive ClientToken shape: its value must
+  // never reach logs, matching the trait's purpose (protobuf debug_redact
+  // precedent — see issue #85).
+  const OrderCoffeeInput input{.coffeeType = CoffeeType(CoffeeType::Value::kDrip),
+                               .clientToken = "super-secret"};
+  const std::string printed = input.DebugString();
+  EXPECT_EQ(printed.find("super-secret"), std::string::npos) << printed;
+  EXPECT_NE(printed.find(".clientToken = [REDACTED]"), std::string::npos) << printed;
 }
 
 TEST(CafeGeneratedTypesTest, EnumRoundTripsKnownValues) {

@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <functional>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <utility>
 #include <variant>
@@ -14,6 +15,7 @@
 #include "smithy/core/fatal.h"
 #include "smithy/core/hash.h"
 #include "smithy/core/outcome.h"
+#include "smithy/core/print.h"
 #include "smithy/http/transport.h"
 #include "smithy/protocoltests/simplerestjson/types.h"
 
@@ -123,6 +125,32 @@ class AddMenuItemErrors {
       return std::visit(std::forward<Visitor>(visitor), value_);
     }
 
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "AddMenuItemErrors(";
+      switch (value_.index()) {
+        case 1:
+          out += "price_error = ";
+          smithy::DebugAppend(out, std::get<1>(value_));
+          break;
+        case 2:
+          out += "generic_server_error = ";
+          smithy::DebugAppend(out, std::get<2>(value_));
+          break;
+        case 3:
+          out += "generic_client_error = ";
+          smithy::DebugAppend(out, std::get<3>(value_));
+          break;
+        default:
+          break;
+      }
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const AddMenuItemErrors& value) {
+      return os << value.DebugString();
+    }
+
     friend bool operator==(const AddMenuItemErrors&, const AddMenuItemErrors&) = default;
     friend auto operator<=>(const AddMenuItemErrors&, const AddMenuItemErrors&) = default;
     friend struct std::hash<AddMenuItemErrors>;
@@ -207,6 +235,32 @@ class CustomCodeErrors {
     template <typename Visitor>
     decltype(auto) visit(Visitor&& visitor) const {
       return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "CustomCodeErrors(";
+      switch (value_.index()) {
+        case 1:
+          out += "unknown_server_error = ";
+          smithy::DebugAppend(out, std::get<1>(value_));
+          break;
+        case 2:
+          out += "generic_server_error = ";
+          smithy::DebugAppend(out, std::get<2>(value_));
+          break;
+        case 3:
+          out += "generic_client_error = ";
+          smithy::DebugAppend(out, std::get<3>(value_));
+          break;
+        default:
+          break;
+      }
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const CustomCodeErrors& value) {
+      return os << value.DebugString();
     }
 
     friend bool operator==(const CustomCodeErrors&, const CustomCodeErrors&) = default;
@@ -295,6 +349,32 @@ class GetEnumErrors {
       return std::visit(std::forward<Visitor>(visitor), value_);
     }
 
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "GetEnumErrors(";
+      switch (value_.index()) {
+        case 1:
+          out += "unknown_server_error = ";
+          smithy::DebugAppend(out, std::get<1>(value_));
+          break;
+        case 2:
+          out += "generic_server_error = ";
+          smithy::DebugAppend(out, std::get<2>(value_));
+          break;
+        case 3:
+          out += "generic_client_error = ";
+          smithy::DebugAppend(out, std::get<3>(value_));
+          break;
+        default:
+          break;
+      }
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const GetEnumErrors& value) {
+      return os << value.DebugString();
+    }
+
     friend bool operator==(const GetEnumErrors&, const GetEnumErrors&) = default;
     friend auto operator<=>(const GetEnumErrors&, const GetEnumErrors&) = default;
     friend struct std::hash<GetEnumErrors>;
@@ -379,6 +459,32 @@ class GetIntEnumErrors {
     template <typename Visitor>
     decltype(auto) visit(Visitor&& visitor) const {
       return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "GetIntEnumErrors(";
+      switch (value_.index()) {
+        case 1:
+          out += "unknown_server_error = ";
+          smithy::DebugAppend(out, std::get<1>(value_));
+          break;
+        case 2:
+          out += "generic_server_error = ";
+          smithy::DebugAppend(out, std::get<2>(value_));
+          break;
+        case 3:
+          out += "generic_client_error = ";
+          smithy::DebugAppend(out, std::get<3>(value_));
+          break;
+        default:
+          break;
+      }
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const GetIntEnumErrors& value) {
+      return os << value.DebugString();
     }
 
     friend bool operator==(const GetIntEnumErrors&, const GetIntEnumErrors&) = default;
@@ -480,6 +586,36 @@ class GetMenuErrors {
       return std::visit(std::forward<Visitor>(visitor), value_);
     }
 
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "GetMenuErrors(";
+      switch (value_.index()) {
+        case 1:
+          out += "not_found_error = ";
+          smithy::DebugAppend(out, std::get<1>(value_));
+          break;
+        case 2:
+          out += "fallback_error = ";
+          smithy::DebugAppend(out, std::get<2>(value_));
+          break;
+        case 3:
+          out += "generic_server_error = ";
+          smithy::DebugAppend(out, std::get<3>(value_));
+          break;
+        case 4:
+          out += "generic_client_error = ";
+          smithy::DebugAppend(out, std::get<4>(value_));
+          break;
+        default:
+          break;
+      }
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const GetMenuErrors& value) {
+      return os << value.DebugString();
+    }
+
     friend bool operator==(const GetMenuErrors&, const GetMenuErrors&) = default;
     friend auto operator<=>(const GetMenuErrors&, const GetMenuErrors&) = default;
     friend struct std::hash<GetMenuErrors>;
@@ -551,6 +687,28 @@ class HeaderEndpointErrors {
     template <typename Visitor>
     decltype(auto) visit(Visitor&& visitor) const {
       return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "HeaderEndpointErrors(";
+      switch (value_.index()) {
+        case 1:
+          out += "generic_server_error = ";
+          smithy::DebugAppend(out, std::get<1>(value_));
+          break;
+        case 2:
+          out += "generic_client_error = ";
+          smithy::DebugAppend(out, std::get<2>(value_));
+          break;
+        default:
+          break;
+      }
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const HeaderEndpointErrors& value) {
+      return os << value.DebugString();
     }
 
     friend bool operator==(const HeaderEndpointErrors&, const HeaderEndpointErrors&) = default;
@@ -639,6 +797,32 @@ class HealthErrors {
       return std::visit(std::forward<Visitor>(visitor), value_);
     }
 
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "HealthErrors(";
+      switch (value_.index()) {
+        case 1:
+          out += "unknown_server_error = ";
+          smithy::DebugAppend(out, std::get<1>(value_));
+          break;
+        case 2:
+          out += "generic_server_error = ";
+          smithy::DebugAppend(out, std::get<2>(value_));
+          break;
+        case 3:
+          out += "generic_client_error = ";
+          smithy::DebugAppend(out, std::get<3>(value_));
+          break;
+        default:
+          break;
+      }
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const HealthErrors& value) {
+      return os << value.DebugString();
+    }
+
     friend bool operator==(const HealthErrors&, const HealthErrors&) = default;
     friend auto operator<=>(const HealthErrors&, const HealthErrors&) = default;
     friend struct std::hash<HealthErrors>;
@@ -710,6 +894,28 @@ class HttpPayloadRequiredWithDefaultErrors {
     template <typename Visitor>
     decltype(auto) visit(Visitor&& visitor) const {
       return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "HttpPayloadRequiredWithDefaultErrors(";
+      switch (value_.index()) {
+        case 1:
+          out += "generic_server_error = ";
+          smithy::DebugAppend(out, std::get<1>(value_));
+          break;
+        case 2:
+          out += "generic_client_error = ";
+          smithy::DebugAppend(out, std::get<2>(value_));
+          break;
+        default:
+          break;
+      }
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const HttpPayloadRequiredWithDefaultErrors& value) {
+      return os << value.DebugString();
     }
 
     friend bool operator==(const HttpPayloadRequiredWithDefaultErrors&, const HttpPayloadRequiredWithDefaultErrors&) = default;
@@ -785,6 +991,28 @@ class HttpPayloadWithDefaultErrors {
       return std::visit(std::forward<Visitor>(visitor), value_);
     }
 
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "HttpPayloadWithDefaultErrors(";
+      switch (value_.index()) {
+        case 1:
+          out += "generic_server_error = ";
+          smithy::DebugAppend(out, std::get<1>(value_));
+          break;
+        case 2:
+          out += "generic_client_error = ";
+          smithy::DebugAppend(out, std::get<2>(value_));
+          break;
+        default:
+          break;
+      }
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const HttpPayloadWithDefaultErrors& value) {
+      return os << value.DebugString();
+    }
+
     friend bool operator==(const HttpPayloadWithDefaultErrors&, const HttpPayloadWithDefaultErrors&) = default;
     friend auto operator<=>(const HttpPayloadWithDefaultErrors&, const HttpPayloadWithDefaultErrors&) = default;
     friend struct std::hash<HttpPayloadWithDefaultErrors>;
@@ -856,6 +1084,28 @@ class OpenUnionsErrors {
     template <typename Visitor>
     decltype(auto) visit(Visitor&& visitor) const {
       return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "OpenUnionsErrors(";
+      switch (value_.index()) {
+        case 1:
+          out += "generic_server_error = ";
+          smithy::DebugAppend(out, std::get<1>(value_));
+          break;
+        case 2:
+          out += "generic_client_error = ";
+          smithy::DebugAppend(out, std::get<2>(value_));
+          break;
+        default:
+          break;
+      }
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const OpenUnionsErrors& value) {
+      return os << value.DebugString();
     }
 
     friend bool operator==(const OpenUnionsErrors&, const OpenUnionsErrors&) = default;
@@ -931,6 +1181,28 @@ class RoundTripErrors {
       return std::visit(std::forward<Visitor>(visitor), value_);
     }
 
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "RoundTripErrors(";
+      switch (value_.index()) {
+        case 1:
+          out += "generic_server_error = ";
+          smithy::DebugAppend(out, std::get<1>(value_));
+          break;
+        case 2:
+          out += "generic_client_error = ";
+          smithy::DebugAppend(out, std::get<2>(value_));
+          break;
+        default:
+          break;
+      }
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const RoundTripErrors& value) {
+      return os << value.DebugString();
+    }
+
     friend bool operator==(const RoundTripErrors&, const RoundTripErrors&) = default;
     friend auto operator<=>(const RoundTripErrors&, const RoundTripErrors&) = default;
     friend struct std::hash<RoundTripErrors>;
@@ -1002,6 +1274,28 @@ class VersionErrors {
     template <typename Visitor>
     decltype(auto) visit(Visitor&& visitor) const {
       return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "VersionErrors(";
+      switch (value_.index()) {
+        case 1:
+          out += "generic_server_error = ";
+          smithy::DebugAppend(out, std::get<1>(value_));
+          break;
+        case 2:
+          out += "generic_client_error = ";
+          smithy::DebugAppend(out, std::get<2>(value_));
+          break;
+        default:
+          break;
+      }
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const VersionErrors& value) {
+      return os << value.DebugString();
     }
 
     friend bool operator==(const VersionErrors&, const VersionErrors&) = default;

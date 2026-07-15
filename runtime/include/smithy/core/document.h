@@ -5,11 +5,13 @@
 #include <map>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "smithy/core/blob.h"
+#include "smithy/core/print.h"
 #include "smithy/core/timestamp.h"
 
 namespace smithy {
@@ -27,6 +29,9 @@ struct TimestampValue {
   friend bool operator==(const TimestampValue& a, const TimestampValue& b) {
     return a.value == b.value && a.format == b.format;
   }
+
+  // Debug rendering: the instant; the wire format is serde detail.
+  void AppendDebugTo(std::string& out) const { value.AppendDebugTo(out); }
 };
 
 // Dynamic structured value: the pivot representation between typed shapes and
@@ -90,6 +95,21 @@ class Document {
   }
 
   const Value& value() const { return value_; }
+
+  // Debug rendering (smithy/core/print.h): JSON-ish — null/true/7/"x"/[..]/
+  // {"k": v}, with blob and timestamp nodes reusing their own renderings.
+  // For humans only; the JSON codec is the parseable form.
+  void AppendDebugTo(std::string& out) const {
+    std::visit(
+        [&out](const auto& node) {
+          if constexpr (std::is_same_v<std::decay_t<decltype(node)>, std::nullptr_t>) {
+            out += "null";
+          } else {
+            DebugAppend(out, node);
+          }
+        },
+        value_);
+  }
 
   friend bool operator==(const Document& a, const Document& b) { return a.value_ == b.value_; }
 

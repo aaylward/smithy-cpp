@@ -7,15 +7,36 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <ostream>
 #include <string>
 
 #include "smithy/core/hash.h"
+#include "smithy/core/print.h"
 
 namespace example::bookstore {
 
 struct AddBookInput {
   std::string isbn{};
   std::string title{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "AddBookInput{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".isbn = ";
+    smithy::DebugAppend(out, this->isbn);
+    out += sep;
+    sep = ", ";
+    out += ".title = ";
+    smithy::DebugAppend(out, this->title);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const AddBookInput& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const AddBookInput&, const AddBookInput&) = default;
   friend auto operator<=>(const AddBookInput&, const AddBookInput&) = default;
@@ -26,6 +47,25 @@ struct AddBookOutput {
   std::int32_t status{};
   std::string isbn{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "AddBookOutput{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".status = ";
+    smithy::DebugAppend(out, this->status);
+    out += sep;
+    sep = ", ";
+    out += ".isbn = ";
+    smithy::DebugAppend(out, this->isbn);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const AddBookOutput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const AddBookOutput&, const AddBookOutput&) = default;
   friend auto operator<=>(const AddBookOutput&, const AddBookOutput&) = default;
 };
@@ -34,6 +74,25 @@ struct AddBookOutput {
 struct BookNotFound {
   std::string message{};
   std::string isbn{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "BookNotFound{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".message = ";
+    smithy::DebugAppend(out, this->message);
+    out += sep;
+    sep = ", ";
+    out += ".isbn = ";
+    smithy::DebugAppend(out, this->isbn);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const BookNotFound& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const BookNotFound&, const BookNotFound&) = default;
   friend auto operator<=>(const BookNotFound&, const BookNotFound&) = default;
@@ -44,6 +103,27 @@ struct GetBookInput {
   std::string isbn{};
   std::optional<std::string> currency{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "GetBookInput{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".isbn = ";
+    smithy::DebugAppend(out, this->isbn);
+    if (this->currency.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".currency = ";
+      smithy::DebugAppend(out, *this->currency);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const GetBookInput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const GetBookInput&, const GetBookInput&) = default;
   friend auto operator<=>(const GetBookInput&, const GetBookInput&) = default;
 };
@@ -53,6 +133,31 @@ struct GetBookOutput {
   std::string isbn{};
   std::string title{};
   std::optional<float> price{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "GetBookOutput{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".isbn = ";
+    smithy::DebugAppend(out, this->isbn);
+    out += sep;
+    sep = ", ";
+    out += ".title = ";
+    smithy::DebugAppend(out, this->title);
+    if (this->price.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".price = ";
+      smithy::DebugAppend(out, *this->price);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const GetBookOutput& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const GetBookOutput&, const GetBookOutput&) = default;
   friend auto operator<=>(const GetBookOutput&, const GetBookOutput&) = default;

@@ -54,6 +54,14 @@ class Timestamp {
   // default their own operator<=> (issue #49).
   friend std::strong_ordering operator<=>(Timestamp a, Timestamp b) { return a.ms_ <=> b.ms_; }
 
+  // Debug rendering (smithy/core/print.h): RFC 3339, the most readable of
+  // the three wire formats.
+  void AppendDebugTo(std::string& out) const {
+    out += "Timestamp(";
+    out += Format(TimestampFormat::kDateTime);
+    out += ')';
+  }
+
  private:
   explicit Timestamp(std::int64_t ms) : ms_(ms) {}
 

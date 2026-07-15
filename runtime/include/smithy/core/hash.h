@@ -9,6 +9,8 @@
 #include <type_traits>
 #include <vector>
 
+#include "smithy/core/container_traits.h"
+
 namespace smithy {
 
 // Hashing support for generated types (issue #49): a generated type
@@ -27,25 +29,6 @@ inline std::size_t HashCombine(std::size_t seed, std::size_t value) {
   x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
   return static_cast<std::size_t>(x ^ (x >> 31));
 }
-
-namespace internal {
-
-template <typename T>
-struct IsVector : std::false_type {};
-template <typename E, typename A>
-struct IsVector<std::vector<E, A>> : std::true_type {};
-
-template <typename T>
-struct IsMap : std::false_type {};
-template <typename K, typename V, typename C, typename A>
-struct IsMap<std::map<K, V, C, A>> : std::true_type {};
-
-template <typename T>
-struct IsOptional : std::false_type {};
-template <typename E>
-struct IsOptional<std::optional<E>> : std::true_type {};
-
-}  // namespace internal
 
 // Hash of one member value, as generated std::hash specializations compute
 // it: the containers generated members use (std::vector, std::map, and

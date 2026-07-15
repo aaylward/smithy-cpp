@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <functional>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <utility>
 #include <variant>
@@ -14,6 +15,7 @@
 #include "smithy/core/fatal.h"
 #include "smithy/core/hash.h"
 #include "smithy/core/outcome.h"
+#include "smithy/core/print.h"
 #include "smithy/http/transport.h"
 #include "smithy/protocoltests/jsonrpc2/types.h"
 
@@ -99,6 +101,28 @@ class EchoPayloadErrors {
     template <typename Visitor>
     decltype(auto) visit(Visitor&& visitor) const {
       return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "EchoPayloadErrors(";
+      switch (value_.index()) {
+        case 1:
+          out += "not_found_error = ";
+          smithy::DebugAppend(out, std::get<1>(value_));
+          break;
+        case 2:
+          out += "throttled_error = ";
+          smithy::DebugAppend(out, std::get<2>(value_));
+          break;
+        default:
+          break;
+      }
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const EchoPayloadErrors& value) {
+      return os << value.DebugString();
     }
 
     friend bool operator==(const EchoPayloadErrors&, const EchoPayloadErrors&) = default;

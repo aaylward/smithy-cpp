@@ -22,6 +22,9 @@ struct Unit {
   friend std::strong_ordering operator<=>(Unit /*lhs*/, Unit /*rhs*/) {
     return std::strong_ordering::equal;
   }
+  // Debug rendering (smithy/core/print.h). Static is fine: the detection in
+  // DebugAppend calls it through an object expression either way.
+  static void AppendDebugTo(std::string& out) { out += "Unit{}"; }
 };
 
 // Result of an operation that can fail: holds either a value T or an error E.

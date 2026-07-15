@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <ostream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -15,12 +16,28 @@
 #include "smithy/core/fatal.h"
 #include "smithy/core/hash.h"
 #include "smithy/core/outcome.h"
+#include "smithy/core/print.h"
 #include "smithy/core/timestamp.h"
 
 namespace example::cafe {
 
 struct AlternativeMilk {
   std::string kind{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "AlternativeMilk{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".kind = ";
+    smithy::DebugAppend(out, this->kind);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const AlternativeMilk& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const AlternativeMilk&, const AlternativeMilk&) = default;
   friend auto operator<=>(const AlternativeMilk&, const AlternativeMilk&) = default;
@@ -29,6 +46,21 @@ struct AlternativeMilk {
 
 struct GetOrderInput {
   std::string orderId{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "GetOrderInput{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".orderId = ";
+    smithy::DebugAppend(out, this->orderId);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const GetOrderInput& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const GetOrderInput&, const GetOrderInput&) = default;
   friend auto operator<=>(const GetOrderInput&, const GetOrderInput&) = default;
@@ -77,6 +109,17 @@ class CoffeeType {
       return unknown_;
     }
 
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "CoffeeType(";
+      out += ToString();
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const CoffeeType& value) {
+      return os << value.DebugString();
+    }
+
     friend bool operator==(const CoffeeType&, const CoffeeType&) = default;
     friend bool operator==(const CoffeeType& a, Value b) { return a.value_ == b; }
     friend auto operator<=>(const CoffeeType&, const CoffeeType&) = default;
@@ -91,6 +134,23 @@ class CoffeeType {
 struct CancelledStatus {
   std::optional<std::string> reason{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "CancelledStatus{";
+    const char* sep = "";
+    if (this->reason.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".reason = ";
+      smithy::DebugAppend(out, *this->reason);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const CancelledStatus& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const CancelledStatus&, const CancelledStatus&) = default;
   friend auto operator<=>(const CancelledStatus&, const CancelledStatus&) = default;
 };
@@ -99,6 +159,21 @@ struct CancelledStatus {
 struct PendingStatus {
   std::int32_t position{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "PendingStatus{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".position = ";
+    smithy::DebugAppend(out, this->position);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const PendingStatus& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const PendingStatus&, const PendingStatus&) = default;
   friend auto operator<=>(const PendingStatus&, const PendingStatus&) = default;
 };
@@ -106,6 +181,21 @@ struct PendingStatus {
 
 struct ReadyStatus {
   smithy::Timestamp readyAt{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "ReadyStatus{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".readyAt = ";
+    smithy::DebugAppend(out, this->readyAt);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const ReadyStatus& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const ReadyStatus&, const ReadyStatus&) = default;
   friend auto operator<=>(const ReadyStatus&, const ReadyStatus&) = default;
@@ -171,6 +261,32 @@ class OrderStatus {
       return std::visit(std::forward<Visitor>(visitor), value_);
     }
 
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "OrderStatus(";
+      switch (value_.index()) {
+        case 1:
+          out += "pending = ";
+          smithy::DebugAppend(out, std::get<1>(value_));
+          break;
+        case 2:
+          out += "ready = ";
+          smithy::DebugAppend(out, std::get<2>(value_));
+          break;
+        case 3:
+          out += "cancelled = ";
+          smithy::DebugAppend(out, std::get<3>(value_));
+          break;
+        default:
+          break;
+      }
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const OrderStatus& value) {
+      return os << value.DebugString();
+    }
+
     friend bool operator==(const OrderStatus&, const OrderStatus&) = default;
     friend auto operator<=>(const OrderStatus&, const OrderStatus&) = default;
     friend struct std::hash<OrderStatus>;
@@ -191,6 +307,29 @@ struct GetOrderOutput {
   CoffeeType coffeeType{};
   OrderStatus status{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "GetOrderOutput{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".orderId = ";
+    smithy::DebugAppend(out, this->orderId);
+    out += sep;
+    sep = ", ";
+    out += ".coffeeType = ";
+    smithy::DebugAppend(out, this->coffeeType);
+    out += sep;
+    sep = ", ";
+    out += ".status = ";
+    smithy::DebugAppend(out, this->status);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const GetOrderOutput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const GetOrderOutput&, const GetOrderOutput&) = default;
   friend auto operator<=>(const GetOrderOutput&, const GetOrderOutput&) = default;
 };
@@ -200,6 +339,21 @@ struct GetOrderOutput {
 struct OrderNotFound {
   std::string orderId{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "OrderNotFound{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".orderId = ";
+    smithy::DebugAppend(out, this->orderId);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const OrderNotFound& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const OrderNotFound&, const OrderNotFound&) = default;
   friend auto operator<=>(const OrderNotFound&, const OrderNotFound&) = default;
 };
@@ -207,6 +361,21 @@ struct OrderNotFound {
 
 struct DairyMilk {
   float percentFat{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "DairyMilk{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".percentFat = ";
+    smithy::DebugAppend(out, this->percentFat);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const DairyMilk& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const DairyMilk&, const DairyMilk&) = default;
   friend auto operator<=>(const DairyMilk&, const DairyMilk&) = default;
@@ -273,6 +442,32 @@ class MilkOption {
       return std::visit(std::forward<Visitor>(visitor), value_);
     }
 
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "MilkOption(";
+      switch (value_.index()) {
+        case 1:
+          out += "none = ";
+          smithy::DebugAppend(out, std::get<1>(value_));
+          break;
+        case 2:
+          out += "dairy = ";
+          smithy::DebugAppend(out, std::get<2>(value_));
+          break;
+        case 3:
+          out += "alternative = ";
+          smithy::DebugAppend(out, std::get<3>(value_));
+          break;
+        default:
+          break;
+      }
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const MilkOption& value) {
+      return os << value.DebugString();
+    }
+
     friend bool operator==(const MilkOption&, const MilkOption&) = default;
     friend auto operator<=>(const MilkOption&, const MilkOption&) = default;
     friend struct std::hash<MilkOption>;
@@ -293,6 +488,33 @@ struct OrderCoffeeInput {
   std::optional<MilkOption> milk{};
   std::optional<std::string> clientToken{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "OrderCoffeeInput{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".coffeeType = ";
+    smithy::DebugAppend(out, this->coffeeType);
+    if (this->milk.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".milk = ";
+      smithy::DebugAppend(out, *this->milk);
+    }
+    if (this->clientToken.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".clientToken = ";
+      out += "[REDACTED]";
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const OrderCoffeeInput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const OrderCoffeeInput&, const OrderCoffeeInput&) = default;
   friend auto operator<=>(const OrderCoffeeInput&, const OrderCoffeeInput&) = default;
 };
@@ -302,6 +524,25 @@ struct OrderCoffeeOutput {
   std::string orderId{};
   OrderStatus status{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "OrderCoffeeOutput{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".orderId = ";
+    smithy::DebugAppend(out, this->orderId);
+    out += sep;
+    sep = ", ";
+    out += ".status = ";
+    smithy::DebugAppend(out, this->status);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const OrderCoffeeOutput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const OrderCoffeeOutput&, const OrderCoffeeOutput&) = default;
   friend auto operator<=>(const OrderCoffeeOutput&, const OrderCoffeeOutput&) = default;
 };
@@ -310,6 +551,23 @@ struct OrderCoffeeOutput {
 /// The cafe cannot fulfill the order right now.
 struct OutOfBeans {
   std::optional<std::string> message{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "OutOfBeans{";
+    const char* sep = "";
+    if (this->message.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".message = ";
+      smithy::DebugAppend(out, *this->message);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const OutOfBeans& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const OutOfBeans&, const OutOfBeans&) = default;
   friend auto operator<=>(const OutOfBeans&, const OutOfBeans&) = default;

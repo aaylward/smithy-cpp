@@ -8,10 +8,12 @@
 #include <functional>
 #include <map>
 #include <optional>
+#include <ostream>
 #include <string>
 #include <vector>
 
 #include "smithy/core/hash.h"
+#include "smithy/core/print.h"
 #include "smithy/core/timestamp.h"
 
 namespace smithy::protocoltests::jsonrpc2 {
@@ -19,6 +21,27 @@ namespace smithy::protocoltests::jsonrpc2 {
 struct Nested {
   std::string label{};
   std::optional<std::int32_t> depth{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "Nested{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".label = ";
+    smithy::DebugAppend(out, this->label);
+    if (this->depth.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".depth = ";
+      smithy::DebugAppend(out, *this->depth);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const Nested& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const Nested&, const Nested&) = default;
   friend auto operator<=>(const Nested&, const Nested&) = default;
@@ -37,6 +60,77 @@ struct EchoPayloadInput {
   std::optional<std::map<std::string, std::string>> attributes{};
   std::optional<Nested> nested{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "EchoPayloadInput{";
+    const char* sep = "";
+    if (this->string.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".string = ";
+      smithy::DebugAppend(out, *this->string);
+    }
+    if (this->aliased.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".aliased = ";
+      smithy::DebugAppend(out, *this->aliased);
+    }
+    if (this->integer.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".integer = ";
+      smithy::DebugAppend(out, *this->integer);
+    }
+    if (this->boolean.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".boolean = ";
+      smithy::DebugAppend(out, *this->boolean);
+    }
+    if (this->double_.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".double_ = ";
+      smithy::DebugAppend(out, *this->double_);
+    }
+    if (this->timestamp.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".timestamp = ";
+      smithy::DebugAppend(out, *this->timestamp);
+    }
+    if (this->dateTime.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".dateTime = ";
+      smithy::DebugAppend(out, *this->dateTime);
+    }
+    if (this->names.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".names = ";
+      smithy::DebugAppend(out, *this->names);
+    }
+    if (this->attributes.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".attributes = ";
+      smithy::DebugAppend(out, *this->attributes);
+    }
+    if (this->nested.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".nested = ";
+      smithy::DebugAppend(out, *this->nested);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const EchoPayloadInput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const EchoPayloadInput&, const EchoPayloadInput&) = default;
   friend auto operator<=>(const EchoPayloadInput&, const EchoPayloadInput&) = default;
 };
@@ -47,6 +141,35 @@ struct EchoPayloadOutput {
   std::optional<std::int32_t> count{};
   std::optional<Nested> nested{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "EchoPayloadOutput{";
+    const char* sep = "";
+    if (this->echo.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".echo = ";
+      smithy::DebugAppend(out, *this->echo);
+    }
+    if (this->count.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".count = ";
+      smithy::DebugAppend(out, *this->count);
+    }
+    if (this->nested.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".nested = ";
+      smithy::DebugAppend(out, *this->nested);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const EchoPayloadOutput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const EchoPayloadOutput&, const EchoPayloadOutput&) = default;
   friend auto operator<=>(const EchoPayloadOutput&, const EchoPayloadOutput&) = default;
 };
@@ -56,6 +179,27 @@ struct NotFoundError {
   std::string message{};
   std::optional<std::string> resourceType{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "NotFoundError{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".message = ";
+    smithy::DebugAppend(out, this->message);
+    if (this->resourceType.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".resourceType = ";
+      smithy::DebugAppend(out, *this->resourceType);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const NotFoundError& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const NotFoundError&, const NotFoundError&) = default;
   friend auto operator<=>(const NotFoundError&, const NotFoundError&) = default;
 };
@@ -64,18 +208,55 @@ struct NotFoundError {
 struct ThrottledError {
   std::optional<std::string> message{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "ThrottledError{";
+    const char* sep = "";
+    if (this->message.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".message = ";
+      smithy::DebugAppend(out, *this->message);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const ThrottledError& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const ThrottledError&, const ThrottledError&) = default;
   friend auto operator<=>(const ThrottledError&, const ThrottledError&) = default;
 };
 
 
 struct NoArgsInput {
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "NoArgsInput{";
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const NoArgsInput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const NoArgsInput&, const NoArgsInput&) = default;
   friend auto operator<=>(const NoArgsInput&, const NoArgsInput&) = default;
 };
 
 
 struct NoArgsOutput {
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "NoArgsOutput{";
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const NoArgsOutput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const NoArgsOutput&, const NoArgsOutput&) = default;
   friend auto operator<=>(const NoArgsOutput&, const NoArgsOutput&) = default;
 };
@@ -87,6 +268,39 @@ struct PutConstrainedInput {
   std::optional<std::string> slug{};
   std::optional<std::string> evilDigits{};
 
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "PutConstrainedInput{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".name = ";
+    smithy::DebugAppend(out, this->name);
+    if (this->limit.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".limit = ";
+      smithy::DebugAppend(out, *this->limit);
+    }
+    if (this->slug.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".slug = ";
+      smithy::DebugAppend(out, *this->slug);
+    }
+    if (this->evilDigits.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".evilDigits = ";
+      smithy::DebugAppend(out, *this->evilDigits);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const PutConstrainedInput& value) {
+    return os << value.DebugString();
+  }
+
   friend bool operator==(const PutConstrainedInput&, const PutConstrainedInput&) = default;
   friend auto operator<=>(const PutConstrainedInput&, const PutConstrainedInput&) = default;
 };
@@ -94,6 +308,21 @@ struct PutConstrainedInput {
 
 struct PutConstrainedOutput {
   bool accepted{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "PutConstrainedOutput{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".accepted = ";
+    smithy::DebugAppend(out, this->accepted);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const PutConstrainedOutput& value) {
+    return os << value.DebugString();
+  }
 
   friend bool operator==(const PutConstrainedOutput&, const PutConstrainedOutput&) = default;
   friend auto operator<=>(const PutConstrainedOutput&, const PutConstrainedOutput&) = default;

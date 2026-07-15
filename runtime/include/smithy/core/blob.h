@@ -35,6 +35,28 @@ class Blob {
   // Lexicographic by bytes, so blob-bearing generated structs stay orderable.
   friend auto operator<=>(const Blob& a, const Blob& b) { return a.bytes_ <=> b.bytes_; }
 
+  // Debug rendering (smithy/core/print.h): size plus a bounded hex prefix —
+  // never full contents, so logging a payload-bearing struct stays sane.
+  void AppendDebugTo(std::string& out) const {
+    out += "Blob(";
+    out += std::to_string(bytes_.size());
+    out += " bytes";
+    if (!bytes_.empty()) {
+      out += ": ";
+      static constexpr std::string_view kHex = "0123456789abcdef";
+      static constexpr std::size_t kMaxHexBytes = 16;
+      const std::size_t shown = bytes_.size() < kMaxHexBytes ? bytes_.size() : kMaxHexBytes;
+      for (std::size_t i = 0; i < shown; ++i) {
+        out += kHex[bytes_[i] >> 4];
+        out += kHex[bytes_[i] & 0xF];
+      }
+      if (bytes_.size() > kMaxHexBytes) {
+        out += "…";
+      }
+    }
+    out += ')';
+  }
+
  private:
   std::vector<std::uint8_t> bytes_;
 };

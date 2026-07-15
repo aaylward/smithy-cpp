@@ -205,6 +205,110 @@ class GeneratedCodeShapeTest {
   }
 
   @Test
+  void generatedTypesPrintForLoggingAndTests() {
+    // Issue #85: one sink primitive per type (AppendDebugTo), with
+    // DebugString() and operator<< as thin adapters — designated-initializer
+    // style for structs, ToString text for enums, engaged member for unions.
+    // Disengaged optionals are omitted; required members print
+    // unconditionally.
+    var manifest = PluginTestHarness.generate(ORDERING_MODEL, "test.shape#Svc", "test::shape");
+    String types = manifest.expectFileString("/include/test/shape/types.h");
+    assertTrue(types.contains("#include \"smithy/core/print.h\""), types);
+    assertTrue(types.contains("#include <ostream>"), types);
+    assertTrue(types.contains("void AppendDebugTo(std::string& out) const {"), types);
+    assertTrue(types.contains("out += \"Pending{\";"), types);
+    // Members read through this-> so a member named `out` can't shadow the
+    // sink parameter.
+    assertTrue(types.contains("if (this->position.has_value()) {"), types);
+    assertTrue(types.contains("out += \".position = \";"), types);
+    assertTrue(types.contains("smithy::DebugAppend(out, *this->position);"), types);
+    assertTrue(
+        types.contains(
+            "std::string DebugString() const {"
+                + " std::string out; AppendDebugTo(out); return out; }"),
+        types);
+    assertTrue(
+        types.contains("friend std::ostream& operator<<(std::ostream& os, const Pending& value)"),
+        types);
+    // Enums print their wire text (ToString covers unknown values too).
+    assertTrue(types.contains("out += \"Size(\";"), types);
+    assertTrue(types.contains("out += ToString();"), types);
+    // Unions print the engaged member by name; the empty state prints none.
+    assertTrue(types.contains("out += \"Status(\";"), types);
+    assertTrue(types.contains("out += \"pending = \";"), types);
+    assertTrue(types.contains("smithy::DebugAppend(out, std::get<1>(value_));"), types);
+    // A @required member prints unconditionally — no presence guard.
+    var required = PluginTestHarness.generate(ERRORS_MODEL, "test.shape#Svc", "test::shape");
+    String requiredTypes = required.expectFileString("/include/test/shape/types.h");
+    assertTrue(requiredTypes.contains("out += \".id = \";"), requiredTypes);
+    assertFalse(requiredTypes.contains("if (id.has_value())"), requiredTypes);
+    // Error listings share the tagged-variant printer.
+    String client = required.expectFileString("/include/test/shape/client.h");
+    assertTrue(client.contains("out += \"PingErrors(\";"), client);
+  }
+
+  @Test
+  void sensitiveShapesRedactInsteadOfPrinting() {
+    // Smithy's @sensitive exists precisely so values don't leak into logs; a
+    // printing feature that ignored it would defeat the trait (issue #85,
+    // protobuf debug_redact precedent). Members targeting a @sensitive shape
+    // print [REDACTED]; a @sensitive aggregate redacts its own body.
+    String model =
+        """
+        $version: "2.0"
+        namespace test.shape
+        use alloy#simpleRestJson
+
+        @simpleRestJson
+        service Svc { version: "1", operations: [Ping] }
+
+        @http(method: "POST", uri: "/ping")
+        operation Ping { input := { creds: Creds, vault: Vault } }
+
+        structure Creds { user: String, token: Token }
+
+        @sensitive
+        string Token
+
+        @sensitive
+        structure Vault { combo: String }
+        """;
+    String types =
+        PluginTestHarness.generate(model, "test.shape#Svc", "test::shape")
+            .expectFileString("/include/test/shape/types.h");
+    assertTrue(types.contains("out += \"[REDACTED]\";"), types);
+    assertFalse(types.contains("DebugAppend(out, *this->token)"), types);
+    assertTrue(types.contains("out += \"Vault{[REDACTED]}\";"), types);
+    // The non-sensitive sibling member still prints its value.
+    assertTrue(types.contains("smithy::DebugAppend(out, *this->user);"), types);
+  }
+
+  @Test
+  void structMemberCollidingWithPrintingNamesFailsWithContext() {
+    // Structs previously carried no member functions; AppendDebugTo and
+    // DebugString are new reserved names, so a Smithy member folding onto one
+    // must fail with an attributed diagnostic, not a C++ redeclaration error.
+    String model =
+        """
+        $version: "2.0"
+        namespace test.shape
+        use alloy#simpleRestJson
+
+        @simpleRestJson
+        service Svc { version: "1", operations: [Ping] }
+
+        @http(method: "POST", uri: "/ping")
+        operation Ping { input := { DebugString: String } }
+        """;
+    var error =
+        org.junit.jupiter.api.Assertions.assertThrows(
+            software.amazon.smithy.codegen.core.CodegenException.class,
+            () -> PluginTestHarness.generate(model, "test.shape#Svc", "test::shape"));
+    assertTrue(error.getMessage().contains("cpp-codegen"), error.getMessage());
+    assertTrue(error.getMessage().contains("DebugString"), error.getMessage());
+  }
+
+  @Test
   void nonOrderableMembersSkipTheDefaultedOrdering() {
     // clang hard-errors deducing a deep <=> around a Boxed recursion cycle,
     // and warns on any defaulted-but-deleted operator — so shapes that can't
@@ -247,6 +351,10 @@ class GeneratedCodeShapeTest {
     assertFalse(types.contains("operator<=>(const PingInput&"), types);
     assertTrue(
         types.contains("friend auto operator<=>(const Plain&, const Plain&) = default;"), types);
+    // Printing is NOT gated like ordering/hashing: value semantics keep the
+    // data acyclic, so recursive and Document-bearing shapes print fine.
+    assertTrue(types.contains("out += \"Node{\";"), types);
+    assertTrue(types.contains("out += \"Wrapper{\";"), types);
     // Hashing follows ordering: non-orderable shapes get no std::hash either,
     // transitively — while the plain sibling keeps its specialization.
     assertFalse(types.contains("std::hash<test::shape::Node>"), types);

@@ -29,6 +29,12 @@ jobs:
             os: ubuntu-24.04
             cc: clang
             cxx: clang++
+          # Hermetic toolchains_llvm with libc++: the only linux libc++ cell,
+          # and the toolchain serious Bazel consumers run (its parse_headers
+          # validation of our REPO.bazel-shipped feature included).
+          - name: linux-llvm-libcxx
+            os: ubuntu-24.04
+            extra_config: --config=llvm
           - name: macos-clang
             os: macos-14
     runs-on: ${{ matrix.os }}
@@ -43,7 +49,7 @@ jobs:
         env:
           CC: ${{ matrix.cc }}
           CXX: ${{ matrix.cxx }}
-        run: bazelisk test //... --config=ci
+        run: bazelisk test //... --config=ci ${{ matrix.extra_config }}
 
   # Linux catches most UB, but the transport/socket layer has Apple-specific
   # paths (SO_NOSIGPIPE, libc++) that linux/clang never exercises under a

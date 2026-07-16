@@ -12,6 +12,12 @@ build:macos --cxxopt=-std=c++20 --host_cxxopt=-std=c++20
 
 test --test_output=errors
 
+# Hermetic LLVM toolchain with libc++ (dev-only; see MODULE.bazel): the linux
+# clang+libc++ matrix cell. libc++-only divergences — vector<bool>'s proxy
+# std::hash (#84), C++20-removed traits like std::result_of — otherwise
+# surface only on the macOS runners or in consumers' toolchains_llvm builds.
+build:llvm --extra_toolchains=@llvm_toolchain//:all
+
 # AddressSanitizer: bazel test //... --config=asan
 build:asan --strip=never
 build:asan --copt=-fsanitize=address

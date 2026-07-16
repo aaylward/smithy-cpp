@@ -395,6 +395,26 @@ full generator command line. The usual causes:
 If the action fails with **no** `cpp-codegen:` line, you have found a generator bug — please
 [file an issue](https://github.com/aaylward/smithy-cpp/issues) with the stack trace.
 
+## Header validation (`parse_headers`) and third-party closures
+
+smithy-cpp's own headers — the runtime's and every generated one — are validated as
+self-contained (each compiles standalone) in upstream CI, and the repo ships that guarantee via
+`REPO.bazel`'s `parse_headers` feature, so toolchains that parse headers (e.g. `toolchains_llvm`
+with `--features=parse_headers`) can build them without surprises.
+
+Do **not** extend header parsing into dependency closures, though:
+`--process_headers_in_dependencies` compiles *third-party* headers standalone too, and several
+never pass — e.g. `boost.context` 1.90's `detail/invoke.hpp` (a pre-C++17 `invoke` polyfill)
+uses `std::result_of`, which C++20 removed and libc++ does not retain, and zlib's C headers
+don't parse as C++ at all. If you hit one of these:
+
+- drop `--process_headers_in_dependencies` (keep `--features=parse_headers` — your own headers
+  and smithy-cpp's stay validated), or
+- patch the offending module from **your root module** with a `single_version_override` (only
+  the root module's overrides apply), or
+- on libc++ ≤ 19, `--cxxopt=-D_LIBCPP_ENABLE_CXX20_REMOVED_TYPE_TRAITS` restores the removed
+  traits (the escape hatch is gone in newer libc++ — prefer the first option).
+
 ## Generating outside Bazel
 
 The generator is also a plain CLI for inspecting output or vendoring generated sources:

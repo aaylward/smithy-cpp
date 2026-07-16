@@ -40,6 +40,16 @@ bazel_dep(name = "rules_testing", version = "0.6.0", dev_dependency = True)
 # development.md) — 1.4.0's graph is already fully contained in ours.
 bazel_dep(name = "toolchains_llvm", version = "1.4.0", dev_dependency = True)
 
+# 1.4.0's generated toolchain BUILD calls cc_import without a load() — a
+# Bazel 9 native-rule removal casualty, fixed upstream in 1.6.0's template.
+# This applies that exact one-line fix to 1.4.0 (moving to 1.6.0 instead
+# would take the aspect_bazel_lib graph this pin exists to avoid).
+single_version_override(
+    module_name = "toolchains_llvm",
+    patch_strip = 1,
+    patches = ["//third_party:toolchains_llvm_cc_import_load.patch"],
+)
+
 llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm", dev_dependency = True)
 llvm.toolchain(
     name = "llvm_toolchain",

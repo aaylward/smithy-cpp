@@ -49,7 +49,17 @@ Extend its `model/gauntlet.smithy` when adding a new escaping/naming rule.
 When a change touches what generated *headers* declare (operators, templates,
 constraints), also build with `CC=clang CXX=clang++`: gcc accepts forms clang
 rejects (e.g. deducing a defaulted `operator<=>` around a recursion cycle), and
-the local default toolchain is gcc while half the CI matrix is clang. Note the
+the local default toolchain is gcc while half the CI matrix is clang.
+
+Every header this repo ships — runtime and generated goldens alike — must be
+**self-contained** (compile standalone): `REPO.bazel` enables the
+`parse_headers` feature for this repo's packages, so ordinary `bazel build`
+validates it here, in CI, and in consumers' builds. It is scoped via
+REPO.bazel rather than `--features` deliberately: the global flag leaks into
+third-party repos whose headers are not self-contained and never will be
+(zlib's C headers, boost.context's pre-C++17 `std::result_of` polyfill —
+the latter breaks consumers who run `--process_headers_in_dependencies`;
+see the quickstart's header-validation section for the consumer-side story). Note the
 sweep's blind spot: local clang still uses libstdc++, while the macOS CI jobs
 use libc++ — standard-library divergences (classically `vector<bool>`'s proxy
 reference, whose libc++ form has no `std::hash`) only surface there, so

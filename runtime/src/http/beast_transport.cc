@@ -1,6 +1,7 @@
 #include "smithy/http/beast_transport.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/ip/tcp.hpp>
@@ -11,6 +12,7 @@
 #include <boost/beast/http.hpp>
 #include <boost/beast/ssl.hpp>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -62,6 +64,14 @@ void CloseStream(Stream& stream) {
   (void)beast::get_lowest_layer(stream).socket().shutdown(asio::ip::tcp::socket::shutdown_send,
                                                           ignored);
 }
+
+// Lingering-close budgets for over-limit rejections (issue #94): after the
+// 413/431 is written, read-and-discard at most this much of the remaining
+// request before hard-closing. Unbounded draining would be a DoS vector; a
+// client that never reads until it finishes sending may still see a reset —
+// inherent to the recipe (nginx/envoy behave the same).
+constexpr std::size_t kOverLimitDrainBudgetBytes = std::size_t{256} * 1024;
+constexpr std::chrono::seconds kOverLimitDrainDeadline{2};
 
 }  // namespace
 
@@ -119,6 +129,60 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
                                });
   }
 
+  // Answers an over-limit request with a minimal 413/431 + Connection: close,
+  // then performs a bounded lingering close: half-close the write side and
+  // read-and-discard the request's remainder within a small time/byte budget
+  // before fully closing. Closing with unread bytes in the kernel's receive
+  // buffer would trigger an RST that can destroy the already-sent response in
+  // flight — the drain is what makes the status readable (RFC 9112 §9.6;
+  // issue #94). One absolute deadline covers the write and the whole drain.
+  template <typename Stream>
+  void RejectOverLimit(const std::shared_ptr<Stream>& stream, bhttp::status status) {
+    auto response = std::make_shared<bhttp::response<bhttp::string_body>>();
+    response->result(status);
+    response->version(11);
+    response->keep_alive(false);
+    response->set(bhttp::field::content_type, "text/plain");
+    response->body() = status == bhttp::status::payload_too_large
+                           ? "request body exceeds the server's limit"
+                           : "request headers exceed the server's limit";
+    response->prepare_payload();
+    beast::get_lowest_layer(*stream).expires_after(kOverLimitDrainDeadline);
+    auto& stream_ref = *stream;
+    auto& response_ref = *response;
+    bhttp::async_write(
+        stream_ref, response_ref,
+        [weak = weak_from_this(), stream, response](beast::error_code write_ec, std::size_t) {
+          CloseStream(*stream);  // half-close: no more writes either way
+          auto self = weak.lock();
+          if (self == nullptr || write_ec) {
+            beast::error_code ignored;
+            (void)beast::get_lowest_layer(*stream).socket().close(ignored);
+            return;
+          }
+          self->DrainThenClose(stream, kOverLimitDrainBudgetBytes);
+        });
+  }
+
+  // Discards raw bytes from the lowest layer (works under TLS too — the
+  // discarded ciphertext never needs decrypting) until EOF, error, deadline
+  // (set by RejectOverLimit), or budget exhaustion, then closes the socket.
+  template <typename Stream>
+  void DrainThenClose(const std::shared_ptr<Stream>& stream, std::size_t budget) {
+    auto scratch = std::make_shared<std::array<char, 8192>>();
+    beast::get_lowest_layer(*stream).async_read_some(
+        asio::buffer(*scratch),
+        [weak = weak_from_this(), stream, scratch, budget](beast::error_code ec, std::size_t n) {
+          auto self = weak.lock();
+          if (self == nullptr || ec || n >= budget) {
+            beast::error_code ignored;
+            (void)beast::get_lowest_layer(*stream).socket().close(ignored);
+            return;
+          }
+          self->DrainThenClose(stream, budget - n);
+        });
+  }
+
   template <typename Stream>
   void ReadNext(const std::shared_ptr<Stream>& stream) {
     auto buffer = std::make_shared<beast::flat_buffer>();
@@ -132,7 +196,20 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
         stream_ref, *buffer, *parser,
         [weak = weak_from_this(), stream, buffer, parser](beast::error_code ec, std::size_t) {
           auto self = weak.lock();
-          if (self == nullptr || ec) {
+          if (self == nullptr) {
+            CloseStream(*stream);
+            return;
+          }
+          if (ec == bhttp::error::body_limit || ec == bhttp::error::header_limit) {
+            // Over-limit requests get a real status before the close instead
+            // of a bare connection abort (issue #94); every other read error
+            // keeps the close-only path below.
+            self->RejectOverLimit(stream, ec == bhttp::error::body_limit
+                                              ? bhttp::status::payload_too_large
+                                              : bhttp::status::request_header_fields_too_large);
+            return;
+          }
+          if (ec) {
             CloseStream(*stream);
             return;
           }

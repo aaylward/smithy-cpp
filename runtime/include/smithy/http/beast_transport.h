@@ -38,6 +38,9 @@ class BeastServerTransport : public HttpServerTransport {
     int port = 0;  // 0 binds an ephemeral port; read port() after Start.
     int threads = 4;
     int request_timeout_seconds = 30;
+    // Over-limit requests are answered (413 for the body, 431 for headers)
+    // with Connection: close and a bounded lingering close, not silently
+    // aborted (issue #94).
     std::size_t max_body_bytes = std::size_t{64} * 1024 * 1024;
     std::size_t max_header_bytes = std::size_t{8} * 1024;
     // Stop() drains: no new connections or keep-alive reads, and in-flight

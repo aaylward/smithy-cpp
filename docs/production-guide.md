@@ -358,8 +358,13 @@ dependency itself, so no extra build flags are needed.
 ## Server hardening
 
 The production server transport (`BeastServerTransport`, ADR-0006) enforces
-per-connection timeouts (`request_timeout_seconds`), body- and header-size
-limits (`max_body_bytes`, `max_header_bytes`), terminates TLS when
+per-connection timeouts (`request_timeout_seconds`) and body- and header-size
+limits (`max_body_bytes`, `max_header_bytes`) — over-limit requests are
+answered with `413 Content Too Large` / `431 Request Header Fields Too Large`
+and `Connection: close`, followed by a bounded lingering close (a few seconds
+/ 256 KiB of drain) so the status stays readable; a client that streams past
+the budget without reading may still see a reset, which is inherent to the
+recipe. It terminates TLS when
 `tls_certificate_chain_pem` + `tls_private_key_pem` are set (ADR-0007), and
 drains on `Stop()`: new
 connections and keep-alive reads cease immediately, while requests already

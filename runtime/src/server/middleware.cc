@@ -157,13 +157,13 @@ Middleware Observe(std::function<void(const RequestObservation&)> on_complete,
         // completion, then let the exception continue to the transport's
         // containment (server_dispatch.h).
         observation.status = 500;
-        observation.duration = std::chrono::duration_cast<std::chrono::milliseconds>(now() - start);
+        observation.duration = std::chrono::duration_cast<std::chrono::microseconds>(now() - start);
         CallContained(on_complete, observation, "Observe on_complete");
         throw;
       }
       observation.operation = response.operation;
       observation.status = response.status;
-      observation.duration = std::chrono::duration_cast<std::chrono::milliseconds>(now() - start);
+      observation.duration = std::chrono::duration_cast<std::chrono::microseconds>(now() - start);
       CallContained(on_complete, observation, "Observe on_complete");
       return response;
     };

@@ -71,9 +71,12 @@ TEST(ChainTest, MiddlewareCanShortCircuit) {
 TEST(ObserveTest, ReportsMethodTargetStatusAndDuration) {
   std::vector<RequestObservation> observations;
   auto clock_time = std::chrono::steady_clock::time_point{};
+  // Each call advances by 750µs: sub-millisecond latencies (cache hits,
+  // loopback) must survive — a milliseconds field would report 0 and zero
+  // out exactly the fast-path histogram buckets (migration feedback).
   auto now = [&clock_time] {
     auto current = clock_time;
-    clock_time += milliseconds(7);  // each call advances: duration = 7ms
+    clock_time += std::chrono::microseconds(750);
     return current;
   };
 
@@ -94,7 +97,7 @@ TEST(ObserveTest, ReportsMethodTargetStatusAndDuration) {
   EXPECT_EQ(observations[0].method, "GET");
   EXPECT_EQ(observations[0].target, "/cities/1");
   EXPECT_EQ(observations[0].status, 404);
-  EXPECT_EQ(observations[0].duration, milliseconds(7));
+  EXPECT_EQ(observations[0].duration, std::chrono::microseconds(750));
 }
 
 TEST(ObserveTest, OnStartFiresBeforeDispatch) {

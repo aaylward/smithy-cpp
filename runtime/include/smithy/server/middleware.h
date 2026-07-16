@@ -83,7 +83,10 @@ struct RequestObservation {
   // empty when absent. See smithy/http/trace_context.h to parse it.
   std::string trace_parent;
   int status = 0;
-  std::chrono::milliseconds duration{0};
+  // Microseconds so fast-path latencies (cache hits, loopback) don't report
+  // as zero; duration_cast to coarser units at the metrics boundary if
+  // needed.
+  std::chrono::microseconds duration{0};
 };
 
 // What on_start sees, before the router runs. The Smithy operation is not

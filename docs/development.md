@@ -59,7 +59,14 @@ REPO.bazel rather than `--features` deliberately: the global flag leaks into
 third-party repos whose headers are not self-contained and never will be
 (zlib's C headers, boost.context's pre-C++17 `std::result_of` polyfill —
 the latter breaks consumers who run `--process_headers_in_dependencies`;
-see the quickstart's header-validation section for the consumer-side story). Note the
+see the quickstart's header-validation section for the consumer-side story).
+
+CI's `linux-llvm-libcxx` job runs the whole suite on the hermetic
+`toolchains_llvm` toolchain (`--config=llvm`) — the only **linux libc++**
+cell, and the toolchain serious Bazel consumers use. Do not use
+`--config=llvm` behind a download-blocking proxy: it fetches an LLVM release
+from GitHub (unmirrored); libc++-divergence checking stays a CI concern,
+like the Beast targets. Note the
 sweep's blind spot: local clang still uses libstdc++, while the macOS CI jobs
 use libc++ — standard-library divergences (classically `vector<bool>`'s proxy
 reference, whose libc++ form has no `std::hash`) only surface there, so

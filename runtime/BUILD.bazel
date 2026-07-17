@@ -226,6 +226,8 @@ cc_test(
         ":core",
         ":http",
         ":http_beast",
+        "@boost.asio",
+        "@boringssl//:ssl",
         "@googletest//:gtest_main",
     ],
 )

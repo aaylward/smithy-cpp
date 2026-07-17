@@ -1,5 +1,7 @@
 #include "smithy/http/beast_transport.h"
 
+#include <openssl/ssl.h>
+
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -94,6 +96,36 @@ constexpr std::chrono::seconds kOverLimitDrainDeadline{2};
 // deliberately leaked (a thread cannot be killed safely). Worst-case Stop()
 // is therefore about drain_timeout_seconds plus this.
 constexpr std::chrono::seconds kJoinGrace{2};
+
+// TLS 1.2 cipher policy: ECDHE + AEAD only (Mozilla "intermediate"). TLS 1.3
+// suites are not governed by this list and every one of them is acceptable.
+constexpr const char* kServerTls12Ciphers =
+    "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:"
+    "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:"
+    "ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305";
+
+// ALPN: select http/1.1 when the client offers it; refuse the handshake
+// (RFC 7301 no_application_protocol) when the client offers ALPN without
+// http/1.1 — an h2-only client must fail cleanly, not silently be answered
+// in a protocol it did not agree to. Clients that send no ALPN at all never
+// invoke this callback and proceed as before. `in` is ALPN's wire format:
+// length-prefixed protocol names.
+int SelectHttp11Alpn(SSL* /*ssl*/, const unsigned char** out, unsigned char* out_len,
+                     const unsigned char* in, unsigned int in_len, void* /*arg*/) {
+  constexpr std::string_view kHttp11 = "http/1.1";
+  for (unsigned int i = 0; i < in_len; i += 1 + in[i]) {
+    if (i + 1 + in[i] > in_len) break;  // malformed list
+    if (std::string_view(reinterpret_cast<const char*>(in + i + 1), in[i]) == kHttp11) {
+      *out = in + i + 1;
+      *out_len = in[i];
+      return SSL_TLSEXT_ERR_OK;
+    }
+  }
+  // Aborts the handshake with a no_application_protocol alert in both
+  // BoringSSL and OpenSSL (the former's SSL_TLSEXT_ERR_ALPN_FATAL alias
+  // does not exist in the latter).
+  return SSL_TLSEXT_ERR_ALERT_FATAL;
+}
 
 }  // namespace
 
@@ -396,6 +428,18 @@ Outcome<Unit> BeastServerTransport::Start(RequestHandler handler) {
     if (ssl_ec) {
       return Error::Validation("beast: invalid TLS certificate/key: " + ssl_ec.message());
     }
+    // Server TLS posture (issue #46): a TLS 1.2 floor, AEAD-only 1.2 cipher
+    // suites, and http/1.1 ALPN. Deliberately not knobs — every client this
+    // transport should serve clears this bar, and a downgrade escape hatch
+    // would be the first thing misconfigured. Client-certificate (mTLS)
+    // verification is issue #90's.
+    ssl_context.set_options(asio::ssl::context::default_workarounds | asio::ssl::context::no_sslv2 |
+                            asio::ssl::context::no_sslv3);
+    if (SSL_CTX_set_min_proto_version(ssl_context.native_handle(), TLS1_2_VERSION) != 1 ||
+        SSL_CTX_set_cipher_list(ssl_context.native_handle(), kServerTls12Ciphers) != 1) {
+      return Error::Validation("beast: cannot apply the TLS posture (version floor/ciphers)");
+    }
+    SSL_CTX_set_alpn_select_cb(ssl_context.native_handle(), SelectHttp11Alpn, nullptr);
   }
 
   boost::system::error_code ec;
@@ -566,6 +610,12 @@ struct BeastHttpClient::State {
     asio::ssl::context& ssl_context = ssl.emplace(asio::ssl::context::tls_client);
     ssl_context.set_options(asio::ssl::context::default_workarounds | asio::ssl::context::no_sslv2 |
                             asio::ssl::context::no_sslv3);
+    // Same TLS 1.2 floor the server enforces: a client that verifies peers by
+    // default has no business completing a downgraded handshake either.
+    if (SSL_CTX_set_min_proto_version(ssl_context.native_handle(), TLS1_2_VERSION) != 1) {
+      setup_error = "beast client: cannot set the TLS 1.2 version floor";
+      return;
+    }
     boost::system::error_code ec;
     if (!opts.tls_options.verify_peer) {
       (void)ssl_context.set_verify_mode(asio::ssl::verify_none, ec);

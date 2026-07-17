@@ -1,11 +1,19 @@
 // BeastHttpClient against BeastServerTransport: plaintext round trips with
 // keep-alive reuse, TLS with certificate + hostname verification against the
-// server's TLS termination, and the verification failure mode.
+// server's TLS termination, the verification failure mode, and the server's
+// TLS posture (version floor, ALPN).
 
 #include <gtest/gtest.h>
+#include <openssl/ssl.h>
 
+#include <boost/asio/connect.hpp>
+#include <boost/asio/io_context.hpp>
+#include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/ssl.hpp>
 #include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "smithy/client/config.h"
@@ -198,6 +206,78 @@ TEST(BeastClientTest, RejectsTlsServerMisconfiguration) {
   BeastServerTransport server(
       {.port = 0, .tls_certificate_chain_pem = kTestCertificatePem});  // key missing
   EXPECT_FALSE(server.Start(EchoHandler()).ok());
+}
+
+// Raw TLS dialer for the posture tests: BeastHttpClient can't be talked into
+// an old protocol version or a custom ALPN list, so these handshake with
+// asio::ssl directly. No verification — the posture, not trust, is under test.
+struct RawTlsProbe {
+  boost::asio::io_context io;
+  boost::asio::ssl::context ctx{boost::asio::ssl::context::tls_client};
+  std::optional<boost::asio::ssl::stream<boost::asio::ip::tcp::socket>> stream;
+
+  // Returns the handshake's error code; success is a falsy code.
+  boost::system::error_code Handshake(int port) {
+    stream.emplace(io, ctx);
+    boost::asio::ip::tcp::resolver resolver(io);
+    boost::system::error_code ec;
+    const auto endpoints = resolver.resolve("127.0.0.1", std::to_string(port), ec);
+    if (!ec) {
+      (void)boost::asio::connect(stream->next_layer(), endpoints, ec);
+    }
+    if (!ec) {
+      (void)stream->handshake(boost::asio::ssl::stream_base::client, ec);
+    }
+    return ec;
+  }
+};
+
+BeastServerTransport::Options TlsServerOptions() {
+  return {.port = 0,
+          .threads = 1,
+          .tls_certificate_chain_pem = kTestCertificatePem,
+          .tls_private_key_pem = kTestPrivateKeyPem};
+}
+
+TEST(BeastClientTest, TlsServerRefusesPreTls12Clients) {
+  BeastServerTransport server(TlsServerOptions());
+  ASSERT_TRUE(server.Start(EchoHandler()).ok());
+
+  RawTlsProbe probe;
+  ASSERT_EQ(SSL_CTX_set_max_proto_version(probe.ctx.native_handle(), TLS1_1_VERSION), 1);
+  EXPECT_TRUE(probe.Handshake(server.port()));  // refused below the TLS 1.2 floor
+  server.Stop();
+}
+
+TEST(BeastClientTest, TlsServerNegotiatesHttp11Alpn) {
+  BeastServerTransport server(TlsServerOptions());
+  ASSERT_TRUE(server.Start(EchoHandler()).ok());
+
+  RawTlsProbe probe;
+  // Wire format: length-prefixed names. h2 first — selection must be by
+  // support, not offer order. (set_alpn_protos returns 0 on success.)
+  const unsigned char offer[] = {2, 'h', '2', 8, 'h', 't', 't', 'p', '/', '1', '.', '1'};
+  ASSERT_EQ(SSL_CTX_set_alpn_protos(probe.ctx.native_handle(), offer, sizeof(offer)), 0);
+  ASSERT_FALSE(probe.Handshake(server.port()));
+
+  const unsigned char* selected = nullptr;
+  unsigned int selected_len = 0;
+  SSL_get0_alpn_selected(probe.stream->native_handle(), &selected, &selected_len);
+  EXPECT_EQ(std::string_view(reinterpret_cast<const char*>(selected), selected_len), "http/1.1");
+  server.Stop();
+}
+
+TEST(BeastClientTest, TlsServerRefusesAlpnWithoutHttp11) {
+  BeastServerTransport server(TlsServerOptions());
+  ASSERT_TRUE(server.Start(EchoHandler()).ok());
+
+  RawTlsProbe probe;
+  const unsigned char offer[] = {2, 'h', '2'};
+  ASSERT_EQ(SSL_CTX_set_alpn_protos(probe.ctx.native_handle(), offer, sizeof(offer)), 0);
+  // An ALPN offer with no overlap fails the handshake (no_application_protocol)
+  // instead of silently proceeding in a protocol the client didn't agree to.
+  EXPECT_TRUE(probe.Handshake(server.port()));
+  server.Stop();
 }
 
 }  // namespace

@@ -68,6 +68,10 @@ class BeastServerTransport : public HttpServerTransport {
     // seconds (issue #46).
     int drain_timeout_seconds = 10;
     // TLS termination: set both (PEM text, not file paths) to serve https.
+    // Posture is fixed, not configurable (issue #46): TLS 1.2 minimum,
+    // ECDHE+AEAD cipher suites for 1.2 (every 1.3 suite qualifies), and ALPN
+    // that answers http/1.1 — a client offering ALPN without http/1.1 (e.g.
+    // h2-only) is refused at the handshake. mTLS is tracked with #90.
     std::string tls_certificate_chain_pem;
     std::string tls_private_key_pem;
   };

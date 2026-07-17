@@ -35,14 +35,14 @@ namespace asio = boost::asio;
 namespace beast = boost::beast;
 namespace bhttp = boost::beast::http;
 
-HttpRequest ToSmithyRequest(const bhttp::request<bhttp::string_body>& wire) {
+HttpRequest ToSmithyRequest(bhttp::request<bhttp::string_body> wire) {
   HttpRequest request;
   request.method = std::string(wire.method_string());
   request.target = std::string(wire.target());
   for (const auto& field : wire) {
     request.headers.Add(std::string(field.name_string()), std::string(field.value()));
   }
-  request.body = wire.body();
+  request.body = std::move(wire.body());
   return request;
 }
 
@@ -56,7 +56,7 @@ bool IsFramingHeader(std::string_view name) {
          beast::iequals(name, "connection");
 }
 
-bhttp::response<bhttp::string_body> ToWireResponse(const HttpResponse& response, bool keep_alive) {
+bhttp::response<bhttp::string_body> ToWireResponse(HttpResponse response, bool keep_alive) {
   bhttp::response<bhttp::string_body> wire;
   wire.result(static_cast<unsigned>(response.status));
   wire.version(11);
@@ -64,7 +64,7 @@ bhttp::response<bhttp::string_body> ToWireResponse(const HttpResponse& response,
     if (IsFramingHeader(name)) continue;
     wire.insert(name, value);
   }
-  wire.body() = response.body;
+  wire.body() = std::move(response.body);
   wire.keep_alive(keep_alive);
   wire.prepare_payload();  // sets content-length
   return wire;
@@ -93,12 +93,7 @@ constexpr std::chrono::seconds kOverLimitDrainDeadline{2};
 // may outlive Stop() briefly, so everything they touch lives here.
 struct BeastServerTransport::State : std::enable_shared_from_this<State> {
   explicit State(const Options& options)
-      : io(options.threads), acceptor(asio::make_strand(io)), opts(options) {
-    if (options.handler_threads > 0) {
-      handler_pool =
-          std::make_unique<asio::thread_pool>(static_cast<std::size_t>(options.handler_threads));
-    }
-  }
+      : io(options.threads), acceptor(asio::make_strand(io)), opts(options) {}
 
   asio::io_context io;
   // With handlers on their own pool, the io_context can go momentarily
@@ -111,8 +106,7 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
   asio::ip::tcp::acceptor acceptor;
   Options opts;
   RequestHandler handler;
-  // Handlers run here (when configured) so a blocked handler cannot starve
-  // the io threads that accept connections and read/write the wire.
+  // Engaged when handler_threads > 0; created by Start, used by Dispatch.
   std::unique_ptr<asio::thread_pool> handler_pool;
   // Engaged when TLS termination is configured (Start validated cert + key).
   std::optional<asio::ssl::context> ssl;
@@ -305,7 +299,7 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
           }
           self->active.fetch_add(1);
           const bool keep_alive = parser->get().keep_alive() && !self->stopping;
-          self->Dispatch(stream, ToSmithyRequest(parser->get()), keep_alive);
+          self->Dispatch(stream, ToSmithyRequest(parser->release()), keep_alive);
         });
   }
 
@@ -331,13 +325,13 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
       }
       HttpResponse response = InvokeHandlerGuarded(self->handler, request);
       asio::post(stream->get_executor(),
-                 [weak, stream, response = std::move(response), keep_alive]() {
+                 [weak, stream, response = std::move(response), keep_alive]() mutable {
                    auto self = weak.lock();
                    if (self == nullptr) {
                      CloseStream(*stream);
                      return;
                    }
-                   self->Respond(stream, response, keep_alive);
+                   self->Respond(stream, std::move(response), keep_alive);
                  });
     });
   }
@@ -417,6 +411,12 @@ Outcome<Unit> BeastServerTransport::Start(RequestHandler handler) {
                             std::to_string(options_.port) + ": " + ec.message());
   }
 
+  if (options_.handler_threads > 0) {
+    // Created only now, after the listener is up: a Start that fails
+    // validation or bind/listen never spawns handler threads.
+    state->handler_pool =
+        std::make_unique<asio::thread_pool>(static_cast<std::size_t>(options_.handler_threads));
+  }
   state->Accept();
   state_ = state;
   const int threads = options_.threads > 0 ? options_.threads : 1;

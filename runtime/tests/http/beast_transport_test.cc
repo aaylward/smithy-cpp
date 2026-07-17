@@ -20,21 +20,58 @@
 namespace smithy::http {
 namespace {
 
-// Sends raw bytes and returns the raw response so assertions can see the
-// exact wire framing (a parsing client would mask duplicate headers).
-std::string RawRoundTrip(int port, const std::string& request_bytes) {
+// Opens a loopback connection to `port` with a bounded receive timeout (and
+// SIGPIPE disarmed where SO_NOSIGPIPE exists); returns the fd, or -1.
+int ConnectLoopback(int port) {
   const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
-  if (fd < 0) return {};
+  if (fd < 0) return -1;
   timeval timeout{.tv_sec = 10, .tv_usec = 0};
   (void)::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+#ifdef SO_NOSIGPIPE
+  const int no_sigpipe = 1;
+  (void)::setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &no_sigpipe, sizeof(no_sigpipe));
+#endif
   sockaddr_in addr{};
   addr.sin_family = AF_INET;
   addr.sin_port = htons(static_cast<std::uint16_t>(port));
   if (::inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr) != 1 ||
       ::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
     ::close(fd);
-    return {};
+    return -1;
   }
+  return fd;
+}
+
+// Fans out `clients` concurrent SocketHttpClients, each POSTing /echo with a
+// distinct body; returns how many did not get their body echoed back.
+int FanOutEchoFailures(int port, int clients) {
+  std::vector<std::thread> threads;
+  std::atomic<int> failures{0};
+  threads.reserve(static_cast<std::size_t>(clients));
+  for (int i = 0; i < clients; ++i) {
+    threads.emplace_back([&failures, port, i] {
+      SocketHttpClient client("127.0.0.1", port);
+      HttpRequest request;
+      request.method = "POST";
+      request.target = "/echo";
+      request.body = "client-" + std::to_string(i);
+      const auto response = client.Send(request);
+      if (!response.ok() || response->body != request.body) {
+        ++failures;
+      }
+    });
+  }
+  for (std::thread& thread : threads) {
+    thread.join();
+  }
+  return failures.load();
+}
+
+// Sends raw bytes and returns the raw response so assertions can see the
+// exact wire framing (a parsing client would mask duplicate headers).
+std::string RawRoundTrip(int port, const std::string& request_bytes) {
+  const int fd = ConnectLoopback(port);
+  if (fd < 0) return {};
   (void)::send(fd, request_bytes.data(), request_bytes.size(), 0);
   std::string received;
   char scratch[1024];
@@ -116,28 +153,8 @@ TEST(BeastTransportTest, ServesConcurrentConnections) {
                   })
                   .ok());
 
-  constexpr int kClients = 8;
-  std::vector<std::thread> clients;
-  std::atomic<int> failures{0};
-  clients.reserve(kClients);
-  for (int i = 0; i < kClients; ++i) {
-    clients.emplace_back([&, i] {
-      SocketHttpClient client("127.0.0.1", server.port());
-      HttpRequest request;
-      request.method = "POST";
-      request.target = "/echo";
-      request.body = "client-" + std::to_string(i);
-      const auto response = client.Send(request);
-      if (!response.ok() || response->body != request.body) {
-        ++failures;
-      }
-    });
-  }
-  for (std::thread& thread : clients) {
-    thread.join();
-  }
+  EXPECT_EQ(FanOutEchoFailures(server.port(), 8), 0);
   server.Stop();
-  EXPECT_EQ(failures, 0);
   EXPECT_GT(max_in_flight.load(), 1) << "requests were serialized";
 }
 
@@ -197,28 +214,8 @@ TEST(BeastTransportTest, MaxConnectionsBoundsConcurrencyWithoutRejecting) {
                   })
                   .ok());
 
-  constexpr int kClients = 6;
-  std::vector<std::thread> clients;
-  std::atomic<int> failures{0};
-  clients.reserve(kClients);
-  for (int i = 0; i < kClients; ++i) {
-    clients.emplace_back([&, i] {
-      SocketHttpClient client("127.0.0.1", server.port());
-      HttpRequest request;
-      request.method = "POST";
-      request.target = "/echo";
-      request.body = "client-" + std::to_string(i);
-      const auto response = client.Send(request);
-      if (!response.ok() || response->body != request.body) {
-        ++failures;
-      }
-    });
-  }
-  for (std::thread& thread : clients) {
-    thread.join();
-  }
+  EXPECT_EQ(FanOutEchoFailures(server.port(), 6), 0);
   server.Stop();
-  EXPECT_EQ(failures, 0);
   EXPECT_EQ(max_in_flight.load(), 1) << "a cap of one connection must serialize handlers";
 }
 
@@ -232,15 +229,8 @@ TEST(BeastTransportTest, IdleKeepAliveSessionCannotPinTheCap) {
   ASSERT_TRUE(server.Start([](const HttpRequest&) { return HttpResponse{200, {}, "ok"}; }).ok());
 
   // Session 1: keep-alive request, then hold the connection open, idle.
-  const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+  const int fd = ConnectLoopback(server.port());
   ASSERT_GE(fd, 0);
-  timeval timeout{.tv_sec = 10, .tv_usec = 0};
-  (void)::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-  sockaddr_in addr{};
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(static_cast<std::uint16_t>(server.port()));
-  ASSERT_EQ(::inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr), 1);
-  ASSERT_EQ(::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)), 0);
   const std::string head = "GET / HTTP/1.1\r\nhost: x\r\n\r\n";  // HTTP/1.1: keep-alive
   ASSERT_EQ(::send(fd, head.data(), head.size(), 0), static_cast<ssize_t>(head.size()));
   std::string received;
@@ -333,19 +323,8 @@ TEST(BeastTransportTest, MidStreamOverflowAnswersOrClosesButNeverHangs) {
   // Raw chunked upload with no declared length: the parser only discovers the
   // overflow mid-body. The client must end up with a 413 or a closed
   // connection within the drain budget — never a hang (issue #94).
-  const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+  const int fd = ConnectLoopback(server.port());
   ASSERT_GE(fd, 0);
-#ifdef SO_NOSIGPIPE
-  int set = 1;
-  (void)::setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &set, sizeof(set));
-#endif
-  timeval timeout{.tv_sec = 10, .tv_usec = 0};
-  (void)::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-  sockaddr_in addr{};
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(static_cast<std::uint16_t>(server.port()));
-  ASSERT_EQ(::inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr), 1);
-  ASSERT_EQ(::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)), 0);
 
 #ifdef MSG_NOSIGNAL
   constexpr int kSendFlags = MSG_NOSIGNAL;
@@ -453,15 +432,8 @@ TEST(BeastTransportTest, KeepAliveConnectionServesSequentialRequestsViaTheExecut
                     return HttpResponse{200, {}, "echo:" + request.body};
                   })
                   .ok());
-  const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+  const int fd = ConnectLoopback(server.port());
   ASSERT_GE(fd, 0);
-  timeval timeout{.tv_sec = 10, .tv_usec = 0};
-  (void)::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-  sockaddr_in addr{};
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(static_cast<std::uint16_t>(server.port()));
-  ASSERT_EQ(::inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr), 1);
-  ASSERT_EQ(::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)), 0);
   std::string received;
   char scratch[512];
   for (const std::string body : {"one", "two"}) {
@@ -491,28 +463,8 @@ TEST(BeastTransportTest, BurstBeyondHandlerPoolQueuesAndCompletes) {
                     return HttpResponse{200, {}, request.body};
                   })
                   .ok());
-  constexpr int kClients = 6;
-  std::vector<std::thread> clients;
-  std::atomic<int> failures{0};
-  clients.reserve(kClients);
-  for (int i = 0; i < kClients; ++i) {
-    clients.emplace_back([&, i] {
-      SocketHttpClient client("127.0.0.1", server.port());
-      HttpRequest request;
-      request.method = "POST";
-      request.target = "/echo";
-      request.body = "client-" + std::to_string(i);
-      const auto response = client.Send(request);
-      if (!response.ok() || response->body != request.body) {
-        ++failures;
-      }
-    });
-  }
-  for (std::thread& thread : clients) {
-    thread.join();
-  }
+  EXPECT_EQ(FanOutEchoFailures(server.port(), 6), 0);
   server.Stop();
-  EXPECT_EQ(failures, 0);
 }
 
 TEST(BeastTransportTest, InlineHandlersStillServeWhenPoolDisabled) {

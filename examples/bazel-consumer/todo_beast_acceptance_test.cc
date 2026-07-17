@@ -1,18 +1,18 @@
 // Production-transport acceptance from the consumer's side of the module
 // boundary: the generated Todo service on BeastServerTransport, driven by the
 // generated client over BeastHttpClient::FromConfig — the exact wiring
-// docs/production-guide.md teaches. Positive: the handler-executor knob is
-// consumable and blocked handlers cannot starve the wire. Negative: a
-// throwing handler is contained as a correlated 500 and the service survives.
+// docs/production-guide.md teaches. What this proves is the boundary itself:
+// the hardening knobs (handler_threads among them) are visible and usable
+// from a consumer build, generated round trips and modeled errors survive the
+// production transport, and a throwing handler is contained as a 500 without
+// killing the service. The executor's concurrency semantics are pinned where
+// they live, in the runtime suite (beast_transport_test.cc).
 
 #include <gtest/gtest.h>
 
-#include <atomic>
-#include <chrono>
 #include <memory>
 #include <stdexcept>
 #include <string>
-#include <thread>
 
 #include "acme/todo/client.h"
 #include "acme/todo/server.h"
@@ -30,25 +30,13 @@ using acme::todo::TodoClient;
 using acme::todo::TodoHandler;
 using acme::todo::TodoServer;
 
-// A handler with production-shaped behaviors on demand: "block" waits until
-// kBarrier handlers are blocked together (provably concurrent dispatch),
-// "boom" throws (the bug every real service eventually ships).
+// A handler with the negative path every real service eventually ships: a
+// "boom" title throws (the bug the framework must contain).
 class AcceptanceHandler final : public TodoHandler {
  public:
-  static constexpr int kBarrier = 2;
-
   smithy::Outcome<AddTaskOutput> AddTask(const AddTaskInput& input) override {
     if (input.title == "boom") {
       throw std::runtime_error("consumer handler bug");
-    }
-    if (input.title == "block") {
-      ++blocked_;
-      const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
-      while (blocked_.load() < kBarrier && std::chrono::steady_clock::now() < deadline) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-      }
-      const bool together = blocked_.load() >= kBarrier;
-      return AddTaskOutput{.taskId = "task-blocked", .title = together ? "ok" : "starved"};
     }
     return AddTaskOutput{.taskId = "task-1", .title = input.title};
   }
@@ -58,21 +46,18 @@ class AcceptanceHandler final : public TodoHandler {
     error.set_detail(NoSuchTask{.message = "no task: " + input.taskId});
     return error;
   }
-
- private:
-  std::atomic<int> blocked_{0};
 };
 
 // Starts the service on the production transport and returns a generated
 // client wired through BeastHttpClient::FromConfig (the production-guide
-// flow). threads = 1 makes the executor observable: without it, one blocked
-// handler would freeze the whole wire.
+// flow). Setting handler_threads here is the consumer-facing proof of the
+// executor knob: the field must exist and compose across the module boundary.
 class TodoBeastAcceptanceTest : public ::testing::Test {
  protected:
   void SetUp() override {
     server_ = std::make_unique<TodoServer>(std::make_shared<AcceptanceHandler>());
     transport_ = std::make_unique<smithy::http::BeastServerTransport>(
-        smithy::http::BeastServerTransport::Options{.threads = 1});
+        smithy::http::BeastServerTransport::Options{.threads = 1, .handler_threads = 8});
     ASSERT_TRUE(transport_->Start(server_->Handler()).ok());
 
     smithy::ClientConfig config;
@@ -103,25 +88,9 @@ TEST_F(TodoBeastAcceptanceTest, RoundTripsAndModeledErrorsWork) {
   ASSERT_NE(missing.error().detail<NoSuchTask>(), nullptr);
 }
 
-TEST_F(TodoBeastAcceptanceTest, BlockedHandlersDoNotStarveTheServer) {
-  // Both calls block inside the handler until they see each other — only
-  // possible when handlers run off the io thread (handler_threads default),
-  // since this server has a single io thread.
-  std::thread first([&] {
-    const auto blocked = client_->AddTask(AddTaskInput{.title = "block"});
-    ASSERT_TRUE(blocked.ok()) << blocked.error().message();
-    EXPECT_EQ(blocked->title, "ok");
-  });
-  const auto second = client_->AddTask(AddTaskInput{.title = "block"});
-  first.join();
-  ASSERT_TRUE(second.ok()) << second.error().message();
-  EXPECT_EQ(second->title, "ok");
-}
-
 TEST_F(TodoBeastAcceptanceTest, HandlerExceptionIsContainedAndServiceSurvives) {
-  // The negative path every service hits eventually: a handler throws. The
-  // framework answers a correlated 500 instead of dying (issue #41), and the
-  // very next call on the same server succeeds.
+  // The framework answers a correlated 500 instead of dying (issue #41), and
+  // the very next call on the same server succeeds.
   const auto boom = client_->AddTask(AddTaskInput{.title = "boom"});
   ASSERT_FALSE(boom.ok());
 

@@ -556,6 +556,78 @@ TEST(BeastTransportTest, StopWithWedgedHandlerReturnsWithinTheGrace) {
   }
 }
 
+TEST(BeastTransportTest, DestructorWithWedgedHandlerIsBoundedToo) {
+  // The destructor rides the same Shutdown path as Stop(); the pre-#46 bug
+  // statement was "blocks Stop()/destructor forever", so pin the destructor
+  // half explicitly.
+  auto release = std::make_shared<std::atomic<bool>>(false);
+  auto entered = std::make_shared<std::atomic<bool>>(false);
+  std::thread caller;
+  const auto begin = std::chrono::steady_clock::now();
+  {
+    BeastServerTransport server(BeastServerTransport::Options{.drain_timeout_seconds = 0});
+    ASSERT_TRUE(server
+                    .Start([release, entered](const HttpRequest&) {
+                      entered->store(true);
+                      while (!release->load()) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                      }
+                      return HttpResponse{200, {}, ""};
+                    })
+                    .ok());
+    caller = std::thread([port = server.port()] {
+      SocketHttpClient client("127.0.0.1", port, /*timeout_ms=*/2000);
+      (void)client.Send(HttpRequest{"GET", "/", {}, ""});  // times out; expected
+    });
+    while (!entered->load()) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+  }  // ~BeastServerTransport with the handler still wedged
+  EXPECT_LT(std::chrono::steady_clock::now() - begin, std::chrono::seconds(10))
+      << "destructor wedged on a stuck handler";
+  release->store(true);
+  caller.join();
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));  // let the reaper heal
+}
+
+TEST(BeastTransportTest, RestartAfterAbandonedTeardownServesFresh) {
+  // After a wedged teardown leaks its State, the same transport object must
+  // Start() cleanly with fresh state and serve — the leak is confined to
+  // the abandoned generation.
+  auto release = std::make_shared<std::atomic<bool>>(false);
+  auto entered = std::make_shared<std::atomic<bool>>(false);
+  BeastServerTransport server(BeastServerTransport::Options{.drain_timeout_seconds = 0});
+  ASSERT_TRUE(server
+                  .Start([release, entered](const HttpRequest&) {
+                    entered->store(true);
+                    while (!release->load()) {
+                      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                    }
+                    return HttpResponse{200, {}, ""};
+                  })
+                  .ok());
+  std::thread caller([port = server.port()] {
+    SocketHttpClient client("127.0.0.1", port, /*timeout_ms=*/2000);
+    (void)client.Send(HttpRequest{"GET", "/", {}, ""});  // times out; expected
+  });
+  while (!entered->load()) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  server.Stop();  // abandons the wedged generation
+
+  ASSERT_TRUE(server.Start([](const HttpRequest&) { return HttpResponse{201, {}, "fresh"}; }).ok());
+  SocketHttpClient client("127.0.0.1", server.port());
+  const auto response = client.Send(HttpRequest{"GET", "/", {}, ""});
+  ASSERT_TRUE(response.ok()) << response.error().message();
+  EXPECT_EQ(response->status, 201);
+  EXPECT_EQ(response->body, "fresh");
+  server.Stop();
+
+  release->store(true);
+  caller.join();
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));  // let the reaper heal
+}
+
 TEST(BeastTransportTest, StartupErrorsAreReported) {
   BeastServerTransport bad(BeastServerTransport::Options{.address = "not-an-address"});
   EXPECT_FALSE(bad.Start([](const HttpRequest&) { return HttpResponse{}; }).ok());

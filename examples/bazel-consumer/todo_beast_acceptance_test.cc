@@ -10,6 +10,7 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -57,7 +58,8 @@ class TodoBeastAcceptanceTest : public ::testing::Test {
   void SetUp() override {
     server_ = std::make_unique<TodoServer>(std::make_shared<AcceptanceHandler>());
     transport_ = std::make_unique<smithy::http::BeastServerTransport>(
-        smithy::http::BeastServerTransport::Options{.threads = 1, .handler_threads = 8});
+        smithy::http::BeastServerTransport::Options{
+            .threads = 1, .handler_threads = 8, .drain_timeout_seconds = 5});
     ASSERT_TRUE(transport_->Start(server_->Handler()).ok());
 
     smithy::ClientConfig config;
@@ -86,6 +88,34 @@ TEST_F(TodoBeastAcceptanceTest, RoundTripsAndModeledErrorsWork) {
   ASSERT_FALSE(missing.ok());
   EXPECT_EQ(missing.error().code(), "NoSuchTask");
   ASSERT_NE(missing.error().detail<NoSuchTask>(), nullptr);
+}
+
+TEST_F(TodoBeastAcceptanceTest, LifecycleStopsAndRestartsAcrossTransportGenerations) {
+  // The rolling-restart pattern from the production guide, composed entirely
+  // from the consumer-visible API: serve, Stop() (bounded — the drain knob
+  // above is the consumer's contract), then a fresh transport generation on
+  // the same generated server object serves again.
+  const auto first = client_->AddTask(AddTaskInput{.title = "before restart"});
+  ASSERT_TRUE(first.ok()) << first.error().message();
+
+  const auto begin = std::chrono::steady_clock::now();
+  transport_->Stop();
+  EXPECT_LT(std::chrono::steady_clock::now() - begin, std::chrono::seconds(10));
+
+  smithy::http::BeastServerTransport second_generation(
+      smithy::http::BeastServerTransport::Options{.threads = 1, .handler_threads = 8});
+  ASSERT_TRUE(second_generation.Start(server_->Handler()).ok());
+  smithy::ClientConfig config;
+  config.endpoint = "http://127.0.0.1:" + std::to_string(second_generation.port());
+  auto http_client = smithy::http::BeastHttpClient::FromConfig(config);
+  ASSERT_TRUE(http_client.ok()) << http_client.error().message();
+  config.http_client = *http_client;
+  auto client = TodoClient::Create(std::move(config));
+  ASSERT_TRUE(client.ok()) << client.error().message();
+  const auto after = client->AddTask(AddTaskInput{.title = "after restart"});
+  ASSERT_TRUE(after.ok()) << after.error().message();
+  EXPECT_EQ(after->title, "after restart");
+  second_generation.Stop();
 }
 
 TEST_F(TodoBeastAcceptanceTest, HandlerExceptionIsContainedAndServiceSurvives) {

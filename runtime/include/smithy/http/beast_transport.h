@@ -62,8 +62,10 @@ class BeastServerTransport : public HttpServerTransport {
     // Stop() drains: no new connections or keep-alive reads, and in-flight
     // requests get this long to finish before the pool is torn down. Stop()
     // itself is bounded — a handler that never returns is abandoned (its
-    // thread and the transport state deliberately leak) a short grace after
-    // this deadline instead of wedging Stop() forever (issue #46).
+    // thread and the transport state deliberately leak, with a std::clog
+    // trace) a short grace after this deadline instead of wedging Stop()
+    // forever, so budget supervisor kill timeouts at roughly this plus 2
+    // seconds (issue #46).
     int drain_timeout_seconds = 10;
     // TLS termination: set both (PEM text, not file paths) to serve https.
     std::string tls_certificate_chain_pem;

@@ -16,6 +16,8 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <future>
+#include <iostream>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -86,6 +88,12 @@ void CloseStream(Stream& stream) {
 // inherent to the recipe (nginx/envoy behave the same).
 constexpr std::size_t kOverLimitDrainBudgetBytes = std::size_t{256} * 1024;
 constexpr std::chrono::seconds kOverLimitDrainDeadline{2};
+
+// Stop()'s teardown grace: after io/pool stop, the final joins get this long
+// on a reaper thread before a wedged handler's teardown is abandoned and
+// deliberately leaked (a thread cannot be killed safely). Worst-case Stop()
+// is therefore about drain_timeout_seconds plus this.
+constexpr std::chrono::seconds kJoinGrace{2};
 
 }  // namespace
 
@@ -443,6 +451,17 @@ void BeastServerTransport::Shutdown() noexcept {
     return;
   }
   state_->stopping = true;
+  std::shared_ptr<std::vector<std::thread>> orphans;
+  const auto join_all = [](std::vector<std::thread>& threads, State& state) {
+    for (std::thread& thread : threads) {
+      if (thread.joinable()) {
+        thread.join();
+      }
+    }
+    if (state.handler_pool != nullptr) {
+      state.handler_pool->join();
+    }
+  };
   try {
     // Stop accepting first: close the acceptor on its strand (the accept
     // loop may be touching it on an io thread). The posted closure captures
@@ -470,62 +489,38 @@ void BeastServerTransport::Shutdown() noexcept {
     // io_context (an abandoned handler owning State would form a reference
     // cycle and leak everything).
     state_->io.stop();
-    // The joins themselves are unbounded — io.stop() and pool->stop() do not
-    // interrupt an executing handler, and a thread cannot be killed safely.
-    // So a reaper thread performs them (plus State destruction), and Stop()
-    // waits only kJoinGrace for it: in the normal case the joins finish in
-    // microseconds and the reaper is joined here. If a handler is truly
-    // wedged, the reaper is detached and State is deliberately leaked — the
-    // bounded-Stop() contract wins over the memory — and should the handler
-    // ever return, the abandoned reaper finishes the cleanup (issue #46).
-    constexpr std::chrono::seconds kJoinGrace{2};
-    auto reaped = std::make_shared<std::atomic<bool>>(false);
-    // shared_ptr captures (never moves of the raw members) so a throwing
-    // std::thread constructor cannot destroy joinable threads on unwind.
-    auto orphans = std::make_shared<std::vector<std::thread>>(std::move(threads_));
-    std::shared_ptr<State> state = state_;
-    try {
-      std::thread reaper([state, orphans, reaped] {
-        for (std::thread& thread : *orphans) {
-          if (thread.joinable()) {
-            thread.join();
-          }
-        }
-        if (state->handler_pool != nullptr) {
-          state->handler_pool->join();
-        }
-        reaped->store(true);
-      });
-      const auto join_deadline = std::chrono::steady_clock::now() + kJoinGrace;
-      while (!reaped->load() && std::chrono::steady_clock::now() < join_deadline) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
-      }
-      if (reaped->load()) {
-        reaper.join();
-      } else {
-        reaper.detach();  // State and the wedged threads leak, deliberately.
-      }
-    } catch (...) {
-      // Could not spawn the reaper (resource exhaustion): fall back to the
-      // unbounded inline joins rather than losing the threads.
-      for (std::thread& thread : *orphans) {
-        if (thread.joinable()) {
-          thread.join();
-        }
-      }
-      if (state->handler_pool != nullptr) {
-        state->handler_pool->join();
-      }
+    // The joins are unbounded — the stops above do not interrupt an
+    // executing handler, and a thread cannot be killed safely — so a reaper
+    // thread performs them and Stop() waits only kJoinGrace. Normal case:
+    // the joins finish in microseconds and the reaper is joined here.
+    // Wedged case: the reaper is detached and State deliberately leaks; if
+    // the handler ever returns, the reaper finishes the cleanup. The
+    // shared_ptr captures (never moves of raw members) keep a throwing
+    // std::thread constructor from unwinding through joinable threads.
+    orphans = std::make_shared<std::vector<std::thread>>(std::move(threads_));
+    std::promise<void> reaped;
+    std::future<void> done = reaped.get_future();
+    std::thread reaper([reaped = std::move(reaped), state = state_, orphans, join_all]() mutable {
+      join_all(*orphans, *state);
+      reaped.set_value();
+    });
+    if (done.wait_for(kJoinGrace) == std::future_status::ready) {
+      reaper.join();
+    } else {
+      // An unhandled wedge must never be silent (the server_dispatch
+      // convention): this line is the operator's only trace of the leak.
+      std::clog << "smithy: Stop() grace expired with a handler still running; "
+                   "abandoning teardown (state deliberately leaks; it is "
+                   "reclaimed if the handler ever returns)\n"
+                << std::flush;
+      reaper.detach();
     }
   } catch (...) {
-    // Teardown before the reap failed; join inline so no thread is lost.
-    for (std::thread& thread : threads_) {
-      if (thread.joinable()) {
-        thread.join();
-      }
-    }
-    if (state_ != nullptr && state_->handler_pool != nullptr) {
-      state_->handler_pool->join();
+    // Teardown or reaper spawn failed: join inline (unbounded fallback), on
+    // whichever container holds the threads at the point of the throw.
+    join_all(threads_, *state_);
+    if (orphans != nullptr) {
+      join_all(*orphans, *state_);
     }
   }
   threads_.clear();

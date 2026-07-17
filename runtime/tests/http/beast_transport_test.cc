@@ -221,6 +221,58 @@ TEST(BeastTransportTest, MaxConnectionsBoundsConcurrencyWithoutRejecting) {
   EXPECT_EQ(max_in_flight.load(), 1) << "a cap of one connection must serialize handlers";
 }
 
+TEST(BeastTransportTest, IdleKeepAliveSessionCannotPinTheCap) {
+  // The cap's one starvation hazard: an idle keep-alive session holds a slot
+  // without doing work. The idle read must expire on request_timeout_seconds
+  // and free the slot, or cap + one lazy client = permanent starvation (the
+  // production guide promises this).
+  BeastServerTransport server(BeastServerTransport::Options{
+      .threads = 2, .max_connections = 1, .request_timeout_seconds = 1});
+  ASSERT_TRUE(server.Start([](const HttpRequest&) { return HttpResponse{200, {}, "ok"}; }).ok());
+
+  // Session 1: keep-alive request, then hold the connection open, idle.
+  const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+  ASSERT_GE(fd, 0);
+  timeval timeout{.tv_sec = 10, .tv_usec = 0};
+  (void)::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+  sockaddr_in addr{};
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons(static_cast<std::uint16_t>(server.port()));
+  ASSERT_EQ(::inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr), 1);
+  ASSERT_EQ(::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)), 0);
+  const std::string head = "GET / HTTP/1.1\r\nhost: x\r\n\r\n";  // HTTP/1.1: keep-alive
+  ASSERT_EQ(::send(fd, head.data(), head.size(), 0), static_cast<ssize_t>(head.size()));
+  std::string received;
+  char scratch[512];
+  while (received.find("\r\n\r\nok") == std::string::npos) {
+    const auto n = ::recv(fd, scratch, sizeof(scratch), 0);
+    ASSERT_GT(n, 0) << "session 1 never got its response";
+    received.append(scratch, static_cast<std::size_t>(n));
+  }
+
+  // Session 2 waits in the backlog until session 1's idle read times out
+  // (~1s), then must be served. If the timeout didn't free the slot, this
+  // Send would hang until the client gives up.
+  SocketHttpClient client("127.0.0.1", server.port());
+  const auto response = client.Send(HttpRequest{"GET", "/", {}, ""});
+  ::close(fd);
+  ASSERT_TRUE(response.ok()) << response.error().message();
+  EXPECT_EQ(response->status, 200);
+  server.Stop();
+}
+
+TEST(BeastTransportTest, ZeroMaxConnectionsMeansUnlimited) {
+  // 0 disables the cap; a flipped comparison would turn it into "never
+  // accept", which this round trip would catch as a hang/timeout.
+  BeastServerTransport server(BeastServerTransport::Options{.max_connections = 0});
+  ASSERT_TRUE(server.Start([](const HttpRequest&) { return HttpResponse{204, {}, ""}; }).ok());
+  SocketHttpClient client("127.0.0.1", server.port());
+  const auto response = client.Send(HttpRequest{"GET", "/", {}, ""});
+  ASSERT_TRUE(response.ok()) << response.error().message();
+  EXPECT_EQ(response->status, 204);
+  server.Stop();
+}
+
 TEST(BeastTransportTest, HandlesLargeBodies) {
   BeastServerTransport server;
   ASSERT_TRUE(

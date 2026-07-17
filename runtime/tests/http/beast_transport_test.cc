@@ -374,6 +374,61 @@ TEST(BeastTransportTest, MidStreamOverflowAnswersOrClosesButNeverHangs) {
   server.Stop();
 }
 
+TEST(BeastTransportTest, BlockedHandlersDoNotStarveTheIoPool) {
+  // Issue #46: handlers run on their own executor (Options::handler_threads),
+  // so even a single io thread keeps accepting connections and reading
+  // requests while several handlers block concurrently. With handlers inline
+  // on the io pool, threads = 1 would serialize them and this barrier could
+  // never fill — each handler would report "starved" after its bounded wait.
+  constexpr int kConcurrent = 3;
+  std::atomic<int> waiting{0};
+  BeastServerTransport server(BeastServerTransport::Options{.threads = 1});
+  ASSERT_TRUE(
+      server
+          .Start([&](const HttpRequest&) {
+            ++waiting;
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+            while (waiting.load() < kConcurrent && std::chrono::steady_clock::now() < deadline) {
+              std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            const bool all_blocked_together = waiting.load() >= kConcurrent;
+            return HttpResponse{200, {}, all_blocked_together ? "ok" : "starved"};
+          })
+          .ok());
+
+  std::vector<std::thread> clients;
+  std::atomic<int> ok{0};
+  clients.reserve(kConcurrent);
+  for (int i = 0; i < kConcurrent; ++i) {
+    clients.emplace_back([&] {
+      SocketHttpClient client("127.0.0.1", server.port());
+      const auto response = client.Send(HttpRequest{"GET", "/", {}, ""});
+      if (response.ok() && response->body == "ok") {
+        ++ok;
+      }
+    });
+  }
+  for (std::thread& thread : clients) {
+    thread.join();
+  }
+  server.Stop();
+  EXPECT_EQ(ok.load(), kConcurrent) << "handlers serialized on the io pool";
+}
+
+TEST(BeastTransportTest, InlineHandlersStillServeWhenPoolDisabled) {
+  // handler_threads = 0 opts back into inline dispatch on the io pool (no
+  // executor hop) — the round trip must still work end to end.
+  BeastServerTransport server(BeastServerTransport::Options{.handler_threads = 0});
+  ASSERT_TRUE(
+      server.Start([](const HttpRequest& request) { return HttpResponse{200, {}, request.body}; })
+          .ok());
+  SocketHttpClient client("127.0.0.1", server.port());
+  const auto response = client.Send(HttpRequest{"POST", "/", {}, "inline"});
+  ASSERT_TRUE(response.ok()) << response.error().message();
+  EXPECT_EQ(response->body, "inline");
+  server.Stop();
+}
+
 TEST(BeastTransportTest, StopDrainsInFlightRequests) {
   std::atomic<bool> handler_entered{false};
   BeastServerTransport server(BeastServerTransport::Options{.drain_timeout_seconds = 5});

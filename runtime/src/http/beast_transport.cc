@@ -8,6 +8,7 @@
 #include <boost/asio/post.hpp>
 #include <boost/asio/ssl.hpp>
 #include <boost/asio/strand.hpp>
+#include <boost/asio/thread_pool.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/ssl.hpp>
@@ -91,12 +92,19 @@ constexpr std::chrono::seconds kOverLimitDrainDeadline{2};
 // may outlive Stop() briefly, so everything they touch lives here.
 struct BeastServerTransport::State : std::enable_shared_from_this<State> {
   explicit State(const Options& options)
-      : io(options.threads), acceptor(asio::make_strand(io)), opts(options) {}
+      : io(options.threads), acceptor(asio::make_strand(io)), opts(options) {
+    if (options.handler_threads > 0) {
+      handler_pool.emplace(static_cast<std::size_t>(options.handler_threads));
+    }
+  }
 
   asio::io_context io;
   asio::ip::tcp::acceptor acceptor;
   Options opts;
   RequestHandler handler;
+  // Handlers run here (when configured) so a blocked handler cannot starve
+  // the io threads that accept connections and read/write the wire.
+  std::optional<asio::thread_pool> handler_pool;
   // Engaged when TLS termination is configured (Start validated cert + key).
   std::optional<asio::ssl::context> ssl;
   std::atomic<bool> stopping{false};
@@ -288,30 +296,62 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
           }
           self->active.fetch_add(1);
           const bool keep_alive = parser->get().keep_alive() && !self->stopping;
-          const HttpRequest request = ToSmithyRequest(parser->get());
-          // Handlers run synchronously on the pool thread that completed the
-          // read. InvokeHandlerGuarded contains any exception the handler
-          // throws as a 500 — otherwise it would unwind out of io_context::run
-          // and terminate the process, dropping every in-flight request.
-          const HttpResponse response = InvokeHandlerGuarded(self->handler, request);
-          auto wire = std::make_shared<bhttp::response<bhttp::string_body>>(
-              ToWireResponse(response, keep_alive));
-          auto& wire_stream = *stream;
-          auto& wire_ref = *wire;
-          bhttp::async_write(
-              wire_stream, wire_ref,
-              [weak, stream, wire, keep_alive](beast::error_code write_ec, std::size_t) {
-                auto self = weak.lock();
-                if (self != nullptr) {
-                  self->active.fetch_sub(1);
-                }
-                if (self == nullptr || write_ec || !keep_alive) {
-                  CloseStream(*stream);
-                  return;
-                }
-                self->ReadNext(stream);
-              });
+          self->Dispatch(stream, ToSmithyRequest(parser->get()), keep_alive);
         });
+  }
+
+  // Runs the handler — on the handler pool when configured, else inline on
+  // the io thread that completed the read — then hands the response to
+  // Respond on the connection's strand. Stream internals (including the
+  // per-request timer armed in ReadNext, whose expiry handler runs on that
+  // strand) are only ever touched there, so the pool thread never races the
+  // stream. InvokeHandlerGuarded contains any exception the handler throws
+  // as a 500 — otherwise it would unwind out of the executor and terminate
+  // the process, dropping every in-flight request.
+  template <typename Stream>
+  void Dispatch(const std::shared_ptr<Stream>& stream, HttpRequest request, bool keep_alive) {
+    if (!handler_pool.has_value()) {
+      Respond(stream, InvokeHandlerGuarded(handler, request), keep_alive);
+      return;
+    }
+    asio::post(*handler_pool, [weak = weak_from_this(), stream, request = std::move(request),
+                               keep_alive]() mutable {
+      auto self = weak.lock();
+      if (self == nullptr) {
+        return;  // Torn down; the abandoned stream closes the fd.
+      }
+      HttpResponse response = InvokeHandlerGuarded(self->handler, request);
+      asio::post(stream->get_executor(),
+                 [weak, stream, response = std::move(response), keep_alive]() mutable {
+                   auto self = weak.lock();
+                   if (self == nullptr) {
+                     CloseStream(*stream);
+                     return;
+                   }
+                   self->Respond(stream, std::move(response), keep_alive);
+                 });
+    });
+  }
+
+  template <typename Stream>
+  void Respond(const std::shared_ptr<Stream>& stream, HttpResponse response, bool keep_alive) {
+    auto wire =
+        std::make_shared<bhttp::response<bhttp::string_body>>(ToWireResponse(response, keep_alive));
+    auto& wire_stream = *stream;
+    auto& wire_ref = *wire;
+    bhttp::async_write(wire_stream, wire_ref,
+                       [weak = weak_from_this(), stream, wire, keep_alive](
+                           beast::error_code write_ec, std::size_t) {
+                         auto self = weak.lock();
+                         if (self != nullptr) {
+                           self->active.fetch_sub(1);
+                         }
+                         if (self == nullptr || write_ec || !keep_alive) {
+                           CloseStream(*stream);
+                           return;
+                         }
+                         self->ReadNext(stream);
+                       });
   }
 };
 
@@ -411,6 +451,11 @@ void BeastServerTransport::Shutdown() noexcept {
     while (state_->active.load() > 0 && std::chrono::steady_clock::now() < deadline) {
       std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
+    // Past the deadline: abandon handler work that hasn't started yet
+    // (running handlers finish; their responses are dropped once io stops).
+    if (state_->handler_pool.has_value()) {
+      state_->handler_pool->stop();
+    }
     // Now stop the pool and join; once no io thread is running, nothing may
     // be posted into the io_context (an abandoned handler owning State would
     // form a reference cycle and leak everything).
@@ -419,6 +464,12 @@ void BeastServerTransport::Shutdown() noexcept {
       if (thread.joinable()) {
         thread.join();
       }
+    }
+    // Wait for any still-running handlers; like the io joins above, this is
+    // unbounded if a handler is truly wedged (issue #46's remaining drain
+    // item — parity, not a regression).
+    if (state_->handler_pool.has_value()) {
+      state_->handler_pool->join();
     }
   } catch (...) {
     // Teardown must not propagate out of a destructor.

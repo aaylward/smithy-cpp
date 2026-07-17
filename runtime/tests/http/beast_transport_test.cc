@@ -10,6 +10,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -19,21 +20,58 @@
 namespace smithy::http {
 namespace {
 
-// Sends raw bytes and returns the raw response so assertions can see the
-// exact wire framing (a parsing client would mask duplicate headers).
-std::string RawRoundTrip(int port, const std::string& request_bytes) {
+// Opens a loopback connection to `port` with a bounded receive timeout (and
+// SIGPIPE disarmed where SO_NOSIGPIPE exists); returns the fd, or -1.
+int ConnectLoopback(int port) {
   const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
-  if (fd < 0) return {};
+  if (fd < 0) return -1;
   timeval timeout{.tv_sec = 10, .tv_usec = 0};
   (void)::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+#ifdef SO_NOSIGPIPE
+  const int no_sigpipe = 1;
+  (void)::setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &no_sigpipe, sizeof(no_sigpipe));
+#endif
   sockaddr_in addr{};
   addr.sin_family = AF_INET;
   addr.sin_port = htons(static_cast<std::uint16_t>(port));
   if (::inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr) != 1 ||
       ::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
     ::close(fd);
-    return {};
+    return -1;
   }
+  return fd;
+}
+
+// Fans out `clients` concurrent SocketHttpClients, each POSTing /echo with a
+// distinct body; returns how many did not get their body echoed back.
+int FanOutEchoFailures(int port, int clients) {
+  std::vector<std::thread> threads;
+  std::atomic<int> failures{0};
+  threads.reserve(static_cast<std::size_t>(clients));
+  for (int i = 0; i < clients; ++i) {
+    threads.emplace_back([&failures, port, i] {
+      SocketHttpClient client("127.0.0.1", port);
+      HttpRequest request;
+      request.method = "POST";
+      request.target = "/echo";
+      request.body = "client-" + std::to_string(i);
+      const auto response = client.Send(request);
+      if (!response.ok() || response->body != request.body) {
+        ++failures;
+      }
+    });
+  }
+  for (std::thread& thread : threads) {
+    thread.join();
+  }
+  return failures.load();
+}
+
+// Sends raw bytes and returns the raw response so assertions can see the
+// exact wire framing (a parsing client would mask duplicate headers).
+std::string RawRoundTrip(int port, const std::string& request_bytes) {
+  const int fd = ConnectLoopback(port);
+  if (fd < 0) return {};
   (void)::send(fd, request_bytes.data(), request_bytes.size(), 0);
   std::string received;
   char scratch[1024];
@@ -115,28 +153,8 @@ TEST(BeastTransportTest, ServesConcurrentConnections) {
                   })
                   .ok());
 
-  constexpr int kClients = 8;
-  std::vector<std::thread> clients;
-  std::atomic<int> failures{0};
-  clients.reserve(kClients);
-  for (int i = 0; i < kClients; ++i) {
-    clients.emplace_back([&, i] {
-      SocketHttpClient client("127.0.0.1", server.port());
-      HttpRequest request;
-      request.method = "POST";
-      request.target = "/echo";
-      request.body = "client-" + std::to_string(i);
-      const auto response = client.Send(request);
-      if (!response.ok() || response->body != request.body) {
-        ++failures;
-      }
-    });
-  }
-  for (std::thread& thread : clients) {
-    thread.join();
-  }
+  EXPECT_EQ(FanOutEchoFailures(server.port(), 8), 0);
   server.Stop();
-  EXPECT_EQ(failures, 0);
   EXPECT_GT(max_in_flight.load(), 1) << "requests were serialized";
 }
 
@@ -196,28 +214,8 @@ TEST(BeastTransportTest, MaxConnectionsBoundsConcurrencyWithoutRejecting) {
                   })
                   .ok());
 
-  constexpr int kClients = 6;
-  std::vector<std::thread> clients;
-  std::atomic<int> failures{0};
-  clients.reserve(kClients);
-  for (int i = 0; i < kClients; ++i) {
-    clients.emplace_back([&, i] {
-      SocketHttpClient client("127.0.0.1", server.port());
-      HttpRequest request;
-      request.method = "POST";
-      request.target = "/echo";
-      request.body = "client-" + std::to_string(i);
-      const auto response = client.Send(request);
-      if (!response.ok() || response->body != request.body) {
-        ++failures;
-      }
-    });
-  }
-  for (std::thread& thread : clients) {
-    thread.join();
-  }
+  EXPECT_EQ(FanOutEchoFailures(server.port(), 6), 0);
   server.Stop();
-  EXPECT_EQ(failures, 0);
   EXPECT_EQ(max_in_flight.load(), 1) << "a cap of one connection must serialize handlers";
 }
 
@@ -231,15 +229,8 @@ TEST(BeastTransportTest, IdleKeepAliveSessionCannotPinTheCap) {
   ASSERT_TRUE(server.Start([](const HttpRequest&) { return HttpResponse{200, {}, "ok"}; }).ok());
 
   // Session 1: keep-alive request, then hold the connection open, idle.
-  const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+  const int fd = ConnectLoopback(server.port());
   ASSERT_GE(fd, 0);
-  timeval timeout{.tv_sec = 10, .tv_usec = 0};
-  (void)::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-  sockaddr_in addr{};
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(static_cast<std::uint16_t>(server.port()));
-  ASSERT_EQ(::inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr), 1);
-  ASSERT_EQ(::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)), 0);
   const std::string head = "GET / HTTP/1.1\r\nhost: x\r\n\r\n";  // HTTP/1.1: keep-alive
   ASSERT_EQ(::send(fd, head.data(), head.size(), 0), static_cast<ssize_t>(head.size()));
   std::string received;
@@ -332,19 +323,8 @@ TEST(BeastTransportTest, MidStreamOverflowAnswersOrClosesButNeverHangs) {
   // Raw chunked upload with no declared length: the parser only discovers the
   // overflow mid-body. The client must end up with a 413 or a closed
   // connection within the drain budget — never a hang (issue #94).
-  const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+  const int fd = ConnectLoopback(server.port());
   ASSERT_GE(fd, 0);
-#ifdef SO_NOSIGPIPE
-  int set = 1;
-  (void)::setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &set, sizeof(set));
-#endif
-  timeval timeout{.tv_sec = 10, .tv_usec = 0};
-  (void)::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-  sockaddr_in addr{};
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(static_cast<std::uint16_t>(server.port()));
-  ASSERT_EQ(::inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr), 1);
-  ASSERT_EQ(::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)), 0);
 
 #ifdef MSG_NOSIGNAL
   constexpr int kSendFlags = MSG_NOSIGNAL;
@@ -371,6 +351,133 @@ TEST(BeastTransportTest, MidStreamOverflowAnswersOrClosesButNeverHangs) {
   if (!received.empty()) {
     EXPECT_EQ(received.rfind("HTTP/1.1 413", 0), 0u) << received.substr(0, 64);
   }
+  server.Stop();
+}
+
+TEST(BeastTransportTest, BlockedHandlersDoNotStarveTheIoPool) {
+  // Issue #46: handlers run on their own executor (Options::handler_threads),
+  // so even a single io thread keeps accepting connections and reading
+  // requests while several handlers block concurrently. With handlers inline
+  // on the io pool, threads = 1 would serialize them and this barrier could
+  // never fill — each handler would report "starved" after its bounded wait.
+  constexpr int kConcurrent = 3;
+  std::atomic<int> waiting{0};
+  BeastServerTransport server(BeastServerTransport::Options{.threads = 1});
+  ASSERT_TRUE(
+      server
+          .Start([&](const HttpRequest&) {
+            ++waiting;
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+            while (waiting.load() < kConcurrent && std::chrono::steady_clock::now() < deadline) {
+              std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            const bool all_blocked_together = waiting.load() >= kConcurrent;
+            return HttpResponse{200, {}, all_blocked_together ? "ok" : "starved"};
+          })
+          .ok());
+
+  std::vector<std::thread> clients;
+  std::atomic<int> ok{0};
+  clients.reserve(kConcurrent);
+  for (int i = 0; i < kConcurrent; ++i) {
+    clients.emplace_back([&] {
+      SocketHttpClient client("127.0.0.1", server.port());
+      const auto response = client.Send(HttpRequest{"GET", "/", {}, ""});
+      if (response.ok() && response->body == "ok") {
+        ++ok;
+      }
+    });
+  }
+  for (std::thread& thread : clients) {
+    thread.join();
+  }
+  server.Stop();
+  EXPECT_EQ(ok.load(), kConcurrent) << "handlers serialized on the io pool";
+}
+
+TEST(BeastTransportTest, ThrowingHandlerBecomesA500NotACrash) {
+  // The #41 guard must hold on the executor too: an exception escaping into
+  // an asio::thread_pool worker would std::terminate the process. Exercise
+  // both dispatch modes — the pool (default) and inline (handler_threads=0).
+  for (const int handler_threads : {16, 0}) {
+    BeastServerTransport server(BeastServerTransport::Options{.handler_threads = handler_threads});
+    ASSERT_TRUE(server
+                    .Start([](const HttpRequest& request) -> HttpResponse {
+                      if (request.target == "/boom") {
+                        throw std::runtime_error("handler bug");
+                      }
+                      return HttpResponse{200, {}, "fine"};
+                    })
+                    .ok());
+    SocketHttpClient client("127.0.0.1", server.port());
+    const auto boom = client.Send(HttpRequest{"GET", "/boom", {}, ""});
+    ASSERT_TRUE(boom.ok()) << boom.error().message();
+    EXPECT_EQ(boom->status, 500) << "handler_threads=" << handler_threads;
+    EXPECT_FALSE(boom->headers.Get("x-correlation-id").value_or("").empty());
+    // The process and the server both survived: the next request serves.
+    SocketHttpClient again("127.0.0.1", server.port());
+    const auto ok = again.Send(HttpRequest{"GET", "/", {}, ""});
+    ASSERT_TRUE(ok.ok()) << ok.error().message();
+    EXPECT_EQ(ok->status, 200);
+    server.Stop();
+  }
+}
+
+TEST(BeastTransportTest, KeepAliveConnectionServesSequentialRequestsViaTheExecutor) {
+  // Pins the Respond → ReadNext re-arm across the executor hop: two requests
+  // on one keep-alive connection, both answered, in order.
+  BeastServerTransport server;
+  ASSERT_TRUE(server
+                  .Start([](const HttpRequest& request) {
+                    return HttpResponse{200, {}, "echo:" + request.body};
+                  })
+                  .ok());
+  const int fd = ConnectLoopback(server.port());
+  ASSERT_GE(fd, 0);
+  std::string received;
+  char scratch[512];
+  for (const std::string body : {"one", "two"}) {
+    const std::string request =
+        "POST / HTTP/1.1\r\nhost: x\r\ncontent-length: " + std::to_string(body.size()) +
+        "\r\n\r\n" + body;
+    ASSERT_EQ(::send(fd, request.data(), request.size(), 0), static_cast<ssize_t>(request.size()));
+    const std::string expected = "echo:" + body;
+    while (received.find(expected) == std::string::npos) {
+      const auto n = ::recv(fd, scratch, sizeof(scratch), 0);
+      ASSERT_GT(n, 0) << "no response for request body '" << body << "'";
+      received.append(scratch, static_cast<std::size_t>(n));
+    }
+  }
+  ::close(fd);
+  EXPECT_LT(received.find("echo:one"), received.find("echo:two"));
+  server.Stop();
+}
+
+TEST(BeastTransportTest, BurstBeyondHandlerPoolQueuesAndCompletes) {
+  // More concurrent requests than handler threads: the excess queues on the
+  // executor and every client is still answered — no deadlock, no rejection.
+  BeastServerTransport server(BeastServerTransport::Options{.threads = 2, .handler_threads = 2});
+  ASSERT_TRUE(server
+                  .Start([](const HttpRequest& request) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+                    return HttpResponse{200, {}, request.body};
+                  })
+                  .ok());
+  EXPECT_EQ(FanOutEchoFailures(server.port(), 6), 0);
+  server.Stop();
+}
+
+TEST(BeastTransportTest, InlineHandlersStillServeWhenPoolDisabled) {
+  // handler_threads = 0 opts back into inline dispatch on the io pool (no
+  // executor hop) — the round trip must still work end to end.
+  BeastServerTransport server(BeastServerTransport::Options{.handler_threads = 0});
+  ASSERT_TRUE(
+      server.Start([](const HttpRequest& request) { return HttpResponse{200, {}, request.body}; })
+          .ok());
+  SocketHttpClient client("127.0.0.1", server.port());
+  const auto response = client.Send(HttpRequest{"POST", "/", {}, "inline"});
+  ASSERT_TRUE(response.ok()) << response.error().message();
+  EXPECT_EQ(response->body, "inline");
   server.Stop();
 }
 

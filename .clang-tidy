@@ -7,6 +7,9 @@
 #   via .clang-format.
 # - clang-analyzer-core.uninitialized.Assign: false positives through
 #   std::variant internals at every Outcome<T>::error() && call site.
+# Directory-scoped exclusions live next to the code they cover (e.g.
+# runtime/src/http/.clang-tidy) — prefer that over widening this list when a
+# false positive is confined to one area.
 # - bugprone-empty-catch: destructor teardown paths legitimately swallow
 #   exceptions (documented inline); no logging facility exists yet.
 ---

@@ -64,6 +64,26 @@ smithy_cpp_server_library(
     service = "acme.todo#Todo",
 )
 
+# Production-transport acceptance: the same generated service on
+# BeastServerTransport + BeastHttpClient::FromConfig (the production-guide
+# wiring), including the handler-executor and throwing-handler paths. Behind
+# a download-blocking proxy exclude it like the main repo's Beast targets:
+# bazel test //... -- -//:todo_beast_acceptance_test
+cc_test(
+    name = "todo_beast_acceptance_test",
+    size = "small",
+    srcs = ["todo_beast_acceptance_test.cc"],
+    deps = [
+        ":todo_client",
+        ":todo_server",
+        "@googletest//:gtest_main",
+        "@smithy_cpp//runtime:client",
+        "@smithy_cpp//runtime:http",
+        "@smithy_cpp//runtime:http_beast",
+        "@smithy_cpp//runtime:server",
+    ],
+)
+
 # The generated client integration-tests the generated server (the Phase 5
 # pattern): loopback and a real socket on an ephemeral port.
 cc_test(

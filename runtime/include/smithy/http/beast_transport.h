@@ -22,8 +22,10 @@ namespace smithy::http {
 
 // Production HTTP/1.1 server transport on Boost.Beast/asio (ADR-0006):
 // concurrent connections on an asio thread pool (bounded by
-// Options::max_connections), keep-alive, per-connection timeouts, graceful
-// shutdown, and optional TLS termination (ADR-0007).
+// Options::max_connections), handlers on their own executor
+// (Options::handler_threads) so blocking handlers don't starve the wire,
+// keep-alive, per-connection timeouts, graceful shutdown, and optional TLS
+// termination (ADR-0007).
 // This is what generated services should run on; WebSocket upgrades
 // (Phase 8) extend this transport.
 //
@@ -38,6 +40,13 @@ class BeastServerTransport : public HttpServerTransport {
     std::string address = "127.0.0.1";
     int port = 0;  // 0 binds an ephemeral port; read port() after Start.
     int threads = 4;
+    // Handlers run on this dedicated pool, so a blocked handler (DB call,
+    // downstream RPC, lock) cannot starve the io threads that accept
+    // connections and read/write the wire (issue #46) — size it for your
+    // handlers' blocking profile. 0 runs handlers inline on the io pool,
+    // saving the executor hop when every handler is CPU-cheap and
+    // non-blocking.
+    int handler_threads = 16;
     // Concurrent-connection cap: at the limit the server stops accepting and
     // new connections wait in the kernel's listen backlog until a session
     // closes, so a connection flood cannot exhaust fds/memory (issue #46).

@@ -373,6 +373,14 @@ a connection flood cannot exhaust file descriptors or memory. Idle
 keep-alive sessions still expire on `request_timeout_seconds`, so they
 cannot pin the cap.
 
+Handlers execute on their own pool (`handler_threads`, default 16; 0 runs
+them inline on the io threads): a handler that blocks on a database or
+downstream call cannot starve the `threads` io threads that accept
+connections and read and write the wire, so already-computed responses keep
+flowing even while every handler is blocked. Size `handler_threads` for
+your handlers' blocking profile; handler implementations must be
+thread-safe either way, as concurrent requests dispatch concurrently.
+
 Responses are framed by the transport alone: any `content-length`,
 `transfer-encoding`, or `connection` header set by a handler is dropped
 rather than emitted beside the transport's own (a duplicate or conflicting

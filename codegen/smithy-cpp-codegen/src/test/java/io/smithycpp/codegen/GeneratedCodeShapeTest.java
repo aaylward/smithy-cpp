@@ -522,4 +522,17 @@ class GeneratedCodeShapeTest {
     assertTrue(server.contains("(void)params;"), server);
     assertFalse(server.contains("DeserializePingInput"), server);
   }
+
+  @Test
+  void serverHandlerDocumentsTheConcurrentDispatchContract() {
+    // BeastServerTransport dispatches handlers concurrently from a dedicated
+    // executor (issue #46): the generated interface is where consumers learn
+    // the contract their implementations must meet. If this doc line drifts,
+    // the executor silently races user code that was never warned.
+    String server =
+        PluginTestHarness.generate(UNION_MODEL, "test.shape#Svc", "test::shape")
+            .expectFileString("/include/test/shape/server.h");
+    assertTrue(server.contains("Implementations must be thread-safe"), server);
+    assertTrue(server.contains("operations concurrently on the one handler instance"), server);
+  }
 }

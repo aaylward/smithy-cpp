@@ -4,6 +4,7 @@
 #include <array>
 #include <atomic>
 #include <boost/asio/buffer.hpp>
+#include <boost/asio/executor_work_guard.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/post.hpp>
 #include <boost/asio/ssl.hpp>
@@ -94,17 +95,25 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
   explicit State(const Options& options)
       : io(options.threads), acceptor(asio::make_strand(io)), opts(options) {
     if (options.handler_threads > 0) {
-      handler_pool.emplace(static_cast<std::size_t>(options.handler_threads));
+      handler_pool =
+          std::make_unique<asio::thread_pool>(static_cast<std::size_t>(options.handler_threads));
     }
   }
 
   asio::io_context io;
+  // With handlers on their own pool, the io_context can go momentarily
+  // workless — accept paused at the connection cap, a request's read done,
+  // its write not yet started because the handler is still running — and
+  // io_context::run() would return, killing every io thread mid-request.
+  // The guard keeps them in run() until Shutdown's explicit io.stop(),
+  // which overrides it.
+  asio::executor_work_guard<asio::io_context::executor_type> work_guard{asio::make_work_guard(io)};
   asio::ip::tcp::acceptor acceptor;
   Options opts;
   RequestHandler handler;
   // Handlers run here (when configured) so a blocked handler cannot starve
   // the io threads that accept connections and read/write the wire.
-  std::optional<asio::thread_pool> handler_pool;
+  std::unique_ptr<asio::thread_pool> handler_pool;
   // Engaged when TLS termination is configured (Start validated cert + key).
   std::optional<asio::ssl::context> ssl;
   std::atomic<bool> stopping{false};
@@ -310,7 +319,7 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
   // the process, dropping every in-flight request.
   template <typename Stream>
   void Dispatch(const std::shared_ptr<Stream>& stream, HttpRequest request, bool keep_alive) {
-    if (!handler_pool.has_value()) {
+    if (handler_pool == nullptr) {
       Respond(stream, InvokeHandlerGuarded(handler, request), keep_alive);
       return;
     }
@@ -322,19 +331,20 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
       }
       HttpResponse response = InvokeHandlerGuarded(self->handler, request);
       asio::post(stream->get_executor(),
-                 [weak, stream, response = std::move(response), keep_alive]() mutable {
+                 [weak, stream, response = std::move(response), keep_alive]() {
                    auto self = weak.lock();
                    if (self == nullptr) {
                      CloseStream(*stream);
                      return;
                    }
-                   self->Respond(stream, std::move(response), keep_alive);
+                   self->Respond(stream, response, keep_alive);
                  });
     });
   }
 
   template <typename Stream>
-  void Respond(const std::shared_ptr<Stream>& stream, HttpResponse response, bool keep_alive) {
+  void Respond(const std::shared_ptr<Stream>& stream, const HttpResponse& response,
+               bool keep_alive) {
     auto wire =
         std::make_shared<bhttp::response<bhttp::string_body>>(ToWireResponse(response, keep_alive));
     auto& wire_stream = *stream;
@@ -453,7 +463,7 @@ void BeastServerTransport::Shutdown() noexcept {
     }
     // Past the deadline: abandon handler work that hasn't started yet
     // (running handlers finish; their responses are dropped once io stops).
-    if (state_->handler_pool.has_value()) {
+    if (state_->handler_pool != nullptr) {
       state_->handler_pool->stop();
     }
     // Now stop the pool and join; once no io thread is running, nothing may
@@ -468,7 +478,7 @@ void BeastServerTransport::Shutdown() noexcept {
     // Wait for any still-running handlers; like the io joins above, this is
     // unbounded if a handler is truly wedged (issue #46's remaining drain
     // item — parity, not a regression).
-    if (state_->handler_pool.has_value()) {
+    if (state_->handler_pool != nullptr) {
       state_->handler_pool->join();
     }
   } catch (...) {

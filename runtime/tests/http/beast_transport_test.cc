@@ -10,6 +10,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -413,6 +414,105 @@ TEST(BeastTransportTest, BlockedHandlersDoNotStarveTheIoPool) {
   }
   server.Stop();
   EXPECT_EQ(ok.load(), kConcurrent) << "handlers serialized on the io pool";
+}
+
+TEST(BeastTransportTest, ThrowingHandlerBecomesA500NotACrash) {
+  // The #41 guard must hold on the executor too: an exception escaping into
+  // an asio::thread_pool worker would std::terminate the process. Exercise
+  // both dispatch modes — the pool (default) and inline (handler_threads=0).
+  for (const int handler_threads : {16, 0}) {
+    BeastServerTransport server(BeastServerTransport::Options{.handler_threads = handler_threads});
+    ASSERT_TRUE(server
+                    .Start([](const HttpRequest& request) -> HttpResponse {
+                      if (request.target == "/boom") {
+                        throw std::runtime_error("handler bug");
+                      }
+                      return HttpResponse{200, {}, "fine"};
+                    })
+                    .ok());
+    SocketHttpClient client("127.0.0.1", server.port());
+    const auto boom = client.Send(HttpRequest{"GET", "/boom", {}, ""});
+    ASSERT_TRUE(boom.ok()) << boom.error().message();
+    EXPECT_EQ(boom->status, 500) << "handler_threads=" << handler_threads;
+    EXPECT_FALSE(boom->headers.Get("x-correlation-id").value_or("").empty());
+    // The process and the server both survived: the next request serves.
+    SocketHttpClient again("127.0.0.1", server.port());
+    const auto ok = again.Send(HttpRequest{"GET", "/", {}, ""});
+    ASSERT_TRUE(ok.ok()) << ok.error().message();
+    EXPECT_EQ(ok->status, 200);
+    server.Stop();
+  }
+}
+
+TEST(BeastTransportTest, KeepAliveConnectionServesSequentialRequestsViaTheExecutor) {
+  // Pins the Respond → ReadNext re-arm across the executor hop: two requests
+  // on one keep-alive connection, both answered, in order.
+  BeastServerTransport server;
+  ASSERT_TRUE(server
+                  .Start([](const HttpRequest& request) {
+                    return HttpResponse{200, {}, "echo:" + request.body};
+                  })
+                  .ok());
+  const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+  ASSERT_GE(fd, 0);
+  timeval timeout{.tv_sec = 10, .tv_usec = 0};
+  (void)::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+  sockaddr_in addr{};
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons(static_cast<std::uint16_t>(server.port()));
+  ASSERT_EQ(::inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr), 1);
+  ASSERT_EQ(::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)), 0);
+  std::string received;
+  char scratch[512];
+  for (const std::string body : {"one", "two"}) {
+    const std::string request =
+        "POST / HTTP/1.1\r\nhost: x\r\ncontent-length: " + std::to_string(body.size()) +
+        "\r\n\r\n" + body;
+    ASSERT_EQ(::send(fd, request.data(), request.size(), 0), static_cast<ssize_t>(request.size()));
+    const std::string expected = "echo:" + body;
+    while (received.find(expected) == std::string::npos) {
+      const auto n = ::recv(fd, scratch, sizeof(scratch), 0);
+      ASSERT_GT(n, 0) << "no response for request body '" << body << "'";
+      received.append(scratch, static_cast<std::size_t>(n));
+    }
+  }
+  ::close(fd);
+  EXPECT_LT(received.find("echo:one"), received.find("echo:two"));
+  server.Stop();
+}
+
+TEST(BeastTransportTest, BurstBeyondHandlerPoolQueuesAndCompletes) {
+  // More concurrent requests than handler threads: the excess queues on the
+  // executor and every client is still answered — no deadlock, no rejection.
+  BeastServerTransport server(BeastServerTransport::Options{.threads = 2, .handler_threads = 2});
+  ASSERT_TRUE(server
+                  .Start([](const HttpRequest& request) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+                    return HttpResponse{200, {}, request.body};
+                  })
+                  .ok());
+  constexpr int kClients = 6;
+  std::vector<std::thread> clients;
+  std::atomic<int> failures{0};
+  clients.reserve(kClients);
+  for (int i = 0; i < kClients; ++i) {
+    clients.emplace_back([&, i] {
+      SocketHttpClient client("127.0.0.1", server.port());
+      HttpRequest request;
+      request.method = "POST";
+      request.target = "/echo";
+      request.body = "client-" + std::to_string(i);
+      const auto response = client.Send(request);
+      if (!response.ok() || response->body != request.body) {
+        ++failures;
+      }
+    });
+  }
+  for (std::thread& thread : clients) {
+    thread.join();
+  }
+  server.Stop();
+  EXPECT_EQ(failures, 0);
 }
 
 TEST(BeastTransportTest, InlineHandlersStillServeWhenPoolDisabled) {

@@ -324,11 +324,12 @@ survived production use (see PLAN.md).
 
 ## Production client transport
 
-`SocketHttpClient` (the `config.endpoint` default) is plaintext,
-connection-per-request — fine for tests and simple internal deployments.
-Production clients should inject `BeastHttpClient` (ADR-0007): keep-alive
-connection pooling, per-request timeouts, and TLS with certificate and
-hostname verification on by default.
+`SocketHttpClient` (the `config.endpoint` default) is a test/reference
+transport (ADR-0006), kept as the zero-dependency fallback for plain-http
+endpoints: plaintext, connection-per-request. Production clients should
+inject `BeastHttpClient` (ADR-0007): keep-alive connection pooling,
+per-request timeouts, and TLS with certificate and hostname verification on
+by default.
 
 Every knob lives on the one `ClientConfig` (issue #49):
 `config.tls.ca_pem` / `config.tls.verify_peer` for trust,

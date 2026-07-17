@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 
@@ -165,6 +167,20 @@ TEST(SocketTransportTest, StopIsIdempotent) {
   ASSERT_TRUE(server.Start([](const HttpRequest&) { return HttpResponse{}; }).ok());
   server.Stop();
   server.Stop();  // must not hang or crash
+}
+
+TEST(SocketTransportTest, StartLogsTheTestOnlyRelegationNotice) {
+  // ADR-0006 relegated this server to tests; a deployment that serves real
+  // traffic on it anyway gets an operator-visible trace (issue #46).
+  std::ostringstream log;
+  std::streambuf* previous = std::clog.rdbuf(log.rdbuf());
+  SocketHttpServer server;
+  const auto started = server.Start([](const HttpRequest&) { return HttpResponse{}; });
+  server.Stop();
+  std::clog.rdbuf(previous);
+  ASSERT_TRUE(started.ok());
+  EXPECT_NE(log.str().find("test-only"), std::string::npos) << log.str();
+  EXPECT_NE(log.str().find("BeastServerTransport"), std::string::npos) << log.str();
 }
 
 }  // namespace

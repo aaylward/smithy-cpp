@@ -11,9 +11,12 @@
 
 namespace smithy::http {
 
-// Built-in dependency-free HTTP/1.1 client over TCP (ADR-0005). One
-// connection per request, Connection: close semantics. Suitable for tests and
-// simple deployments; pooled/TLS transports plug in behind HttpClient later.
+// Built-in dependency-free HTTP/1.1 client over TCP (ADR-0005; demoted to a
+// test/reference transport by ADR-0006). One connection per request,
+// plaintext only, Connection: close semantics. It remains the zero-dependency
+// default a generated client falls back to for plain-http endpoints;
+// production clients inject BeastHttpClient (ADR-0007) for keep-alive
+// pooling and TLS.
 class SocketHttpClient : public HttpClient {
  public:
   SocketHttpClient(std::string host, int port, int timeout_ms = 30000)
@@ -28,9 +31,11 @@ class SocketHttpClient : public HttpClient {
 };
 
 // Built-in dependency-free HTTP/1.1 server over TCP, bound to 127.0.0.1.
-// Accept loop on a background thread, one connection at a time — enough for
-// integration testing (PLAN Phase 1/5); production-grade concurrency is a
-// Phase 7 concern.
+// Test-only (ADR-0006): the accept loop serves one connection at a time on a
+// single background thread, so one slow peer stalls everyone behind it —
+// fine for integration tests, disqualifying for production, which is why
+// Start() logs a relegation notice. Production serving is
+// BeastServerTransport (concurrency, timeouts, size limits, TLS, drain).
 class SocketHttpServer : public HttpServerTransport {
  public:
   // port 0 binds an ephemeral port; read the real one from port() after Start.

@@ -31,6 +31,12 @@ using RouteHandler =
 // "/files/{path+}". Matching precedence follows the spec: at each segment a
 // literal outranks a label, and a label outranks a greedy label; the most
 // specific matching route wins regardless of registration order.
+//
+// Routes are indexed by method: a request scans only its own method's
+// routes, and label values are extracted once, for the winning route. Only
+// the miss path probes the other methods (for the 405 Allow list), so a
+// flood of unroutable requests does no more matching work than a routable
+// one (issue #46).
 class Router {
  public:
   // Fails on invalid patterns and on route conflicts (same method + pattern
@@ -51,19 +57,21 @@ class Router {
     std::string text;  // literal text or label name
   };
   struct RouteEntry {
-    std::string method;
     std::vector<Segment> segments;
     RouteHandler handler;
     std::string operation;
   };
 
   static Outcome<std::vector<Segment>> ParsePattern(std::string_view pattern);
+  // A null `labels` answers match/no-match without extracting label values.
   static bool Matches(const RouteEntry& route, const std::vector<std::string>& segments,
                       PathLabels* labels);
   // True when `a` is more specific than `b` per the spec's precedence rules.
   static bool MoreSpecific(const std::vector<Segment>& a, const std::vector<Segment>& b);
 
-  std::vector<RouteEntry> routes_;
+  // Keyed by HTTP method (exact match; methods are case-sensitive per
+  // RFC 9110). Map order makes the 405 Allow list deterministic.
+  std::map<std::string, std::vector<RouteEntry>, std::less<>> routes_;
 };
 
 // Uniform error response used by the router and by generated servers for

@@ -466,23 +466,67 @@ void BeastServerTransport::Shutdown() noexcept {
     if (state_->handler_pool != nullptr) {
       state_->handler_pool->stop();
     }
-    // Now stop the pool and join; once no io thread is running, nothing may
-    // be posted into the io_context (an abandoned handler owning State would
-    // form a reference cycle and leak everything).
+    // Once no io thread is running, nothing may be posted into the
+    // io_context (an abandoned handler owning State would form a reference
+    // cycle and leak everything).
     state_->io.stop();
+    // The joins themselves are unbounded — io.stop() and pool->stop() do not
+    // interrupt an executing handler, and a thread cannot be killed safely.
+    // So a reaper thread performs them (plus State destruction), and Stop()
+    // waits only kJoinGrace for it: in the normal case the joins finish in
+    // microseconds and the reaper is joined here. If a handler is truly
+    // wedged, the reaper is detached and State is deliberately leaked — the
+    // bounded-Stop() contract wins over the memory — and should the handler
+    // ever return, the abandoned reaper finishes the cleanup (issue #46).
+    constexpr std::chrono::seconds kJoinGrace{2};
+    auto reaped = std::make_shared<std::atomic<bool>>(false);
+    // shared_ptr captures (never moves of the raw members) so a throwing
+    // std::thread constructor cannot destroy joinable threads on unwind.
+    auto orphans = std::make_shared<std::vector<std::thread>>(std::move(threads_));
+    std::shared_ptr<State> state = state_;
+    try {
+      std::thread reaper([state, orphans, reaped] {
+        for (std::thread& thread : *orphans) {
+          if (thread.joinable()) {
+            thread.join();
+          }
+        }
+        if (state->handler_pool != nullptr) {
+          state->handler_pool->join();
+        }
+        reaped->store(true);
+      });
+      const auto join_deadline = std::chrono::steady_clock::now() + kJoinGrace;
+      while (!reaped->load() && std::chrono::steady_clock::now() < join_deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+      }
+      if (reaped->load()) {
+        reaper.join();
+      } else {
+        reaper.detach();  // State and the wedged threads leak, deliberately.
+      }
+    } catch (...) {
+      // Could not spawn the reaper (resource exhaustion): fall back to the
+      // unbounded inline joins rather than losing the threads.
+      for (std::thread& thread : *orphans) {
+        if (thread.joinable()) {
+          thread.join();
+        }
+      }
+      if (state->handler_pool != nullptr) {
+        state->handler_pool->join();
+      }
+    }
+  } catch (...) {
+    // Teardown before the reap failed; join inline so no thread is lost.
     for (std::thread& thread : threads_) {
       if (thread.joinable()) {
         thread.join();
       }
     }
-    // Wait for any still-running handlers; like the io joins above, this is
-    // unbounded if a handler is truly wedged (issue #46's remaining drain
-    // item — parity, not a regression).
-    if (state_->handler_pool != nullptr) {
+    if (state_ != nullptr && state_->handler_pool != nullptr) {
       state_->handler_pool->join();
     }
-  } catch (...) {
-    // Teardown must not propagate out of a destructor.
   }
   threads_.clear();
   state_.reset();

@@ -511,6 +511,51 @@ TEST(BeastTransportTest, StopDrainsInFlightRequests) {
   EXPECT_EQ(response->body, "drained");
 }
 
+TEST(BeastTransportTest, StopWithWedgedHandlerReturnsWithinTheGrace) {
+  // Issue #46's last drain gap: a handler that never returns must not wedge
+  // Stop() forever. Past drain_timeout plus a short teardown grace the
+  // transport abandons the stuck worker (deliberately leaking it — a thread
+  // cannot be killed safely) and Stop() returns. Exercised in both dispatch
+  // modes: a wedged pool worker and a wedged io thread behave the same.
+  for (const int handler_threads : {16, 0}) {
+    // Heap-allocated and captured by value: the abandoned handler thread may
+    // outlive this loop iteration, so it must own its flags rather than
+    // reference reused stack slots.
+    auto release = std::make_shared<std::atomic<bool>>(false);
+    auto entered = std::make_shared<std::atomic<bool>>(false);
+    BeastServerTransport server(BeastServerTransport::Options{.handler_threads = handler_threads,
+                                                              .drain_timeout_seconds = 0});
+    ASSERT_TRUE(server
+                    .Start([release, entered](const HttpRequest&) {
+                      entered->store(true);
+                      while (!release->load()) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                      }
+                      return HttpResponse{200, {}, ""};
+                    })
+                    .ok());
+    std::thread caller([port = server.port()] {
+      SocketHttpClient client("127.0.0.1", port, /*timeout_ms=*/2000);
+      (void)client.Send(HttpRequest{"GET", "/", {}, ""});  // times out; expected
+    });
+    while (!entered->load()) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    const auto begin = std::chrono::steady_clock::now();
+    server.Stop();
+    const auto elapsed = std::chrono::steady_clock::now() - begin;
+    EXPECT_LT(elapsed, std::chrono::seconds(10))
+        << "Stop() wedged on a stuck handler (handler_threads=" << handler_threads << ")";
+
+    release->store(true);  // unwedge: the abandoned reaper finishes the cleanup
+    caller.join();
+    // Give the (unobservable, by design) detached reaper a beat to complete
+    // its cleanup so leak checkers don't sample the deliberate leak mid-heal.
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  }
+}
+
 TEST(BeastTransportTest, StartupErrorsAreReported) {
   BeastServerTransport bad(BeastServerTransport::Options{.address = "not-an-address"});
   EXPECT_FALSE(bad.Start([](const HttpRequest&) { return HttpResponse{}; }).ok());

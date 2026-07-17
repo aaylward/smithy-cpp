@@ -60,7 +60,10 @@ class BeastServerTransport : public HttpServerTransport {
     std::size_t max_body_bytes = std::size_t{64} * 1024 * 1024;
     std::size_t max_header_bytes = std::size_t{8} * 1024;
     // Stop() drains: no new connections or keep-alive reads, and in-flight
-    // requests get this long to finish before the pool is torn down.
+    // requests get this long to finish before the pool is torn down. Stop()
+    // itself is bounded — a handler that never returns is abandoned (its
+    // thread and the transport state deliberately leak) a short grace after
+    // this deadline instead of wedging Stop() forever (issue #46).
     int drain_timeout_seconds = 10;
     // TLS termination: set both (PEM text, not file paths) to serve https.
     std::string tls_certificate_chain_pem;

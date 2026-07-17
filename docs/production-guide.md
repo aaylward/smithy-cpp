@@ -392,5 +392,10 @@ The transport terminates TLS when
 drains on `Stop()`: new
 connections and keep-alive reads cease immediately, while requests already
 read off the wire get up to `drain_timeout_seconds` (default 10) to finish
-writing their responses before the thread pool is torn down. See
+writing their responses before the thread pool is torn down. `Stop()` is
+itself bounded: a handler that never returns cannot wedge shutdown — past
+the drain deadline plus a short grace, the stuck worker is abandoned (its
+thread and the transport's internal state deliberately leak, since a thread
+cannot be killed safely) and `Stop()` returns; if the handler ever does
+return, the abandoned reaper finishes the cleanup in the background. See
 [server-guide.md](server-guide.md).

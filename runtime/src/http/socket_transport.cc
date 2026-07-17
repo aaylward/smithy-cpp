@@ -180,8 +180,11 @@ void SocketHttpServer::AcceptLoop() {
 
     // The transport is authoritative for framing, so drop any copies a handler
     // set — otherwise they are emitted twice (a duplicate content-length is
-    // exactly the smuggling vector a strict peer now rejects).
+    // exactly the smuggling vector a strict peer now rejects), and a
+    // handler-set transfer-encoding beside our content-length would be the
+    // classic smuggling pair.
     response.headers.Remove("content-length");
+    response.headers.Remove("transfer-encoding");
     response.headers.Remove("connection");
     std::string wire = "HTTP/1.1 " + std::to_string(response.status) + " \r\n";
     wire += "content-length: " + std::to_string(response.body.size()) + "\r\n";

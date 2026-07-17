@@ -21,8 +21,9 @@ struct ClientConfig;
 namespace smithy::http {
 
 // Production HTTP/1.1 server transport on Boost.Beast/asio (ADR-0006):
-// concurrent connections on an asio thread pool, keep-alive, per-connection
-// timeouts, graceful shutdown, and optional TLS termination (ADR-0007).
+// concurrent connections on an asio thread pool (bounded by
+// Options::max_connections), keep-alive, per-connection timeouts, graceful
+// shutdown, and optional TLS termination (ADR-0007).
 // This is what generated services should run on; WebSocket upgrades
 // (Phase 8) extend this transport.
 //
@@ -37,6 +38,12 @@ class BeastServerTransport : public HttpServerTransport {
     std::string address = "127.0.0.1";
     int port = 0;  // 0 binds an ephemeral port; read port() after Start.
     int threads = 4;
+    // Concurrent-connection cap: at the limit the server stops accepting and
+    // new connections wait in the kernel's listen backlog until a session
+    // closes, so a connection flood cannot exhaust fds/memory (issue #46).
+    // Idle keep-alive sessions still expire on request_timeout_seconds, so
+    // they cannot pin the cap forever. 0 means unlimited.
+    std::size_t max_connections = 1024;
     int request_timeout_seconds = 30;
     // Over-limit requests are answered (413 for the body, 431 for headers)
     // with Connection: close and a bounded lingering close, not silently

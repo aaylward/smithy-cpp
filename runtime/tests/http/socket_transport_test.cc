@@ -96,6 +96,36 @@ TEST(SocketTransportTest, HandlesSequentialRequestsAndLargeBodies) {
   server.Stop();
 }
 
+TEST(SocketTransportTest, StripsHandlerSetFramingHeaders) {
+  // The transport is authoritative for framing (issue #46): it already strips
+  // handler-set content-length/connection, but a handler-set
+  // transfer-encoding next to the transport's own content-length is the
+  // classic request-smuggling pair and must be dropped too.
+  SocketHttpServer server;
+  ASSERT_TRUE(server
+                  .Start([](const HttpRequest&) {
+                    HttpResponse response;
+                    response.status = 200;
+                    response.headers.Set("Content-Length", "999");
+                    response.headers.Set("Transfer-Encoding", "chunked");
+                    response.headers.Set("Connection", "keep-alive");
+                    response.headers.Set("x-app", "kept");
+                    response.body = "abc";
+                    return response;
+                  })
+                  .ok());
+  SocketHttpClient client("127.0.0.1", server.port());
+  const auto response = client.Send(HttpRequest{"GET", "/", {}, ""});
+  ASSERT_TRUE(response.ok()) << response.error().message();
+  EXPECT_EQ(response->status, 200);
+  EXPECT_EQ(response->body, "abc");
+  EXPECT_FALSE(response->headers.Has("transfer-encoding"));
+  EXPECT_EQ(response->headers.Get("content-length"), "3");
+  EXPECT_EQ(response->headers.Get("connection"), "close");
+  EXPECT_EQ(response->headers.Get("x-app"), "kept");
+  server.Stop();
+}
+
 TEST(SocketTransportTest, PeerCloseMidSendIsAnErrorNotSigpipe) {
   SocketHttpServer server;
   ASSERT_TRUE(server.Start([](const HttpRequest&) { return HttpResponse{200, {}, "ok"}; }).ok());

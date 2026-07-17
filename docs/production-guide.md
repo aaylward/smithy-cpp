@@ -364,7 +364,16 @@ answered with `413 Content Too Large` / `431 Request Header Fields Too Large`
 and `Connection: close`, followed by a bounded lingering close (a few seconds
 / 256 KiB of drain) so the status stays readable; a client that streams past
 the budget without reading may still see a reset, which is inherent to the
-recipe. It terminates TLS when
+recipe. Concurrent connections are capped by `max_connections` (default
+1024; 0 disables the cap): at the cap the server pauses accepting and new
+connections wait in the kernel's listen backlog until a session closes, so
+a connection flood cannot exhaust file descriptors or memory — idle
+keep-alive sessions still expire on `request_timeout_seconds`, so they
+cannot pin the cap. Responses are framed by the transport alone: any
+`content-length`, `transfer-encoding`, or `connection` header set by a
+handler is dropped rather than emitted beside the transport's own (a
+duplicate or conflicting framing pair is the classic request-smuggling
+vector); both server transports enforce this. It terminates TLS when
 `tls_certificate_chain_pem` + `tls_private_key_pem` are set (ADR-0007), and
 drains on `Stop()`: new
 connections and keep-alive reads cease immediately, while requests already

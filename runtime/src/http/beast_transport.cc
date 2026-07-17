@@ -17,6 +17,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -43,11 +44,22 @@ HttpRequest ToSmithyRequest(const bhttp::request<bhttp::string_body>& wire) {
   return request;
 }
 
+// The transport is authoritative for framing: keep_alive()/prepare_payload()
+// below own these fields, and a handler-set copy would ride along beside
+// them — a duplicate or conflicting content-length / transfer-encoding is
+// the classic request-smuggling pair (the socket server strips the same
+// set; issue #46).
+bool IsFramingHeader(std::string_view name) {
+  return beast::iequals(name, "content-length") || beast::iequals(name, "transfer-encoding") ||
+         beast::iequals(name, "connection");
+}
+
 bhttp::response<bhttp::string_body> ToWireResponse(const HttpResponse& response, bool keep_alive) {
   bhttp::response<bhttp::string_body> wire;
   wire.result(static_cast<unsigned>(response.status));
   wire.version(11);
   for (const auto& [name, value] : response.headers.entries()) {
+    if (IsFramingHeader(name)) continue;
     wire.insert(name, value);
   }
   wire.body() = response.body;
@@ -92,11 +104,58 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
   // Stop() drains until this reaches zero (or the drain deadline passes).
   std::atomic<int> active{0};
 
+  // Accept-limit state, confined to the acceptor's strand (accept
+  // completions and the posted session-closed notifications both run
+  // there), so plain non-atomic values are safe.
+  std::size_t open_connections = 0;
+  bool accept_paused = false;
+
   // All completion handlers capture State weakly: handlers queued inside the
   // io_context must not own the State that owns the io_context, or abandoned
   // handlers at shutdown would form a reference cycle and leak everything.
 
+  // A connection's stream plus its max_connections accounting. Handlers
+  // hold the stream through an aliasing shared_ptr; when the last one lets
+  // go the session is destroyed — which is when the fd truly closes, so the
+  // count bounds fds, not requests — and the destructor posts the slot
+  // release to the acceptor strand, resuming a paused accept loop.
+  template <typename Stream>
+  struct Session {
+    template <typename... Args>
+    explicit Session(std::weak_ptr<State> owner, Args&&... args)
+        : state(std::move(owner)), stream(std::forward<Args>(args)...) {}
+    Session(const Session&) = delete;
+    Session& operator=(const Session&) = delete;
+    ~Session() {
+      auto self = state.lock();
+      if (self == nullptr) {
+        return;  // Transport already torn down; nothing left to resume.
+      }
+      try {
+        asio::post(self->acceptor.get_executor(), [weak = std::move(state)] {
+          auto locked = weak.lock();
+          if (locked != nullptr) {
+            locked->OnSessionClosed();
+          }
+        });
+      } catch (...) {
+        // Allocation failure posting the release leaks one slot; the
+        // destructor must not throw.
+      }
+    }
+    std::weak_ptr<State> state;
+    Stream stream;
+  };
+
   void Accept() {
+    if (opts.max_connections > 0 && open_connections >= opts.max_connections) {
+      // At the cap: stop accepting instead of allocating another session.
+      // New connections queue in the kernel's listen backlog (bounded; SYNs
+      // beyond it drop and retry) — genuine backpressure under a connection
+      // flood (issue #46). OnSessionClosed re-arms when a slot frees up.
+      accept_paused = true;
+      return;
+    }
     acceptor.async_accept(
         asio::make_strand(io),
         [weak = weak_from_this()](beast::error_code ec, asio::ip::tcp::socket socket) {
@@ -109,13 +168,27 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
         });
   }
 
+  // Posted to the acceptor strand by ~Session when a connection's stream is
+  // destroyed (its fd is gone).
+  void OnSessionClosed() {
+    --open_connections;
+    if (accept_paused && !stopping) {
+      accept_paused = false;
+      Accept();
+    }
+  }
+
   void RunSession(asio::ip::tcp::socket socket) {
+    ++open_connections;  // Released by ~Session when the fd closes.
     if (!ssl.has_value()) {
-      auto stream = std::make_shared<beast::tcp_stream>(std::move(socket));
-      ReadNext(stream);
+      auto session =
+          std::make_shared<Session<beast::tcp_stream>>(weak_from_this(), std::move(socket));
+      ReadNext(std::shared_ptr<beast::tcp_stream>(session, &session->stream));
       return;
     }
-    auto stream = std::make_shared<asio::ssl::stream<beast::tcp_stream>>(std::move(socket), *ssl);
+    auto session = std::make_shared<Session<asio::ssl::stream<beast::tcp_stream>>>(
+        weak_from_this(), std::move(socket), *ssl);
+    std::shared_ptr<asio::ssl::stream<beast::tcp_stream>> stream(session, &session->stream);
     beast::get_lowest_layer(*stream).expires_after(
         std::chrono::seconds(opts.request_timeout_seconds));
     auto& stream_ref = *stream;

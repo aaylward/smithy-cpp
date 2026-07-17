@@ -19,6 +19,49 @@
 namespace smithy::http {
 namespace {
 
+// Sends raw bytes and returns the raw response so assertions can see the
+// exact wire framing (a parsing client would mask duplicate headers).
+std::string RawRoundTrip(int port, const std::string& request_bytes) {
+  const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+  if (fd < 0) return {};
+  timeval timeout{.tv_sec = 10, .tv_usec = 0};
+  (void)::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+  sockaddr_in addr{};
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons(static_cast<std::uint16_t>(port));
+  if (::inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr) != 1 ||
+      ::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+    ::close(fd);
+    return {};
+  }
+  (void)::send(fd, request_bytes.data(), request_bytes.size(), 0);
+  std::string received;
+  char scratch[1024];
+  for (;;) {
+    const auto n = ::recv(fd, scratch, sizeof(scratch), 0);
+    if (n <= 0) break;
+    received.append(scratch, static_cast<std::size_t>(n));
+  }
+  ::close(fd);
+  return received;
+}
+
+std::string AsciiLowerCopy(std::string text) {
+  for (char& c : text) {
+    if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+  }
+  return text;
+}
+
+std::size_t CountOccurrences(const std::string& haystack, const std::string& needle) {
+  std::size_t count = 0;
+  for (auto pos = haystack.find(needle); pos != std::string::npos;
+       pos = haystack.find(needle, pos + needle.size())) {
+    ++count;
+  }
+  return count;
+}
+
 TEST(BeastTransportTest, RoundTripsOverRealSockets) {
   BeastServerTransport server;
   ASSERT_TRUE(server
@@ -95,6 +138,139 @@ TEST(BeastTransportTest, ServesConcurrentConnections) {
   server.Stop();
   EXPECT_EQ(failures, 0);
   EXPECT_GT(max_in_flight.load(), 1) << "requests were serialized";
+}
+
+TEST(BeastTransportTest, StripsHandlerSetFramingHeaders) {
+  // The transport is authoritative for framing (issue #46): handler-set
+  // framing headers must never reach the wire. A duplicate or conflicting
+  // content-length / transfer-encoding pair is the classic request-smuggling
+  // vector, and the connection token must state what the server actually
+  // does. The socket server already strips these; this pins Beast to it.
+  BeastServerTransport server;
+  ASSERT_TRUE(server
+                  .Start([](const HttpRequest&) {
+                    HttpResponse response;
+                    response.status = 200;
+                    response.headers.Set("Content-Length", "999");
+                    response.headers.Set("Transfer-Encoding", "chunked");
+                    response.headers.Set("Connection", "keep-alive");
+                    response.headers.Set("x-app", "kept");
+                    response.body = "abc";
+                    return response;
+                  })
+                  .ok());
+  const std::string raw =
+      RawRoundTrip(server.port(), "GET / HTTP/1.1\r\nhost: x\r\nconnection: close\r\n\r\n");
+  ASSERT_FALSE(raw.empty());
+  const std::string wire = AsciiLowerCopy(raw);
+  EXPECT_EQ(CountOccurrences(wire, "content-length:"), 1u) << raw;
+  EXPECT_NE(wire.find("content-length: 3\r\n"), std::string::npos) << raw;
+  EXPECT_EQ(wire.find("transfer-encoding"), std::string::npos) << raw;
+  EXPECT_EQ(CountOccurrences(wire, "connection:"), 1u) << raw;
+  EXPECT_EQ(wire.find("keep-alive"), std::string::npos) << raw;
+  EXPECT_NE(wire.find("connection: close\r\n"), std::string::npos) << raw;
+  EXPECT_NE(wire.find("x-app: kept\r\n"), std::string::npos) << raw;
+  EXPECT_NE(wire.find("\r\n\r\nabc"), std::string::npos) << raw;
+  server.Stop();
+}
+
+TEST(BeastTransportTest, MaxConnectionsBoundsConcurrencyWithoutRejecting) {
+  // Issue #46: at the cap the server pauses accepting — new connections wait
+  // in the kernel's listen backlog until a session closes — rather than
+  // rejecting or allocating unbounded per-connection state. Every client
+  // still gets an answer; with the cap of one, handlers serialize even
+  // though four io threads are available (without the cap this measures >1,
+  // as ServesConcurrentConnections proves).
+  std::atomic<int> in_flight{0};
+  std::atomic<int> max_in_flight{0};
+  BeastServerTransport server(BeastServerTransport::Options{.threads = 4, .max_connections = 1});
+  ASSERT_TRUE(server
+                  .Start([&](const HttpRequest& request) {
+                    const int now = ++in_flight;
+                    int expected = max_in_flight.load();
+                    while (now > expected && !max_in_flight.compare_exchange_weak(expected, now)) {
+                    }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+                    --in_flight;
+                    return HttpResponse{200, {}, request.body};
+                  })
+                  .ok());
+
+  constexpr int kClients = 6;
+  std::vector<std::thread> clients;
+  std::atomic<int> failures{0};
+  clients.reserve(kClients);
+  for (int i = 0; i < kClients; ++i) {
+    clients.emplace_back([&, i] {
+      SocketHttpClient client("127.0.0.1", server.port());
+      HttpRequest request;
+      request.method = "POST";
+      request.target = "/echo";
+      request.body = "client-" + std::to_string(i);
+      const auto response = client.Send(request);
+      if (!response.ok() || response->body != request.body) {
+        ++failures;
+      }
+    });
+  }
+  for (std::thread& thread : clients) {
+    thread.join();
+  }
+  server.Stop();
+  EXPECT_EQ(failures, 0);
+  EXPECT_EQ(max_in_flight.load(), 1) << "a cap of one connection must serialize handlers";
+}
+
+TEST(BeastTransportTest, IdleKeepAliveSessionCannotPinTheCap) {
+  // The cap's one starvation hazard: an idle keep-alive session holds a slot
+  // without doing work. The idle read must expire on request_timeout_seconds
+  // and free the slot, or cap + one lazy client = permanent starvation (the
+  // production guide promises this).
+  BeastServerTransport server(BeastServerTransport::Options{
+      .threads = 2, .max_connections = 1, .request_timeout_seconds = 1});
+  ASSERT_TRUE(server.Start([](const HttpRequest&) { return HttpResponse{200, {}, "ok"}; }).ok());
+
+  // Session 1: keep-alive request, then hold the connection open, idle.
+  const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+  ASSERT_GE(fd, 0);
+  timeval timeout{.tv_sec = 10, .tv_usec = 0};
+  (void)::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+  sockaddr_in addr{};
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons(static_cast<std::uint16_t>(server.port()));
+  ASSERT_EQ(::inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr), 1);
+  ASSERT_EQ(::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)), 0);
+  const std::string head = "GET / HTTP/1.1\r\nhost: x\r\n\r\n";  // HTTP/1.1: keep-alive
+  ASSERT_EQ(::send(fd, head.data(), head.size(), 0), static_cast<ssize_t>(head.size()));
+  std::string received;
+  char scratch[512];
+  while (received.find("\r\n\r\nok") == std::string::npos) {
+    const auto n = ::recv(fd, scratch, sizeof(scratch), 0);
+    ASSERT_GT(n, 0) << "session 1 never got its response";
+    received.append(scratch, static_cast<std::size_t>(n));
+  }
+
+  // Session 2 waits in the backlog until session 1's idle read times out
+  // (~1s), then must be served. If the timeout didn't free the slot, this
+  // Send would hang until the client gives up.
+  SocketHttpClient client("127.0.0.1", server.port());
+  const auto response = client.Send(HttpRequest{"GET", "/", {}, ""});
+  ::close(fd);
+  ASSERT_TRUE(response.ok()) << response.error().message();
+  EXPECT_EQ(response->status, 200);
+  server.Stop();
+}
+
+TEST(BeastTransportTest, ZeroMaxConnectionsMeansUnlimited) {
+  // 0 disables the cap; a flipped comparison would turn it into "never
+  // accept", which this round trip would catch as a hang/timeout.
+  BeastServerTransport server(BeastServerTransport::Options{.max_connections = 0});
+  ASSERT_TRUE(server.Start([](const HttpRequest&) { return HttpResponse{204, {}, ""}; }).ok());
+  SocketHttpClient client("127.0.0.1", server.port());
+  const auto response = client.Send(HttpRequest{"GET", "/", {}, ""});
+  ASSERT_TRUE(response.ok()) << response.error().message();
+  EXPECT_EQ(response->status, 204);
+  server.Stop();
 }
 
 TEST(BeastTransportTest, HandlesLargeBodies) {

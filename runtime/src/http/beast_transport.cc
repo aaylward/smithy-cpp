@@ -44,24 +44,14 @@ HttpRequest ToSmithyRequest(const bhttp::request<bhttp::string_body>& wire) {
   return request;
 }
 
-bool AsciiEqualsIgnoreCase(std::string_view a, std::string_view b) {
-  return std::equal(a.begin(), a.end(), b.begin(), b.end(), [](char x, char y) {
-    const auto lower = [](char c) {
-      return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
-    };
-    return lower(x) == lower(y);
-  });
-}
-
 // The transport is authoritative for framing: keep_alive()/prepare_payload()
 // below own these fields, and a handler-set copy would ride along beside
 // them — a duplicate or conflicting content-length / transfer-encoding is
 // the classic request-smuggling pair (the socket server strips the same
 // set; issue #46).
 bool IsFramingHeader(std::string_view name) {
-  return AsciiEqualsIgnoreCase(name, "content-length") ||
-         AsciiEqualsIgnoreCase(name, "transfer-encoding") ||
-         AsciiEqualsIgnoreCase(name, "connection");
+  return beast::iequals(name, "content-length") || beast::iequals(name, "transfer-encoding") ||
+         beast::iequals(name, "connection");
 }
 
 bhttp::response<bhttp::string_body> ToWireResponse(const HttpResponse& response, bool keep_alive) {
@@ -124,16 +114,19 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
   // io_context must not own the State that owns the io_context, or abandoned
   // handlers at shutdown would form a reference cycle and leak everything.
 
-  // Occupies one max_connections slot for exactly as long as the
-  // connection's stream object lives — the last completion handler to drop
-  // the stream destroys it, which is when the fd truly closes — so the
-  // count bounds fds, not requests. Destruction posts the release to the
-  // acceptor strand, which resumes a paused accept loop.
-  struct ConnectionSlot {
-    explicit ConnectionSlot(std::weak_ptr<State> owner) : state(std::move(owner)) {}
-    ConnectionSlot(const ConnectionSlot&) = delete;
-    ConnectionSlot& operator=(const ConnectionSlot&) = delete;
-    ~ConnectionSlot() {
+  // A connection's stream plus its max_connections accounting. Handlers
+  // hold the stream through an aliasing shared_ptr; when the last one lets
+  // go the session is destroyed — which is when the fd truly closes, so the
+  // count bounds fds, not requests — and the destructor posts the slot
+  // release to the acceptor strand, resuming a paused accept loop.
+  template <typename Stream>
+  struct Session {
+    template <typename... Args>
+    explicit Session(std::weak_ptr<State> owner, Args&&... args)
+        : state(std::move(owner)), stream(std::forward<Args>(args)...) {}
+    Session(const Session&) = delete;
+    Session& operator=(const Session&) = delete;
+    ~Session() {
       auto self = state.lock();
       if (self == nullptr) {
         return;  // Transport already torn down; nothing left to resume.
@@ -151,18 +144,7 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
       }
     }
     std::weak_ptr<State> state;
-  };
-
-  // A connection's stream bundled with its accounting slot; handlers hold
-  // the stream through an aliasing shared_ptr, so the slot releases exactly
-  // when the last of them lets go.
-  template <typename Stream>
-  struct Session {
-    template <typename... Args>
-    explicit Session(std::weak_ptr<State> owner, Args&&... args)
-        : stream(std::forward<Args>(args)...), slot(std::move(owner)) {}
     Stream stream;
-    ConnectionSlot slot;
   };
 
   void Accept() {
@@ -186,8 +168,8 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
         });
   }
 
-  // Posted to the acceptor strand by ~ConnectionSlot when a session's
-  // stream is destroyed (its fd is gone).
+  // Posted to the acceptor strand by ~Session when a connection's stream is
+  // destroyed (its fd is gone).
   void OnSessionClosed() {
     --open_connections;
     if (accept_paused && !stopping) {
@@ -197,7 +179,7 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
   }
 
   void RunSession(asio::ip::tcp::socket socket) {
-    ++open_connections;  // Released by the Session's ConnectionSlot.
+    ++open_connections;  // Released by ~Session when the fd closes.
     if (!ssl.has_value()) {
       auto session =
           std::make_shared<Session<beast::tcp_stream>>(weak_from_this(), std::move(socket));

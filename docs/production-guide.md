@@ -194,14 +194,14 @@ auto db = std::make_shared<MyDbPool>(/* ... */);
 const smithy::http::TrustedProxies trusted({"10.0.0.0/8"});
 
 transport.Start(smithy::server::Chain(
-    {// Outermost: shed abusive traffic before it costs anything, keyed on
-     // the derived client address — never the raw header, which any client
-     // can write (smithy/http/forwarded.h has the derivation contract).
-     smithy::server::Guard(
-         [limiter, trusted](const smithy::http::HttpRequest& request) {
-           return limiter->Allow(smithy::http::ClientAddress(request, trusted));
-         },
-         smithy::server::TooManyRequests(std::chrono::seconds(30))),
+    {// Outermost: shed abusive traffic before it costs anything. The
+     // framework derives the client behind the trust boundary and keys
+     // admission on it (never the raw header, which any client can write —
+     // smithy/http/forwarded.h has the derivation contract); your limiter
+     // only sees the derived key.
+     smithy::server::PerClientRateLimit(
+         [limiter](const std::string& client) { return limiter->Allow(client); },
+         trusted, std::chrono::seconds(30)),
      // Observe everything admitted — health probes included. on_start
      // (optional) enables an in-flight gauge; on_complete carries
      // method/target/operation/status/duration/trace_parent.
@@ -226,22 +226,52 @@ transport.Start(smithy::server::Chain(
 ```
 
 The first middleware in the chain is outermost: it sees the request first and
-can short-circuit before anything below it runs (so `Guard`'s rejections never
-reach `Observe` — track rejection rates in the limiter itself). Because the
-limiter keys on the derived client address, health probes budget as their
+can short-circuit before anything below it runs (so the limiter's rejections
+never reach `Observe` — track rejection rates in the limiter itself). Because
+admission keys on the derived client address, health probes budget as their
 real source (the node or balancer address the transport saw) rather than
 sharing one spoofable key with abusive traffic; if even that source's own
-budget matters, compose the `HealthEndpoint` instances outside `Guard`. The
-same composition applies over the in-memory `Loopback`, which has no peer:
-every request there derives the one empty key. Readiness probes run on the transport's request thread, once
-per probe request — keep them cheap (a pool's cached connectivity flag, not a
-fresh dial) and thread-safe. `Guard` is the generic admission primitive — rate limiting (above), IP
-allowlists, maintenance mode — admit/reject callbacks in, one decision point
-out. `Observe`'s callbacks run on the transport's request thread (keep them
-cheap or hand off) and always pair: when dispatch throws, `on_complete`
-reports a 500 completion before the exception reaches the transport's
-containment, so an in-flight gauge can never leak. Throwing callbacks are
-logged and swallowed.
+budget matters, compose the `HealthEndpoint` instances outside the limiter.
+Requests with no derivable client at all (the in-memory `Loopback` has no
+peer) are admitted without consulting your policy, so hand-driven tests
+never rate-limit each other through one shared empty key. Readiness probes
+run on the transport's request thread, once per probe request — keep them
+cheap (a pool's cached connectivity flag, not a fresh dial) and thread-safe.
+`Guard` is the generic admission primitive underneath — IP allowlists,
+maintenance mode — admit/reject callbacks in, one decision point out;
+`PerClientRateLimit` is `Guard` with the ADR-0012 derivation wired in by the
+framework, because hand-wiring it is exactly where adoption review found
+silent mutants (issue #104). `Observe`'s callbacks run on the transport's
+request thread (keep them cheap or hand off) and always pair: when dispatch
+throws, `on_complete` reports a 500 completion before the exception reaches
+the transport's containment, so an in-flight gauge can never leak. Throwing
+callbacks are logged and swallowed.
+
+**Watch the trust boundary itself.** A drifted trust set (the proxy's
+address changed; the CIDR didn't) fails silently: the spoof defense ignores
+the header on every request and all traffic collapses onto the proxy's one
+key. The fingerprint is visible in `smithy::http::DeriveClient` — the
+richer form of `ClientAddress` that also reports *how* the address was
+derived. Put its `source` in your `Observe` sink: behind a proxy, ~100%
+`kUntrustedHeaderIgnored` means the trust set no longer matches the
+topology, and ~100% `kTrustedTier` means the proxy is not appending
+`x-forwarded-for`.
+
+**Plumbing the trust set.** The boundary is deployment config; the
+convention is a `TRUSTED_PROXY_CIDRS` environment variable holding a
+comma-separated CIDR list, parsed once at startup — construction throws on
+a malformed entry, so a bad boundary aborts boot instead of silently
+mis-keying (`SplitHeaderListValues` in `smithy/http/headers.h` already
+splits comma lists with trimming). Unset must mean a *deliberate*
+direct-connect topology:
+
+```cpp
+const char* cidrs = std::getenv("TRUSTED_PROXY_CIDRS");
+const auto trusted = (cidrs == nullptr || *cidrs == '\0')
+                         ? smithy::http::TrustedProxies::None()
+                         : smithy::http::TrustedProxies(
+                               smithy::http::SplitHeaderListValues(cidrs));
+```
 
 ## Serving lifecycle
 

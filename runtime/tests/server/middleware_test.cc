@@ -301,6 +301,59 @@ TEST(GuardTest, AdmitSeesTheRequest) {
   EXPECT_EQ(handler(limited).status, 429);
 }
 
+TEST(PerClientRateLimitTest, KeysOnTheDerivedClientBehindTheTrustBoundary) {
+  // The issue #104 mutant killers, upstreamed: allow must see the DERIVED
+  // client — two forwarded clients behind one trusted proxy are two
+  // distinct keys (a raw-peer or ignored-trust mutant hands every proxied
+  // request the proxy's single key and passes any test that doesn't look).
+  std::vector<std::string> seen;
+  auto handler = Chain({PerClientRateLimit(
+                           [&seen](const std::string& client) {
+                             seen.push_back(client);
+                             return client != "203.0.113.9";
+                           },
+                           http::TrustedProxies({"10.0.0.0/8"}), std::chrono::seconds(7))},
+                       [](const http::HttpRequest&) { return Ok("in"); });
+
+  http::HttpRequest first;
+  first.peer_address = "10.0.0.1:443";
+  first.headers.Set("x-forwarded-for", "198.51.100.7");
+  EXPECT_EQ(handler(first).status, 200);
+
+  http::HttpRequest second = first;
+  second.headers.Set("x-forwarded-for", "198.51.100.7, 203.0.113.9");
+  const auto limited = handler(second);
+  EXPECT_EQ(limited.status, 429);
+  EXPECT_EQ(limited.headers.Get("retry-after").value_or(""), "7");
+
+  ASSERT_EQ(seen.size(), 2u);
+  EXPECT_EQ(seen[0], "198.51.100.7");
+  EXPECT_EQ(seen[1], "203.0.113.9");
+}
+
+TEST(PerClientRateLimitTest, AnUnknownClientIsAdmittedWithoutConsultingAllow) {
+  // No derivable peer (Loopback, hand-driven chains): admitting without a
+  // key beats sharing one "" bucket across everything unkeyable. The
+  // header alone must not conjure a key.
+  bool consulted = false;
+  auto handler = Chain({PerClientRateLimit(
+                           [&consulted](const std::string&) {
+                             consulted = true;
+                             return false;
+                           },
+                           http::TrustedProxies({"10.0.0.0/8"}))},
+                       [](const http::HttpRequest&) { return Ok("in"); });
+
+  http::HttpRequest unkeyable;
+  unkeyable.headers.Set("x-forwarded-for", "203.0.113.9");
+  EXPECT_EQ(handler(unkeyable).status, 200);
+  EXPECT_FALSE(consulted);
+}
+
+TEST(PerClientRateLimitTest, ANullPolicyThrowsAtComposition) {
+  EXPECT_THROW(PerClientRateLimit(nullptr, http::TrustedProxies::None()), std::invalid_argument);
+}
+
 TEST(TooManyRequestsTest, ShapesThe429) {
   const auto response = TooManyRequests()(http::HttpRequest{});
   EXPECT_EQ(response.status, 429);

@@ -400,20 +400,21 @@ TEST(TodoMiddlewareTest, GuardObserveAndHealthComposeAroundTheServer) {
 }
 
 // ADR-0012 composed at the consumer boundary, over a real socket so the
-// transport stamps a real peer: admission keys on ClientAddress, so
+// transport stamps a real peer — through the shipped PerClientRateLimit
+// (issue #104), the exact middleware the production guide teaches:
 // x-forwarded-for drives policy only through a trusted proxy tier and is
-// client-authored noise otherwise. The admit lambda records the derived
+// client-authored noise otherwise. The allow policy records the derived
 // key — the boundary claim is that a real transport-stamped peer flows
 // through the derivation, which the status alone cannot prove.
 TEST(TodoMiddlewareTest, GuardKeysOnTheDerivedClientAddressNotTheSpoofableHeader) {
   std::string seen;
   const auto deny_banned = [&seen](const smithy::http::TrustedProxies& trusted) {
-    return smithy::server::Guard(
-        [trusted, &seen](const smithy::http::HttpRequest& request) {
-          seen = smithy::http::ClientAddress(request, trusted);
-          return seen != "203.0.113.9";
+    return smithy::server::PerClientRateLimit(
+        [&seen](const std::string& client) {
+          seen = client;
+          return client != "203.0.113.9";
         },
-        smithy::server::TooManyRequests());
+        trusted);
   };
   TodoServer server(std::make_shared<InMemoryHandler>());
 

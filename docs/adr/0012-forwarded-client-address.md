@@ -104,9 +104,24 @@ handlers via `context.request`).
 - `x-forwarded-for` only. RFC 7239 `Forwarded` support would be a
   compatible extension (same walk, one more entry parser), adopted when a
   real proxy in front of a consumer emits it.
-- The helper is the key extractor, not the policy: a per-client rate
-  limiter composing `TrustedProxies` + `ClientAddress` + `Guard` +
-  `TooManyRequests` is the natural follow-on, and stays an application
-  choice per the middleware contract.
+- The helper is the key extractor, not the policy — but the first
+  adoption (issue #104) showed the extractor-into-admission *wiring* is
+  where silent mutants live (ignoring the trust set, keying on the raw
+  peer: both compile, both pass naturally-written tests, both collapse all
+  proxied traffic into one bucket). So `smithy::server::PerClientRateLimit`
+  ships that wiring — derive, consult the pluggable `allow(client)`
+  policy, shed with the shaped 429 — while the limiter itself stays an
+  application choice per the middleware contract. Underivable requests
+  (`kUnknown`) are admitted without consulting the policy, closing the
+  empty-string shared-bucket door.
+- Misconfiguration is observable rather than silent: `DeriveClient` returns
+  the address plus its `Source`, and the distribution is the diagnostic —
+  behind a proxy, all-`kUntrustedHeaderIgnored` means a drifted trust set,
+  all-`kTrustedTier` a proxy that is not appending the header
+  (issue #104). `ClientAddress` remains the simple string form.
+- The trust set is plumbed by convention from `TRUSTED_PROXY_CIDRS`
+  (comma-separated CIDRs, parsed once at startup, malformed aborts boot;
+  unset means a deliberate `TrustedProxies::None()`) —
+  docs/production-guide.md carries the snippet.
 - Servers that never sit behind a proxy simply never construct a
   `TrustedProxies`; nothing changes for them.

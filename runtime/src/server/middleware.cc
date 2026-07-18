@@ -33,6 +33,22 @@ Middleware Guard(std::function<bool(const http::HttpRequest&)> admit,
   };
 }
 
+Middleware PerClientRateLimit(std::function<bool(const std::string& client)> allow,
+                              http::TrustedProxies trusted,
+                              std::optional<std::chrono::seconds> retry_after) {
+  if (allow == nullptr) {
+    // A null policy would admit nothing or everything depending on library
+    // internals — fail at composition like HealthEndpoint and Observe do.
+    throw std::invalid_argument("PerClientRateLimit: allow must not be null");
+  }
+  return Guard(
+      [allow = std::move(allow), trusted = std::move(trusted)](const http::HttpRequest& request) {
+        const http::DerivedClient client = http::DeriveClient(request, trusted);
+        return client.source == http::DerivedClient::Source::kUnknown || allow(client.address);
+      },
+      TooManyRequests(retry_after));
+}
+
 std::function<http::HttpResponse(const http::HttpRequest&)> TooManyRequests(
     std::optional<std::chrono::seconds> retry_after) {
   return [retry_after](const http::HttpRequest&) {

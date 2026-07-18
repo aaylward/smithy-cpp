@@ -16,10 +16,18 @@ namespace smithy::server {
 // Greedy label values keep their embedded slashes (decoded).
 using PathLabels = std::map<std::string, std::string, std::less<>>;
 
-// Per-request context passed to matched handlers.
+// Per-request context passed to matched handlers — and onward to generated
+// handler methods, whose second parameter it is. Beyond the routing captures
+// it carries the raw request, so a handler can read what the typed input
+// doesn't model: unmodeled headers, the inbound traceparent (parse with
+// smithy/http/trace_context.h to open child spans), and the peer address
+// the transport stamped (issue #46).
 struct RequestContext {
   PathLabels labels;
   std::vector<std::pair<std::string, std::string>> query_params;  // decoded
+  // The request being served; set by Router::Route for the lifetime of the
+  // handler call, null only for hand-constructed contexts in tests.
+  const http::HttpRequest* request = nullptr;
 };
 
 using RouteHandler =

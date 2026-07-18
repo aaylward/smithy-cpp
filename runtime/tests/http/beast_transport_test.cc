@@ -135,6 +135,27 @@ TEST(BeastTransportTest, RoundTripsOverRealSockets) {
   server.Stop();
 }
 
+TEST(BeastTransportTest, StampsThePeerAddress) {
+  BeastServerTransport server({.port = 0, .threads = 1});
+  ASSERT_TRUE(server
+                  .Start([](const HttpRequest& request) {
+                    HttpResponse response;
+                    response.headers.Set("x-peer", request.peer_address);
+                    return response;
+                  })
+                  .ok());
+  SocketHttpClient client("127.0.0.1", server.port());
+  HttpRequest request;
+  request.method = "GET";
+  request.target = "/";
+  const auto response = client.Send(request);
+  ASSERT_TRUE(response.ok()) << response.error().message();
+  const std::string peer = response->headers.Get("x-peer").value_or("");
+  EXPECT_EQ(peer.rfind("127.0.0.1:", 0), 0u) << peer;
+  EXPECT_GT(std::stoi(peer.substr(peer.rfind(':') + 1)), 0) << peer;
+  server.Stop();
+}
+
 TEST(BeastTransportTest, ServesConcurrentConnections) {
   // The ADR-0005 transport handled one connection at a time; this is the
   // regression test that Beast genuinely serves in parallel.

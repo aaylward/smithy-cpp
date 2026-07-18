@@ -51,6 +51,19 @@ bool SendAll(SocketFd fd, std::string_view data) {
   return true;
 }
 
+// "ip:port" of the accepted peer (v6 bracketed), for
+// HttpRequest::peer_address; empty when the address cannot be rendered.
+std::string FormatPeerAddress(const sockaddr* address, socklen_t length) {
+  char host[NI_MAXHOST];
+  char service[NI_MAXSERV];
+  if (getnameinfo(address, length, host, sizeof(host), service, sizeof(service),
+                  NI_NUMERICHOST | NI_NUMERICSERV) != 0) {
+    return {};
+  }
+  return address->sa_family == AF_INET6 ? "[" + std::string(host) + "]:" + service
+                                        : std::string(host) + ":" + service;
+}
+
 // Reads one HTTP/1.1 message (the parser itself lives in http1.cc, where the
 // hostile-input bank and the fuzz harness exercise it without a socket). For
 // responses without Content-Length the body extends to EOF (we always
@@ -159,7 +172,9 @@ Outcome<Unit> SocketHttpServer::Start(RequestHandler handler) {
 void SocketHttpServer::AcceptLoop() {
   const auto listener = static_cast<SocketFd>(listener_);
   while (!stopping_) {
-    const SocketFd connection = accept(listener, nullptr, nullptr);
+    sockaddr_storage peer{};
+    socklen_t peer_length = sizeof(peer);
+    const SocketFd connection = accept(listener, reinterpret_cast<sockaddr*>(&peer), &peer_length);
     if (connection == kInvalidSocket) {
       if (stopping_) break;
       continue;
@@ -179,6 +194,8 @@ void SocketHttpServer::AcceptLoop() {
       } else {
         request.headers = std::move(message->headers);
         request.body = std::move(message->body);
+        request.peer_address =
+            FormatPeerAddress(reinterpret_cast<const sockaddr*>(&peer), peer_length);
         response = InvokeHandlerGuarded(handler_, request);
       }
     } else {

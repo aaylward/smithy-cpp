@@ -70,6 +70,33 @@ TEST(RouterTest, Returns404And405) {
   EXPECT_EQ(router.Route(Request("GET", "/bad%2")).status, 400);
 }
 
+TEST(RouterTest, ContextCarriesTheRawRequest) {
+  Router router;
+  ASSERT_TRUE(
+      router
+          .Add("GET", "/cities/{cityId}",
+               [](const http::HttpRequest& request, const RequestContext& context) {
+                 // The context's request is the routed request itself —
+                 // unmodeled headers and transport annotations reach
+                 // the handler through it (issue #46).
+                 http::HttpResponse response;
+                 response.headers.Set("x-same-object", context.request == &request ? "yes" : "no");
+                 response.headers.Set("x-tenant",
+                                      context.request->headers.Get("x-tenant").value_or("missing"));
+                 response.headers.Set("x-peer", context.request->peer_address);
+                 return response;
+               })
+          .ok());
+
+  http::HttpRequest request = Request("GET", "/cities/rome");
+  request.headers.Set("x-tenant", "acme");
+  request.peer_address = "203.0.113.7:52814";
+  const auto response = router.Route(request);
+  EXPECT_EQ(response.headers.Get("x-same-object"), "yes");
+  EXPECT_EQ(response.headers.Get("x-tenant"), "acme");
+  EXPECT_EQ(response.headers.Get("x-peer"), "203.0.113.7:52814");
+}
+
 TEST(RouterTest, GreedyRefusesALoneEmptySegment) {
   Router router;
   ASSERT_TRUE(router.Add("GET", "/files/{path+}", Tag("greedy")).ok());

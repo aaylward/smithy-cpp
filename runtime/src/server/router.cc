@@ -183,6 +183,7 @@ http::HttpResponse Router::Route(const http::HttpRequest& request) const {
   RequestContext context;
   Matches(*best, segments, &context.labels);  // label extraction: winner only
   context.query_params = std::move(target->query_params);
+  context.request = &request;
   http::HttpResponse response = best->handler(request, context);
   if (!best->operation.empty()) response.operation = best->operation;
   return response;

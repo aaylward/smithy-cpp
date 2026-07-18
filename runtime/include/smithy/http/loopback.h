@@ -11,7 +11,9 @@ namespace smithy::http {
 // In-memory transport: an HttpClient wired directly to a request handler with
 // no sockets, serialization of the connection, or threads. The backbone of
 // fast client<->server integration tests (PLAN Phase 5) — the same test body
-// runs against Loopback and a real socket transport.
+// runs against Loopback and a real socket transport. There is no connection,
+// so HttpRequest::peer_address stays whatever the caller set (empty by
+// default) — a test can stamp one to exercise peer-dependent handlers.
 class Loopback : public HttpClient, public HttpServerTransport {
  public:
   // HttpServerTransport:

@@ -106,62 +106,62 @@ VersionOutput MinimalVersionOutput() {
 
 class RecordingHandler : public PizzaAdminServiceHandler {
   public:
-    smithy::Outcome<AddMenuItemOutput> AddMenuItem(const AddMenuItemInput& input) override {
+    smithy::Outcome<AddMenuItemOutput> AddMenuItem(const AddMenuItemInput& input, const smithy::server::RequestContext&) override {
       lastAddMenuItem = input;
       return MinimalAddMenuItemOutput();
     }
     std::optional<AddMenuItemInput> lastAddMenuItem;
-    smithy::Outcome<CustomCodeOutput> CustomCode(const CustomCodeInput& input) override {
+    smithy::Outcome<CustomCodeOutput> CustomCode(const CustomCodeInput& input, const smithy::server::RequestContext&) override {
       lastCustomCode = input;
       return MinimalCustomCodeOutput();
     }
     std::optional<CustomCodeInput> lastCustomCode;
-    smithy::Outcome<GetEnumOutput> GetEnum(const GetEnumInput& input) override {
+    smithy::Outcome<GetEnumOutput> GetEnum(const GetEnumInput& input, const smithy::server::RequestContext&) override {
       lastGetEnum = input;
       return MinimalGetEnumOutput();
     }
     std::optional<GetEnumInput> lastGetEnum;
-    smithy::Outcome<GetIntEnumOutput> GetIntEnum(const GetIntEnumInput& input) override {
+    smithy::Outcome<GetIntEnumOutput> GetIntEnum(const GetIntEnumInput& input, const smithy::server::RequestContext&) override {
       lastGetIntEnum = input;
       return MinimalGetIntEnumOutput();
     }
     std::optional<GetIntEnumInput> lastGetIntEnum;
-    smithy::Outcome<GetMenuOutput> GetMenu(const GetMenuInput& input) override {
+    smithy::Outcome<GetMenuOutput> GetMenu(const GetMenuInput& input, const smithy::server::RequestContext&) override {
       lastGetMenu = input;
       return MinimalGetMenuOutput();
     }
     std::optional<GetMenuInput> lastGetMenu;
-    smithy::Outcome<HeaderEndpointOutput> HeaderEndpoint(const HeaderEndpointInput& input) override {
+    smithy::Outcome<HeaderEndpointOutput> HeaderEndpoint(const HeaderEndpointInput& input, const smithy::server::RequestContext&) override {
       lastHeaderEndpoint = input;
       return MinimalHeaderEndpointOutput();
     }
     std::optional<HeaderEndpointInput> lastHeaderEndpoint;
-    smithy::Outcome<HealthOutput> Health(const HealthInput& input) override {
+    smithy::Outcome<HealthOutput> Health(const HealthInput& input, const smithy::server::RequestContext&) override {
       lastHealth = input;
       return MinimalHealthOutput();
     }
     std::optional<HealthInput> lastHealth;
-    smithy::Outcome<HttpPayloadRequiredWithDefaultOutput> HttpPayloadRequiredWithDefault(const HttpPayloadRequiredWithDefaultInput& input) override {
+    smithy::Outcome<HttpPayloadRequiredWithDefaultOutput> HttpPayloadRequiredWithDefault(const HttpPayloadRequiredWithDefaultInput& input, const smithy::server::RequestContext&) override {
       lastHttpPayloadRequiredWithDefault = input;
       return MinimalHttpPayloadRequiredWithDefaultOutput();
     }
     std::optional<HttpPayloadRequiredWithDefaultInput> lastHttpPayloadRequiredWithDefault;
-    smithy::Outcome<HttpPayloadWithDefaultOutput> HttpPayloadWithDefault(const HttpPayloadWithDefaultInput& input) override {
+    smithy::Outcome<HttpPayloadWithDefaultOutput> HttpPayloadWithDefault(const HttpPayloadWithDefaultInput& input, const smithy::server::RequestContext&) override {
       lastHttpPayloadWithDefault = input;
       return MinimalHttpPayloadWithDefaultOutput();
     }
     std::optional<HttpPayloadWithDefaultInput> lastHttpPayloadWithDefault;
-    smithy::Outcome<OpenUnionsOutput> OpenUnions(const OpenUnionsInput& input) override {
+    smithy::Outcome<OpenUnionsOutput> OpenUnions(const OpenUnionsInput& input, const smithy::server::RequestContext&) override {
       lastOpenUnions = input;
       return MinimalOpenUnionsOutput();
     }
     std::optional<OpenUnionsInput> lastOpenUnions;
-    smithy::Outcome<RoundTripOutput> RoundTrip(const RoundTripInput& input) override {
+    smithy::Outcome<RoundTripOutput> RoundTrip(const RoundTripInput& input, const smithy::server::RequestContext&) override {
       lastRoundTrip = input;
       return MinimalRoundTripOutput();
     }
     std::optional<RoundTripInput> lastRoundTrip;
-    smithy::Outcome<VersionOutput> Version(const VersionInput& input) override {
+    smithy::Outcome<VersionOutput> Version(const VersionInput& input, const smithy::server::RequestContext&) override {
       lastVersion = input;
       return MinimalVersionOutput();
     }

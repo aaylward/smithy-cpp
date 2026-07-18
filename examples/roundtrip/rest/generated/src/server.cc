@@ -422,7 +422,7 @@ RoundTripRestServer::RoundTripRestServer(std::shared_ptr<RoundTripRestHandler> h
     if (!input) return ErrorToResponse(input.error());
     ValidateDescribeSinkInput(*input, "", &validation_failures);
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    auto outcome = handler->DescribeSink(*input);
+    auto outcome = handler->DescribeSink(*input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     return BuildDescribeSinkResponse(*outcome);
   }, "DescribeSink");
@@ -456,7 +456,7 @@ RoundTripRestServer::RoundTripRestServer(std::shared_ptr<RoundTripRestHandler> h
     if (!input) return ErrorToResponse(input.error());
     ValidatePutSinkInput(*input, "", &validation_failures);
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    auto outcome = handler->PutSink(*input);
+    auto outcome = handler->PutSink(*input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     return BuildPutSinkResponse(*outcome);
   }, "PutSink");
@@ -476,7 +476,7 @@ RoundTripRestServer::RoundTripRestServer(std::shared_ptr<RoundTripRestHandler> h
     if (!input) return ErrorToResponse(input.error());
     ValidateUploadAttachmentInput(*input, "", &validation_failures);
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    auto outcome = handler->UploadAttachment(*input);
+    auto outcome = handler->UploadAttachment(*input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     return BuildUploadAttachmentResponse(*outcome);
   }, "UploadAttachment");

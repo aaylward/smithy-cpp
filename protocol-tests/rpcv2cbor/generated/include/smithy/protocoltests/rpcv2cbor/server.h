@@ -14,15 +14,19 @@ namespace smithy::protocoltests::rpcv2cbor {
 /// Implement one method per operation. Return a modeled error as
 /// smithy::Error::Modeled("<ErrorShapeName>", message), optionally with the
 /// typed error structure attached via set_detail() so it serializes fully.
+/// The context carries what the typed input doesn't model: the raw request
+/// (unmodeled headers, the inbound traceparent, the transport-stamped peer
+/// address) plus the routing captures; leave the parameter unnamed when an
+/// operation has no use for it.
 /// Implementations must be thread-safe: transports may invoke any mix of
 /// operations concurrently on the one handler instance.
 class RpcV2ProtocolHandler {
   public:
     virtual ~RpcV2ProtocolHandler() = default;
 
-    virtual smithy::Outcome<EmptyInputOutputOutput> EmptyInputOutput(const EmptyInputOutputInput& input) = 0;
-    virtual smithy::Outcome<Float16Output> Float16(const Float16Input& input) = 0;
-    virtual smithy::Outcome<FractionalSecondsOutput> FractionalSeconds(const FractionalSecondsInput& input) = 0;
+    virtual smithy::Outcome<EmptyInputOutputOutput> EmptyInputOutput(const EmptyInputOutputInput& input, const smithy::server::RequestContext& context) = 0;
+    virtual smithy::Outcome<Float16Output> Float16(const Float16Input& input, const smithy::server::RequestContext& context) = 0;
+    virtual smithy::Outcome<FractionalSecondsOutput> FractionalSeconds(const FractionalSecondsInput& input, const smithy::server::RequestContext& context) = 0;
     /// This operation has three possible return values:
     ///
     /// 1. A successful response in the form of GreetingWithErrorsOutput
@@ -31,13 +35,13 @@ class RpcV2ProtocolHandler {
     ///
     /// Implementations must be able to successfully take a response and
     /// properly deserialize successful and error responses.
-    virtual smithy::Outcome<GreetingWithErrorsOutput> GreetingWithErrors(const GreetingWithErrorsInput& input) = 0;
-    virtual smithy::Outcome<NoInputOutputOutput> NoInputOutput(const NoInputOutputInput& input) = 0;
-    virtual smithy::Outcome<OperationWithDefaultsOutput> OperationWithDefaults(const OperationWithDefaultsInput& input) = 0;
-    virtual smithy::Outcome<OptionalInputOutputOutput> OptionalInputOutput(const OptionalInputOutputInput& input) = 0;
-    virtual smithy::Outcome<RecursiveShapesOutput> RecursiveShapes(const RecursiveShapesInput& input) = 0;
+    virtual smithy::Outcome<GreetingWithErrorsOutput> GreetingWithErrors(const GreetingWithErrorsInput& input, const smithy::server::RequestContext& context) = 0;
+    virtual smithy::Outcome<NoInputOutputOutput> NoInputOutput(const NoInputOutputInput& input, const smithy::server::RequestContext& context) = 0;
+    virtual smithy::Outcome<OperationWithDefaultsOutput> OperationWithDefaults(const OperationWithDefaultsInput& input, const smithy::server::RequestContext& context) = 0;
+    virtual smithy::Outcome<OptionalInputOutputOutput> OptionalInputOutput(const OptionalInputOutputInput& input, const smithy::server::RequestContext& context) = 0;
+    virtual smithy::Outcome<RecursiveShapesOutput> RecursiveShapes(const RecursiveShapesInput& input, const smithy::server::RequestContext& context) = 0;
     /// The example tests basic map serialization.
-    virtual smithy::Outcome<RpcV2CborDenseMapsOutput> RpcV2CborDenseMaps(const RpcV2CborDenseMapsInput& input) = 0;
+    virtual smithy::Outcome<RpcV2CborDenseMapsOutput> RpcV2CborDenseMaps(const RpcV2CborDenseMapsInput& input, const smithy::server::RequestContext& context) = 0;
     /// This test case serializes JSON lists for the following cases for both
     /// input and output:
     ///
@@ -45,10 +49,10 @@ class RpcV2ProtocolHandler {
     /// 2. Normal sets.
     /// 3. Lists of lists.
     /// 4. Lists of structures.
-    virtual smithy::Outcome<RpcV2CborListsOutput> RpcV2CborLists(const RpcV2CborListsInput& input) = 0;
-    virtual smithy::Outcome<RpcV2CborSparseMapsOutput> RpcV2CborSparseMaps(const RpcV2CborSparseMapsInput& input) = 0;
-    virtual smithy::Outcome<SimpleScalarPropertiesOutput> SimpleScalarProperties(const SimpleScalarPropertiesInput& input) = 0;
-    virtual smithy::Outcome<SparseNullsOperationOutput> SparseNullsOperation(const SparseNullsOperationInput& input) = 0;
+    virtual smithy::Outcome<RpcV2CborListsOutput> RpcV2CborLists(const RpcV2CborListsInput& input, const smithy::server::RequestContext& context) = 0;
+    virtual smithy::Outcome<RpcV2CborSparseMapsOutput> RpcV2CborSparseMaps(const RpcV2CborSparseMapsInput& input, const smithy::server::RequestContext& context) = 0;
+    virtual smithy::Outcome<SimpleScalarPropertiesOutput> SimpleScalarProperties(const SimpleScalarPropertiesInput& input, const smithy::server::RequestContext& context) = 0;
+    virtual smithy::Outcome<SparseNullsOperationOutput> SparseNullsOperation(const SparseNullsOperationInput& input, const smithy::server::RequestContext& context) = 0;
 };
 
 /// rpcv2Cbor server for smithy.protocoltests.rpcv2Cbor#RpcV2Protocol: routing, deserialization, handler dispatch,

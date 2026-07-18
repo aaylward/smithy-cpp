@@ -15,27 +15,29 @@ namespace {
 class NullHandler final : public example::weather::WeatherHandler {
  public:
   smithy::Outcome<example::weather::GetCityOutput> GetCity(
-      const example::weather::GetCityInput&) override {
+      const example::weather::GetCityInput&, const smithy::server::RequestContext&) override {
     return example::weather::GetCityOutput{.name = "x"};
   }
   smithy::Outcome<example::weather::DeleteCityOutput> DeleteCity(
-      const example::weather::DeleteCityInput&) override {
+      const example::weather::DeleteCityInput&, const smithy::server::RequestContext&) override {
     return example::weather::DeleteCityOutput{};
   }
   smithy::Outcome<example::weather::ListCitiesOutput> ListCities(
-      const example::weather::ListCitiesInput&) override {
+      const example::weather::ListCitiesInput&, const smithy::server::RequestContext&) override {
     return example::weather::ListCitiesOutput{};
   }
   smithy::Outcome<example::weather::GetForecastOutput> GetForecast(
-      const example::weather::GetForecastInput&) override {
+      const example::weather::GetForecastInput&, const smithy::server::RequestContext&) override {
     return example::weather::GetForecastOutput{};
   }
   smithy::Outcome<example::weather::GetCurrentTimeOutput> GetCurrentTime(
-      const example::weather::GetCurrentTimeInput&) override {
+      const example::weather::GetCurrentTimeInput&,
+      const smithy::server::RequestContext&) override {
     return example::weather::GetCurrentTimeOutput{};
   }
   smithy::Outcome<example::weather::GetReportOutput> GetReport(
-      const example::weather::GetReportInput& input) override {
+      const example::weather::GetReportInput& input,
+      const smithy::server::RequestContext&) override {
     return example::weather::GetReportOutput{.path = input.reportPath, .sizeBytes = 0};
   }
 };

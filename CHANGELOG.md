@@ -40,6 +40,12 @@ via `git_override` until then.
 - Consumer Bazel rules (`smithy_cpp_{types,client,server}_library`) run the
   generator hermetically inside the build graph; out-of-tree consumer module
   tested in CI on Linux/macOS.
+- Generated handler methods take the request metadata alongside the typed
+  input: `Op(const OpInput&, const smithy::server::RequestContext&)`, where
+  the context carries the raw request (unmodeled headers, the inbound
+  `traceparent`, the transport-stamped peer address) plus the decoded routing
+  captures (issue #46). **Breaking** for commit-pinning consumers: existing
+  handler implementations add the parameter (unnamed when unused).
 
 ### Runtime
 

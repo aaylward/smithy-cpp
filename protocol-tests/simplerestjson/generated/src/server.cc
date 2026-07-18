@@ -652,7 +652,7 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     if (!input) return ErrorToResponse(input.error());
     ValidateAddMenuItemInput(*input, "", &validation_failures);
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    auto outcome = handler->AddMenuItem(*input);
+    auto outcome = handler->AddMenuItem(*input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     return BuildAddMenuItemResponse(*outcome);
   }, "AddMenuItem");
@@ -670,7 +670,7 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     auto input = ParseCustomCodeInput(request, context, &validation_failures);
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
     if (!input) return ErrorToResponse(input.error());
-    auto outcome = handler->CustomCode(*input);
+    auto outcome = handler->CustomCode(*input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     return BuildCustomCodeResponse(*outcome);
   }, "CustomCode");
@@ -695,7 +695,7 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     if (!input) return ErrorToResponse(input.error());
     ValidateGetEnumInput(*input, "", &validation_failures);
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    auto outcome = handler->GetEnum(*input);
+    auto outcome = handler->GetEnum(*input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     return BuildGetEnumResponse(*outcome);
   }, "GetEnum");
@@ -718,7 +718,7 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     auto input = ParseGetIntEnumInput(request, context, &validation_failures);
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
     if (!input) return ErrorToResponse(input.error());
-    auto outcome = handler->GetIntEnum(*input);
+    auto outcome = handler->GetIntEnum(*input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     return BuildGetIntEnumResponse(*outcome);
   }, "GetIntEnum");
@@ -741,7 +741,7 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     auto input = ParseGetMenuInput(request, context, &validation_failures);
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
     if (!input) return ErrorToResponse(input.error());
-    auto outcome = handler->GetMenu(*input);
+    auto outcome = handler->GetMenu(*input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     return BuildGetMenuResponse(*outcome);
   }, "GetMenu");
@@ -759,7 +759,7 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     auto input = ParseHeaderEndpointInput(request, context, &validation_failures);
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
     if (!input) return ErrorToResponse(input.error());
-    auto outcome = handler->HeaderEndpoint(*input);
+    auto outcome = handler->HeaderEndpoint(*input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     return BuildHeaderEndpointResponse(*outcome);
   }, "HeaderEndpoint");
@@ -784,7 +784,7 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     if (!input) return ErrorToResponse(input.error());
     ValidateHealthInput(*input, "", &validation_failures);
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    auto outcome = handler->Health(*input);
+    auto outcome = handler->Health(*input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     return BuildHealthResponse(*outcome);
   }, "Health");
@@ -807,7 +807,7 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     auto input = ParseHttpPayloadRequiredWithDefaultInput(request, context, &validation_failures);
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
     if (!input) return ErrorToResponse(input.error());
-    auto outcome = handler->HttpPayloadRequiredWithDefault(*input);
+    auto outcome = handler->HttpPayloadRequiredWithDefault(*input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     return BuildHttpPayloadRequiredWithDefaultResponse(*outcome);
   }, "HttpPayloadRequiredWithDefault");
@@ -830,7 +830,7 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     auto input = ParseHttpPayloadWithDefaultInput(request, context, &validation_failures);
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
     if (!input) return ErrorToResponse(input.error());
-    auto outcome = handler->HttpPayloadWithDefault(*input);
+    auto outcome = handler->HttpPayloadWithDefault(*input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     return BuildHttpPayloadWithDefaultResponse(*outcome);
   }, "HttpPayloadWithDefault");
@@ -853,7 +853,7 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     auto input = ParseOpenUnionsInput(request, context, &validation_failures);
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
     if (!input) return ErrorToResponse(input.error());
-    auto outcome = handler->OpenUnions(*input);
+    auto outcome = handler->OpenUnions(*input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     return BuildOpenUnionsResponse(*outcome);
   }, "OpenUnions");
@@ -876,7 +876,7 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     auto input = ParseRoundTripInput(request, context, &validation_failures);
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
     if (!input) return ErrorToResponse(input.error());
-    auto outcome = handler->RoundTrip(*input);
+    auto outcome = handler->RoundTrip(*input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     return BuildRoundTripResponse(*outcome);
   }, "RoundTrip");
@@ -899,7 +899,7 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     auto input = ParseVersionInput(request, context, &validation_failures);
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
     if (!input) return ErrorToResponse(input.error());
-    auto outcome = handler->Version(*input);
+    auto outcome = handler->Version(*input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     return BuildVersionResponse(*outcome);
   }, "Version");

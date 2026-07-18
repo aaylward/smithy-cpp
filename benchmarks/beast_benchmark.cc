@@ -44,15 +44,18 @@ example::roundtrip::rest::PutSinkInput MakeInput() {
 class EchoHandler final : public example::roundtrip::rest::RoundTripRestHandler {
  public:
   smithy::Outcome<example::roundtrip::rest::PutSinkOutput> PutSink(
-      const example::roundtrip::rest::PutSinkInput& input) override {
+      const example::roundtrip::rest::PutSinkInput& input,
+      const smithy::server::RequestContext&) override {
     return example::roundtrip::rest::PutSinkOutput{.sinkId = input.sinkId, .sink = input.sink};
   }
   smithy::Outcome<example::roundtrip::rest::UploadAttachmentOutput> UploadAttachment(
-      const example::roundtrip::rest::UploadAttachmentInput&) override {
+      const example::roundtrip::rest::UploadAttachmentInput&,
+      const smithy::server::RequestContext&) override {
     return example::roundtrip::rest::UploadAttachmentOutput{};
   }
   smithy::Outcome<example::roundtrip::rest::DescribeSinkOutput> DescribeSink(
-      const example::roundtrip::rest::DescribeSinkInput&) override {
+      const example::roundtrip::rest::DescribeSinkInput&,
+      const smithy::server::RequestContext&) override {
     return example::roundtrip::rest::DescribeSinkOutput{};
   }
 };

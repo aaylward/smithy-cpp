@@ -19,12 +19,14 @@ namespace {
 
 class RecordingHandler final : public RoundTripRpcHandler {
  public:
-  smithy::Outcome<PutSinkRpcOutput> PutSinkRpc(const PutSinkRpcInput& input) override {
+  smithy::Outcome<PutSinkRpcOutput> PutSinkRpc(const PutSinkRpcInput& input,
+                                               const smithy::server::RequestContext&) override {
     put_sink_calls++;
     return PutSinkRpcOutput{.sinkId = input.sinkId};
   }
 
-  smithy::Outcome<PingOutput> Ping(const PingInput&) override {
+  smithy::Outcome<PingOutput> Ping(const PingInput&,
+                                   const smithy::server::RequestContext&) override {
     ping_calls++;
     return PingOutput{};
   }

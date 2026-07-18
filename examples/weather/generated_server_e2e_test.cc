@@ -31,7 +31,8 @@ namespace hw = example::weather::handwritten;
 // Reference implementation of the GENERATED handler interface.
 class ReferenceHandler : public WeatherHandler {
  public:
-  smithy::Outcome<GetCityOutput> GetCity(const GetCityInput& input) override {
+  smithy::Outcome<GetCityOutput> GetCity(const GetCityInput& input,
+                                         const smithy::server::RequestContext&) override {
     if (input.cityId != "seattle") {
       smithy::Error error = smithy::Error::Modeled("NoSuchResource", "no city: " + input.cityId);
       error.set_detail(NoSuchResource{.resourceType = "City"});
@@ -42,7 +43,8 @@ class ReferenceHandler : public WeatherHandler {
         .coordinates = CityCoordinates{.latitude = 47.6062F, .longitude = -122.3321F}};
   }
 
-  smithy::Outcome<DeleteCityOutput> DeleteCity(const DeleteCityInput& input) override {
+  smithy::Outcome<DeleteCityOutput> DeleteCity(const DeleteCityInput& input,
+                                               const smithy::server::RequestContext&) override {
     if (input.cityId != "seattle") {
       smithy::Error error = smithy::Error::Modeled("NoSuchResource", "no city: " + input.cityId);
       error.set_detail(NoSuchResource{.resourceType = "City"});
@@ -51,7 +53,8 @@ class ReferenceHandler : public WeatherHandler {
     return DeleteCityOutput{};
   }
 
-  smithy::Outcome<ListCitiesOutput> ListCities(const ListCitiesInput& input) override {
+  smithy::Outcome<ListCitiesOutput> ListCities(const ListCitiesInput& input,
+                                               const smithy::server::RequestContext&) override {
     ListCitiesOutput out;
     if (!input.nextToken.has_value()) {
       out.items.push_back(CitySummary{.cityId = "seattle", .name = "Seattle"});
@@ -64,17 +67,20 @@ class ReferenceHandler : public WeatherHandler {
     return out;
   }
 
-  smithy::Outcome<GetForecastOutput> GetForecast(const GetForecastInput& input) override {
+  smithy::Outcome<GetForecastOutput> GetForecast(const GetForecastInput& input,
+                                                 const smithy::server::RequestContext&) override {
     (void)input;
     return GetForecastOutput{.chanceOfRain = 0.75F};
   }
 
-  smithy::Outcome<GetCurrentTimeOutput> GetCurrentTime(const GetCurrentTimeInput& input) override {
+  smithy::Outcome<GetCurrentTimeOutput> GetCurrentTime(
+      const GetCurrentTimeInput& input, const smithy::server::RequestContext&) override {
     (void)input;
     return GetCurrentTimeOutput{.time = smithy::Timestamp::FromEpochMilliseconds(1398796238500)};
   }
 
-  smithy::Outcome<GetReportOutput> GetReport(const GetReportInput& input) override {
+  smithy::Outcome<GetReportOutput> GetReport(const GetReportInput& input,
+                                             const smithy::server::RequestContext&) override {
     // Echo the decoded path so tests can assert label-decoding fidelity.
     return GetReportOutput{.path = input.reportPath,
                            .sizeBytes = static_cast<std::int64_t>(input.reportPath.size())};
@@ -113,7 +119,8 @@ TEST_F(GeneratedServerEndToEndTest, GetCityRoundTrips) {
 // assert the status and correlation-id header the client abstraction hides.
 class ThrowingHandler : public ReferenceHandler {
  public:
-  smithy::Outcome<GetCityOutput> GetCity(const GetCityInput& input) override {
+  smithy::Outcome<GetCityOutput> GetCity(const GetCityInput& input,
+                                         const smithy::server::RequestContext&) override {
     (void)input;
     throw std::runtime_error("handler blew up mid-request");
   }
@@ -320,7 +327,8 @@ TEST_F(GeneratedServerEndToEndTest, PaginatorRangeForWalksAllPages) {
 TEST_F(GeneratedServerEndToEndTest, PaginatorRangeForYieldsTheErrorOnceThenEnds) {
   class FailsOnSecondPage final : public ReferenceHandler {
    public:
-    smithy::Outcome<ListCitiesOutput> ListCities(const ListCitiesInput& input) override {
+    smithy::Outcome<ListCitiesOutput> ListCities(const ListCitiesInput& input,
+                                                 const smithy::server::RequestContext&) override {
       if (input.nextToken.has_value()) {
         return smithy::Error::Modeled("NoSuchResource", "page evaporated");
       }
@@ -462,7 +470,8 @@ TEST_F(GeneratedServerEndToEndTest, PaginatorRoundTripsHostileTokens) {
   static const std::string kNastyToken = "a b&c=d?e+f/g%h#i";
   class PagingHandler final : public ReferenceHandler {
    public:
-    smithy::Outcome<ListCitiesOutput> ListCities(const ListCitiesInput& input) override {
+    smithy::Outcome<ListCitiesOutput> ListCities(const ListCitiesInput& input,
+                                                 const smithy::server::RequestContext&) override {
       ListCitiesOutput out;
       if (!input.nextToken.has_value()) {
         out.items.push_back(CitySummary{.cityId = "page1", .name = "Page One"});

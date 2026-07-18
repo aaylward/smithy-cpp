@@ -530,7 +530,7 @@ final class ProtocolTestGenerator {
       String opName = CppReservedWords.escape(operation.getId().getName());
       String inputType = context.cppSymbols().toSymbol(inputOf(operation)).getName();
       w.openBlock(
-          "smithy::Outcome<$L> $L(const $L& input) override {",
+          "smithy::Outcome<$L> $L(const $L& input, const smithy::server::RequestContext&) override {",
           context.cppSymbols().toSymbol(outputOf(operation)).getName(),
           opName,
           inputType);
@@ -796,7 +796,7 @@ final class ProtocolTestGenerator {
         .append(opName)
         .append("(const ")
         .append(inputType)
-        .append("& input) override {\n");
+        .append("& input, const smithy::server::RequestContext&) override {\n");
     t.append("      (void)input;\n");
     if (error == null) {
       t.append("      return ")

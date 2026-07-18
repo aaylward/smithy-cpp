@@ -184,7 +184,7 @@ PutSinkRpcOutput RandomPutSinkRpcOutput(Rng& rng) {
 
 class ScriptedHandler final : public RoundTripRpcHandler {
   public:
-    smithy::Outcome<PingOutput> Ping(const PingInput& input) override {
+    smithy::Outcome<PingOutput> Ping(const PingInput& input, const smithy::server::RequestContext&) override {
       lastPing = input;
       if (nextPingError.has_value()) return *nextPingError;
       return nextPingOutput;
@@ -192,7 +192,7 @@ class ScriptedHandler final : public RoundTripRpcHandler {
     std::optional<PingInput> lastPing;
     PingOutput nextPingOutput{};
     std::optional<smithy::Error> nextPingError;
-    smithy::Outcome<PutSinkRpcOutput> PutSinkRpc(const PutSinkRpcInput& input) override {
+    smithy::Outcome<PutSinkRpcOutput> PutSinkRpc(const PutSinkRpcInput& input, const smithy::server::RequestContext&) override {
       lastPutSinkRpc = input;
       if (nextPutSinkRpcError.has_value()) return *nextPutSinkRpcError;
       return nextPutSinkRpcOutput;

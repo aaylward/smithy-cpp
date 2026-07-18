@@ -155,7 +155,7 @@ final class IntegrationTestGenerator {
     for (OperationShape operation : operations) {
       String op = opName(operation);
       w.openBlock(
-          "smithy::Outcome<$L> $L(const $L& input) override {",
+          "smithy::Outcome<$L> $L(const $L& input, const smithy::server::RequestContext&) override {",
           typeName(output(operation)),
           op,
           typeName(input(operation)));

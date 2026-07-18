@@ -165,7 +165,7 @@ final class SmokeTestGenerator {
     w.write("public:").indent();
     for (OperationShape operation : operations) {
       w.openBlock(
-          "smithy::Outcome<$L> $L(const $L& input) override {",
+          "smithy::Outcome<$L> $L(const $L& input, const smithy::server::RequestContext&) override {",
           typeName(output(operation)),
           CppReservedWords.escape(operation.getId().getName()),
           typeName(input(operation)));
@@ -234,7 +234,7 @@ final class SmokeTestGenerator {
     w.openBlock("class FailingHandler final : public SmokeHandler {");
     w.write("public:").indent();
     w.openBlock(
-        "smithy::Outcome<$L> $L(const $L& input) override {",
+        "smithy::Outcome<$L> $L(const $L& input, const smithy::server::RequestContext&) override {",
         typeName(output(errorOp)),
         opName,
         typeName(input(errorOp)));

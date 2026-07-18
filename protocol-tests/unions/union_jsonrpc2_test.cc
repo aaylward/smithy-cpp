@@ -194,7 +194,8 @@ TEST_F(UnionJsonRpc2ClientTest, RejectsInvalidUnionsInResultEnvelopes) {
 
 class RecordingHandler : public RoundTripJsonRpcHandler {
  public:
-  smithy::Outcome<PutSinkRpcOutput> PutSinkRpc(const PutSinkRpcInput& input) override {
+  smithy::Outcome<PutSinkRpcOutput> PutSinkRpc(const PutSinkRpcInput& input,
+                                               const smithy::server::RequestContext&) override {
     last = input;
     PutSinkRpcOutput output;
     output.sinkId = input.sinkId;

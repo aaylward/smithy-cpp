@@ -165,7 +165,7 @@ GetReportOutput RandomGetReportOutput(Rng& rng) {
 
 class ScriptedHandler final : public WeatherHandler {
   public:
-    smithy::Outcome<DeleteCityOutput> DeleteCity(const DeleteCityInput& input) override {
+    smithy::Outcome<DeleteCityOutput> DeleteCity(const DeleteCityInput& input, const smithy::server::RequestContext&) override {
       lastDeleteCity = input;
       if (nextDeleteCityError.has_value()) return *nextDeleteCityError;
       return nextDeleteCityOutput;
@@ -173,7 +173,7 @@ class ScriptedHandler final : public WeatherHandler {
     std::optional<DeleteCityInput> lastDeleteCity;
     DeleteCityOutput nextDeleteCityOutput{};
     std::optional<smithy::Error> nextDeleteCityError;
-    smithy::Outcome<GetCityOutput> GetCity(const GetCityInput& input) override {
+    smithy::Outcome<GetCityOutput> GetCity(const GetCityInput& input, const smithy::server::RequestContext&) override {
       lastGetCity = input;
       if (nextGetCityError.has_value()) return *nextGetCityError;
       return nextGetCityOutput;
@@ -181,7 +181,7 @@ class ScriptedHandler final : public WeatherHandler {
     std::optional<GetCityInput> lastGetCity;
     GetCityOutput nextGetCityOutput{};
     std::optional<smithy::Error> nextGetCityError;
-    smithy::Outcome<GetCurrentTimeOutput> GetCurrentTime(const GetCurrentTimeInput& input) override {
+    smithy::Outcome<GetCurrentTimeOutput> GetCurrentTime(const GetCurrentTimeInput& input, const smithy::server::RequestContext&) override {
       lastGetCurrentTime = input;
       if (nextGetCurrentTimeError.has_value()) return *nextGetCurrentTimeError;
       return nextGetCurrentTimeOutput;
@@ -189,7 +189,7 @@ class ScriptedHandler final : public WeatherHandler {
     std::optional<GetCurrentTimeInput> lastGetCurrentTime;
     GetCurrentTimeOutput nextGetCurrentTimeOutput{};
     std::optional<smithy::Error> nextGetCurrentTimeError;
-    smithy::Outcome<GetForecastOutput> GetForecast(const GetForecastInput& input) override {
+    smithy::Outcome<GetForecastOutput> GetForecast(const GetForecastInput& input, const smithy::server::RequestContext&) override {
       lastGetForecast = input;
       if (nextGetForecastError.has_value()) return *nextGetForecastError;
       return nextGetForecastOutput;
@@ -197,7 +197,7 @@ class ScriptedHandler final : public WeatherHandler {
     std::optional<GetForecastInput> lastGetForecast;
     GetForecastOutput nextGetForecastOutput{};
     std::optional<smithy::Error> nextGetForecastError;
-    smithy::Outcome<GetReportOutput> GetReport(const GetReportInput& input) override {
+    smithy::Outcome<GetReportOutput> GetReport(const GetReportInput& input, const smithy::server::RequestContext&) override {
       lastGetReport = input;
       if (nextGetReportError.has_value()) return *nextGetReportError;
       return nextGetReportOutput;
@@ -205,7 +205,7 @@ class ScriptedHandler final : public WeatherHandler {
     std::optional<GetReportInput> lastGetReport;
     GetReportOutput nextGetReportOutput{};
     std::optional<smithy::Error> nextGetReportError;
-    smithy::Outcome<ListCitiesOutput> ListCities(const ListCitiesInput& input) override {
+    smithy::Outcome<ListCitiesOutput> ListCities(const ListCitiesInput& input, const smithy::server::RequestContext&) override {
       lastListCities = input;
       if (nextListCitiesError.has_value()) return *nextListCitiesError;
       return nextListCitiesOutput;

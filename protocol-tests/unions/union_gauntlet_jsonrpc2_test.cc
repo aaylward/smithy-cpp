@@ -93,7 +93,8 @@ std::vector<Cell> MemberCells() {
 
 class EchoHandler : public UnionGauntletHandler {
  public:
-  smithy::Outcome<EchoChoiceOutput> EchoChoice(const EchoChoiceInput& input) override {
+  smithy::Outcome<EchoChoiceOutput> EchoChoice(const EchoChoiceInput& input,
+                                               const smithy::server::RequestContext&) override {
     last = input;
     if (reject) {
       smithy::Error error = smithy::Error::Modeled("ChoiceRejected", "no thanks");

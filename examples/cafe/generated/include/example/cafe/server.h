@@ -14,14 +14,18 @@ namespace example::cafe {
 /// Implement one method per operation. Return a modeled error as
 /// smithy::Error::Modeled("<ErrorShapeName>", message), optionally with the
 /// typed error structure attached via set_detail() so it serializes fully.
+/// The context carries what the typed input doesn't model: the raw request
+/// (unmodeled headers, the inbound traceparent, the transport-stamped peer
+/// address) plus the routing captures; leave the parameter unnamed when an
+/// operation has no use for it.
 /// Implementations must be thread-safe: transports may invoke any mix of
 /// operations concurrently on the one handler instance.
 class CafeHandler {
   public:
     virtual ~CafeHandler() = default;
 
-    virtual smithy::Outcome<GetOrderOutput> GetOrder(const GetOrderInput& input) = 0;
-    virtual smithy::Outcome<OrderCoffeeOutput> OrderCoffee(const OrderCoffeeInput& input) = 0;
+    virtual smithy::Outcome<GetOrderOutput> GetOrder(const GetOrderInput& input, const smithy::server::RequestContext& context) = 0;
+    virtual smithy::Outcome<OrderCoffeeOutput> OrderCoffee(const OrderCoffeeInput& input, const smithy::server::RequestContext& context) = 0;
 };
 
 /// rpcv2Cbor server for example.cafe#Cafe: routing, deserialization, handler dispatch,

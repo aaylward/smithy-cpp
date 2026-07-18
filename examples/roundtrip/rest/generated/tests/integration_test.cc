@@ -227,7 +227,7 @@ UploadAttachmentOutput RandomUploadAttachmentOutput(Rng& rng) {
 
 class ScriptedHandler final : public RoundTripRestHandler {
   public:
-    smithy::Outcome<DescribeSinkOutput> DescribeSink(const DescribeSinkInput& input) override {
+    smithy::Outcome<DescribeSinkOutput> DescribeSink(const DescribeSinkInput& input, const smithy::server::RequestContext&) override {
       lastDescribeSink = input;
       if (nextDescribeSinkError.has_value()) return *nextDescribeSinkError;
       return nextDescribeSinkOutput;
@@ -235,7 +235,7 @@ class ScriptedHandler final : public RoundTripRestHandler {
     std::optional<DescribeSinkInput> lastDescribeSink;
     DescribeSinkOutput nextDescribeSinkOutput{};
     std::optional<smithy::Error> nextDescribeSinkError;
-    smithy::Outcome<PutSinkOutput> PutSink(const PutSinkInput& input) override {
+    smithy::Outcome<PutSinkOutput> PutSink(const PutSinkInput& input, const smithy::server::RequestContext&) override {
       lastPutSink = input;
       if (nextPutSinkError.has_value()) return *nextPutSinkError;
       return nextPutSinkOutput;
@@ -243,7 +243,7 @@ class ScriptedHandler final : public RoundTripRestHandler {
     std::optional<PutSinkInput> lastPutSink;
     PutSinkOutput nextPutSinkOutput{};
     std::optional<smithy::Error> nextPutSinkError;
-    smithy::Outcome<UploadAttachmentOutput> UploadAttachment(const UploadAttachmentInput& input) override {
+    smithy::Outcome<UploadAttachmentOutput> UploadAttachment(const UploadAttachmentInput& input, const smithy::server::RequestContext&) override {
       lastUploadAttachment = input;
       if (nextUploadAttachmentError.has_value()) return *nextUploadAttachmentError;
       return nextUploadAttachmentOutput;

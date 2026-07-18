@@ -20,6 +20,7 @@
 #include "smithy/client/config.h"
 #include "smithy/http/loopback.h"
 #include "smithy/http/socket_transport.h"
+#include "smithy/http/trace_context.h"
 #include "smithy/server/middleware.h"
 
 namespace {
@@ -37,14 +38,16 @@ using acme::todo::TodoServer;
 // teaches; QuickstartMirrorTest fails if the two ever diverge.
 class InMemoryHandler final : public TodoHandler {
  public:
-  smithy::Outcome<AddTaskOutput> AddTask(const AddTaskInput& input) override {
+  smithy::Outcome<AddTaskOutput> AddTask(const AddTaskInput& input,
+                                         const smithy::server::RequestContext&) override {
     const std::lock_guard<std::mutex> lock(mu_);
     const std::string id = "task-" + std::to_string(next_id_++);
     titles_[id] = input.title;
     return AddTaskOutput{.taskId = id, .title = input.title};
   }
 
-  smithy::Outcome<GetTaskOutput> GetTask(const GetTaskInput& input) override {
+  smithy::Outcome<GetTaskOutput> GetTask(const GetTaskInput& input,
+                                         const smithy::server::RequestContext&) override {
     const std::lock_guard<std::mutex> lock(mu_);
     const auto it = titles_.find(input.taskId);
     if (it == titles_.end()) {
@@ -129,11 +132,13 @@ TEST(TodoCborTest, SameModelServesRpcv2Cbor) {
   class CborHandler final : public acme::todo::cbor::TodoHandler {
    public:
     smithy::Outcome<acme::todo::cbor::AddTaskOutput> AddTask(
-        const acme::todo::cbor::AddTaskInput& input) override {
+        const acme::todo::cbor::AddTaskInput& input,
+        const smithy::server::RequestContext&) override {
       return acme::todo::cbor::AddTaskOutput{.taskId = "task-1", .title = input.title};
     }
     smithy::Outcome<acme::todo::cbor::GetTaskOutput> GetTask(
-        const acme::todo::cbor::GetTaskInput& input) override {
+        const acme::todo::cbor::GetTaskInput& input,
+        const smithy::server::RequestContext&) override {
       smithy::Error error = smithy::Error::Modeled("NoSuchTask", "no task: " + input.taskId);
       error.set_detail(acme::todo::cbor::NoSuchTask{.message = "no task: " + input.taskId});
       return error;
@@ -165,11 +170,13 @@ TEST(TodoJsonRpcTest, SameModelServesJsonRpc2) {
   class JsonRpcHandler final : public acme::todo::jsonrpc::TodoHandler {
    public:
     smithy::Outcome<acme::todo::jsonrpc::AddTaskOutput> AddTask(
-        const acme::todo::jsonrpc::AddTaskInput& input) override {
+        const acme::todo::jsonrpc::AddTaskInput& input,
+        const smithy::server::RequestContext&) override {
       return acme::todo::jsonrpc::AddTaskOutput{.taskId = "task-1", .title = input.title};
     }
     smithy::Outcome<acme::todo::jsonrpc::GetTaskOutput> GetTask(
-        const acme::todo::jsonrpc::GetTaskInput& input) override {
+        const acme::todo::jsonrpc::GetTaskInput& input,
+        const smithy::server::RequestContext&) override {
       smithy::Error error = smithy::Error::Modeled("NoSuchTask", "no task: " + input.taskId);
       error.set_detail(acme::todo::jsonrpc::NoSuchTask{.message = "no task: " + input.taskId});
       return error;

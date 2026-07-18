@@ -365,7 +365,7 @@ final class ProtocolSupport {
       ValidationGenerator validation) {
     validation.writeRouteGuard(w, operation, spec.extraArgs());
     w.write(
-        "auto outcome = $L$L(input);",
+        "auto outcome = $L$L(input, context);",
         handlerAccess,
         CppReservedWords.escape(operation.getId().getName()));
     w.write("if (!outcome) return ErrorToResponse(outcome.error()$L);", spec.extraArgs());

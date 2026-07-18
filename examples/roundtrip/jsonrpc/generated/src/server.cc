@@ -127,7 +127,7 @@ smithy::http::HttpResponse ValidationErrorResponse(const std::vector<smithy::ser
   return response;
 }
 
-smithy::http::HttpResponse HandlePutSinkRpc(RoundTripJsonRpcHandler& handler, const smithy::Document& params, const smithy::Document& id) {
+smithy::http::HttpResponse HandlePutSinkRpc(RoundTripJsonRpcHandler& handler, const smithy::Document& params, const smithy::Document& id, const smithy::server::RequestContext& context) {
   PutSinkRpcInput input{};
   if (!params.is_map()) return JsonRpcError(-32602, "SerializationException", "params must be an object", {}, id);
   auto parsed = DeserializePutSinkRpcInput(params);
@@ -136,7 +136,7 @@ smithy::http::HttpResponse HandlePutSinkRpc(RoundTripJsonRpcHandler& handler, co
   std::vector<smithy::server::ValidationFailure> validation_failures;
   ValidatePutSinkRpcInput(input, "", &validation_failures);
   if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures, id);
-  auto outcome = handler.PutSinkRpc(input);
+  auto outcome = handler.PutSinkRpc(input, context);
   if (!outcome) return ErrorToResponse(outcome.error(), id);
   smithy::DocumentMap envelope;
   envelope.emplace("jsonrpc", smithy::Document("2.0"));
@@ -156,7 +156,7 @@ RoundTripJsonRpcServer::RoundTripJsonRpcServer(std::shared_ptr<RoundTripJsonRpcH
   // The route table is derived from the model's @http traits; conflicts are
   // a modeling error surfaced by Router::Add (checked at generation time in a
   // later phase), so registration results are intentionally discarded.
-  (void)router_->Add("POST", "/", [handler](const smithy::http::HttpRequest& raw_request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
+  (void)router_->Add("POST", "/", [handler](const smithy::http::HttpRequest& raw_request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     smithy::Document id;  // null until the envelope yields one (JSON-RPC 2.0 §5)
     smithy::http::HttpRequest request = raw_request;
     // @requestCompression(gzip): decode before parsing.
@@ -191,7 +191,7 @@ RoundTripJsonRpcServer::RoundTripJsonRpcServer(std::shared_ptr<RoundTripJsonRpcH
     if (params == nullptr || params->is_null()) params = &empty_params;
     const std::string& method_name = method->as_string();
     if (method_name == "PutSinkRpc") {
-      auto response = HandlePutSinkRpc(*handler, *params, id);
+      auto response = HandlePutSinkRpc(*handler, *params, id, context);
       response.operation = "PutSinkRpc";
       return response;
     }

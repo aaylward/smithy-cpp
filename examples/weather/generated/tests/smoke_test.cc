@@ -62,27 +62,27 @@ ListCitiesOutput MinimalListCitiesOutput() {
 
 class SmokeHandler : public WeatherHandler {
   public:
-    smithy::Outcome<DeleteCityOutput> DeleteCity(const DeleteCityInput& input) override {
+    smithy::Outcome<DeleteCityOutput> DeleteCity(const DeleteCityInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalDeleteCityOutput();
     }
-    smithy::Outcome<GetCityOutput> GetCity(const GetCityInput& input) override {
+    smithy::Outcome<GetCityOutput> GetCity(const GetCityInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalGetCityOutput();
     }
-    smithy::Outcome<GetCurrentTimeOutput> GetCurrentTime(const GetCurrentTimeInput& input) override {
+    smithy::Outcome<GetCurrentTimeOutput> GetCurrentTime(const GetCurrentTimeInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalGetCurrentTimeOutput();
     }
-    smithy::Outcome<GetForecastOutput> GetForecast(const GetForecastInput& input) override {
+    smithy::Outcome<GetForecastOutput> GetForecast(const GetForecastInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalGetForecastOutput();
     }
-    smithy::Outcome<GetReportOutput> GetReport(const GetReportInput& input) override {
+    smithy::Outcome<GetReportOutput> GetReport(const GetReportInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalGetReportOutput();
     }
-    smithy::Outcome<ListCitiesOutput> ListCities(const ListCitiesInput& input) override {
+    smithy::Outcome<ListCitiesOutput> ListCities(const ListCitiesInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalListCitiesOutput();
     }
@@ -178,7 +178,7 @@ TEST(WeatherSmokeTest, ListCitiesRoundTrips) {
 TEST(WeatherSmokeTest, ModeledErrorsMapAcrossTheWire) {
   class FailingHandler final : public SmokeHandler {
     public:
-      smithy::Outcome<DeleteCityOutput> DeleteCity(const DeleteCityInput& input) override {
+      smithy::Outcome<DeleteCityOutput> DeleteCity(const DeleteCityInput& input, const smithy::server::RequestContext&) override {
         (void)input;
         smithy::Error error = smithy::Error::Modeled("NoSuchResource", "smoke");
             auto detail = [] {

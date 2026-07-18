@@ -240,7 +240,7 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
 
     w.openBlock(
         "smithy::http::HttpResponse Handle$L($L& handler, const smithy::Document& params, "
-            + "const smithy::Document& id) {",
+            + "const smithy::Document& id, const smithy::server::RequestContext& context) {",
         opName,
         handlerType);
     w.write("$L input{};", inputType);
@@ -275,7 +275,7 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
     w.openBlock(
         "(void)router_->Add(\"POST\", \"/\", "
             + "[handler](const smithy::http::HttpRequest& $L, "
-            + "const smithy::server::RequestContext&) -> smithy::http::HttpResponse {",
+            + "const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {",
         anyCompressed ? "raw_request" : "request");
     w.write("smithy::Document id;  // null until the envelope yields one (JSON-RPC 2.0 §5)");
     if (anyCompressed) {
@@ -329,7 +329,7 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
       String wireName = operation.getId().getName();
       String opName = CppReservedWords.escape(wireName);
       w.openBlock("if (method_name == $S) {", wireName);
-      w.write("auto response = Handle$L(*handler, *params, id);", opName);
+      w.write("auto response = Handle$L(*handler, *params, id, context);", opName);
       w.write("response.operation = $S;", wireName);
       w.write("return response;");
       w.closeBlock("}");

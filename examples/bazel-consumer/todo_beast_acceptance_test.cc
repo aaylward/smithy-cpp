@@ -52,14 +52,16 @@ smithy::Outcome<TodoClient> MakeTodoClient(int port, const std::string& ca_pem =
 // "boom" title throws (the bug the framework must contain).
 class AcceptanceHandler final : public TodoHandler {
  public:
-  smithy::Outcome<AddTaskOutput> AddTask(const AddTaskInput& input) override {
+  smithy::Outcome<AddTaskOutput> AddTask(const AddTaskInput& input,
+                                         const smithy::server::RequestContext&) override {
     if (input.title == "boom") {
       throw std::runtime_error("consumer handler bug");
     }
     return AddTaskOutput{.taskId = "task-1", .title = input.title};
   }
 
-  smithy::Outcome<GetTaskOutput> GetTask(const GetTaskInput& input) override {
+  smithy::Outcome<GetTaskOutput> GetTask(const GetTaskInput& input,
+                                         const smithy::server::RequestContext&) override {
     smithy::Error error = smithy::Error::Modeled("NoSuchTask", "no task: " + input.taskId);
     error.set_detail(NoSuchTask{.message = "no task: " + input.taskId});
     return error;

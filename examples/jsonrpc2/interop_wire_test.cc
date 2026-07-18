@@ -22,11 +22,13 @@ namespace {
 
 class Handler final : public CalculatorHandler {
  public:
-  smithy::Outcome<AddOutput> Add(const AddInput& input) override {
+  smithy::Outcome<AddOutput> Add(const AddInput& input,
+                                 const smithy::server::RequestContext&) override {
     return AddOutput{.sum = input.a + input.b};
   }
 
-  smithy::Outcome<DivideOutput> Divide(const DivideInput& input) override {
+  smithy::Outcome<DivideOutput> Divide(const DivideInput& input,
+                                       const smithy::server::RequestContext&) override {
     if (input.divisor == 0) {
       smithy::Error error = smithy::Error::Modeled("DivisionByZero", "division by zero");
       error.set_detail(DivisionByZero{.message = "division by zero"});

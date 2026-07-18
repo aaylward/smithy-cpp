@@ -460,7 +460,7 @@ final class HttpJsonServerGenerator {
           "if (!validation_failures.empty()) "
               + "return ValidationErrorResponse(validation_failures);");
     }
-    w.write("auto outcome = handler->$L(*input);", opName);
+    w.write("auto outcome = handler->$L(*input, context);", opName);
     w.write("if (!outcome) return ErrorToResponse(outcome.error());");
     w.write("return Build$LResponse(*outcome);", opName);
     w.closeBlock("}, $S);", operation.getId().getName());

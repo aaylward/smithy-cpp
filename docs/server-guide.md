@@ -16,17 +16,28 @@ Guard shared state (the quickstart's in-memory handler shows the minimal mutex p
 
 class MyHandler final : public example::weather::WeatherHandler {
  public:
-  smithy::Outcome<GetCityOutput> GetCity(const GetCityInput& input) override {
+  smithy::Outcome<GetCityOutput> GetCity(const GetCityInput& input,
+                                         const smithy::server::RequestContext& context) override {
     if (/* not found */) {
       smithy::Error error = smithy::Error::Modeled("NoSuchResource", "no city: " + input.cityId);
       error.set_detail(NoSuchResource{.resourceType = "City"});  // serializes the typed body
       return error;
     }
+    std::clog << "GetCity from " << context.request->peer_address << "\n";  // or leave it unnamed
     return GetCityOutput{...};
   }
   // ... one method per operation
 };
 ```
+
+- **Request metadata**: the second parameter carries what the typed input doesn't model
+  (issue #46). `context.request` is the raw `smithy::http::HttpRequest`: read unmodeled
+  headers (`context.request->headers.Get("x-tenant")`), the transport-stamped client
+  address (`context.request->peer_address`, `"ip:port"`, empty on the in-memory Loopback),
+  or the inbound `traceparent` — parse it with `smithy::http::ParseTraceparent` and
+  `GenerateSpanId` (`smithy/http/trace_context.h`) to open child spans. `context.labels`
+  and `context.query_params` hold the decoded routing captures. Handlers that need none of
+  it leave the parameter unnamed.
 
 - **Modeled errors**: return `smithy::Error::Modeled("<ErrorShapeName>", message)`. The server
   maps the code to the shape's `@httpError` status (else 400/`@error("server")` → 500) and the

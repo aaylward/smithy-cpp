@@ -14,24 +14,28 @@ namespace smithy::protocoltests::simplerestjson {
 /// Implement one method per operation. Return a modeled error as
 /// smithy::Error::Modeled("<ErrorShapeName>", message), optionally with the
 /// typed error structure attached via set_detail() so it serializes fully.
+/// The context carries what the typed input doesn't model: the raw request
+/// (unmodeled headers, the inbound traceparent, the transport-stamped peer
+/// address) plus the routing captures; leave the parameter unnamed when an
+/// operation has no use for it.
 /// Implementations must be thread-safe: transports may invoke any mix of
 /// operations concurrently on the one handler instance.
 class PizzaAdminServiceHandler {
   public:
     virtual ~PizzaAdminServiceHandler() = default;
 
-    virtual smithy::Outcome<AddMenuItemOutput> AddMenuItem(const AddMenuItemInput& input) = 0;
-    virtual smithy::Outcome<CustomCodeOutput> CustomCode(const CustomCodeInput& input) = 0;
-    virtual smithy::Outcome<GetEnumOutput> GetEnum(const GetEnumInput& input) = 0;
-    virtual smithy::Outcome<GetIntEnumOutput> GetIntEnum(const GetIntEnumInput& input) = 0;
-    virtual smithy::Outcome<GetMenuOutput> GetMenu(const GetMenuInput& input) = 0;
-    virtual smithy::Outcome<HeaderEndpointOutput> HeaderEndpoint(const HeaderEndpointInput& input) = 0;
-    virtual smithy::Outcome<HealthOutput> Health(const HealthInput& input) = 0;
-    virtual smithy::Outcome<HttpPayloadRequiredWithDefaultOutput> HttpPayloadRequiredWithDefault(const HttpPayloadRequiredWithDefaultInput& input) = 0;
-    virtual smithy::Outcome<HttpPayloadWithDefaultOutput> HttpPayloadWithDefault(const HttpPayloadWithDefaultInput& input) = 0;
-    virtual smithy::Outcome<OpenUnionsOutput> OpenUnions(const OpenUnionsInput& input) = 0;
-    virtual smithy::Outcome<RoundTripOutput> RoundTrip(const RoundTripInput& input) = 0;
-    virtual smithy::Outcome<VersionOutput> Version(const VersionInput& input) = 0;
+    virtual smithy::Outcome<AddMenuItemOutput> AddMenuItem(const AddMenuItemInput& input, const smithy::server::RequestContext& context) = 0;
+    virtual smithy::Outcome<CustomCodeOutput> CustomCode(const CustomCodeInput& input, const smithy::server::RequestContext& context) = 0;
+    virtual smithy::Outcome<GetEnumOutput> GetEnum(const GetEnumInput& input, const smithy::server::RequestContext& context) = 0;
+    virtual smithy::Outcome<GetIntEnumOutput> GetIntEnum(const GetIntEnumInput& input, const smithy::server::RequestContext& context) = 0;
+    virtual smithy::Outcome<GetMenuOutput> GetMenu(const GetMenuInput& input, const smithy::server::RequestContext& context) = 0;
+    virtual smithy::Outcome<HeaderEndpointOutput> HeaderEndpoint(const HeaderEndpointInput& input, const smithy::server::RequestContext& context) = 0;
+    virtual smithy::Outcome<HealthOutput> Health(const HealthInput& input, const smithy::server::RequestContext& context) = 0;
+    virtual smithy::Outcome<HttpPayloadRequiredWithDefaultOutput> HttpPayloadRequiredWithDefault(const HttpPayloadRequiredWithDefaultInput& input, const smithy::server::RequestContext& context) = 0;
+    virtual smithy::Outcome<HttpPayloadWithDefaultOutput> HttpPayloadWithDefault(const HttpPayloadWithDefaultInput& input, const smithy::server::RequestContext& context) = 0;
+    virtual smithy::Outcome<OpenUnionsOutput> OpenUnions(const OpenUnionsInput& input, const smithy::server::RequestContext& context) = 0;
+    virtual smithy::Outcome<RoundTripOutput> RoundTrip(const RoundTripInput& input, const smithy::server::RequestContext& context) = 0;
+    virtual smithy::Outcome<VersionOutput> Version(const VersionInput& input, const smithy::server::RequestContext& context) = 0;
 };
 
 /// simpleRestJson server for alloy.test#PizzaAdminService: routing, deserialization, handler dispatch,

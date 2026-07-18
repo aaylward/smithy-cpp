@@ -41,15 +41,15 @@ UploadAttachmentOutput MinimalUploadAttachmentOutput() {
 
 class SmokeHandler : public RoundTripRestHandler {
   public:
-    smithy::Outcome<DescribeSinkOutput> DescribeSink(const DescribeSinkInput& input) override {
+    smithy::Outcome<DescribeSinkOutput> DescribeSink(const DescribeSinkInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalDescribeSinkOutput();
     }
-    smithy::Outcome<PutSinkOutput> PutSink(const PutSinkInput& input) override {
+    smithy::Outcome<PutSinkOutput> PutSink(const PutSinkInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalPutSinkOutput();
     }
-    smithy::Outcome<UploadAttachmentOutput> UploadAttachment(const UploadAttachmentInput& input) override {
+    smithy::Outcome<UploadAttachmentOutput> UploadAttachment(const UploadAttachmentInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalUploadAttachmentOutput();
     }
@@ -114,7 +114,7 @@ TEST(RoundTripRestSmokeTest, UploadAttachmentRoundTrips) {
 TEST(RoundTripRestSmokeTest, ModeledErrorsMapAcrossTheWire) {
   class FailingHandler final : public SmokeHandler {
     public:
-      smithy::Outcome<DescribeSinkOutput> DescribeSink(const DescribeSinkInput& input) override {
+      smithy::Outcome<DescribeSinkOutput> DescribeSink(const DescribeSinkInput& input, const smithy::server::RequestContext&) override {
         (void)input;
         smithy::Error error = smithy::Error::Modeled("SinkNotFound", "smoke");
             auto detail = [] {

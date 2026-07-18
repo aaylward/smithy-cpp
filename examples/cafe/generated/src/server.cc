@@ -115,7 +115,7 @@ CafeServer::CafeServer(std::shared_ptr<CafeHandler> handler)
   // The route table is derived from the model's @http traits; conflicts are
   // a modeling error surfaced by Router::Add (checked at generation time in a
   // later phase), so registration results are intentionally discarded.
-  (void)router_->Add("POST", "/service/Cafe/operation/GetOrder", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
+  (void)router_->Add("POST", "/service/Cafe/operation/GetOrder", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
     }
@@ -138,7 +138,7 @@ CafeServer::CafeServer(std::shared_ptr<CafeHandler> handler)
     std::vector<smithy::server::ValidationFailure> validation_failures;
     ValidateGetOrderInput(input, "", &validation_failures);
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    auto outcome = handler->GetOrder(input);
+    auto outcome = handler->GetOrder(input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     smithy::http::HttpResponse response;
     response.headers.Set("smithy-protocol", "rpc-v2-cbor");
@@ -146,7 +146,7 @@ CafeServer::CafeServer(std::shared_ptr<CafeHandler> handler)
     response.body = smithy::cbor::Encode(SerializeGetOrderOutput(*outcome)).ToString();
     return response;
   }, "GetOrder");
-  (void)router_->Add("POST", "/service/Cafe/operation/OrderCoffee", [handler](const smithy::http::HttpRequest& raw_request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
+  (void)router_->Add("POST", "/service/Cafe/operation/OrderCoffee", [handler](const smithy::http::HttpRequest& raw_request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     smithy::http::HttpRequest request = raw_request;
     // @requestCompression(gzip): decode before parsing.
     if (const auto request_encoding = request.headers.Get("content-encoding"); request_encoding.has_value() && (*request_encoding == "gzip" || request_encoding->ends_with(", gzip"))) {
@@ -178,7 +178,7 @@ CafeServer::CafeServer(std::shared_ptr<CafeHandler> handler)
     std::vector<smithy::server::ValidationFailure> validation_failures;
     ValidateOrderCoffeeInput(input, "", &validation_failures);
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    auto outcome = handler->OrderCoffee(input);
+    auto outcome = handler->OrderCoffee(input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     smithy::http::HttpResponse response;
     response.headers.Set("smithy-protocol", "rpc-v2-cbor");

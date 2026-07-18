@@ -164,7 +164,7 @@ TEST(JsonRpc2InteropTest, EnvelopeDispatchThreadsTheRequestContext) {
                                    const smithy::server::RequestContext& context) override {
       const bool threaded = context.request != nullptr && context.request->method == "POST" &&
                             context.request->headers.Get("x-probe").value_or("") == "42";
-      return AddOutput{.sum = threaded ? 1 : 0};
+      return AddOutput{.sum = threaded ? 1.0 : 0.0};
     }
     smithy::Outcome<DivideOutput> Divide(const DivideInput&,
                                          const smithy::server::RequestContext&) override {

@@ -106,6 +106,46 @@ TEST(ServerDispatchTest, ReplacesAMalformedTraceparent) {
   EXPECT_TRUE(ParseTraceparent(seen).has_value()) << seen;
 }
 
+TEST(ServerDispatchTest, DuplicatedTraceparentsRestartTheTrace) {
+  // W3C counts multiple traceparent headers as malformed: the guard replaces
+  // them with exactly one fresh root, so nothing downstream sees two.
+  RequestHandler handler = [](const HttpRequest& request) {
+    HttpResponse response;
+    const auto all = request.headers.GetAll("traceparent");
+    response.headers.Set("x-count", std::to_string(all.size()));
+    response.headers.Set("x-seen", all.empty() ? "" : all.front());
+    return response;
+  };
+  HttpRequest request = SampleRequest();
+  request.headers.Add("traceparent", "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01");
+  request.headers.Add("traceparent", "00-11111111111111111111111111111111-2222222222222222-01");
+  const auto response = InvokeHandlerGuarded(handler, request);
+  EXPECT_EQ(response.headers.Get("x-count"), "1");
+  const auto seen = ParseTraceparent(response.headers.Get("x-seen").value_or(""));
+  ASSERT_TRUE(seen.has_value());
+  EXPECT_NE(seen->trace_id, "0af7651916cd43dd8448eb211c80319c");
+  EXPECT_NE(seen->trace_id, "11111111111111111111111111111111");
+}
+
+TEST(ServerDispatchTest, RestartingTheTraceDropsTheStaleTracestate) {
+  // Vendor state belongs to the trace it arrived with: a restart discards
+  // it, while a continued trace keeps it.
+  RequestHandler handler = [](const HttpRequest& request) {
+    HttpResponse response;
+    response.headers.Set("x-tracestate", request.headers.Get("tracestate").value_or("<none>"));
+    return response;
+  };
+  HttpRequest restarted = SampleRequest();
+  restarted.headers.Set("traceparent", "not-a-traceparent");
+  restarted.headers.Set("tracestate", "vendor=stale");
+  EXPECT_EQ(InvokeHandlerGuarded(handler, restarted).headers.Get("x-tracestate"), "<none>");
+
+  HttpRequest continued = SampleRequest();
+  continued.headers.Set("traceparent", "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01");
+  continued.headers.Set("tracestate", "vendor=live");
+  EXPECT_EQ(InvokeHandlerGuarded(handler, continued).headers.Get("x-tracestate"), "vendor=live");
+}
+
 TEST(ServerDispatchTest, ExceptionCorrelationIdIsTheRequestsTraceId) {
   // One identity per request: the 500's correlation id is the trace id —
   // inbound when the client sent one, minted otherwise — so the clog line,

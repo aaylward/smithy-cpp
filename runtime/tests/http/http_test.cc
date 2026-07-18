@@ -208,6 +208,16 @@ TEST(LoopbackTest, PeerAddressPassesThroughUnchanged) {
   EXPECT_EQ(loopback.Send(stamped)->headers.Get("x-peer"), "203.0.113.7:52814");
 }
 
+TEST(LoopbackTest, SendLeavesTheCallersRequestUnminted) {
+  // Send promises the caller's request is untouched: the ingress mints on
+  // the server-side copy (ADR-0011), never on the client's object.
+  Loopback loopback;
+  ASSERT_TRUE(loopback.Start([](const HttpRequest&) { return HttpResponse{}; }).ok());
+  HttpRequest request;
+  ASSERT_TRUE(loopback.Send(request).ok());
+  EXPECT_FALSE(request.headers.Has("traceparent"));
+}
+
 TEST(LoopbackTest, AsyncSendUsesSameHandler) {
   Loopback loopback;
   ASSERT_TRUE(loopback.Start([](const HttpRequest&) { return HttpResponse{204, {}, ""}; }).ok());

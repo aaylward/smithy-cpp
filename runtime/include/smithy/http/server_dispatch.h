@@ -23,10 +23,12 @@ std::string FormatPeerAddress(const sockaddr* address, socklen_t length);
 // and terminating the whole process.
 //
 // This is also where the server mints the request's trace identity
-// (ADR-0011): a valid inbound traceparent continues verbatim, while an
-// absent or malformed one is replaced with a fresh root context written into
-// the request's headers — so Observe, the router, and handlers all see one
-// parseable identity on every request that enters the handler chain.
+// (ADR-0011): a single valid inbound traceparent continues verbatim, while
+// an absent, malformed, or duplicated one restarts the trace — a fresh root
+// context replaces it in the request's headers, and any inbound tracestate
+// is dropped with the abandoned trace — so Observe, the router, and
+// handlers all see exactly one parseable identity on every request that
+// enters the handler chain.
 //
 // The synthesized 500's "x-correlation-id" header (and the minimal JSON body
 // repeating it) carries that trace id; the same id plus the exception's

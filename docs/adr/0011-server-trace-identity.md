@@ -34,8 +34,10 @@ Mint in `InvokeHandlerGuarded` (option 1), into the header itself:
 
 - A valid inbound `traceparent` continues verbatim — the caller's trace is joined, and the
   caller's span id is preserved for `Observe`.
-- An absent or malformed one is replaced with a fresh root context
-  (`GenerateTraceContext()`), per W3C trace-context's restart-the-trace rule.
+- An absent, malformed, or duplicated one (W3C counts multiple `traceparent` headers as
+  malformed) is replaced with a fresh root context (`GenerateTraceContext()`), per W3C
+  trace-context's restart-the-trace rule; a restart also drops any inbound `tracestate`,
+  since vendor state from the abandoned trace must not pair with the fresh root.
 - The header, not a parallel field, carries the identity: every existing consumer —
   `Observe`'s header read, handlers via `context.request`, future request forwarding — sees
   one consistent story with zero new API surface, exactly as if a conforming client had

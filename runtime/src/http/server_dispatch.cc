@@ -13,14 +13,18 @@ namespace smithy::http {
 namespace {
 
 // The mint half of the guard's contract (see server_dispatch.h and
-// ADR-0011): valid inbound traceparent kept verbatim, anything else
-// replaced with a fresh root, so the handler chain always sees one.
+// ADR-0011): a single valid inbound traceparent is kept verbatim, anything
+// else — absent, malformed, or duplicated (which W3C trace-context counts
+// as malformed) — restarts the trace, so the handler chain always sees
+// exactly one. A restart also drops any inbound tracestate: vendor state
+// from the abandoned trace must not pair with the fresh root.
 void EnsureInboundTraceIdentity(HttpRequest& request) {
-  const auto header = request.headers.Get("traceparent");
-  if (header.has_value() && ParseTraceparent(*header).has_value()) {
+  const auto headers = request.headers.GetAll("traceparent");
+  if (headers.size() == 1 && ParseTraceparent(headers.front()).has_value()) {
     return;
   }
   request.headers.Set("traceparent", FormatTraceparent(GenerateTraceContext()));
+  request.headers.Remove("tracestate");
 }
 
 HttpResponse InternalError(const HttpRequest& request, const std::string& what) {

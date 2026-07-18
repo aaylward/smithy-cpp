@@ -183,7 +183,7 @@ void SocketHttpServer::AcceptLoop() {
         request.body = std::move(message->body);
         request.peer_address =
             FormatPeerAddress(reinterpret_cast<const sockaddr*>(&peer), peer_length);
-        response = InvokeHandlerGuarded(handler_, request);
+        response = InvokeHandlerGuarded(handler_, std::move(request));
       }
     } else {
       response = HttpResponse{400, {}, message.error().message()};

@@ -9,6 +9,9 @@
 #include <string>
 #include <vector>
 
+#include "smithy/http/loopback.h"
+#include "smithy/http/trace_context.h"
+
 namespace smithy::server {
 namespace {
 
@@ -98,6 +101,26 @@ TEST(ObserveTest, ReportsMethodTargetStatusAndDuration) {
   EXPECT_EQ(observations[0].target, "/cities/1");
   EXPECT_EQ(observations[0].status, 404);
   EXPECT_EQ(observations[0].duration, std::chrono::microseconds(750));
+}
+
+TEST(ObserveTest, TracesAreNeverEmptyWhenServedThroughATransport) {
+  // ADR-0011: the transport ingress (server_dispatch.h) mints a root
+  // traceparent when the client sent none, so an Observe composed under any
+  // transport reports a parseable trace identity for every request. (Only a
+  // handler chain driven directly in tests sees an empty trace_parent.)
+  std::vector<RequestObservation> observations;
+  auto handler = Chain({Observe([&observations](const RequestObservation& observation) {
+                         observations.push_back(observation);
+                       })},
+                       [](const http::HttpRequest&) { return http::HttpResponse{}; });
+
+  http::Loopback loopback;
+  ASSERT_TRUE(loopback.Start(handler).ok());
+  http::HttpRequest request;  // deliberately no traceparent
+  ASSERT_TRUE(loopback.Send(request).ok());
+  ASSERT_EQ(observations.size(), 1u);
+  EXPECT_TRUE(http::ParseTraceparent(observations[0].trace_parent).has_value())
+      << observations[0].trace_parent;
 }
 
 TEST(ObserveTest, OnStartFiresBeforeDispatch) {

@@ -6,6 +6,7 @@
 #include <string>
 
 #include "smithy/http/message.h"
+#include "smithy/http/trace_context.h"
 #include "smithy/http/transport.h"
 
 namespace smithy::http {
@@ -59,6 +60,71 @@ TEST(ServerDispatchTest, DistinctFailuresGetDistinctCorrelationIds) {
   const auto a = InvokeHandlerGuarded(handler, SampleRequest());
   const auto b = InvokeHandlerGuarded(handler, SampleRequest());
   EXPECT_NE(a.headers.Get("x-correlation-id"), b.headers.Get("x-correlation-id"));
+}
+
+TEST(ServerDispatchTest, MintsATraceIdentityWhenTheClientSentNone) {
+  // ADR-0011: every request entering the handler chain carries a parseable
+  // traceparent — a fresh root when the client sent none — and each request
+  // gets its own.
+  RequestHandler handler = [](const HttpRequest& request) {
+    HttpResponse response;
+    response.headers.Set("x-seen", request.headers.Get("traceparent").value_or(""));
+    return response;
+  };
+  const auto first = InvokeHandlerGuarded(handler, SampleRequest());
+  const auto second = InvokeHandlerGuarded(handler, SampleRequest());
+  const auto first_trace = ParseTraceparent(first.headers.Get("x-seen").value_or(""));
+  const auto second_trace = ParseTraceparent(second.headers.Get("x-seen").value_or(""));
+  ASSERT_TRUE(first_trace.has_value());
+  ASSERT_TRUE(second_trace.has_value());
+  EXPECT_NE(first_trace->trace_id, second_trace->trace_id);
+}
+
+TEST(ServerDispatchTest, KeepsAValidInboundTraceparentVerbatim) {
+  RequestHandler handler = [](const HttpRequest& request) {
+    HttpResponse response;
+    response.headers.Set("x-seen", request.headers.Get("traceparent").value_or(""));
+    return response;
+  };
+  HttpRequest request = SampleRequest();
+  request.headers.Set("traceparent", "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01");
+  const auto response = InvokeHandlerGuarded(handler, request);
+  EXPECT_EQ(response.headers.Get("x-seen"),
+            "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01");
+}
+
+TEST(ServerDispatchTest, ReplacesAMalformedTraceparent) {
+  // The W3C restart-the-trace rule: unparseable identity is not propagated.
+  RequestHandler handler = [](const HttpRequest& request) {
+    HttpResponse response;
+    response.headers.Set("x-seen", request.headers.Get("traceparent").value_or(""));
+    return response;
+  };
+  HttpRequest request = SampleRequest();
+  request.headers.Set("traceparent", "not-a-traceparent");
+  const auto response = InvokeHandlerGuarded(handler, request);
+  const auto seen = response.headers.Get("x-seen").value_or("");
+  EXPECT_NE(seen, "not-a-traceparent");
+  EXPECT_TRUE(ParseTraceparent(seen).has_value()) << seen;
+}
+
+TEST(ServerDispatchTest, ExceptionCorrelationIdIsTheRequestsTraceId) {
+  // One identity per request: the 500's correlation id is the trace id —
+  // inbound when the client sent one, minted otherwise — so the clog line,
+  // the client-visible body, and the distributed trace all agree.
+  RequestHandler handler = [](const HttpRequest&) -> HttpResponse {
+    throw std::runtime_error("boom");
+  };
+  HttpRequest request = SampleRequest();
+  request.headers.Set("traceparent", "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01");
+  const auto continued = InvokeHandlerGuarded(handler, request);
+  EXPECT_EQ(continued.headers.Get("x-correlation-id").value_or(""),
+            "0af7651916cd43dd8448eb211c80319c");
+
+  const auto minted = InvokeHandlerGuarded(handler, SampleRequest());
+  const auto id = minted.headers.Get("x-correlation-id").value_or("");
+  EXPECT_EQ(id.size(), 32u) << id;  // a trace id, not the uuid fallback
+  EXPECT_NE(minted.body.find(id), std::string::npos);
 }
 
 TEST(ServerDispatchTest, EmptyHandlerIsA503NotACrash) {

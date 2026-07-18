@@ -19,6 +19,7 @@
 #include "smithy/client/config.h"
 #include "smithy/http/beast_transport.h"
 #include "smithy/http/message.h"
+#include "smithy/http/trace_context.h"
 #include "smithy/http/transport.h"
 #include "smithy/testing/tls_test_identity.h"
 
@@ -96,6 +97,30 @@ TEST(BeastClientTest, SurvivesServerRestartBetweenRequests) {
   ASSERT_TRUE(response.ok()) << response.error().message();
   EXPECT_EQ(response->body, "two");
   server->Stop();
+}
+
+TEST(BeastClientTest, MintsDistinctTraceIdsAcrossKeepAliveRequests) {
+  // ADR-0011 on the production transport: minting is per request, not per
+  // connection — two requests riding one pooled keep-alive connection get
+  // two identities.
+  BeastServerTransport server({.port = 0, .threads = 1});
+  ASSERT_TRUE(server
+                  .Start([](const HttpRequest& request) {
+                    HttpResponse response;
+                    response.headers.Set("x-trace",
+                                         request.headers.Get("traceparent").value_or(""));
+                    return response;
+                  })
+                  .ok());
+
+  BeastHttpClient client({.host = "127.0.0.1", .port = server.port()});
+  const auto first = client.Send(PostRequest("one"));
+  const auto second = client.Send(PostRequest("two"));  // rides the pooled connection
+  ASSERT_TRUE(first.ok() && second.ok());
+  const auto first_trace = ParseTraceparent(first->headers.Get("x-trace").value_or(""));
+  const auto second_trace = ParseTraceparent(second->headers.Get("x-trace").value_or(""));
+  ASSERT_TRUE(first_trace.has_value() && second_trace.has_value());
+  EXPECT_NE(first_trace->trace_id, second_trace->trace_id);
 }
 
 TEST(BeastClientTest, TlsRoundTripsWithCustomCa) {

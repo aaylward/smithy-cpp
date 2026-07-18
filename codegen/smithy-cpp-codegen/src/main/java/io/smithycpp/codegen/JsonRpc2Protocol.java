@@ -240,7 +240,9 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
 
     w.openBlock(
         "smithy::http::HttpResponse Handle$L($L& handler, const smithy::Document& params, "
-            + "const smithy::Document& id, const smithy::server::RequestContext& context) {",
+            + "const smithy::Document& id, "
+            + ProtocolSupport.REQUEST_CONTEXT_PARAM
+            + " context) {",
         opName,
         handlerType);
     w.write("$L input{};", inputType);
@@ -275,7 +277,8 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
     w.openBlock(
         "(void)router_->Add(\"POST\", \"/\", "
             + "[handler](const smithy::http::HttpRequest& $L, "
-            + "const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {",
+            + ProtocolSupport.REQUEST_CONTEXT_PARAM
+            + " context) -> smithy::http::HttpResponse {",
         anyCompressed ? "raw_request" : "request");
     w.write("smithy::Document id;  // null until the envelope yields one (JSON-RPC 2.0 §5)");
     if (anyCompressed) {

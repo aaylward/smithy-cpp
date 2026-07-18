@@ -74,16 +74,15 @@ bhttp::response<bhttp::string_body> ToWireResponse(HttpResponse response, bool k
   return wire;
 }
 
-// "ip:port" of the connection's remote peer (v6 bracketed), for
-// HttpRequest::peer_address; empty when the socket can no longer report one.
+// The connection's remote peer for HttpRequest::peer_address, rendered by
+// the shared formatter (server_dispatch.h) so the transports' stamps cannot
+// drift; empty when the socket can no longer report one.
 template <typename Stream>
 std::string PeerAddressOf(Stream& stream) {
   beast::error_code ec;
   const auto endpoint = beast::get_lowest_layer(stream).socket().remote_endpoint(ec);
   if (ec) return {};
-  const auto address = endpoint.address();
-  const std::string host = address.to_string();
-  return (address.is_v6() ? "[" + host + "]" : host) + ":" + std::to_string(endpoint.port());
+  return FormatPeerAddress(endpoint.data(), static_cast<socklen_t>(endpoint.size()));
 }
 
 // Half-closes the connection under any stream type (plain or TLS; TLS skips

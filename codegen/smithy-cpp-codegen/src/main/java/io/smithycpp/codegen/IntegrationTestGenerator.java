@@ -154,11 +154,8 @@ final class IntegrationTestGenerator {
     w.write("public:").indent();
     for (OperationShape operation : operations) {
       String op = opName(operation);
-      w.openBlock(
-          "smithy::Outcome<$L> $L(const $L& input, const smithy::server::RequestContext&) override {",
-          typeName(output(operation)),
-          op,
-          typeName(input(operation)));
+      ProtocolSupport.openTestHandlerOverride(
+          w, typeName(output(operation)), op, typeName(input(operation)));
       w.write("last$L = input;", op);
       w.write("if (next$LError.has_value()) return *next$LError;", op, op);
       w.write("return next$LOutput;", op);

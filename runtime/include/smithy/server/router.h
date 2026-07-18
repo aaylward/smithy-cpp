@@ -17,11 +17,11 @@ namespace smithy::server {
 using PathLabels = std::map<std::string, std::string, std::less<>>;
 
 // Per-request context passed to matched handlers — and onward to generated
-// handler methods, whose second parameter it is. Beyond the routing captures
-// it carries the raw request, so a handler can read what the typed input
-// doesn't model: unmodeled headers, the inbound traceparent (parse with
-// smithy/http/trace_context.h to open child spans), and the peer address
-// the transport stamped (issue #46).
+// handler methods, whose second parameter it is (ADR-0010). Beyond the
+// routing captures it carries the raw request, so a handler can read what
+// the typed input doesn't model: unmodeled headers, the inbound
+// traceparent, the transport-stamped peer address (the how-to lives in
+// docs/server-guide.md).
 struct RequestContext {
   PathLabels labels;
   std::vector<std::pair<std::string, std::string>> query_params;  // decoded

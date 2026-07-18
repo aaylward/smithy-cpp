@@ -55,7 +55,11 @@ commit-pinning consumers.
 - Handlers can log/ban by source, read tenant/feature headers, and continue inbound traces —
   and the remaining #46 observability items (server-minted trace ids, correlation ids on
   returned-error 500s) plus #91's spans now have a handler-visible carrier to build on.
-- `RequestContext` is the single growth point for future per-request metadata (a minted
-  request id, auth principal), so the handler signature never changes again for metadata.
+- Future per-request metadata follows one placement rule: whoever stamps a fact decides
+  where it lives — transport-stamped facts become `HttpRequest` annotations (transports
+  never see a `RequestContext`; `peer_address` is the precedent), framework/router-minted
+  facts become `RequestContext` members — and `RequestContext` stays the single
+  handler-facing access point either way, so the handler signature never changes again for
+  metadata.
 - Tests may construct `RequestContext{}` directly; `request` is null only in that
   hand-constructed case, and the field is documented accordingly.

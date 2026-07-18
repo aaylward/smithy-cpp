@@ -90,7 +90,8 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
     w.openBlock(
         "(void)router_->Add(\"POST\", \"/service/$L/operation/$L\", "
             + "[handler](const smithy::http::HttpRequest& $L, "
-            + "const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {",
+            + ProtocolSupport.REQUEST_CONTEXT_PARAM
+            + " context) -> smithy::http::HttpResponse {",
         service.getId().getName(),
         operation.getId().getName(),
         compressed ? "raw_request" : "request");

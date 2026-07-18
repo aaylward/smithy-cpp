@@ -14,10 +14,8 @@ namespace example::calculator {
 /// Implement one method per operation. Return a modeled error as
 /// smithy::Error::Modeled("<ErrorShapeName>", message), optionally with the
 /// typed error structure attached via set_detail() so it serializes fully.
-/// The context carries what the typed input doesn't model: the raw request
-/// (unmodeled headers, the inbound traceparent, the transport-stamped peer
-/// address) plus the routing captures; leave the parameter unnamed when an
-/// operation has no use for it.
+/// The context carries the raw request and routing captures — see
+/// smithy::server::RequestContext; leave the parameter unnamed when unused.
 /// Implementations must be thread-safe: transports may invoke any mix of
 /// operations concurrently on the one handler instance.
 class CalculatorHandler {

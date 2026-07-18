@@ -51,19 +51,6 @@ bool SendAll(SocketFd fd, std::string_view data) {
   return true;
 }
 
-// "ip:port" of the accepted peer (v6 bracketed), for
-// HttpRequest::peer_address; empty when the address cannot be rendered.
-std::string FormatPeerAddress(const sockaddr* address, socklen_t length) {
-  char host[NI_MAXHOST];
-  char service[NI_MAXSERV];
-  if (getnameinfo(address, length, host, sizeof(host), service, sizeof(service),
-                  NI_NUMERICHOST | NI_NUMERICSERV) != 0) {
-    return {};
-  }
-  return address->sa_family == AF_INET6 ? "[" + std::string(host) + "]:" + service
-                                        : std::string(host) + ":" + service;
-}
-
 // Reads one HTTP/1.1 message (the parser itself lives in http1.cc, where the
 // hostile-input bank and the fuzz harness exercise it without a socket). For
 // responses without Content-Length the body extends to EOF (we always

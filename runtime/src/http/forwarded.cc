@@ -23,12 +23,44 @@ struct Address {
 
 constexpr std::array<std::uint8_t, 12> kV4MappedPrefix = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff};
 
+// The leading-zero rule Apple's inet_pton does not enforce: it parses
+// "010" as decimal 10 where glibc rejects the octal-ambiguous form.
+// Structure and values stay inet_pton's job; this only pins the octets.
+bool StrictDottedOctets(std::string_view dotted) {
+  while (true) {
+    const auto dot = dotted.find('.');
+    const std::string_view octet = dotted.substr(0, dot);
+    if (octet.empty() || octet.size() > 3 || (octet.size() > 1 && octet.front() == '0')) {
+      return false;
+    }
+    if (dot == std::string_view::npos) {
+      return true;
+    }
+    dotted.remove_prefix(dot + 1);
+  }
+}
+
 std::optional<Address> ParseAddress(std::string_view text) {
   // Stack copy for inet_pton's terminator; an embedded NUL would silently
   // truncate inet_pton's view, so it is rejected outright.
   std::array<char, INET6_ADDRSTRLEN> terminated{};
   if (text.empty() || text.size() >= terminated.size() ||
       text.find('\0') != std::string_view::npos) {
+    return std::nullopt;
+  }
+  // The strict-reject contract is ours, not the platform's: Apple's libc
+  // also accepts zone suffixes here (glibc never does), and zones are
+  // handled only by ParseEndpoint's DropZone — reaching this point with a
+  // '%' is malformed on every platform. Likewise the dotted-decimal tail
+  // (a whole v4 address, or the embedded tail of one written inside v6)
+  // must be octal-unambiguous.
+  if (text.find('%') != std::string_view::npos) {
+    return std::nullopt;
+  }
+  const auto last_colon = text.rfind(':');
+  const std::string_view tail =
+      last_colon == std::string_view::npos ? text : text.substr(last_colon + 1);
+  if (tail.find('.') != std::string_view::npos && !StrictDottedOctets(tail)) {
     return std::nullopt;
   }
   std::copy(text.begin(), text.end(), terminated.begin());

@@ -73,13 +73,16 @@ TEST(TrustedProxiesTest, AHostBitsSetBaseMatchesAsIfMasked) {
 }
 
 TEST(TrustedProxiesTest, RejectsAmbiguousNumericForms) {
-  // inet_pton is strict: no octal-ambiguous leading zeros, no dotted
-  // shorthand, no zone on a bare address (Contains takes bare numerics
-  // only). Pinned so a future parser swap (inet_aton/getaddrinfo accept
-  // some of these) fails loudly.
+  // The strict-reject contract is the runtime's, not the platform's:
+  // Apple's inet_pton accepts leading-zero octets ("010" as decimal 10)
+  // and zone suffixes where glibc rejects both, so ParseAddress pins them
+  // down itself. No octal-ambiguous octets, no dotted shorthand, no zone
+  // on a bare address (Contains takes bare numerics only) — identically on
+  // every platform.
   const TrustedProxies trusted({"10.0.0.0/8", "fe80::/10"});
   EXPECT_FALSE(trusted.Contains("010.0.0.1"));
   EXPECT_FALSE(trusted.Contains("10.0.1"));
+  EXPECT_FALSE(trusted.Contains("::ffff:010.0.0.1"));  // embedded tails too
   EXPECT_FALSE(trusted.Contains("fe80::1%eth0"));
   EXPECT_TRUE(trusted.Contains("fe80::1"));
 }

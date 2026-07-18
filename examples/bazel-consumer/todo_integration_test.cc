@@ -267,6 +267,19 @@ TEST(TodoMetadataTest, RestHandlerSeesHeadersPeerAndTraceOverARealSocket) {
             std::string::npos)
       << response->body;
   EXPECT_NE(response->body.find("127.0.0.1:"), std::string::npos) << response->body;
+
+  // And with no inbound traceparent at all, the ingress mints one
+  // (ADR-0011): the handler still sees a parseable identity, never
+  // "no-trace".
+  smithy::http::HttpRequest bare;
+  bare.method = "POST";
+  bare.target = "/tasks";
+  bare.headers.Set("content-type", "application/json");
+  bare.body = R"({"title":"minted"})";
+  const auto minted = raw.Send(bare);
+  ASSERT_TRUE(minted.ok()) << minted.error().message();
+  EXPECT_EQ(minted->body.find("no-trace"), std::string::npos) << minted->body;
+  EXPECT_NE(minted->body.find("minted|missing|"), std::string::npos) << minted->body;
   transport.Stop();
 }
 

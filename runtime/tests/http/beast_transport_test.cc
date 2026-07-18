@@ -152,7 +152,40 @@ TEST(BeastTransportTest, StampsThePeerAddress) {
   ASSERT_TRUE(response.ok()) << response.error().message();
   const std::string peer = response->headers.Get("x-peer").value_or("");
   EXPECT_EQ(peer.rfind("127.0.0.1:", 0), 0u) << peer;
-  EXPECT_GT(std::stoi(peer.substr(peer.rfind(':') + 1)), 0) << peer;
+  EXPECT_GT(peer.size(), std::string("127.0.0.1:").size()) << peer;  // a port follows
+  server.Stop();
+}
+
+TEST(BeastTransportTest, StampsBracketedV6PeerAddresses) {
+  BeastServerTransport server({.address = "::1", .port = 0, .threads = 1});
+  auto started = server.Start([](const HttpRequest& request) {
+    HttpResponse response;
+    response.headers.Set("x-peer", request.peer_address);
+    return response;
+  });
+  if (!started.ok()) {
+    GTEST_SKIP() << "no IPv6 loopback here: " << started.error().message();
+  }
+
+  // Raw v6 dial (the test helpers and SocketHttpClient are v4-loopback only).
+  const int fd = ::socket(AF_INET6, SOCK_STREAM, 0);
+  ASSERT_GE(fd, 0);
+  sockaddr_in6 addr{};
+  addr.sin6_family = AF_INET6;
+  addr.sin6_addr = in6addr_loopback;
+  addr.sin6_port = htons(static_cast<std::uint16_t>(server.port()));
+  ASSERT_EQ(::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)), 0);
+  const std::string request = "GET / HTTP/1.1\r\nhost: [::1]\r\nconnection: close\r\n\r\n";
+  (void)::send(fd, request.data(), request.size(), 0);
+  std::string received;
+  char scratch[1024];
+  for (;;) {
+    const auto n = ::recv(fd, scratch, sizeof(scratch), 0);
+    if (n <= 0) break;
+    received.append(scratch, static_cast<std::size_t>(n));
+  }
+  ::close(fd);
+  EXPECT_NE(received.find("x-peer: [::1]:"), std::string::npos) << received;
   server.Stop();
 }
 

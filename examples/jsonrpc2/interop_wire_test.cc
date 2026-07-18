@@ -153,5 +153,36 @@ TEST(JsonRpc2InteropTest, IdempotencyTokenAutoFills) {
   EXPECT_EQ(params->Find("requestToken")->as_string(), "caller-chosen");
 }
 
+// ADR-0010: the envelope dispatch (the generated Handle<Op> functions) hands
+// the handler the request context — the raw POST / the JSON-RPC call rode in
+// on, unmodeled headers included. Pinned here, next to the dispatch it
+// guards, rather than in the consumer module.
+TEST(JsonRpc2InteropTest, EnvelopeDispatchThreadsTheRequestContext) {
+  class ContextProbe final : public CalculatorHandler {
+   public:
+    smithy::Outcome<AddOutput> Add(const AddInput&,
+                                   const smithy::server::RequestContext& context) override {
+      const bool threaded = context.request != nullptr && context.request->method == "POST" &&
+                            context.request->headers.Get("x-probe").value_or("") == "42";
+      return AddOutput{.sum = threaded ? 1 : 0};
+    }
+    smithy::Outcome<DivideOutput> Divide(const DivideInput&,
+                                         const smithy::server::RequestContext&) override {
+      return DivideOutput{.quotient = 0};
+    }
+  };
+
+  CalculatorServer server(std::make_shared<ContextProbe>());
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = "/";
+  request.headers.Set("content-type", "application/json");
+  request.headers.Set("x-probe", "42");
+  request.body = R"({"jsonrpc":"2.0","method":"Add","params":{"a":0,"b":0},"id":1})";
+  const auto response = server.Handler()(request);
+  EXPECT_EQ(response.status, 200);
+  EXPECT_NE(response.body.find("\"sum\":1"), std::string::npos) << response.body;
+}
+
 }  // namespace
 }  // namespace example::calculator

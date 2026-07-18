@@ -63,5 +63,33 @@ TEST(NoInputBodyTest, TheSameGarbageAtAModeledInputOperationIsRejected) {
   EXPECT_EQ(handler->put_sink_calls, 0);
 }
 
+// ADR-0010: rpcv2Cbor's per-operation route lambdas hand the handler the
+// request context — the raw POST with its unmodeled headers. Pinned here,
+// next to the dispatch it guards, rather than in the consumer module.
+TEST(NoInputBodyTest, RpcDispatchThreadsTheRequestContext) {
+  class ContextProbe final : public RoundTripRpcHandler {
+   public:
+    smithy::Outcome<PutSinkRpcOutput> PutSinkRpc(const PutSinkRpcInput&,
+                                                 const smithy::server::RequestContext&) override {
+      return PutSinkRpcOutput{};
+    }
+    smithy::Outcome<PingOutput> Ping(const PingInput&,
+                                     const smithy::server::RequestContext& context) override {
+      threaded = context.request != nullptr && context.request->method == "POST" &&
+                 context.request->headers.Get("x-probe").value_or("") == "42";
+      return PingOutput{};
+    }
+    bool threaded = false;
+  };
+
+  auto handler = std::make_shared<ContextProbe>();
+  RoundTripRpcServer server(handler);
+  auto request = CborRequest("Ping", "");
+  request.headers.Set("x-probe", "42");
+  const auto response = server.Handler()(request);
+  EXPECT_EQ(response.status, 200);
+  EXPECT_TRUE(handler->threaded);
+}
+
 }  // namespace
 }  // namespace example::roundtrip::rpc

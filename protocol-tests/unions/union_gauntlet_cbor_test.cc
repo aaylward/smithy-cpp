@@ -97,7 +97,8 @@ std::vector<Cell> MemberCells() {
 // server encode with the client's two directions anchoring the ends.
 class EchoHandler : public UnionGauntletHandler {
  public:
-  smithy::Outcome<EchoChoiceOutput> EchoChoice(const EchoChoiceInput& input) override {
+  smithy::Outcome<EchoChoiceOutput> EchoChoice(const EchoChoiceInput& input,
+                                               const smithy::server::RequestContext&) override {
     last = input;
     if (reject) {
       smithy::Error error = smithy::Error::Modeled("ChoiceRejected", "no thanks");

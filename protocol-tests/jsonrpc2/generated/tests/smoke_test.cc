@@ -41,15 +41,15 @@ PutConstrainedOutput MinimalPutConstrainedOutput() {
 
 class SmokeHandler : public JsonRpc2ProtocolHandler {
   public:
-    smithy::Outcome<EchoPayloadOutput> EchoPayload(const EchoPayloadInput& input) override {
+    smithy::Outcome<EchoPayloadOutput> EchoPayload(const EchoPayloadInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalEchoPayloadOutput();
     }
-    smithy::Outcome<NoArgsOutput> NoArgs(const NoArgsInput& input) override {
+    smithy::Outcome<NoArgsOutput> NoArgs(const NoArgsInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalNoArgsOutput();
     }
-    smithy::Outcome<PutConstrainedOutput> PutConstrained(const PutConstrainedInput& input) override {
+    smithy::Outcome<PutConstrainedOutput> PutConstrained(const PutConstrainedInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalPutConstrainedOutput();
     }
@@ -105,7 +105,7 @@ TEST(JsonRpc2ProtocolSmokeTest, PutConstrainedRoundTrips) {
 TEST(JsonRpc2ProtocolSmokeTest, ModeledErrorsMapAcrossTheWire) {
   class FailingHandler final : public SmokeHandler {
     public:
-      smithy::Outcome<EchoPayloadOutput> EchoPayload(const EchoPayloadInput& input) override {
+      smithy::Outcome<EchoPayloadOutput> EchoPayload(const EchoPayloadInput& input, const smithy::server::RequestContext&) override {
         (void)input;
         smithy::Error error = smithy::Error::Modeled("NotFoundError", "smoke");
             auto detail = [] {

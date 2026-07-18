@@ -529,11 +529,8 @@ final class ProtocolTestGenerator {
     for (OperationShape operation : operations) {
       String opName = CppReservedWords.escape(operation.getId().getName());
       String inputType = context.cppSymbols().toSymbol(inputOf(operation)).getName();
-      w.openBlock(
-          "smithy::Outcome<$L> $L(const $L& input) override {",
-          context.cppSymbols().toSymbol(outputOf(operation)).getName(),
-          opName,
-          inputType);
+      ProtocolSupport.openTestHandlerOverride(
+          w, context.cppSymbols().toSymbol(outputOf(operation)).getName(), opName, inputType);
       w.write("last$L = input;", opName);
       w.write("return Minimal$LOutput();", opName);
       w.closeBlock("}");
@@ -796,7 +793,9 @@ final class ProtocolTestGenerator {
         .append(opName)
         .append("(const ")
         .append(inputType)
-        .append("& input) override {\n");
+        .append("& input, ")
+        .append(ProtocolSupport.REQUEST_CONTEXT_PARAM)
+        .append(") override {\n");
     t.append("      (void)input;\n");
     if (error == null) {
       t.append("      return ")

@@ -323,7 +323,7 @@ WeatherServer::WeatherServer(std::shared_ptr<WeatherHandler> handler)
     if (!input) return ErrorToResponse(input.error());
     ValidateDeleteCityInput(*input, "", &validation_failures);
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    auto outcome = handler->DeleteCity(*input);
+    auto outcome = handler->DeleteCity(*input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     return BuildDeleteCityResponse(*outcome);
   }, "DeleteCity");
@@ -348,7 +348,7 @@ WeatherServer::WeatherServer(std::shared_ptr<WeatherHandler> handler)
     if (!input) return ErrorToResponse(input.error());
     ValidateGetCityInput(*input, "", &validation_failures);
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    auto outcome = handler->GetCity(*input);
+    auto outcome = handler->GetCity(*input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     return BuildGetCityResponse(*outcome);
   }, "GetCity");
@@ -371,7 +371,7 @@ WeatherServer::WeatherServer(std::shared_ptr<WeatherHandler> handler)
     auto input = ParseGetCurrentTimeInput(request, context, &validation_failures);
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
     if (!input) return ErrorToResponse(input.error());
-    auto outcome = handler->GetCurrentTime(*input);
+    auto outcome = handler->GetCurrentTime(*input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     return BuildGetCurrentTimeResponse(*outcome);
   }, "GetCurrentTime");
@@ -396,7 +396,7 @@ WeatherServer::WeatherServer(std::shared_ptr<WeatherHandler> handler)
     if (!input) return ErrorToResponse(input.error());
     ValidateGetForecastInput(*input, "", &validation_failures);
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    auto outcome = handler->GetForecast(*input);
+    auto outcome = handler->GetForecast(*input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     return BuildGetForecastResponse(*outcome);
   }, "GetForecast");
@@ -419,7 +419,7 @@ WeatherServer::WeatherServer(std::shared_ptr<WeatherHandler> handler)
     auto input = ParseGetReportInput(request, context, &validation_failures);
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
     if (!input) return ErrorToResponse(input.error());
-    auto outcome = handler->GetReport(*input);
+    auto outcome = handler->GetReport(*input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     return BuildGetReportResponse(*outcome);
   }, "GetReport");
@@ -442,7 +442,7 @@ WeatherServer::WeatherServer(std::shared_ptr<WeatherHandler> handler)
     auto input = ParseListCitiesInput(request, context, &validation_failures);
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
     if (!input) return ErrorToResponse(input.error());
-    auto outcome = handler->ListCities(*input);
+    auto outcome = handler->ListCities(*input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     return BuildListCitiesResponse(*outcome);
   }, "ListCities");

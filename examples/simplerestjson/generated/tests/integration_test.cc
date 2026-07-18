@@ -98,7 +98,7 @@ GetBookOutput RandomGetBookOutput(Rng& rng) {
 
 class ScriptedHandler final : public BookstoreHandler {
   public:
-    smithy::Outcome<AddBookOutput> AddBook(const AddBookInput& input) override {
+    smithy::Outcome<AddBookOutput> AddBook(const AddBookInput& input, const smithy::server::RequestContext&) override {
       lastAddBook = input;
       if (nextAddBookError.has_value()) return *nextAddBookError;
       return nextAddBookOutput;
@@ -106,7 +106,7 @@ class ScriptedHandler final : public BookstoreHandler {
     std::optional<AddBookInput> lastAddBook;
     AddBookOutput nextAddBookOutput{};
     std::optional<smithy::Error> nextAddBookError;
-    smithy::Outcome<GetBookOutput> GetBook(const GetBookInput& input) override {
+    smithy::Outcome<GetBookOutput> GetBook(const GetBookInput& input, const smithy::server::RequestContext&) override {
       lastGetBook = input;
       if (nextGetBookError.has_value()) return *nextGetBookError;
       return nextGetBookOutput;

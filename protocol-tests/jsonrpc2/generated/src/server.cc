@@ -130,13 +130,13 @@ smithy::http::HttpResponse ValidationErrorResponse(const std::vector<smithy::ser
   return response;
 }
 
-smithy::http::HttpResponse HandleEchoPayload(JsonRpc2ProtocolHandler& handler, const smithy::Document& params, const smithy::Document& id) {
+smithy::http::HttpResponse HandleEchoPayload(JsonRpc2ProtocolHandler& handler, const smithy::Document& params, const smithy::Document& id, const smithy::server::RequestContext& context) {
   EchoPayloadInput input{};
   if (!params.is_map()) return JsonRpcError(-32602, "SerializationException", "params must be an object", {}, id);
   auto parsed = DeserializeEchoPayloadInput(params);
   if (!parsed) return JsonRpcError(-32602, "SerializationException", parsed.error().message(), {}, id);
   input = *std::move(parsed);
-  auto outcome = handler.EchoPayload(input);
+  auto outcome = handler.EchoPayload(input, context);
   if (!outcome) return ErrorToResponse(outcome.error(), id);
   smithy::DocumentMap envelope;
   envelope.emplace("jsonrpc", smithy::Document("2.0"));
@@ -149,10 +149,10 @@ smithy::http::HttpResponse HandleEchoPayload(JsonRpc2ProtocolHandler& handler, c
   return response;
 }
 
-smithy::http::HttpResponse HandleNoArgs(JsonRpc2ProtocolHandler& handler, const smithy::Document& params, const smithy::Document& id) {
+smithy::http::HttpResponse HandleNoArgs(JsonRpc2ProtocolHandler& handler, const smithy::Document& params, const smithy::Document& id, const smithy::server::RequestContext& context) {
   NoArgsInput input{};
   (void)params;
-  auto outcome = handler.NoArgs(input);
+  auto outcome = handler.NoArgs(input, context);
   if (!outcome) return ErrorToResponse(outcome.error(), id);
   smithy::DocumentMap envelope;
   envelope.emplace("jsonrpc", smithy::Document("2.0"));
@@ -165,7 +165,7 @@ smithy::http::HttpResponse HandleNoArgs(JsonRpc2ProtocolHandler& handler, const 
   return response;
 }
 
-smithy::http::HttpResponse HandlePutConstrained(JsonRpc2ProtocolHandler& handler, const smithy::Document& params, const smithy::Document& id) {
+smithy::http::HttpResponse HandlePutConstrained(JsonRpc2ProtocolHandler& handler, const smithy::Document& params, const smithy::Document& id, const smithy::server::RequestContext& context) {
   PutConstrainedInput input{};
   if (!params.is_map()) return JsonRpcError(-32602, "SerializationException", "params must be an object", {}, id);
   auto parsed = DeserializePutConstrainedInput(params);
@@ -174,7 +174,7 @@ smithy::http::HttpResponse HandlePutConstrained(JsonRpc2ProtocolHandler& handler
   std::vector<smithy::server::ValidationFailure> validation_failures;
   ValidatePutConstrainedInput(input, "", &validation_failures);
   if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures, id);
-  auto outcome = handler.PutConstrained(input);
+  auto outcome = handler.PutConstrained(input, context);
   if (!outcome) return ErrorToResponse(outcome.error(), id);
   smithy::DocumentMap envelope;
   envelope.emplace("jsonrpc", smithy::Document("2.0"));
@@ -194,7 +194,7 @@ JsonRpc2ProtocolServer::JsonRpc2ProtocolServer(std::shared_ptr<JsonRpc2ProtocolH
   // The route table is derived from the model's @http traits; conflicts are
   // a modeling error surfaced by Router::Add (checked at generation time in a
   // later phase), so registration results are intentionally discarded.
-  (void)router_->Add("POST", "/", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
+  (void)router_->Add("POST", "/", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     smithy::Document id;  // null until the envelope yields one (JSON-RPC 2.0 §5)
     // A present Content-Type must carry application/json (parameters ignored).
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
@@ -220,17 +220,17 @@ JsonRpc2ProtocolServer::JsonRpc2ProtocolServer(std::shared_ptr<JsonRpc2ProtocolH
     if (params == nullptr || params->is_null()) params = &empty_params;
     const std::string& method_name = method->as_string();
     if (method_name == "EchoPayload") {
-      auto response = HandleEchoPayload(*handler, *params, id);
+      auto response = HandleEchoPayload(*handler, *params, id, context);
       response.operation = "EchoPayload";
       return response;
     }
     if (method_name == "NoArgs") {
-      auto response = HandleNoArgs(*handler, *params, id);
+      auto response = HandleNoArgs(*handler, *params, id, context);
       response.operation = "NoArgs";
       return response;
     }
     if (method_name == "PutConstrained") {
-      auto response = HandlePutConstrained(*handler, *params, id);
+      auto response = HandlePutConstrained(*handler, *params, id, context);
       response.operation = "PutConstrained";
       return response;
     }

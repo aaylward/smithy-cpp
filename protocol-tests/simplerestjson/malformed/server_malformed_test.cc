@@ -21,53 +21,63 @@ namespace {
 // operation runs, so every test asserts calls stays 0.
 class RecordingHandler : public PizzaAdminServiceHandler {
  public:
-  smithy::Outcome<AddMenuItemOutput> AddMenuItem(const AddMenuItemInput&) override {
+  smithy::Outcome<AddMenuItemOutput> AddMenuItem(const AddMenuItemInput&,
+                                                 const smithy::server::RequestContext&) override {
     ++calls;
     return AddMenuItemOutput{};
   }
-  smithy::Outcome<CustomCodeOutput> CustomCode(const CustomCodeInput&) override {
+  smithy::Outcome<CustomCodeOutput> CustomCode(const CustomCodeInput&,
+                                               const smithy::server::RequestContext&) override {
     ++calls;
     return CustomCodeOutput{};
   }
-  smithy::Outcome<GetEnumOutput> GetEnum(const GetEnumInput&) override {
+  smithy::Outcome<GetEnumOutput> GetEnum(const GetEnumInput&,
+                                         const smithy::server::RequestContext&) override {
     ++calls;
     return GetEnumOutput{};
   }
-  smithy::Outcome<GetIntEnumOutput> GetIntEnum(const GetIntEnumInput&) override {
+  smithy::Outcome<GetIntEnumOutput> GetIntEnum(const GetIntEnumInput&,
+                                               const smithy::server::RequestContext&) override {
     ++calls;
     return GetIntEnumOutput{};
   }
-  smithy::Outcome<GetMenuOutput> GetMenu(const GetMenuInput&) override {
+  smithy::Outcome<GetMenuOutput> GetMenu(const GetMenuInput&,
+                                         const smithy::server::RequestContext&) override {
     ++calls;
     return GetMenuOutput{};
   }
-  smithy::Outcome<HeaderEndpointOutput> HeaderEndpoint(const HeaderEndpointInput&) override {
+  smithy::Outcome<HeaderEndpointOutput> HeaderEndpoint(
+      const HeaderEndpointInput&, const smithy::server::RequestContext&) override {
     ++calls;
     return HeaderEndpointOutput{};
   }
-  smithy::Outcome<HealthOutput> Health(const HealthInput&) override {
+  smithy::Outcome<HealthOutput> Health(const HealthInput&,
+                                       const smithy::server::RequestContext&) override {
     ++calls;
     return HealthOutput{};
   }
   smithy::Outcome<HttpPayloadRequiredWithDefaultOutput> HttpPayloadRequiredWithDefault(
-      const HttpPayloadRequiredWithDefaultInput&) override {
+      const HttpPayloadRequiredWithDefaultInput&, const smithy::server::RequestContext&) override {
     ++calls;
     return HttpPayloadRequiredWithDefaultOutput{};
   }
   smithy::Outcome<HttpPayloadWithDefaultOutput> HttpPayloadWithDefault(
-      const HttpPayloadWithDefaultInput&) override {
+      const HttpPayloadWithDefaultInput&, const smithy::server::RequestContext&) override {
     ++calls;
     return HttpPayloadWithDefaultOutput{};
   }
-  smithy::Outcome<OpenUnionsOutput> OpenUnions(const OpenUnionsInput&) override {
+  smithy::Outcome<OpenUnionsOutput> OpenUnions(const OpenUnionsInput&,
+                                               const smithy::server::RequestContext&) override {
     ++calls;
     return OpenUnionsOutput{};
   }
-  smithy::Outcome<RoundTripOutput> RoundTrip(const RoundTripInput&) override {
+  smithy::Outcome<RoundTripOutput> RoundTrip(const RoundTripInput&,
+                                             const smithy::server::RequestContext&) override {
     ++calls;
     return RoundTripOutput{};
   }
-  smithy::Outcome<VersionOutput> Version(const VersionInput&) override {
+  smithy::Outcome<VersionOutput> Version(const VersionInput&,
+                                         const smithy::server::RequestContext&) override {
     ++calls;
     return VersionOutput{};
   }

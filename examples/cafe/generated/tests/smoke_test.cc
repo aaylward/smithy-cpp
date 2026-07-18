@@ -45,11 +45,11 @@ OrderCoffeeOutput MinimalOrderCoffeeOutput() {
 
 class SmokeHandler : public CafeHandler {
   public:
-    smithy::Outcome<GetOrderOutput> GetOrder(const GetOrderInput& input) override {
+    smithy::Outcome<GetOrderOutput> GetOrder(const GetOrderInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalGetOrderOutput();
     }
-    smithy::Outcome<OrderCoffeeOutput> OrderCoffee(const OrderCoffeeInput& input) override {
+    smithy::Outcome<OrderCoffeeOutput> OrderCoffee(const OrderCoffeeInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalOrderCoffeeOutput();
     }
@@ -95,7 +95,7 @@ TEST(CafeSmokeTest, OrderCoffeeRoundTrips) {
 TEST(CafeSmokeTest, ModeledErrorsMapAcrossTheWire) {
   class FailingHandler final : public SmokeHandler {
     public:
-      smithy::Outcome<GetOrderOutput> GetOrder(const GetOrderInput& input) override {
+      smithy::Outcome<GetOrderOutput> GetOrder(const GetOrderInput& input, const smithy::server::RequestContext&) override {
         (void)input;
         smithy::Error error = smithy::Error::Modeled("OrderNotFound", "smoke");
             auto detail = [] {

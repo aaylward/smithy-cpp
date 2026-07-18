@@ -111,55 +111,55 @@ SparseNullsOperationOutput MinimalSparseNullsOperationOutput() {
 
 class SmokeHandler : public RpcV2ProtocolHandler {
   public:
-    smithy::Outcome<EmptyInputOutputOutput> EmptyInputOutput(const EmptyInputOutputInput& input) override {
+    smithy::Outcome<EmptyInputOutputOutput> EmptyInputOutput(const EmptyInputOutputInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalEmptyInputOutputOutput();
     }
-    smithy::Outcome<Float16Output> Float16(const Float16Input& input) override {
+    smithy::Outcome<Float16Output> Float16(const Float16Input& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalFloat16Output();
     }
-    smithy::Outcome<FractionalSecondsOutput> FractionalSeconds(const FractionalSecondsInput& input) override {
+    smithy::Outcome<FractionalSecondsOutput> FractionalSeconds(const FractionalSecondsInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalFractionalSecondsOutput();
     }
-    smithy::Outcome<GreetingWithErrorsOutput> GreetingWithErrors(const GreetingWithErrorsInput& input) override {
+    smithy::Outcome<GreetingWithErrorsOutput> GreetingWithErrors(const GreetingWithErrorsInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalGreetingWithErrorsOutput();
     }
-    smithy::Outcome<NoInputOutputOutput> NoInputOutput(const NoInputOutputInput& input) override {
+    smithy::Outcome<NoInputOutputOutput> NoInputOutput(const NoInputOutputInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalNoInputOutputOutput();
     }
-    smithy::Outcome<OperationWithDefaultsOutput> OperationWithDefaults(const OperationWithDefaultsInput& input) override {
+    smithy::Outcome<OperationWithDefaultsOutput> OperationWithDefaults(const OperationWithDefaultsInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalOperationWithDefaultsOutput();
     }
-    smithy::Outcome<OptionalInputOutputOutput> OptionalInputOutput(const OptionalInputOutputInput& input) override {
+    smithy::Outcome<OptionalInputOutputOutput> OptionalInputOutput(const OptionalInputOutputInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalOptionalInputOutputOutput();
     }
-    smithy::Outcome<RecursiveShapesOutput> RecursiveShapes(const RecursiveShapesInput& input) override {
+    smithy::Outcome<RecursiveShapesOutput> RecursiveShapes(const RecursiveShapesInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalRecursiveShapesOutput();
     }
-    smithy::Outcome<RpcV2CborDenseMapsOutput> RpcV2CborDenseMaps(const RpcV2CborDenseMapsInput& input) override {
+    smithy::Outcome<RpcV2CborDenseMapsOutput> RpcV2CborDenseMaps(const RpcV2CborDenseMapsInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalRpcV2CborDenseMapsOutput();
     }
-    smithy::Outcome<RpcV2CborListsOutput> RpcV2CborLists(const RpcV2CborListsInput& input) override {
+    smithy::Outcome<RpcV2CborListsOutput> RpcV2CborLists(const RpcV2CborListsInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalRpcV2CborListsOutput();
     }
-    smithy::Outcome<RpcV2CborSparseMapsOutput> RpcV2CborSparseMaps(const RpcV2CborSparseMapsInput& input) override {
+    smithy::Outcome<RpcV2CborSparseMapsOutput> RpcV2CborSparseMaps(const RpcV2CborSparseMapsInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalRpcV2CborSparseMapsOutput();
     }
-    smithy::Outcome<SimpleScalarPropertiesOutput> SimpleScalarProperties(const SimpleScalarPropertiesInput& input) override {
+    smithy::Outcome<SimpleScalarPropertiesOutput> SimpleScalarProperties(const SimpleScalarPropertiesInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalSimpleScalarPropertiesOutput();
     }
-    smithy::Outcome<SparseNullsOperationOutput> SparseNullsOperation(const SparseNullsOperationInput& input) override {
+    smithy::Outcome<SparseNullsOperationOutput> SparseNullsOperation(const SparseNullsOperationInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalSparseNullsOperationOutput();
     }
@@ -324,7 +324,7 @@ TEST(RpcV2ProtocolSmokeTest, SparseNullsOperationRoundTrips) {
 TEST(RpcV2ProtocolSmokeTest, ModeledErrorsMapAcrossTheWire) {
   class FailingHandler final : public SmokeHandler {
     public:
-      smithy::Outcome<GreetingWithErrorsOutput> GreetingWithErrors(const GreetingWithErrorsInput& input) override {
+      smithy::Outcome<GreetingWithErrorsOutput> GreetingWithErrors(const GreetingWithErrorsInput& input, const smithy::server::RequestContext&) override {
         (void)input;
         smithy::Error error = smithy::Error::Modeled("InvalidGreeting", "smoke");
             auto detail = [] {

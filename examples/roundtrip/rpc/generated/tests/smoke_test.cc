@@ -34,11 +34,11 @@ PutSinkRpcOutput MinimalPutSinkRpcOutput() {
 
 class SmokeHandler : public RoundTripRpcHandler {
   public:
-    smithy::Outcome<PingOutput> Ping(const PingInput& input) override {
+    smithy::Outcome<PingOutput> Ping(const PingInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalPingOutput();
     }
-    smithy::Outcome<PutSinkRpcOutput> PutSinkRpc(const PutSinkRpcInput& input) override {
+    smithy::Outcome<PutSinkRpcOutput> PutSinkRpc(const PutSinkRpcInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalPutSinkRpcOutput();
     }
@@ -82,7 +82,7 @@ TEST(RoundTripRpcSmokeTest, PutSinkRpcRoundTrips) {
 TEST(RoundTripRpcSmokeTest, ModeledErrorsMapAcrossTheWire) {
   class FailingHandler final : public SmokeHandler {
     public:
-      smithy::Outcome<PutSinkRpcOutput> PutSinkRpc(const PutSinkRpcInput& input) override {
+      smithy::Outcome<PutSinkRpcOutput> PutSinkRpc(const PutSinkRpcInput& input, const smithy::server::RequestContext&) override {
         (void)input;
         smithy::Error error = smithy::Error::Modeled("SinkNotFound", "smoke");
             auto detail = [] {

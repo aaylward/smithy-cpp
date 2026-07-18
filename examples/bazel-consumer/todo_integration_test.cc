@@ -20,6 +20,7 @@
 #include "smithy/client/config.h"
 #include "smithy/http/loopback.h"
 #include "smithy/http/socket_transport.h"
+#include "smithy/http/trace_context.h"
 #include "smithy/server/middleware.h"
 
 namespace {
@@ -37,14 +38,16 @@ using acme::todo::TodoServer;
 // teaches; QuickstartMirrorTest fails if the two ever diverge.
 class InMemoryHandler final : public TodoHandler {
  public:
-  smithy::Outcome<AddTaskOutput> AddTask(const AddTaskInput& input) override {
+  smithy::Outcome<AddTaskOutput> AddTask(const AddTaskInput& input,
+                                         const smithy::server::RequestContext&) override {
     const std::lock_guard<std::mutex> lock(mu_);
     const std::string id = "task-" + std::to_string(next_id_++);
     titles_[id] = input.title;
     return AddTaskOutput{.taskId = id, .title = input.title};
   }
 
-  smithy::Outcome<GetTaskOutput> GetTask(const GetTaskInput& input) override {
+  smithy::Outcome<GetTaskOutput> GetTask(const GetTaskInput& input,
+                                         const smithy::server::RequestContext&) override {
     const std::lock_guard<std::mutex> lock(mu_);
     const auto it = titles_.find(input.taskId);
     if (it == titles_.end()) {
@@ -129,11 +132,13 @@ TEST(TodoCborTest, SameModelServesRpcv2Cbor) {
   class CborHandler final : public acme::todo::cbor::TodoHandler {
    public:
     smithy::Outcome<acme::todo::cbor::AddTaskOutput> AddTask(
-        const acme::todo::cbor::AddTaskInput& input) override {
+        const acme::todo::cbor::AddTaskInput& input,
+        const smithy::server::RequestContext&) override {
       return acme::todo::cbor::AddTaskOutput{.taskId = "task-1", .title = input.title};
     }
     smithy::Outcome<acme::todo::cbor::GetTaskOutput> GetTask(
-        const acme::todo::cbor::GetTaskInput& input) override {
+        const acme::todo::cbor::GetTaskInput& input,
+        const smithy::server::RequestContext&) override {
       smithy::Error error = smithy::Error::Modeled("NoSuchTask", "no task: " + input.taskId);
       error.set_detail(acme::todo::cbor::NoSuchTask{.message = "no task: " + input.taskId});
       return error;
@@ -165,11 +170,13 @@ TEST(TodoJsonRpcTest, SameModelServesJsonRpc2) {
   class JsonRpcHandler final : public acme::todo::jsonrpc::TodoHandler {
    public:
     smithy::Outcome<acme::todo::jsonrpc::AddTaskOutput> AddTask(
-        const acme::todo::jsonrpc::AddTaskInput& input) override {
+        const acme::todo::jsonrpc::AddTaskInput& input,
+        const smithy::server::RequestContext&) override {
       return acme::todo::jsonrpc::AddTaskOutput{.taskId = "task-1", .title = input.title};
     }
     smithy::Outcome<acme::todo::jsonrpc::GetTaskOutput> GetTask(
-        const acme::todo::jsonrpc::GetTaskInput& input) override {
+        const acme::todo::jsonrpc::GetTaskInput& input,
+        const smithy::server::RequestContext&) override {
       smithy::Error error = smithy::Error::Modeled("NoSuchTask", "no task: " + input.taskId);
       error.set_detail(acme::todo::jsonrpc::NoSuchTask{.message = "no task: " + input.taskId});
       return error;
@@ -217,6 +224,50 @@ TEST(TodoRoutingTest, WrongMethodGets405WithAllowAndUnknownPathGets404) {
   const auto not_found = loopback->Send(unknown);
   ASSERT_TRUE(not_found.ok());
   EXPECT_EQ(not_found->status, 404);
+}
+
+// The handler-visible request context (ADR-0010) at the module boundary:
+// the raw request — unmodeled headers, the transport-stamped peer address,
+// the inbound traceparent — reaches a consumer's handler.
+TEST(TodoMetadataTest, RestHandlerSeesHeadersPeerAndTraceOverARealSocket) {
+  class MetadataHandler final : public TodoHandler {
+   public:
+    smithy::Outcome<AddTaskOutput> AddTask(const AddTaskInput& input,
+                                           const smithy::server::RequestContext& context) override {
+      const auto trace =
+          smithy::http::ParseTraceparent(context.request->headers.Get("traceparent").value_or(""));
+      return AddTaskOutput{.taskId = context.request->peer_address,
+                           .title = input.title + "|" +
+                                    context.request->headers.Get("x-tenant").value_or("missing") +
+                                    "|" + (trace.has_value() ? trace->trace_id : "no-trace")};
+    }
+    smithy::Outcome<GetTaskOutput> GetTask(const GetTaskInput& input,
+                                           const smithy::server::RequestContext&) override {
+      return smithy::Error::Modeled("NoSuchTask", "no task: " + input.taskId);
+    }
+  };
+
+  TodoServer server(std::make_shared<MetadataHandler>());
+  smithy::http::SocketHttpServer transport;
+  ASSERT_TRUE(transport.Start(server.Handler()).ok());
+
+  // A raw request so unmodeled headers ride along (generated clients only
+  // send what the model binds).
+  smithy::http::SocketHttpClient raw("127.0.0.1", transport.port());
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = "/tasks";
+  request.headers.Set("content-type", "application/json");
+  request.headers.Set("x-tenant", "acme");
+  request.headers.Set("traceparent", "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01");
+  request.body = R"({"title":"trace me"})";
+  const auto response = raw.Send(request);
+  ASSERT_TRUE(response.ok()) << response.error().message();
+  EXPECT_NE(response->body.find("trace me|acme|0af7651916cd43dd8448eb211c80319c"),
+            std::string::npos)
+      << response->body;
+  EXPECT_NE(response->body.find("127.0.0.1:"), std::string::npos) << response->body;
+  transport.Stop();
 }
 
 // The production middleware chain from the guide — Guard, then Observe, then

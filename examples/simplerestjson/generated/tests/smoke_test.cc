@@ -37,11 +37,11 @@ GetBookOutput MinimalGetBookOutput() {
 
 class SmokeHandler : public BookstoreHandler {
   public:
-    smithy::Outcome<AddBookOutput> AddBook(const AddBookInput& input) override {
+    smithy::Outcome<AddBookOutput> AddBook(const AddBookInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalAddBookOutput();
     }
-    smithy::Outcome<GetBookOutput> GetBook(const GetBookInput& input) override {
+    smithy::Outcome<GetBookOutput> GetBook(const GetBookInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalGetBookOutput();
     }
@@ -87,7 +87,7 @@ TEST(BookstoreSmokeTest, GetBookRoundTrips) {
 TEST(BookstoreSmokeTest, ModeledErrorsMapAcrossTheWire) {
   class FailingHandler final : public SmokeHandler {
     public:
-      smithy::Outcome<GetBookOutput> GetBook(const GetBookInput& input) override {
+      smithy::Outcome<GetBookOutput> GetBook(const GetBookInput& input, const smithy::server::RequestContext&) override {
         (void)input;
         smithy::Error error = smithy::Error::Modeled("BookNotFound", "smoke");
             auto detail = [] {

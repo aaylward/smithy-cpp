@@ -14,15 +14,17 @@ namespace smithy::protocoltests::jsonrpc2 {
 /// Implement one method per operation. Return a modeled error as
 /// smithy::Error::Modeled("<ErrorShapeName>", message), optionally with the
 /// typed error structure attached via set_detail() so it serializes fully.
+/// The context carries the raw request and routing captures — see
+/// smithy::server::RequestContext; leave the parameter unnamed when unused.
 /// Implementations must be thread-safe: transports may invoke any mix of
 /// operations concurrently on the one handler instance.
 class JsonRpc2ProtocolHandler {
   public:
     virtual ~JsonRpc2ProtocolHandler() = default;
 
-    virtual smithy::Outcome<EchoPayloadOutput> EchoPayload(const EchoPayloadInput& input) = 0;
-    virtual smithy::Outcome<NoArgsOutput> NoArgs(const NoArgsInput& input) = 0;
-    virtual smithy::Outcome<PutConstrainedOutput> PutConstrained(const PutConstrainedInput& input) = 0;
+    virtual smithy::Outcome<EchoPayloadOutput> EchoPayload(const EchoPayloadInput& input, const smithy::server::RequestContext& context) = 0;
+    virtual smithy::Outcome<NoArgsOutput> NoArgs(const NoArgsInput& input, const smithy::server::RequestContext& context) = 0;
+    virtual smithy::Outcome<PutConstrainedOutput> PutConstrained(const PutConstrainedInput& input, const smithy::server::RequestContext& context) = 0;
 };
 
 /// jsonRpc2 server for smithy.cpp.protocoltests.jsonrpc2#JsonRpc2Protocol: routing, deserialization, handler dispatch,

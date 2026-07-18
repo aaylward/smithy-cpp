@@ -42,17 +42,17 @@ PutConstrainedOutput MinimalPutConstrainedOutput() {
 
 class RecordingHandler : public JsonRpc2ProtocolHandler {
   public:
-    smithy::Outcome<EchoPayloadOutput> EchoPayload(const EchoPayloadInput& input) override {
+    smithy::Outcome<EchoPayloadOutput> EchoPayload(const EchoPayloadInput& input, const smithy::server::RequestContext&) override {
       lastEchoPayload = input;
       return MinimalEchoPayloadOutput();
     }
     std::optional<EchoPayloadInput> lastEchoPayload;
-    smithy::Outcome<NoArgsOutput> NoArgs(const NoArgsInput& input) override {
+    smithy::Outcome<NoArgsOutput> NoArgs(const NoArgsInput& input, const smithy::server::RequestContext&) override {
       lastNoArgs = input;
       return MinimalNoArgsOutput();
     }
     std::optional<NoArgsInput> lastNoArgs;
-    smithy::Outcome<PutConstrainedOutput> PutConstrained(const PutConstrainedInput& input) override {
+    smithy::Outcome<PutConstrainedOutput> PutConstrained(const PutConstrainedInput& input, const smithy::server::RequestContext&) override {
       lastPutConstrained = input;
       return MinimalPutConstrainedOutput();
     }
@@ -93,7 +93,7 @@ smithy::http::HttpRequest MinimalRequestForNoArgs() {
 TEST(JsonRpc2ProtocolServerResponseTest, JsonRpc2BasicResponse) {
   class Handler final : public RecordingHandler {
    public:
-    smithy::Outcome<EchoPayloadOutput> EchoPayload(const EchoPayloadInput& input) override {
+    smithy::Outcome<EchoPayloadOutput> EchoPayload(const EchoPayloadInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return [] {
   EchoPayloadOutput v{};
@@ -120,7 +120,7 @@ TEST(JsonRpc2ProtocolServerResponseTest, JsonRpc2BasicResponse) {
 TEST(JsonRpc2ProtocolServerResponseTest, JsonRpc2EmptyResponse) {
   class Handler final : public RecordingHandler {
    public:
-    smithy::Outcome<NoArgsOutput> NoArgs(const NoArgsInput& input) override {
+    smithy::Outcome<NoArgsOutput> NoArgs(const NoArgsInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return [] {
   NoArgsOutput v{};
@@ -139,7 +139,7 @@ TEST(JsonRpc2ProtocolServerResponseTest, JsonRpc2EmptyResponse) {
 TEST(JsonRpc2ProtocolServerErrorTest, JsonRpc2NotFoundError) {
   class Handler final : public RecordingHandler {
    public:
-    smithy::Outcome<EchoPayloadOutput> EchoPayload(const EchoPayloadInput& input) override {
+    smithy::Outcome<EchoPayloadOutput> EchoPayload(const EchoPayloadInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       smithy::Error error = smithy::Error::Modeled("NotFoundError", "");
       error.set_detail([] {
@@ -162,7 +162,7 @@ TEST(JsonRpc2ProtocolServerErrorTest, JsonRpc2NotFoundError) {
 TEST(JsonRpc2ProtocolServerErrorTest, JsonRpc2ThrottledError) {
   class Handler final : public RecordingHandler {
    public:
-    smithy::Outcome<EchoPayloadOutput> EchoPayload(const EchoPayloadInput& input) override {
+    smithy::Outcome<EchoPayloadOutput> EchoPayload(const EchoPayloadInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       smithy::Error error = smithy::Error::Modeled("ThrottledError", "");
       error.set_detail([] {

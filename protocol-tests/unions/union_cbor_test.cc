@@ -204,14 +204,18 @@ TEST_F(UnionCborClientTest, ToleratesATypeDiscriminatorNextToTheMember) {
 
 class RecordingHandler : public RoundTripRpcHandler {
  public:
-  smithy::Outcome<PutSinkRpcOutput> PutSinkRpc(const PutSinkRpcInput& input) override {
+  smithy::Outcome<PutSinkRpcOutput> PutSinkRpc(const PutSinkRpcInput& input,
+                                               const smithy::server::RequestContext&) override {
     last = input;
     PutSinkRpcOutput output;
     output.sinkId = input.sinkId;
     output.sink = input.sink;  // echo, so the response leg is exercised too
     return output;
   }
-  smithy::Outcome<PingOutput> Ping(const PingInput&) override { return PingOutput{}; }
+  smithy::Outcome<PingOutput> Ping(const PingInput&,
+                                   const smithy::server::RequestContext&) override {
+    return PingOutput{};
+  }
   std::optional<PutSinkRpcInput> last;
 };
 

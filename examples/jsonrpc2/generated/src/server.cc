@@ -60,13 +60,13 @@ smithy::http::HttpResponse ErrorToResponse(const smithy::Error& error, const smi
   return JsonRpcError(500, "InternalFailure", "internal failure", {}, id);
 }
 
-smithy::http::HttpResponse HandleAdd(CalculatorHandler& handler, const smithy::Document& params, const smithy::Document& id) {
+smithy::http::HttpResponse HandleAdd(CalculatorHandler& handler, const smithy::Document& params, const smithy::Document& id, const smithy::server::RequestContext& context) {
   AddInput input{};
   if (!params.is_map()) return JsonRpcError(-32602, "SerializationException", "params must be an object", {}, id);
   auto parsed = DeserializeAddInput(params);
   if (!parsed) return JsonRpcError(-32602, "SerializationException", parsed.error().message(), {}, id);
   input = *std::move(parsed);
-  auto outcome = handler.Add(input);
+  auto outcome = handler.Add(input, context);
   if (!outcome) return ErrorToResponse(outcome.error(), id);
   smithy::DocumentMap envelope;
   envelope.emplace("jsonrpc", smithy::Document("2.0"));
@@ -79,13 +79,13 @@ smithy::http::HttpResponse HandleAdd(CalculatorHandler& handler, const smithy::D
   return response;
 }
 
-smithy::http::HttpResponse HandleDivide(CalculatorHandler& handler, const smithy::Document& params, const smithy::Document& id) {
+smithy::http::HttpResponse HandleDivide(CalculatorHandler& handler, const smithy::Document& params, const smithy::Document& id, const smithy::server::RequestContext& context) {
   DivideInput input{};
   if (!params.is_map()) return JsonRpcError(-32602, "SerializationException", "params must be an object", {}, id);
   auto parsed = DeserializeDivideInput(params);
   if (!parsed) return JsonRpcError(-32602, "SerializationException", parsed.error().message(), {}, id);
   input = *std::move(parsed);
-  auto outcome = handler.Divide(input);
+  auto outcome = handler.Divide(input, context);
   if (!outcome) return ErrorToResponse(outcome.error(), id);
   smithy::DocumentMap envelope;
   envelope.emplace("jsonrpc", smithy::Document("2.0"));
@@ -105,7 +105,7 @@ CalculatorServer::CalculatorServer(std::shared_ptr<CalculatorHandler> handler)
   // The route table is derived from the model's @http traits; conflicts are
   // a modeling error surfaced by Router::Add (checked at generation time in a
   // later phase), so registration results are intentionally discarded.
-  (void)router_->Add("POST", "/", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
+  (void)router_->Add("POST", "/", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     smithy::Document id;  // null until the envelope yields one (JSON-RPC 2.0 §5)
     // A present Content-Type must carry application/json (parameters ignored).
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
@@ -131,12 +131,12 @@ CalculatorServer::CalculatorServer(std::shared_ptr<CalculatorHandler> handler)
     if (params == nullptr || params->is_null()) params = &empty_params;
     const std::string& method_name = method->as_string();
     if (method_name == "Add") {
-      auto response = HandleAdd(*handler, *params, id);
+      auto response = HandleAdd(*handler, *params, id, context);
       response.operation = "Add";
       return response;
     }
     if (method_name == "Divide") {
-      auto response = HandleDivide(*handler, *params, id);
+      auto response = HandleDivide(*handler, *params, id, context);
       response.operation = "Divide";
       return response;
     }

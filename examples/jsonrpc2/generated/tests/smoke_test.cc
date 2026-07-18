@@ -34,11 +34,11 @@ DivideOutput MinimalDivideOutput() {
 
 class SmokeHandler : public CalculatorHandler {
   public:
-    smithy::Outcome<AddOutput> Add(const AddInput& input) override {
+    smithy::Outcome<AddOutput> Add(const AddInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalAddOutput();
     }
-    smithy::Outcome<DivideOutput> Divide(const DivideInput& input) override {
+    smithy::Outcome<DivideOutput> Divide(const DivideInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalDivideOutput();
     }
@@ -82,7 +82,7 @@ TEST(CalculatorSmokeTest, DivideRoundTrips) {
 TEST(CalculatorSmokeTest, ModeledErrorsMapAcrossTheWire) {
   class FailingHandler final : public SmokeHandler {
     public:
-      smithy::Outcome<DivideOutput> Divide(const DivideInput& input) override {
+      smithy::Outcome<DivideOutput> Divide(const DivideInput& input, const smithy::server::RequestContext&) override {
         (void)input;
         smithy::Error error = smithy::Error::Modeled("DivisionByZero", "smoke");
             auto detail = [] {

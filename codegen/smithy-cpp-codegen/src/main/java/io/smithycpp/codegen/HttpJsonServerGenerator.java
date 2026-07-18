@@ -130,7 +130,8 @@ final class HttpJsonServerGenerator {
 
     w.openBlock(
         "smithy::Outcome<$L> Parse$LInput(const smithy::http::HttpRequest& request, "
-            + "const smithy::server::RequestContext& context, "
+            + ProtocolSupport.REQUEST_CONTEXT_PARAM
+            + " context, "
             + "std::vector<smithy::server::ValidationFailure>* validation_failures) {",
         inputType,
         opName);
@@ -389,7 +390,8 @@ final class HttpJsonServerGenerator {
     boolean compressed = ProtocolSupport.gzipCompressed(operation);
     w.openBlock(
         "(void)router_->Add($S, $S, [handler](const smithy::http::HttpRequest& $L, "
-            + "const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {",
+            + ProtocolSupport.REQUEST_CONTEXT_PARAM
+            + " context) -> smithy::http::HttpResponse {",
         http.getMethod(),
         pattern.toString(),
         compressed ? "raw_request" : "request");
@@ -460,7 +462,7 @@ final class HttpJsonServerGenerator {
           "if (!validation_failures.empty()) "
               + "return ValidationErrorResponse(validation_failures);");
     }
-    w.write("auto outcome = handler->$L(*input);", opName);
+    w.write("auto outcome = handler->$L(*input, context);", opName);
     w.write("if (!outcome) return ErrorToResponse(outcome.error());");
     w.write("return Build$LResponse(*outcome);", opName);
     w.closeBlock("}, $S);", operation.getId().getName());

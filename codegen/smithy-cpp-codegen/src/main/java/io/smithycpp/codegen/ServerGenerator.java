@@ -90,6 +90,8 @@ final class ServerGenerator {
     w.write("/// Implement one method per operation. Return a modeled error as");
     w.write("/// smithy::Error::Modeled(\"<ErrorShapeName>\", message), optionally with the");
     w.write("/// typed error structure attached via set_detail() so it serializes fully.");
+    w.write("/// The context carries the raw request and routing captures — see");
+    w.write("/// smithy::server::RequestContext; leave the parameter unnamed when unused.");
     w.write("/// Implementations must be thread-safe: transports may invoke any mix of");
     w.write("/// operations concurrently on the one handler instance.");
     w.openBlock("class $LHandler {", name);
@@ -108,10 +110,11 @@ final class ServerGenerator {
       StructureShape input = ProtocolSupport.inputShape(context, operation);
       StructureShape output = ProtocolSupport.outputShape(context, operation);
       w.write(
-          "virtual smithy::Outcome<$L> $L(const $L& input) = 0;",
+          "virtual smithy::Outcome<$L> $L(const $L& input, $L context) = 0;",
           context.cppSymbols().toSymbol(output).getName(),
           CppReservedWords.escape(operation.getId().getName()),
-          context.cppSymbols().toSymbol(input).getName());
+          context.cppSymbols().toSymbol(input).getName(),
+          ProtocolSupport.REQUEST_CONTEXT_PARAM);
     }
     w.dedent();
     w.closeBlock("};");

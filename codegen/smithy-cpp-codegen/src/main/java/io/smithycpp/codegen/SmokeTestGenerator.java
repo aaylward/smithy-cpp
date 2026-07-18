@@ -164,8 +164,8 @@ final class SmokeTestGenerator {
     w.openBlock("class SmokeHandler : public $LHandler {", name);
     w.write("public:").indent();
     for (OperationShape operation : operations) {
-      w.openBlock(
-          "smithy::Outcome<$L> $L(const $L& input) override {",
+      ProtocolSupport.openTestHandlerOverride(
+          w,
           typeName(output(operation)),
           CppReservedWords.escape(operation.getId().getName()),
           typeName(input(operation)));
@@ -233,11 +233,8 @@ final class SmokeTestGenerator {
     w.openBlock("TEST($LSmokeTest, ModeledErrorsMapAcrossTheWire) {", name);
     w.openBlock("class FailingHandler final : public SmokeHandler {");
     w.write("public:").indent();
-    w.openBlock(
-        "smithy::Outcome<$L> $L(const $L& input) override {",
-        typeName(output(errorOp)),
-        opName,
-        typeName(input(errorOp)));
+    ProtocolSupport.openTestHandlerOverride(
+        w, typeName(output(errorOp)), opName, typeName(input(errorOp)));
     w.write("(void)input;");
     w.write("smithy::Error error = smithy::Error::Modeled($S, \"smoke\");", wireName);
     w.writeWithNoFormatting("    auto detail = " + literals.minimalExpression(errorShape) + ";");

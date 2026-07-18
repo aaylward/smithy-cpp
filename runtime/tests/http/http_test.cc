@@ -187,6 +187,27 @@ TEST(LoopbackTest, RoutesRequestsToHandler) {
   EXPECT_FALSE(loopback.Send(probe).ok());
 }
 
+TEST(LoopbackTest, PeerAddressPassesThroughUnchanged) {
+  // No connection, no stamping: the handler sees whatever the caller set —
+  // empty by default, or a test-stamped address for peer-dependent handlers.
+  Loopback loopback;
+  ASSERT_TRUE(loopback
+                  .Start([](const HttpRequest& request) {
+                    HttpResponse response;
+                    response.headers.Set(
+                        "x-peer", request.peer_address.empty() ? "<empty>" : request.peer_address);
+                    return response;
+                  })
+                  .ok());
+
+  HttpRequest plain;
+  EXPECT_EQ(loopback.Send(plain)->headers.Get("x-peer"), "<empty>");
+
+  HttpRequest stamped;
+  stamped.peer_address = "203.0.113.7:52814";
+  EXPECT_EQ(loopback.Send(stamped)->headers.Get("x-peer"), "203.0.113.7:52814");
+}
+
 TEST(LoopbackTest, AsyncSendUsesSameHandler) {
   Loopback loopback;
   ASSERT_TRUE(loopback.Start([](const HttpRequest&) { return HttpResponse{204, {}, ""}; }).ok());

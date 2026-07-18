@@ -108,51 +108,51 @@ VersionOutput MinimalVersionOutput() {
 
 class SmokeHandler : public PizzaAdminServiceHandler {
   public:
-    smithy::Outcome<AddMenuItemOutput> AddMenuItem(const AddMenuItemInput& input) override {
+    smithy::Outcome<AddMenuItemOutput> AddMenuItem(const AddMenuItemInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalAddMenuItemOutput();
     }
-    smithy::Outcome<CustomCodeOutput> CustomCode(const CustomCodeInput& input) override {
+    smithy::Outcome<CustomCodeOutput> CustomCode(const CustomCodeInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalCustomCodeOutput();
     }
-    smithy::Outcome<GetEnumOutput> GetEnum(const GetEnumInput& input) override {
+    smithy::Outcome<GetEnumOutput> GetEnum(const GetEnumInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalGetEnumOutput();
     }
-    smithy::Outcome<GetIntEnumOutput> GetIntEnum(const GetIntEnumInput& input) override {
+    smithy::Outcome<GetIntEnumOutput> GetIntEnum(const GetIntEnumInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalGetIntEnumOutput();
     }
-    smithy::Outcome<GetMenuOutput> GetMenu(const GetMenuInput& input) override {
+    smithy::Outcome<GetMenuOutput> GetMenu(const GetMenuInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalGetMenuOutput();
     }
-    smithy::Outcome<HeaderEndpointOutput> HeaderEndpoint(const HeaderEndpointInput& input) override {
+    smithy::Outcome<HeaderEndpointOutput> HeaderEndpoint(const HeaderEndpointInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalHeaderEndpointOutput();
     }
-    smithy::Outcome<HealthOutput> Health(const HealthInput& input) override {
+    smithy::Outcome<HealthOutput> Health(const HealthInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalHealthOutput();
     }
-    smithy::Outcome<HttpPayloadRequiredWithDefaultOutput> HttpPayloadRequiredWithDefault(const HttpPayloadRequiredWithDefaultInput& input) override {
+    smithy::Outcome<HttpPayloadRequiredWithDefaultOutput> HttpPayloadRequiredWithDefault(const HttpPayloadRequiredWithDefaultInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalHttpPayloadRequiredWithDefaultOutput();
     }
-    smithy::Outcome<HttpPayloadWithDefaultOutput> HttpPayloadWithDefault(const HttpPayloadWithDefaultInput& input) override {
+    smithy::Outcome<HttpPayloadWithDefaultOutput> HttpPayloadWithDefault(const HttpPayloadWithDefaultInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalHttpPayloadWithDefaultOutput();
     }
-    smithy::Outcome<OpenUnionsOutput> OpenUnions(const OpenUnionsInput& input) override {
+    smithy::Outcome<OpenUnionsOutput> OpenUnions(const OpenUnionsInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalOpenUnionsOutput();
     }
-    smithy::Outcome<RoundTripOutput> RoundTrip(const RoundTripInput& input) override {
+    smithy::Outcome<RoundTripOutput> RoundTrip(const RoundTripInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalRoundTripOutput();
     }
-    smithy::Outcome<VersionOutput> Version(const VersionInput& input) override {
+    smithy::Outcome<VersionOutput> Version(const VersionInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalVersionOutput();
     }
@@ -323,7 +323,7 @@ TEST(PizzaAdminServiceSmokeTest, VersionRoundTrips) {
 TEST(PizzaAdminServiceSmokeTest, ModeledErrorsMapAcrossTheWire) {
   class FailingHandler final : public SmokeHandler {
     public:
-      smithy::Outcome<AddMenuItemOutput> AddMenuItem(const AddMenuItemInput& input) override {
+      smithy::Outcome<AddMenuItemOutput> AddMenuItem(const AddMenuItemInput& input, const smithy::server::RequestContext&) override {
         (void)input;
         smithy::Error error = smithy::Error::Modeled("GenericServerError", "smoke");
             auto detail = [] {

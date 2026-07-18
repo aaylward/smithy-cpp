@@ -162,6 +162,27 @@ TEST(SocketTransportTest, ReportsConnectionFailure) {
   EXPECT_EQ(response.error().kind(), ErrorKind::kTransport);
 }
 
+TEST(SocketTransportTest, StampsThePeerAddress) {
+  SocketHttpServer server;
+  ASSERT_TRUE(server
+                  .Start([](const HttpRequest& request) {
+                    HttpResponse response;
+                    response.headers.Set("x-peer", request.peer_address);
+                    return response;
+                  })
+                  .ok());
+  SocketHttpClient client("127.0.0.1", server.port());
+  HttpRequest request;
+  request.method = "GET";
+  request.target = "/";
+  const auto response = client.Send(request);
+  ASSERT_TRUE(response.ok()) << response.error().message();
+  const std::string peer = response->headers.Get("x-peer").value_or("");
+  EXPECT_EQ(peer.rfind("127.0.0.1:", 0), 0u) << peer;
+  EXPECT_GT(peer.size(), std::string("127.0.0.1:").size()) << peer;  // a port follows
+  server.Stop();
+}
+
 TEST(SocketTransportTest, StopIsIdempotent) {
   SocketHttpServer server;
   ASSERT_TRUE(server.Start([](const HttpRequest&) { return HttpResponse{}; }).ok());

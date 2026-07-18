@@ -19,6 +19,13 @@ struct HttpRequest {
   std::string target = "/";
   Headers headers;
   Body body;
+  // Server-side annotation, never read from or written to the wire: the
+  // connection's remote endpoint as "ip:port" ("203.0.113.7:52814",
+  // "[2001:db8::1]:443"), stamped by the server transport for logging and
+  // source-based policy (issue #46). Empty when the transport has no peer
+  // (Loopback) or the socket could not report one. Client-side Send()
+  // ignores it.
+  std::string peer_address;
 };
 
 struct HttpResponse {

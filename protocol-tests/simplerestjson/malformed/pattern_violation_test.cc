@@ -18,15 +18,18 @@ namespace {
 
 class RecordingHandler : public RoundTripRestHandler {
  public:
-  smithy::Outcome<DescribeSinkOutput> DescribeSink(const DescribeSinkInput&) override {
+  smithy::Outcome<DescribeSinkOutput> DescribeSink(const DescribeSinkInput&,
+                                                   const smithy::server::RequestContext&) override {
     ++calls;
     return DescribeSinkOutput{};
   }
-  smithy::Outcome<PutSinkOutput> PutSink(const PutSinkInput&) override {
+  smithy::Outcome<PutSinkOutput> PutSink(const PutSinkInput&,
+                                         const smithy::server::RequestContext&) override {
     ++calls;
     return PutSinkOutput{};
   }
-  smithy::Outcome<UploadAttachmentOutput> UploadAttachment(const UploadAttachmentInput&) override {
+  smithy::Outcome<UploadAttachmentOutput> UploadAttachment(
+      const UploadAttachmentInput&, const smithy::server::RequestContext&) override {
     ++calls;
     return UploadAttachmentOutput{};
   }

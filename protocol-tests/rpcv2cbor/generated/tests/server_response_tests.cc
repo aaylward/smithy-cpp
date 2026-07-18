@@ -112,67 +112,67 @@ SparseNullsOperationOutput MinimalSparseNullsOperationOutput() {
 
 class RecordingHandler : public RpcV2ProtocolHandler {
   public:
-    smithy::Outcome<EmptyInputOutputOutput> EmptyInputOutput(const EmptyInputOutputInput& input) override {
+    smithy::Outcome<EmptyInputOutputOutput> EmptyInputOutput(const EmptyInputOutputInput& input, const smithy::server::RequestContext&) override {
       lastEmptyInputOutput = input;
       return MinimalEmptyInputOutputOutput();
     }
     std::optional<EmptyInputOutputInput> lastEmptyInputOutput;
-    smithy::Outcome<Float16Output> Float16(const Float16Input& input) override {
+    smithy::Outcome<Float16Output> Float16(const Float16Input& input, const smithy::server::RequestContext&) override {
       lastFloat16 = input;
       return MinimalFloat16Output();
     }
     std::optional<Float16Input> lastFloat16;
-    smithy::Outcome<FractionalSecondsOutput> FractionalSeconds(const FractionalSecondsInput& input) override {
+    smithy::Outcome<FractionalSecondsOutput> FractionalSeconds(const FractionalSecondsInput& input, const smithy::server::RequestContext&) override {
       lastFractionalSeconds = input;
       return MinimalFractionalSecondsOutput();
     }
     std::optional<FractionalSecondsInput> lastFractionalSeconds;
-    smithy::Outcome<GreetingWithErrorsOutput> GreetingWithErrors(const GreetingWithErrorsInput& input) override {
+    smithy::Outcome<GreetingWithErrorsOutput> GreetingWithErrors(const GreetingWithErrorsInput& input, const smithy::server::RequestContext&) override {
       lastGreetingWithErrors = input;
       return MinimalGreetingWithErrorsOutput();
     }
     std::optional<GreetingWithErrorsInput> lastGreetingWithErrors;
-    smithy::Outcome<NoInputOutputOutput> NoInputOutput(const NoInputOutputInput& input) override {
+    smithy::Outcome<NoInputOutputOutput> NoInputOutput(const NoInputOutputInput& input, const smithy::server::RequestContext&) override {
       lastNoInputOutput = input;
       return MinimalNoInputOutputOutput();
     }
     std::optional<NoInputOutputInput> lastNoInputOutput;
-    smithy::Outcome<OperationWithDefaultsOutput> OperationWithDefaults(const OperationWithDefaultsInput& input) override {
+    smithy::Outcome<OperationWithDefaultsOutput> OperationWithDefaults(const OperationWithDefaultsInput& input, const smithy::server::RequestContext&) override {
       lastOperationWithDefaults = input;
       return MinimalOperationWithDefaultsOutput();
     }
     std::optional<OperationWithDefaultsInput> lastOperationWithDefaults;
-    smithy::Outcome<OptionalInputOutputOutput> OptionalInputOutput(const OptionalInputOutputInput& input) override {
+    smithy::Outcome<OptionalInputOutputOutput> OptionalInputOutput(const OptionalInputOutputInput& input, const smithy::server::RequestContext&) override {
       lastOptionalInputOutput = input;
       return MinimalOptionalInputOutputOutput();
     }
     std::optional<OptionalInputOutputInput> lastOptionalInputOutput;
-    smithy::Outcome<RecursiveShapesOutput> RecursiveShapes(const RecursiveShapesInput& input) override {
+    smithy::Outcome<RecursiveShapesOutput> RecursiveShapes(const RecursiveShapesInput& input, const smithy::server::RequestContext&) override {
       lastRecursiveShapes = input;
       return MinimalRecursiveShapesOutput();
     }
     std::optional<RecursiveShapesInput> lastRecursiveShapes;
-    smithy::Outcome<RpcV2CborDenseMapsOutput> RpcV2CborDenseMaps(const RpcV2CborDenseMapsInput& input) override {
+    smithy::Outcome<RpcV2CborDenseMapsOutput> RpcV2CborDenseMaps(const RpcV2CborDenseMapsInput& input, const smithy::server::RequestContext&) override {
       lastRpcV2CborDenseMaps = input;
       return MinimalRpcV2CborDenseMapsOutput();
     }
     std::optional<RpcV2CborDenseMapsInput> lastRpcV2CborDenseMaps;
-    smithy::Outcome<RpcV2CborListsOutput> RpcV2CborLists(const RpcV2CborListsInput& input) override {
+    smithy::Outcome<RpcV2CborListsOutput> RpcV2CborLists(const RpcV2CborListsInput& input, const smithy::server::RequestContext&) override {
       lastRpcV2CborLists = input;
       return MinimalRpcV2CborListsOutput();
     }
     std::optional<RpcV2CborListsInput> lastRpcV2CborLists;
-    smithy::Outcome<RpcV2CborSparseMapsOutput> RpcV2CborSparseMaps(const RpcV2CborSparseMapsInput& input) override {
+    smithy::Outcome<RpcV2CborSparseMapsOutput> RpcV2CborSparseMaps(const RpcV2CborSparseMapsInput& input, const smithy::server::RequestContext&) override {
       lastRpcV2CborSparseMaps = input;
       return MinimalRpcV2CborSparseMapsOutput();
     }
     std::optional<RpcV2CborSparseMapsInput> lastRpcV2CborSparseMaps;
-    smithy::Outcome<SimpleScalarPropertiesOutput> SimpleScalarProperties(const SimpleScalarPropertiesInput& input) override {
+    smithy::Outcome<SimpleScalarPropertiesOutput> SimpleScalarProperties(const SimpleScalarPropertiesInput& input, const smithy::server::RequestContext&) override {
       lastSimpleScalarProperties = input;
       return MinimalSimpleScalarPropertiesOutput();
     }
     std::optional<SimpleScalarPropertiesInput> lastSimpleScalarProperties;
-    smithy::Outcome<SparseNullsOperationOutput> SparseNullsOperation(const SparseNullsOperationInput& input) override {
+    smithy::Outcome<SparseNullsOperationOutput> SparseNullsOperation(const SparseNullsOperationInput& input, const smithy::server::RequestContext&) override {
       lastSparseNullsOperation = input;
       return MinimalSparseNullsOperationOutput();
     }
@@ -339,7 +339,7 @@ smithy::http::HttpRequest MinimalRequestForGreetingWithErrors() {
 TEST(RpcV2ProtocolServerResponseTest, empty_output) {
   class Handler final : public RecordingHandler {
    public:
-    smithy::Outcome<EmptyInputOutputOutput> EmptyInputOutput(const EmptyInputOutputInput& input) override {
+    smithy::Outcome<EmptyInputOutputOutput> EmptyInputOutput(const EmptyInputOutputInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return [] {
   EmptyInputOutputOutput v{};
@@ -359,7 +359,7 @@ TEST(RpcV2ProtocolServerResponseTest, empty_output) {
 TEST(RpcV2ProtocolServerResponseTest, no_output) {
   class Handler final : public RecordingHandler {
    public:
-    smithy::Outcome<NoInputOutputOutput> NoInputOutput(const NoInputOutputInput& input) override {
+    smithy::Outcome<NoInputOutputOutput> NoInputOutput(const NoInputOutputInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return [] {
   NoInputOutputOutput v{};
@@ -377,7 +377,7 @@ TEST(RpcV2ProtocolServerResponseTest, no_output) {
 TEST(RpcV2ProtocolServerResponseTest, RpcV2CborServerPopulatesDefaultsInResponseWhenMissingInParams) {
   class Handler final : public RecordingHandler {
    public:
-    smithy::Outcome<OperationWithDefaultsOutput> OperationWithDefaults(const OperationWithDefaultsInput& input) override {
+    smithy::Outcome<OperationWithDefaultsOutput> OperationWithDefaults(const OperationWithDefaultsInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return [] {
   OperationWithDefaultsOutput v{};
@@ -397,7 +397,7 @@ TEST(RpcV2ProtocolServerResponseTest, RpcV2CborServerPopulatesDefaultsInResponse
 TEST(RpcV2ProtocolServerResponseTest, optional_output) {
   class Handler final : public RecordingHandler {
    public:
-    smithy::Outcome<OptionalInputOutputOutput> OptionalInputOutput(const OptionalInputOutputInput& input) override {
+    smithy::Outcome<OptionalInputOutputOutput> OptionalInputOutput(const OptionalInputOutputInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return [] {
   OptionalInputOutputOutput v{};
@@ -417,7 +417,7 @@ TEST(RpcV2ProtocolServerResponseTest, optional_output) {
 TEST(RpcV2ProtocolServerResponseTest, RpcV2CborRecursiveShapes) {
   class Handler final : public RecordingHandler {
    public:
-    smithy::Outcome<RecursiveShapesOutput> RecursiveShapes(const RecursiveShapesInput& input) override {
+    smithy::Outcome<RecursiveShapesOutput> RecursiveShapes(const RecursiveShapesInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return [] {
   RecursiveShapesOutput v{};
@@ -457,7 +457,7 @@ TEST(RpcV2ProtocolServerResponseTest, RpcV2CborRecursiveShapes) {
 TEST(RpcV2ProtocolServerResponseTest, RpcV2CborMaps) {
   class Handler final : public RecordingHandler {
    public:
-    smithy::Outcome<RpcV2CborDenseMapsOutput> RpcV2CborDenseMaps(const RpcV2CborDenseMapsInput& input) override {
+    smithy::Outcome<RpcV2CborDenseMapsOutput> RpcV2CborDenseMaps(const RpcV2CborDenseMapsInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return [] {
   RpcV2CborDenseMapsOutput v{};
@@ -486,7 +486,7 @@ TEST(RpcV2ProtocolServerResponseTest, RpcV2CborMaps) {
 TEST(RpcV2ProtocolServerResponseTest, RpcV2CborDeserializesZeroValuesInMaps) {
   class Handler final : public RecordingHandler {
    public:
-    smithy::Outcome<RpcV2CborDenseMapsOutput> RpcV2CborDenseMaps(const RpcV2CborDenseMapsInput& input) override {
+    smithy::Outcome<RpcV2CborDenseMapsOutput> RpcV2CborDenseMaps(const RpcV2CborDenseMapsInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return [] {
   RpcV2CborDenseMapsOutput v{};
@@ -508,7 +508,7 @@ TEST(RpcV2ProtocolServerResponseTest, RpcV2CborDeserializesZeroValuesInMaps) {
 TEST(RpcV2ProtocolServerResponseTest, RpcV2CborDeserializesDenseSetMap) {
   class Handler final : public RecordingHandler {
    public:
-    smithy::Outcome<RpcV2CborDenseMapsOutput> RpcV2CborDenseMaps(const RpcV2CborDenseMapsInput& input) override {
+    smithy::Outcome<RpcV2CborDenseMapsOutput> RpcV2CborDenseMaps(const RpcV2CborDenseMapsInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return [] {
   RpcV2CborDenseMapsOutput v{};
@@ -529,7 +529,7 @@ TEST(RpcV2ProtocolServerResponseTest, RpcV2CborDeserializesDenseSetMap) {
 TEST(RpcV2ProtocolServerResponseTest, RpcV2CborLists) {
   class Handler final : public RecordingHandler {
    public:
-    smithy::Outcome<RpcV2CborListsOutput> RpcV2CborLists(const RpcV2CborListsInput& input) override {
+    smithy::Outcome<RpcV2CborListsOutput> RpcV2CborLists(const RpcV2CborListsInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return [] {
   RpcV2CborListsOutput v{};
@@ -569,7 +569,7 @@ TEST(RpcV2ProtocolServerResponseTest, RpcV2CborLists) {
 TEST(RpcV2ProtocolServerResponseTest, RpcV2CborListsEmpty) {
   class Handler final : public RecordingHandler {
    public:
-    smithy::Outcome<RpcV2CborListsOutput> RpcV2CborLists(const RpcV2CborListsInput& input) override {
+    smithy::Outcome<RpcV2CborListsOutput> RpcV2CborLists(const RpcV2CborListsInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return [] {
   RpcV2CborListsOutput v{};
@@ -590,7 +590,7 @@ TEST(RpcV2ProtocolServerResponseTest, RpcV2CborListsEmpty) {
 TEST(RpcV2ProtocolServerResponseTest, RpcV2CborSparseJsonMaps) {
   class Handler final : public RecordingHandler {
    public:
-    smithy::Outcome<RpcV2CborSparseMapsOutput> RpcV2CborSparseMaps(const RpcV2CborSparseMapsInput& input) override {
+    smithy::Outcome<RpcV2CborSparseMapsOutput> RpcV2CborSparseMaps(const RpcV2CborSparseMapsInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return [] {
   RpcV2CborSparseMapsOutput v{};
@@ -619,7 +619,7 @@ TEST(RpcV2ProtocolServerResponseTest, RpcV2CborSparseJsonMaps) {
 TEST(RpcV2ProtocolServerResponseTest, RpcV2CborDeserializesNullMapValues) {
   class Handler final : public RecordingHandler {
    public:
-    smithy::Outcome<RpcV2CborSparseMapsOutput> RpcV2CborSparseMaps(const RpcV2CborSparseMapsInput& input) override {
+    smithy::Outcome<RpcV2CborSparseMapsOutput> RpcV2CborSparseMaps(const RpcV2CborSparseMapsInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return [] {
   RpcV2CborSparseMapsOutput v{};
@@ -643,7 +643,7 @@ TEST(RpcV2ProtocolServerResponseTest, RpcV2CborDeserializesNullMapValues) {
 TEST(RpcV2ProtocolServerResponseTest, RpcV2CborDeserializesSparseSetMap) {
   class Handler final : public RecordingHandler {
    public:
-    smithy::Outcome<RpcV2CborSparseMapsOutput> RpcV2CborSparseMaps(const RpcV2CborSparseMapsInput& input) override {
+    smithy::Outcome<RpcV2CborSparseMapsOutput> RpcV2CborSparseMaps(const RpcV2CborSparseMapsInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return [] {
   RpcV2CborSparseMapsOutput v{};
@@ -664,7 +664,7 @@ TEST(RpcV2ProtocolServerResponseTest, RpcV2CborDeserializesSparseSetMap) {
 TEST(RpcV2ProtocolServerResponseTest, RpcV2CborDeserializesSparseSetMapAndRetainsNull) {
   class Handler final : public RecordingHandler {
    public:
-    smithy::Outcome<RpcV2CborSparseMapsOutput> RpcV2CborSparseMaps(const RpcV2CborSparseMapsInput& input) override {
+    smithy::Outcome<RpcV2CborSparseMapsOutput> RpcV2CborSparseMaps(const RpcV2CborSparseMapsInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return [] {
   RpcV2CborSparseMapsOutput v{};
@@ -685,7 +685,7 @@ TEST(RpcV2ProtocolServerResponseTest, RpcV2CborDeserializesSparseSetMapAndRetain
 TEST(RpcV2ProtocolServerResponseTest, RpcV2CborDeserializesZeroValuesInSparseMaps) {
   class Handler final : public RecordingHandler {
    public:
-    smithy::Outcome<RpcV2CborSparseMapsOutput> RpcV2CborSparseMaps(const RpcV2CborSparseMapsInput& input) override {
+    smithy::Outcome<RpcV2CborSparseMapsOutput> RpcV2CborSparseMaps(const RpcV2CborSparseMapsInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return [] {
   RpcV2CborSparseMapsOutput v{};
@@ -707,7 +707,7 @@ TEST(RpcV2ProtocolServerResponseTest, RpcV2CborDeserializesZeroValuesInSparseMap
 TEST(RpcV2ProtocolServerResponseTest, RpcV2CborSimpleScalarProperties) {
   class Handler final : public RecordingHandler {
    public:
-    smithy::Outcome<SimpleScalarPropertiesOutput> SimpleScalarProperties(const SimpleScalarPropertiesInput& input) override {
+    smithy::Outcome<SimpleScalarPropertiesOutput> SimpleScalarProperties(const SimpleScalarPropertiesInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return [] {
   SimpleScalarPropertiesOutput v{};
@@ -736,7 +736,7 @@ TEST(RpcV2ProtocolServerResponseTest, RpcV2CborSimpleScalarProperties) {
 TEST(RpcV2ProtocolServerResponseTest, RpcV2CborServerDoesntSerializeNullStructureValues) {
   class Handler final : public RecordingHandler {
    public:
-    smithy::Outcome<SimpleScalarPropertiesOutput> SimpleScalarProperties(const SimpleScalarPropertiesInput& input) override {
+    smithy::Outcome<SimpleScalarPropertiesOutput> SimpleScalarProperties(const SimpleScalarPropertiesInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return [] {
   SimpleScalarPropertiesOutput v{};
@@ -756,7 +756,7 @@ TEST(RpcV2ProtocolServerResponseTest, RpcV2CborServerDoesntSerializeNullStructur
 TEST(RpcV2ProtocolServerResponseTest, RpcV2CborSupportsNaNFloatOutputs) {
   class Handler final : public RecordingHandler {
    public:
-    smithy::Outcome<SimpleScalarPropertiesOutput> SimpleScalarProperties(const SimpleScalarPropertiesInput& input) override {
+    smithy::Outcome<SimpleScalarPropertiesOutput> SimpleScalarProperties(const SimpleScalarPropertiesInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return [] {
   SimpleScalarPropertiesOutput v{};
@@ -778,7 +778,7 @@ TEST(RpcV2ProtocolServerResponseTest, RpcV2CborSupportsNaNFloatOutputs) {
 TEST(RpcV2ProtocolServerResponseTest, RpcV2CborSupportsInfinityFloatOutputs) {
   class Handler final : public RecordingHandler {
    public:
-    smithy::Outcome<SimpleScalarPropertiesOutput> SimpleScalarProperties(const SimpleScalarPropertiesInput& input) override {
+    smithy::Outcome<SimpleScalarPropertiesOutput> SimpleScalarProperties(const SimpleScalarPropertiesInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return [] {
   SimpleScalarPropertiesOutput v{};
@@ -800,7 +800,7 @@ TEST(RpcV2ProtocolServerResponseTest, RpcV2CborSupportsInfinityFloatOutputs) {
 TEST(RpcV2ProtocolServerResponseTest, RpcV2CborSupportsNegativeInfinityFloatOutputs) {
   class Handler final : public RecordingHandler {
    public:
-    smithy::Outcome<SimpleScalarPropertiesOutput> SimpleScalarProperties(const SimpleScalarPropertiesInput& input) override {
+    smithy::Outcome<SimpleScalarPropertiesOutput> SimpleScalarProperties(const SimpleScalarPropertiesInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return [] {
   SimpleScalarPropertiesOutput v{};
@@ -822,7 +822,7 @@ TEST(RpcV2ProtocolServerResponseTest, RpcV2CborSupportsNegativeInfinityFloatOutp
 TEST(RpcV2ProtocolServerResponseTest, RpcV2CborSparseMapsDeserializeNullValues) {
   class Handler final : public RecordingHandler {
    public:
-    smithy::Outcome<SparseNullsOperationOutput> SparseNullsOperation(const SparseNullsOperationInput& input) override {
+    smithy::Outcome<SparseNullsOperationOutput> SparseNullsOperation(const SparseNullsOperationInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return [] {
   SparseNullsOperationOutput v{};
@@ -843,7 +843,7 @@ TEST(RpcV2ProtocolServerResponseTest, RpcV2CborSparseMapsDeserializeNullValues) 
 TEST(RpcV2ProtocolServerResponseTest, RpcV2CborSparseListsDeserializeNull) {
   class Handler final : public RecordingHandler {
    public:
-    smithy::Outcome<SparseNullsOperationOutput> SparseNullsOperation(const SparseNullsOperationInput& input) override {
+    smithy::Outcome<SparseNullsOperationOutput> SparseNullsOperation(const SparseNullsOperationInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return [] {
   SparseNullsOperationOutput v{};
@@ -864,7 +864,7 @@ TEST(RpcV2ProtocolServerResponseTest, RpcV2CborSparseListsDeserializeNull) {
 TEST(RpcV2ProtocolServerErrorTest, RpcV2CborComplexError) {
   class Handler final : public RecordingHandler {
    public:
-    smithy::Outcome<GreetingWithErrorsOutput> GreetingWithErrors(const GreetingWithErrorsInput& input) override {
+    smithy::Outcome<GreetingWithErrorsOutput> GreetingWithErrors(const GreetingWithErrorsInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       smithy::Error error = smithy::Error::Modeled("ComplexError", "");
       error.set_detail([] {
@@ -891,7 +891,7 @@ TEST(RpcV2ProtocolServerErrorTest, RpcV2CborComplexError) {
 TEST(RpcV2ProtocolServerErrorTest, RpcV2CborEmptyComplexError) {
   class Handler final : public RecordingHandler {
    public:
-    smithy::Outcome<GreetingWithErrorsOutput> GreetingWithErrors(const GreetingWithErrorsInput& input) override {
+    smithy::Outcome<GreetingWithErrorsOutput> GreetingWithErrors(const GreetingWithErrorsInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       smithy::Error error = smithy::Error::Modeled("ComplexError", "");
       error.set_detail([] {
@@ -913,7 +913,7 @@ TEST(RpcV2ProtocolServerErrorTest, RpcV2CborEmptyComplexError) {
 TEST(RpcV2ProtocolServerErrorTest, RpcV2CborInvalidGreetingError) {
   class Handler final : public RecordingHandler {
    public:
-    smithy::Outcome<GreetingWithErrorsOutput> GreetingWithErrors(const GreetingWithErrorsInput& input) override {
+    smithy::Outcome<GreetingWithErrorsOutput> GreetingWithErrors(const GreetingWithErrorsInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       smithy::Error error = smithy::Error::Modeled("InvalidGreeting", "");
       error.set_detail([] {

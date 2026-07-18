@@ -224,7 +224,7 @@ BookstoreServer::BookstoreServer(std::shared_ptr<BookstoreHandler> handler)
     auto input = ParseAddBookInput(request, context, &validation_failures);
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
     if (!input) return ErrorToResponse(input.error());
-    auto outcome = handler->AddBook(*input);
+    auto outcome = handler->AddBook(*input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     return BuildAddBookResponse(*outcome);
   }, "AddBook");
@@ -247,7 +247,7 @@ BookstoreServer::BookstoreServer(std::shared_ptr<BookstoreHandler> handler)
     auto input = ParseGetBookInput(request, context, &validation_failures);
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
     if (!input) return ErrorToResponse(input.error());
-    auto outcome = handler->GetBook(*input);
+    auto outcome = handler->GetBook(*input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     return BuildGetBookResponse(*outcome);
   }, "GetBook");

@@ -14,6 +14,8 @@ namespace example::roundtrip::rest {
 /// Implement one method per operation. Return a modeled error as
 /// smithy::Error::Modeled("<ErrorShapeName>", message), optionally with the
 /// typed error structure attached via set_detail() so it serializes fully.
+/// The context carries the raw request and routing captures — see
+/// smithy::server::RequestContext; leave the parameter unnamed when unused.
 /// Implementations must be thread-safe: transports may invoke any mix of
 /// operations concurrently on the one handler instance.
 class RoundTripRestHandler {
@@ -21,15 +23,15 @@ class RoundTripRestHandler {
     virtual ~RoundTripRestHandler() = default;
 
     /// Read-only operation: no body in, body out.
-    virtual smithy::Outcome<DescribeSinkOutput> DescribeSink(const DescribeSinkInput& input) = 0;
+    virtual smithy::Outcome<DescribeSinkOutput> DescribeSink(const DescribeSinkInput& input, const smithy::server::RequestContext& context) = 0;
     /// Every binding location at once: label, query, @httpQueryParams, headers,
     /// prefix headers, and a JSON body full of aggregate shapes. Compressed and
     /// carrying required query/header members so the HTTP+JSON gzip path and the
     /// required-absence validation wiring both land in a compiled golden
     /// (issue #68: conditional emissions need fixtures on both branches).
-    virtual smithy::Outcome<PutSinkOutput> PutSink(const PutSinkInput& input) = 0;
+    virtual smithy::Outcome<PutSinkOutput> PutSink(const PutSinkInput& input, const smithy::server::RequestContext& context) = 0;
     /// Raw blob payload with an extra header member.
-    virtual smithy::Outcome<UploadAttachmentOutput> UploadAttachment(const UploadAttachmentInput& input) = 0;
+    virtual smithy::Outcome<UploadAttachmentOutput> UploadAttachment(const UploadAttachmentInput& input, const smithy::server::RequestContext& context) = 0;
 };
 
 /// simpleRestJson server for example.roundtrip#RoundTripRest: routing, deserialization, handler dispatch,

@@ -42,17 +42,17 @@ PutConstrainedOutput MinimalPutConstrainedOutput() {
 
 class RecordingHandler : public JsonRpc2ProtocolHandler {
   public:
-    smithy::Outcome<EchoPayloadOutput> EchoPayload(const EchoPayloadInput& input) override {
+    smithy::Outcome<EchoPayloadOutput> EchoPayload(const EchoPayloadInput& input, const smithy::server::RequestContext&) override {
       lastEchoPayload = input;
       return MinimalEchoPayloadOutput();
     }
     std::optional<EchoPayloadInput> lastEchoPayload;
-    smithy::Outcome<NoArgsOutput> NoArgs(const NoArgsInput& input) override {
+    smithy::Outcome<NoArgsOutput> NoArgs(const NoArgsInput& input, const smithy::server::RequestContext&) override {
       lastNoArgs = input;
       return MinimalNoArgsOutput();
     }
     std::optional<NoArgsInput> lastNoArgs;
-    smithy::Outcome<PutConstrainedOutput> PutConstrained(const PutConstrainedInput& input) override {
+    smithy::Outcome<PutConstrainedOutput> PutConstrained(const PutConstrainedInput& input, const smithy::server::RequestContext&) override {
       lastPutConstrained = input;
       return MinimalPutConstrainedOutput();
     }

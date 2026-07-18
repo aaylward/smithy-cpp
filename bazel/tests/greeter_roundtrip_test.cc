@@ -17,7 +17,8 @@ namespace {
 
 class Handler final : public GreeterHandler {
  public:
-  smithy::Outcome<GreetOutput> Greet(const GreetInput& input) override {
+  smithy::Outcome<GreetOutput> Greet(const GreetInput& input,
+                                     const smithy::server::RequestContext&) override {
     return GreetOutput{.greeting = "hello, " + input.name};
   }
 };

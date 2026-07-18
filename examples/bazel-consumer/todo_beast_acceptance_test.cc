@@ -52,14 +52,16 @@ smithy::Outcome<TodoClient> MakeTodoClient(int port, const std::string& ca_pem =
 // "boom" title throws (the bug the framework must contain).
 class AcceptanceHandler final : public TodoHandler {
  public:
-  smithy::Outcome<AddTaskOutput> AddTask(const AddTaskInput& input) override {
+  smithy::Outcome<AddTaskOutput> AddTask(const AddTaskInput& input,
+                                         const smithy::server::RequestContext&) override {
     if (input.title == "boom") {
       throw std::runtime_error("consumer handler bug");
     }
     return AddTaskOutput{.taskId = "task-1", .title = input.title};
   }
 
-  smithy::Outcome<GetTaskOutput> GetTask(const GetTaskInput& input) override {
+  smithy::Outcome<GetTaskOutput> GetTask(const GetTaskInput& input,
+                                         const smithy::server::RequestContext&) override {
     smithy::Error error = smithy::Error::Modeled("NoSuchTask", "no task: " + input.taskId);
     error.set_detail(NoSuchTask{.message = "no task: " + input.taskId});
     return error;
@@ -134,6 +136,34 @@ TEST_F(TodoBeastAcceptanceTest, HandlerExceptionIsContainedAndServiceSurvives) {
   const auto after = client_->AddTask(AddTaskInput{.title = "still serving"});
   ASSERT_TRUE(after.ok()) << after.error().message();
   EXPECT_EQ(after->title, "still serving");
+}
+
+TEST(TodoBeastMetadataTest, ContextArrivesOverTheProductionTransport) {
+  // ADR-0010 on the production transport: the Beast-stamped peer address
+  // reaches a generated server's handler from a consumer build (the socket
+  // and loopback flavors are pinned in todo_integration_test.cc).
+  class PeerProbe final : public TodoHandler {
+   public:
+    smithy::Outcome<AddTaskOutput> AddTask(const AddTaskInput&,
+                                           const smithy::server::RequestContext& context) override {
+      return AddTaskOutput{.taskId = "task-1", .title = context.request->peer_address};
+    }
+    smithy::Outcome<GetTaskOutput> GetTask(const GetTaskInput& input,
+                                           const smithy::server::RequestContext&) override {
+      return smithy::Error::Modeled("NoSuchTask", "no task: " + input.taskId);
+    }
+  };
+
+  TodoServer server(std::make_shared<PeerProbe>());
+  smithy::http::BeastServerTransport transport(
+      smithy::http::BeastServerTransport::Options{.threads = 1});
+  ASSERT_TRUE(transport.Start(server.Handler()).ok());
+  auto client = MakeTodoClient(transport.port());
+  ASSERT_TRUE(client.ok()) << client.error().message();
+  const auto added = client->AddTask(AddTaskInput{.title = "who am i"});
+  ASSERT_TRUE(added.ok()) << added.error().message();
+  EXPECT_EQ(added->title.rfind("127.0.0.1:", 0), 0u) << added->title;
+  transport.Stop();
 }
 
 TEST(TodoBeastTlsAcceptanceTest, TlsTerminationServesTheGeneratedClient) {

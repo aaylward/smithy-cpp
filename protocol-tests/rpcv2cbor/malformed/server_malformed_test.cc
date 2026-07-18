@@ -19,63 +19,68 @@ namespace {
 
 class RecordingHandler : public RpcV2ProtocolHandler {
  public:
-  smithy::Outcome<EmptyInputOutputOutput> EmptyInputOutput(const EmptyInputOutputInput&) override {
+  smithy::Outcome<EmptyInputOutputOutput> EmptyInputOutput(
+      const EmptyInputOutputInput&, const smithy::server::RequestContext&) override {
     ++calls;
     return EmptyInputOutputOutput{};
   }
-  smithy::Outcome<Float16Output> Float16(const Float16Input&) override {
+  smithy::Outcome<Float16Output> Float16(const Float16Input&,
+                                         const smithy::server::RequestContext&) override {
     ++calls;
     return Float16Output{};
   }
   smithy::Outcome<FractionalSecondsOutput> FractionalSeconds(
-      const FractionalSecondsInput&) override {
+      const FractionalSecondsInput&, const smithy::server::RequestContext&) override {
     ++calls;
     return FractionalSecondsOutput{};
   }
   smithy::Outcome<GreetingWithErrorsOutput> GreetingWithErrors(
-      const GreetingWithErrorsInput&) override {
+      const GreetingWithErrorsInput&, const smithy::server::RequestContext&) override {
     ++calls;
     return GreetingWithErrorsOutput{};
   }
-  smithy::Outcome<NoInputOutputOutput> NoInputOutput(const NoInputOutputInput&) override {
+  smithy::Outcome<NoInputOutputOutput> NoInputOutput(
+      const NoInputOutputInput&, const smithy::server::RequestContext&) override {
     ++calls;
     return NoInputOutputOutput{};
   }
   smithy::Outcome<OperationWithDefaultsOutput> OperationWithDefaults(
-      const OperationWithDefaultsInput&) override {
+      const OperationWithDefaultsInput&, const smithy::server::RequestContext&) override {
     ++calls;
     return OperationWithDefaultsOutput{};
   }
   smithy::Outcome<OptionalInputOutputOutput> OptionalInputOutput(
-      const OptionalInputOutputInput&) override {
+      const OptionalInputOutputInput&, const smithy::server::RequestContext&) override {
     ++calls;
     return OptionalInputOutputOutput{};
   }
-  smithy::Outcome<RecursiveShapesOutput> RecursiveShapes(const RecursiveShapesInput&) override {
+  smithy::Outcome<RecursiveShapesOutput> RecursiveShapes(
+      const RecursiveShapesInput&, const smithy::server::RequestContext&) override {
     ++calls;
     return RecursiveShapesOutput{};
   }
   smithy::Outcome<RpcV2CborDenseMapsOutput> RpcV2CborDenseMaps(
-      const RpcV2CborDenseMapsInput&) override {
+      const RpcV2CborDenseMapsInput&, const smithy::server::RequestContext&) override {
     ++calls;
     return RpcV2CborDenseMapsOutput{};
   }
-  smithy::Outcome<RpcV2CborListsOutput> RpcV2CborLists(const RpcV2CborListsInput&) override {
+  smithy::Outcome<RpcV2CborListsOutput> RpcV2CborLists(
+      const RpcV2CborListsInput&, const smithy::server::RequestContext&) override {
     ++calls;
     return RpcV2CborListsOutput{};
   }
   smithy::Outcome<RpcV2CborSparseMapsOutput> RpcV2CborSparseMaps(
-      const RpcV2CborSparseMapsInput&) override {
+      const RpcV2CborSparseMapsInput&, const smithy::server::RequestContext&) override {
     ++calls;
     return RpcV2CborSparseMapsOutput{};
   }
   smithy::Outcome<SimpleScalarPropertiesOutput> SimpleScalarProperties(
-      const SimpleScalarPropertiesInput&) override {
+      const SimpleScalarPropertiesInput&, const smithy::server::RequestContext&) override {
     ++calls;
     return SimpleScalarPropertiesOutput{};
   }
   smithy::Outcome<SparseNullsOperationOutput> SparseNullsOperation(
-      const SparseNullsOperationInput&) override {
+      const SparseNullsOperationInput&, const smithy::server::RequestContext&) override {
     ++calls;
     return SparseNullsOperationOutput{};
   }

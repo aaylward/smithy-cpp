@@ -159,7 +159,9 @@ Outcome<Unit> SocketHttpServer::Start(RequestHandler handler) {
 void SocketHttpServer::AcceptLoop() {
   const auto listener = static_cast<SocketFd>(listener_);
   while (!stopping_) {
-    const SocketFd connection = accept(listener, nullptr, nullptr);
+    sockaddr_storage peer{};
+    socklen_t peer_length = sizeof(peer);
+    const SocketFd connection = accept(listener, reinterpret_cast<sockaddr*>(&peer), &peer_length);
     if (connection == kInvalidSocket) {
       if (stopping_) break;
       continue;
@@ -179,6 +181,8 @@ void SocketHttpServer::AcceptLoop() {
       } else {
         request.headers = std::move(message->headers);
         request.body = std::move(message->body);
+        request.peer_address =
+            FormatPeerAddress(reinterpret_cast<const sockaddr*>(&peer), peer_length);
         response = InvokeHandlerGuarded(handler_, request);
       }
     } else {

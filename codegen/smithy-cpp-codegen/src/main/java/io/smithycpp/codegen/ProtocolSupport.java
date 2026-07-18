@@ -16,6 +16,23 @@ import software.amazon.smithy.model.traits.RetryableTrait;
 /** Emission helpers shared by the concrete protocol generators. */
 final class ProtocolSupport {
 
+  /** The handler methods' second parameter (ADR-0010), spelled once. */
+  static final String REQUEST_CONTEXT_PARAM = "const smithy::server::RequestContext&";
+
+  /**
+   * Opens a generated test-stub handler override — the one signature every test generator's handler
+   * subclass emits, so the stubs cannot drift from the interface ServerGenerator writes.
+   */
+  static void openTestHandlerOverride(
+      CppWriter w, String outputType, String opName, String inputType) {
+    w.openBlock(
+        "smithy::Outcome<$L> $L(const $L& input, $L) override {",
+        outputType,
+        opName,
+        inputType,
+        REQUEST_CONTEXT_PARAM);
+  }
+
   private ProtocolSupport() {}
 
   /** Emits SanitizeErrorCode: strips URI qualifiers and namespaces off wire error codes. */
@@ -365,7 +382,7 @@ final class ProtocolSupport {
       ValidationGenerator validation) {
     validation.writeRouteGuard(w, operation, spec.extraArgs());
     w.write(
-        "auto outcome = $L$L(input);",
+        "auto outcome = $L$L(input, context);",
         handlerAccess,
         CppReservedWords.escape(operation.getId().getName()));
     w.write("if (!outcome) return ErrorToResponse(outcome.error()$L);", spec.extraArgs());

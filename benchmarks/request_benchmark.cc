@@ -44,15 +44,18 @@ Input MakeInput() {
 class RestHandler final : public example::roundtrip::rest::RoundTripRestHandler {
  public:
   smithy::Outcome<example::roundtrip::rest::PutSinkOutput> PutSink(
-      const example::roundtrip::rest::PutSinkInput& input) override {
+      const example::roundtrip::rest::PutSinkInput& input,
+      const smithy::server::RequestContext&) override {
     return example::roundtrip::rest::PutSinkOutput{.sinkId = input.sinkId, .sink = input.sink};
   }
   smithy::Outcome<example::roundtrip::rest::UploadAttachmentOutput> UploadAttachment(
-      const example::roundtrip::rest::UploadAttachmentInput&) override {
+      const example::roundtrip::rest::UploadAttachmentInput&,
+      const smithy::server::RequestContext&) override {
     return example::roundtrip::rest::UploadAttachmentOutput{};
   }
   smithy::Outcome<example::roundtrip::rest::DescribeSinkOutput> DescribeSink(
-      const example::roundtrip::rest::DescribeSinkInput&) override {
+      const example::roundtrip::rest::DescribeSinkInput&,
+      const smithy::server::RequestContext&) override {
     return example::roundtrip::rest::DescribeSinkOutput{};
   }
 };
@@ -60,11 +63,12 @@ class RestHandler final : public example::roundtrip::rest::RoundTripRestHandler 
 class RpcHandler final : public example::roundtrip::rpc::RoundTripRpcHandler {
  public:
   smithy::Outcome<example::roundtrip::rpc::PutSinkRpcOutput> PutSinkRpc(
-      const example::roundtrip::rpc::PutSinkRpcInput& input) override {
+      const example::roundtrip::rpc::PutSinkRpcInput& input,
+      const smithy::server::RequestContext&) override {
     return example::roundtrip::rpc::PutSinkRpcOutput{.sinkId = input.sinkId, .sink = input.sink};
   }
   smithy::Outcome<example::roundtrip::rpc::PingOutput> Ping(
-      const example::roundtrip::rpc::PingInput&) override {
+      const example::roundtrip::rpc::PingInput&, const smithy::server::RequestContext&) override {
     return example::roundtrip::rpc::PingOutput{};
   }
 };
@@ -72,7 +76,8 @@ class RpcHandler final : public example::roundtrip::rpc::RoundTripRpcHandler {
 class JsonRpcHandler final : public example::roundtrip::jsonrpc::RoundTripJsonRpcHandler {
  public:
   smithy::Outcome<example::roundtrip::jsonrpc::PutSinkRpcOutput> PutSinkRpc(
-      const example::roundtrip::jsonrpc::PutSinkRpcInput& input) override {
+      const example::roundtrip::jsonrpc::PutSinkRpcInput& input,
+      const smithy::server::RequestContext&) override {
     return example::roundtrip::jsonrpc::PutSinkRpcOutput{.sinkId = input.sinkId,
                                                          .sink = input.sink};
   }

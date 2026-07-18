@@ -173,7 +173,7 @@ PutSinkRpcOutput RandomPutSinkRpcOutput(Rng& rng) {
 
 class ScriptedHandler final : public RoundTripJsonRpcHandler {
   public:
-    smithy::Outcome<PutSinkRpcOutput> PutSinkRpc(const PutSinkRpcInput& input) override {
+    smithy::Outcome<PutSinkRpcOutput> PutSinkRpc(const PutSinkRpcInput& input, const smithy::server::RequestContext&) override {
       lastPutSinkRpc = input;
       if (nextPutSinkRpcError.has_value()) return *nextPutSinkRpcError;
       return nextPutSinkRpcOutput;

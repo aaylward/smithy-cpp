@@ -95,7 +95,7 @@ DivisionByZero RandomDivisionByZero(Rng& rng) {
 
 class ScriptedHandler final : public CalculatorHandler {
   public:
-    smithy::Outcome<AddOutput> Add(const AddInput& input) override {
+    smithy::Outcome<AddOutput> Add(const AddInput& input, const smithy::server::RequestContext&) override {
       lastAdd = input;
       if (nextAddError.has_value()) return *nextAddError;
       return nextAddOutput;
@@ -103,7 +103,7 @@ class ScriptedHandler final : public CalculatorHandler {
     std::optional<AddInput> lastAdd;
     AddOutput nextAddOutput{};
     std::optional<smithy::Error> nextAddError;
-    smithy::Outcome<DivideOutput> Divide(const DivideInput& input) override {
+    smithy::Outcome<DivideOutput> Divide(const DivideInput& input, const smithy::server::RequestContext&) override {
       lastDivide = input;
       if (nextDivideError.has_value()) return *nextDivideError;
       return nextDivideOutput;

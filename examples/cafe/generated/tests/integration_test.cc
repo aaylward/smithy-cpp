@@ -156,7 +156,7 @@ OutOfBeans RandomOutOfBeans(Rng& rng) {
 
 class ScriptedHandler final : public CafeHandler {
   public:
-    smithy::Outcome<GetOrderOutput> GetOrder(const GetOrderInput& input) override {
+    smithy::Outcome<GetOrderOutput> GetOrder(const GetOrderInput& input, const smithy::server::RequestContext&) override {
       lastGetOrder = input;
       if (nextGetOrderError.has_value()) return *nextGetOrderError;
       return nextGetOrderOutput;
@@ -164,7 +164,7 @@ class ScriptedHandler final : public CafeHandler {
     std::optional<GetOrderInput> lastGetOrder;
     GetOrderOutput nextGetOrderOutput{};
     std::optional<smithy::Error> nextGetOrderError;
-    smithy::Outcome<OrderCoffeeOutput> OrderCoffee(const OrderCoffeeInput& input) override {
+    smithy::Outcome<OrderCoffeeOutput> OrderCoffee(const OrderCoffeeInput& input, const smithy::server::RequestContext&) override {
       lastOrderCoffee = input;
       if (nextOrderCoffeeError.has_value()) return *nextOrderCoffeeError;
       return nextOrderCoffeeOutput;

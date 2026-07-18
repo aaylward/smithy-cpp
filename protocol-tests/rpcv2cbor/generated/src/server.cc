@@ -200,7 +200,7 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
   // The route table is derived from the model's @http traits; conflicts are
   // a modeling error surfaced by Router::Add (checked at generation time in a
   // later phase), so registration results are intentionally discarded.
-  (void)router_->Add("POST", "/service/RpcV2Protocol/operation/EmptyInputOutput", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
+  (void)router_->Add("POST", "/service/RpcV2Protocol/operation/EmptyInputOutput", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
     }
@@ -220,7 +220,7 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
     auto parsed = DeserializeEmptyInputOutputInput(body_doc);
     if (!parsed) return CborError(400, "SerializationException", parsed.error().message(), {});
     input = *std::move(parsed);
-    auto outcome = handler->EmptyInputOutput(input);
+    auto outcome = handler->EmptyInputOutput(input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     smithy::http::HttpResponse response;
     response.headers.Set("smithy-protocol", "rpc-v2-cbor");
@@ -228,7 +228,7 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
     response.body = smithy::cbor::Encode(SerializeEmptyInputOutputOutput(*outcome)).ToString();
     return response;
   }, "EmptyInputOutput");
-  (void)router_->Add("POST", "/service/RpcV2Protocol/operation/Float16", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
+  (void)router_->Add("POST", "/service/RpcV2Protocol/operation/Float16", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
     }
@@ -238,7 +238,7 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
       return CborError(415, "UnsupportedMediaTypeException", "expected content-type: application/cbor", {});
     }
     Float16Input input{};
-    auto outcome = handler->Float16(input);
+    auto outcome = handler->Float16(input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     smithy::http::HttpResponse response;
     response.headers.Set("smithy-protocol", "rpc-v2-cbor");
@@ -246,7 +246,7 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
     response.body = smithy::cbor::Encode(SerializeFloat16Output(*outcome)).ToString();
     return response;
   }, "Float16");
-  (void)router_->Add("POST", "/service/RpcV2Protocol/operation/FractionalSeconds", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
+  (void)router_->Add("POST", "/service/RpcV2Protocol/operation/FractionalSeconds", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
     }
@@ -256,7 +256,7 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
       return CborError(415, "UnsupportedMediaTypeException", "expected content-type: application/cbor", {});
     }
     FractionalSecondsInput input{};
-    auto outcome = handler->FractionalSeconds(input);
+    auto outcome = handler->FractionalSeconds(input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     smithy::http::HttpResponse response;
     response.headers.Set("smithy-protocol", "rpc-v2-cbor");
@@ -264,7 +264,7 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
     response.body = smithy::cbor::Encode(SerializeFractionalSecondsOutput(*outcome)).ToString();
     return response;
   }, "FractionalSeconds");
-  (void)router_->Add("POST", "/service/RpcV2Protocol/operation/GreetingWithErrors", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
+  (void)router_->Add("POST", "/service/RpcV2Protocol/operation/GreetingWithErrors", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
     }
@@ -274,7 +274,7 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
       return CborError(415, "UnsupportedMediaTypeException", "expected content-type: application/cbor", {});
     }
     GreetingWithErrorsInput input{};
-    auto outcome = handler->GreetingWithErrors(input);
+    auto outcome = handler->GreetingWithErrors(input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     smithy::http::HttpResponse response;
     response.headers.Set("smithy-protocol", "rpc-v2-cbor");
@@ -282,7 +282,7 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
     response.body = smithy::cbor::Encode(SerializeGreetingWithErrorsOutput(*outcome)).ToString();
     return response;
   }, "GreetingWithErrors");
-  (void)router_->Add("POST", "/service/RpcV2Protocol/operation/NoInputOutput", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
+  (void)router_->Add("POST", "/service/RpcV2Protocol/operation/NoInputOutput", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
     }
@@ -292,7 +292,7 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
       return CborError(415, "UnsupportedMediaTypeException", "expected content-type: application/cbor", {});
     }
     NoInputOutputInput input{};
-    auto outcome = handler->NoInputOutput(input);
+    auto outcome = handler->NoInputOutput(input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     smithy::http::HttpResponse response;
     response.headers.Set("smithy-protocol", "rpc-v2-cbor");
@@ -300,7 +300,7 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
     response.body = smithy::cbor::Encode(SerializeNoInputOutputOutput(*outcome)).ToString();
     return response;
   }, "NoInputOutput");
-  (void)router_->Add("POST", "/service/RpcV2Protocol/operation/OperationWithDefaults", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
+  (void)router_->Add("POST", "/service/RpcV2Protocol/operation/OperationWithDefaults", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
     }
@@ -323,7 +323,7 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
     std::vector<smithy::server::ValidationFailure> validation_failures;
     ValidateOperationWithDefaultsInput(input, "", &validation_failures);
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    auto outcome = handler->OperationWithDefaults(input);
+    auto outcome = handler->OperationWithDefaults(input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     smithy::http::HttpResponse response;
     response.headers.Set("smithy-protocol", "rpc-v2-cbor");
@@ -331,7 +331,7 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
     response.body = smithy::cbor::Encode(SerializeOperationWithDefaultsOutput(*outcome)).ToString();
     return response;
   }, "OperationWithDefaults");
-  (void)router_->Add("POST", "/service/RpcV2Protocol/operation/OptionalInputOutput", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
+  (void)router_->Add("POST", "/service/RpcV2Protocol/operation/OptionalInputOutput", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
     }
@@ -351,7 +351,7 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
     auto parsed = DeserializeOptionalInputOutputInput(body_doc);
     if (!parsed) return CborError(400, "SerializationException", parsed.error().message(), {});
     input = *std::move(parsed);
-    auto outcome = handler->OptionalInputOutput(input);
+    auto outcome = handler->OptionalInputOutput(input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     smithy::http::HttpResponse response;
     response.headers.Set("smithy-protocol", "rpc-v2-cbor");
@@ -359,7 +359,7 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
     response.body = smithy::cbor::Encode(SerializeOptionalInputOutputOutput(*outcome)).ToString();
     return response;
   }, "OptionalInputOutput");
-  (void)router_->Add("POST", "/service/RpcV2Protocol/operation/RecursiveShapes", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
+  (void)router_->Add("POST", "/service/RpcV2Protocol/operation/RecursiveShapes", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
     }
@@ -379,7 +379,7 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
     auto parsed = DeserializeRecursiveShapesInput(body_doc);
     if (!parsed) return CborError(400, "SerializationException", parsed.error().message(), {});
     input = *std::move(parsed);
-    auto outcome = handler->RecursiveShapes(input);
+    auto outcome = handler->RecursiveShapes(input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     smithy::http::HttpResponse response;
     response.headers.Set("smithy-protocol", "rpc-v2-cbor");
@@ -387,7 +387,7 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
     response.body = smithy::cbor::Encode(SerializeRecursiveShapesOutput(*outcome)).ToString();
     return response;
   }, "RecursiveShapes");
-  (void)router_->Add("POST", "/service/RpcV2Protocol/operation/RpcV2CborDenseMaps", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
+  (void)router_->Add("POST", "/service/RpcV2Protocol/operation/RpcV2CborDenseMaps", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
     }
@@ -410,7 +410,7 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
     std::vector<smithy::server::ValidationFailure> validation_failures;
     ValidateRpcV2CborDenseMapsInput(input, "", &validation_failures);
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    auto outcome = handler->RpcV2CborDenseMaps(input);
+    auto outcome = handler->RpcV2CborDenseMaps(input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     smithy::http::HttpResponse response;
     response.headers.Set("smithy-protocol", "rpc-v2-cbor");
@@ -418,7 +418,7 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
     response.body = smithy::cbor::Encode(SerializeRpcV2CborDenseMapsOutput(*outcome)).ToString();
     return response;
   }, "RpcV2CborDenseMaps");
-  (void)router_->Add("POST", "/service/RpcV2Protocol/operation/RpcV2CborLists", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
+  (void)router_->Add("POST", "/service/RpcV2Protocol/operation/RpcV2CborLists", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
     }
@@ -441,7 +441,7 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
     std::vector<smithy::server::ValidationFailure> validation_failures;
     ValidateRpcV2CborListsInput(input, "", &validation_failures);
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    auto outcome = handler->RpcV2CborLists(input);
+    auto outcome = handler->RpcV2CborLists(input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     smithy::http::HttpResponse response;
     response.headers.Set("smithy-protocol", "rpc-v2-cbor");
@@ -449,7 +449,7 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
     response.body = smithy::cbor::Encode(SerializeRpcV2CborListsOutput(*outcome)).ToString();
     return response;
   }, "RpcV2CborLists");
-  (void)router_->Add("POST", "/service/RpcV2Protocol/operation/RpcV2CborSparseMaps", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
+  (void)router_->Add("POST", "/service/RpcV2Protocol/operation/RpcV2CborSparseMaps", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
     }
@@ -472,7 +472,7 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
     std::vector<smithy::server::ValidationFailure> validation_failures;
     ValidateRpcV2CborSparseMapsInput(input, "", &validation_failures);
     if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    auto outcome = handler->RpcV2CborSparseMaps(input);
+    auto outcome = handler->RpcV2CborSparseMaps(input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     smithy::http::HttpResponse response;
     response.headers.Set("smithy-protocol", "rpc-v2-cbor");
@@ -480,7 +480,7 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
     response.body = smithy::cbor::Encode(SerializeRpcV2CborSparseMapsOutput(*outcome)).ToString();
     return response;
   }, "RpcV2CborSparseMaps");
-  (void)router_->Add("POST", "/service/RpcV2Protocol/operation/SimpleScalarProperties", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
+  (void)router_->Add("POST", "/service/RpcV2Protocol/operation/SimpleScalarProperties", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
     }
@@ -500,7 +500,7 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
     auto parsed = DeserializeSimpleScalarPropertiesInput(body_doc);
     if (!parsed) return CborError(400, "SerializationException", parsed.error().message(), {});
     input = *std::move(parsed);
-    auto outcome = handler->SimpleScalarProperties(input);
+    auto outcome = handler->SimpleScalarProperties(input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     smithy::http::HttpResponse response;
     response.headers.Set("smithy-protocol", "rpc-v2-cbor");
@@ -508,7 +508,7 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
     response.body = smithy::cbor::Encode(SerializeSimpleScalarPropertiesOutput(*outcome)).ToString();
     return response;
   }, "SimpleScalarProperties");
-  (void)router_->Add("POST", "/service/RpcV2Protocol/operation/SparseNullsOperation", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext&) -> smithy::http::HttpResponse {
+  (void)router_->Add("POST", "/service/RpcV2Protocol/operation/SparseNullsOperation", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
       return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
     }
@@ -528,7 +528,7 @@ RpcV2ProtocolServer::RpcV2ProtocolServer(std::shared_ptr<RpcV2ProtocolHandler> h
     auto parsed = DeserializeSparseNullsOperationInput(body_doc);
     if (!parsed) return CborError(400, "SerializationException", parsed.error().message(), {});
     input = *std::move(parsed);
-    auto outcome = handler->SparseNullsOperation(input);
+    auto outcome = handler->SparseNullsOperation(input, context);
     if (!outcome) return ErrorToResponse(outcome.error());
     smithy::http::HttpResponse response;
     response.headers.Set("smithy-protocol", "rpc-v2-cbor");

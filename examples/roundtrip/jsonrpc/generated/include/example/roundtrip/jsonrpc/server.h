@@ -14,6 +14,8 @@ namespace example::roundtrip::jsonrpc {
 /// Implement one method per operation. Return a modeled error as
 /// smithy::Error::Modeled("<ErrorShapeName>", message), optionally with the
 /// typed error structure attached via set_detail() so it serializes fully.
+/// The context carries the raw request and routing captures — see
+/// smithy::server::RequestContext; leave the parameter unnamed when unused.
 /// Implementations must be thread-safe: transports may invoke any mix of
 /// operations concurrently on the one handler instance.
 class RoundTripJsonRpcHandler {
@@ -23,7 +25,7 @@ class RoundTripJsonRpcHandler {
     /// The RPC variant round-trips the same kitchen sink over CBOR — compressed,
     /// so the rpcv2Cbor decompress path and jsonRpc2's shared-endpoint
     /// anyCompressed branch both land in compiled goldens (issue #68).
-    virtual smithy::Outcome<PutSinkRpcOutput> PutSinkRpc(const PutSinkRpcInput& input) = 0;
+    virtual smithy::Outcome<PutSinkRpcOutput> PutSinkRpc(const PutSinkRpcInput& input, const smithy::server::RequestContext& context) = 0;
 };
 
 /// jsonRpc2 server for example.roundtrip#RoundTripJsonRpc: routing, deserialization, handler dispatch,

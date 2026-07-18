@@ -1,10 +1,20 @@
 #ifndef SMITHY_HTTP_SERVER_DISPATCH_H_
 #define SMITHY_HTTP_SERVER_DISPATCH_H_
 
+#include <sys/socket.h>
+
+#include <string>
+
 #include "smithy/http/message.h"
 #include "smithy/http/transport.h"
 
 namespace smithy::http {
+
+// Renders a peer's sockaddr as HttpRequest::peer_address ("ip:port", v6
+// bracketed) — the one definition of the format, shared by every server
+// transport so the stamps cannot drift. Empty when the address cannot be
+// rendered.
+std::string FormatPeerAddress(const sockaddr* address, socklen_t length);
 
 // Invokes handler(request), converting any exception that escapes the handler
 // into a 500 response instead of letting it propagate. Server transports call

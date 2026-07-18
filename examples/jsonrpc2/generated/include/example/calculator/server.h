@@ -14,6 +14,8 @@ namespace example::calculator {
 /// Implement one method per operation. Return a modeled error as
 /// smithy::Error::Modeled("<ErrorShapeName>", message), optionally with the
 /// typed error structure attached via set_detail() so it serializes fully.
+/// The context carries the raw request and routing captures — see
+/// smithy::server::RequestContext; leave the parameter unnamed when unused.
 /// Implementations must be thread-safe: transports may invoke any mix of
 /// operations concurrently on the one handler instance.
 class CalculatorHandler {
@@ -21,9 +23,9 @@ class CalculatorHandler {
     virtual ~CalculatorHandler() = default;
 
     /// Adds two numbers.
-    virtual smithy::Outcome<AddOutput> Add(const AddInput& input) = 0;
+    virtual smithy::Outcome<AddOutput> Add(const AddInput& input, const smithy::server::RequestContext& context) = 0;
     /// Divides dividend by divisor; dividing by zero is a modeled error.
-    virtual smithy::Outcome<DivideOutput> Divide(const DivideInput& input) = 0;
+    virtual smithy::Outcome<DivideOutput> Divide(const DivideInput& input, const smithy::server::RequestContext& context) = 0;
 };
 
 /// jsonRpc2 server for example.calculator#Calculator: routing, deserialization, handler dispatch,

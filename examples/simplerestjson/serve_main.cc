@@ -34,15 +34,15 @@ using example::bookstore::GetBookOutput;
 // on a thread pool.
 class InMemoryBookstore final : public BookstoreHandler {
  public:
-  smithy::Outcome<AddBookOutput> AddBook(const AddBookInput& input,
-                                         const smithy::server::RequestContext&) override {
+  smithy::Outcome<AddBookOutput> AddBook(
+      const AddBookInput& input, const smithy::server::RequestContext& /*context*/) override {
     const std::lock_guard<std::mutex> lock(mu_);
     titles_[input.isbn] = input.title;
     return AddBookOutput{.status = 201, .isbn = input.isbn};
   }
 
-  smithy::Outcome<GetBookOutput> GetBook(const GetBookInput& input,
-                                         const smithy::server::RequestContext&) override {
+  smithy::Outcome<GetBookOutput> GetBook(
+      const GetBookInput& input, const smithy::server::RequestContext& /*context*/) override {
     const std::lock_guard<std::mutex> lock(mu_);
     const auto it = titles_.find(input.isbn);
     if (it == titles_.end()) {

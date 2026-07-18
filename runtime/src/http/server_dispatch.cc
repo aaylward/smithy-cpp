@@ -2,6 +2,7 @@
 
 #include <netdb.h>
 
+#include <array>
 #include <exception>
 #include <iostream>
 #include <string>
@@ -29,14 +30,14 @@ HttpResponse InternalError(const HttpRequest& request, const std::string& what) 
 }  // namespace
 
 std::string FormatPeerAddress(const sockaddr* address, socklen_t length) {
-  char host[NI_MAXHOST];
-  char service[NI_MAXSERV];
-  if (getnameinfo(address, length, host, sizeof(host), service, sizeof(service),
+  std::array<char, NI_MAXHOST> host{};
+  std::array<char, NI_MAXSERV> service{};
+  if (getnameinfo(address, length, host.data(), host.size(), service.data(), service.size(),
                   NI_NUMERICHOST | NI_NUMERICSERV) != 0) {
     return {};
   }
-  return address->sa_family == AF_INET6 ? "[" + std::string(host) + "]:" + service
-                                        : std::string(host) + ":" + service;
+  return address->sa_family == AF_INET6 ? "[" + std::string(host.data()) + "]:" + service.data()
+                                        : std::string(host.data()) + ":" + service.data();
 }
 
 HttpResponse InvokeHandlerGuarded(const RequestHandler& handler, const HttpRequest& request) {

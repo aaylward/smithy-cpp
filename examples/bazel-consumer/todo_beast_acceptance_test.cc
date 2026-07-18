@@ -12,8 +12,10 @@
 
 #include <chrono>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "acme/todo/client.h"
 #include "acme/todo/server.h"
@@ -163,6 +165,40 @@ TEST(TodoBeastMetadataTest, ContextArrivesOverTheProductionTransport) {
   const auto added = client->AddTask(AddTaskInput{.title = "who am i"});
   ASSERT_TRUE(added.ok()) << added.error().message();
   EXPECT_EQ(added->title.rfind("127.0.0.1:", 0), 0u) << added->title;
+  transport.Stop();
+}
+
+TEST(TodoBeastMetadataTest, TransportRejectionsAreObservableFromAConsumerBuild) {
+  // The on_rejected knob at the module boundary (the handler_threads
+  // convention): an over-limit rejection that Observe middleware can never
+  // see reaches the consumer's own hook.
+  std::mutex mutex;
+  std::vector<smithy::http::BeastServerTransport::RejectedRequest> rejected;
+  TodoServer server(std::make_shared<AcceptanceHandler>());
+  smithy::http::BeastServerTransport transport(smithy::http::BeastServerTransport::Options{
+      .threads = 1,
+      .max_body_bytes = 1024,
+      .on_rejected = [&](const smithy::http::BeastServerTransport::RejectedRequest& r) {
+        const std::lock_guard<std::mutex> lock(mutex);
+        rejected.push_back(r);
+      }});
+  ASSERT_TRUE(transport.Start(server.Handler()).ok());
+
+  smithy::http::BeastHttpClient raw({.host = "127.0.0.1", .port = transport.port()});
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = "/tasks";
+  request.headers.Set("content-type", "application/json");
+  request.body = std::string(64 * 1024, 'x');
+  const auto response = raw.Send(request);
+  ASSERT_TRUE(response.ok()) << response.error().message();
+  EXPECT_EQ(response->status, 413);
+  {
+    // Scoped so the mutex is released before Stop() joins the io threads.
+    const std::lock_guard<std::mutex> lock(mutex);
+    ASSERT_EQ(rejected.size(), 1u);
+    EXPECT_EQ(rejected[0].status, 413);
+  }
   transport.Stop();
 }
 

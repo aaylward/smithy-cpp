@@ -368,7 +368,10 @@ answered with `413 Content Too Large` / `431 Request Header Fields Too Large`
 and `Connection: close`, followed by a bounded lingering close (a few seconds
 / 256 KiB of drain) so the status stays readable; a client that streams past
 the budget without reading may still see a reset, which is inherent to the
-recipe.
+recipe. These rejections are written by the transport itself, before a
+handler chain exists, so `Observe` middleware never sees them — set
+`Options::on_rejected` to observe them (status, peer address, and whatever
+the parser got to), wired to the same sink as your `Observe` callbacks.
 
 Concurrent connections are capped by `max_connections` (default 1024; 0
 disables the cap): at the cap the server pauses accepting and new

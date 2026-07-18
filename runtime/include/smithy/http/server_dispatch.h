@@ -34,8 +34,10 @@ std::string FormatPeerAddress(const sockaddr* address, socklen_t length);
 // repeating it) carries that trace id; the same id plus the exception's
 // what() is written to std::clog, so an otherwise-silent crash leaves one
 // greppable line tying the client-visible failure to the server-side cause
-// and the distributed trace. handler may be empty — that yields a 503 (no
-// correlation id: nothing ran).
+// and the distributed trace. Returned failures correlate the same way: any
+// 5xx the handler chain produces without an x-correlation-id of its own is
+// stamped with the trace id too (a handler-set id wins). handler may be
+// empty — that yields a 503 (no correlation id: nothing ran).
 HttpResponse InvokeHandlerGuarded(const RequestHandler& handler, HttpRequest request);
 
 }  // namespace smithy::http

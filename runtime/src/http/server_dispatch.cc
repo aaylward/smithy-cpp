@@ -24,15 +24,18 @@ void EnsureInboundTraceIdentity(HttpRequest& request) {
   request.headers.Remove("tracestate");
 }
 
+// The request's trace id, for correlating a 5xx (issues #41/#46).
+// EnsureInboundTraceIdentity ran before the handler, so this parse cannot
+// fail (defensively: an empty id); re-parsing here keeps the common path
+// free of an extra id copy while the rare error paths pay it.
+std::string RequestTraceId(const HttpRequest& request) {
+  return ParseTraceparent(request.headers.Get("traceparent").value_or(""))
+      .value_or(TraceContext{})
+      .trace_id;
+}
+
 HttpResponse InternalError(const HttpRequest& request, const std::string& what) {
-  // The correlation id is the request's trace id (issues #41/#46).
-  // EnsureInboundTraceIdentity ran before the handler, so this parse cannot
-  // fail; re-parsing here keeps the common path free of an extra id copy
-  // while this rare path pays it.
-  const std::string correlation_id =
-      ParseTraceparent(request.headers.Get("traceparent").value_or(""))
-          .value_or(TraceContext{})
-          .trace_id;
+  const std::string correlation_id = RequestTraceId(request);
   // The built-in default sink. A structured-logging seam can replace this, but
   // an unhandled handler exception must never be silent — this line is often
   // the only server-side trace of a 500.
@@ -44,6 +47,17 @@ HttpResponse InternalError(const HttpRequest& request, const std::string& what) 
   response.headers.Set("x-correlation-id", correlation_id);
   response.body = "{\"message\":\"internal error\",\"correlationId\":\"" + correlation_id + "\"}";
   return response;
+}
+
+// A 5xx that leaves the handler chain without a correlation id gets the
+// request's trace id (issue #46) — a returned smithy::Error mapped to a 500
+// by a generated server then correlates exactly like a thrown one, across
+// every protocol, with no generated code involved. A handler-set id wins.
+void CorrelateServerError(const HttpRequest& request, HttpResponse& response) {
+  if (response.status < 500 || response.headers.Has("x-correlation-id")) {
+    return;
+  }
+  response.headers.Set("x-correlation-id", RequestTraceId(request));
 }
 
 }  // namespace
@@ -65,7 +79,9 @@ HttpResponse InvokeHandlerGuarded(const RequestHandler& handler, HttpRequest req
   }
   EnsureInboundTraceIdentity(request);
   try {
-    return handler(request);
+    HttpResponse response = handler(request);
+    CorrelateServerError(request, response);
+    return response;
   } catch (const std::exception& e) {
     return InternalError(request, e.what());
   } catch (...) {

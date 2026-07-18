@@ -51,7 +51,8 @@ class MyHandler final : public example::weather::WeatherHandler {
   only when the detail carries no message member of its own.
 - **Validation/serialization errors** (including malformed request input the framework catches
   before your handler runs) map to 400; any other failure is a non-leaking 500
-  `InternalFailure`.
+  `InternalFailure` carrying the request's trace id as `x-correlation-id` (ADR-0011) — a
+  returned error correlates exactly like a thrown one.
 - **A handler that throws** (rather than returning an `Error`) is contained by the transport
   layer: the exception is converted into a 500 whose `x-correlation-id` header is the
   request's trace id (ADR-0011), and the same id plus the exception's `what()` is written to

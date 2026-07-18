@@ -2,6 +2,7 @@
 #define SMITHY_HTTP_BEAST_TRANSPORT_H_
 
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -35,6 +36,17 @@ namespace smithy::http {
 //   server.Stop();
 class BeastServerTransport : public HttpServerTransport {
  public:
+  // A request the transport rejected itself — the over-limit 413/431 answers
+  // written before a handler chain exists, which Observe middleware therefore
+  // never sees (issue #46). method/target may be empty when the request never
+  // parsed that far (a 431 can fire mid-headers).
+  struct RejectedRequest {
+    int status = 0;
+    std::string peer_address;
+    std::string method;
+    std::string target;
+  };
+
   struct Options {
     // "127.0.0.1" keeps test servers private; use "0.0.0.0" to serve externally.
     std::string address = "127.0.0.1";
@@ -67,6 +79,13 @@ class BeastServerTransport : public HttpServerTransport {
     // forever, so budget supervisor kill timeouts at roughly this plus 2
     // seconds (issue #46).
     int drain_timeout_seconds = 10;
+    // Observation hook for the transport's own rejections (one call per
+    // RejectedRequest, before the rejection response is written). Runs on an
+    // io thread, concurrently across connections — keep it cheap and
+    // thread-safe; a throwing callback is contained and logged. Wire it to
+    // the same sink as smithy::server::Observe so over-limit abuse is
+    // visible in the same metrics.
+    std::function<void(const RejectedRequest&)> on_rejected;
     // TLS termination: set both (PEM text, not file paths) to serve https.
     // Posture is fixed, not configurable (issue #46): TLS 1.2 minimum,
     // ECDHE+AEAD cipher suites for 1.2 (every 1.3 suite qualifies), and ALPN

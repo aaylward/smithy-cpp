@@ -11,10 +11,12 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/ssl.hpp>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "smithy/client/config.h"
 #include "smithy/http/beast_transport.h"
@@ -132,6 +134,39 @@ TEST(BeastClientTest, TlsRoundTripsWithCustomCa) {
     ASSERT_TRUE(response.ok()) << response.error().message();
     EXPECT_EQ(response->status, 200);
     EXPECT_EQ(response->body, "secret");
+  }
+  server.Stop();
+}
+
+TEST(BeastClientTest, OverLimitRejectionIsObservedUnderTls) {
+  // Options::on_rejected on the TLS stream flavor: the 413 written inside
+  // the encrypted session is observed like its plaintext twin.
+  std::mutex mutex;
+  std::vector<BeastServerTransport::RejectedRequest> rejected;
+  auto options = TlsServerOptions();
+  options.max_body_bytes = 1024;
+  options.on_rejected = [&](const BeastServerTransport::RejectedRequest& r) {
+    const std::lock_guard<std::mutex> lock(mutex);
+    rejected.push_back(r);
+  };
+  BeastServerTransport server(options);
+  ASSERT_TRUE(server.Start(EchoHandler()).ok());
+
+  BeastHttpClient client({.host = "127.0.0.1",
+                          .port = server.port(),
+                          .tls = true,
+                          .tls_options = {.ca_pem = kTestCertificatePem}});
+  const auto response = client.Send(PostRequest(std::string(64 * 1024, 'x')));
+  ASSERT_TRUE(response.ok()) << response.error().message();
+  EXPECT_EQ(response->status, 413);
+  {
+    // Status and peer only: field extraction is pinned by the plaintext twin
+    // (beast_transport_test.cc); peer exercises get_lowest_layer on the
+    // ssl-stream instantiation.
+    const std::lock_guard<std::mutex> lock(mutex);
+    ASSERT_EQ(rejected.size(), 1u);
+    EXPECT_EQ(rejected[0].status, 413);
+    EXPECT_EQ(rejected[0].peer_address.rfind("127.0.0.1:", 0), 0u) << rejected[0].peer_address;
   }
   server.Stop();
 }

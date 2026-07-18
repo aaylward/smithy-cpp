@@ -454,8 +454,8 @@ TEST(TodoMiddlewareTest, GuardKeysOnTheDerivedClientAddressNotTheSpoofableHeader
     // is ignored wholly, the peer stays the key, the request is admitted.
     smithy::http::SocketHttpServer transport;
     ASSERT_TRUE(transport
-                    .Start(smithy::server::Chain({deny_banned(smithy::http::TrustedProxies())},
-                                                 server.Handler()))
+                    .Start(smithy::server::Chain(
+                        {deny_banned(smithy::http::TrustedProxies::None())}, server.Handler()))
                     .ok());
     smithy::http::SocketHttpClient raw("127.0.0.1", transport.port());
 

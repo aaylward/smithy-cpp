@@ -48,7 +48,12 @@ Placement options considered:
   widen or narrow. A CIDR set rather than Envoy-style hop counts: hop counts
   are only correct when every request path traverses exactly that many
   proxies, and the failure mode of a wrong count is silent forgeability.
-  The default-constructed set trusts nothing.
+  "Trust nothing" is the named constructor `TrustedProxies::None()`, not a
+  default constructor: the first adoption (issue #104) showed the empty set
+  means two opposite things — a deliberate directly-reachable topology, or
+  a forgotten config behind a proxy that silently collapses all traffic
+  onto the proxy's one policy key — and only a greppable statement
+  separates them.
 - **`ClientAddress(request, trusted)`** — the rightmost-untrusted walk,
   anchored at `peer_address`: if the peer is not a trusted proxy the peer
   *is* the client and the header is ignored wholly (it is client-authored

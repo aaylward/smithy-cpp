@@ -45,7 +45,9 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     if (!echo.Contains(client)) std::abort();
     smithy::http::HttpRequest again;
     again.peer_address = client;
-    if (smithy::http::ClientAddress(again, {}) != client) std::abort();
+    if (smithy::http::ClientAddress(again, smithy::http::TrustedProxies::None()) != client) {
+      std::abort();
+    }
   }
 
   const std::string_view text(reinterpret_cast<const char*>(data), size);

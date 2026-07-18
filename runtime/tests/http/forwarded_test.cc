@@ -112,8 +112,10 @@ TEST(TrustedProxiesTest, V4CompatibleV6IsNotTheEmbeddedV4) {
   EXPECT_FALSE(v4.Contains("::10.0.0.1"));
 }
 
-TEST(TrustedProxiesTest, TheDefaultAndTheUnparseableTrustNothing) {
-  const TrustedProxies nothing;
+TEST(TrustedProxiesTest, NoneAndTheUnparseableTrustNothing) {
+  // None() is the deliberate no-proxy topology (issue #104); there is no
+  // default constructor to reach the empty set by accident.
+  const TrustedProxies nothing = TrustedProxies::None();
   EXPECT_FALSE(nothing.Contains("127.0.0.1"));
   const TrustedProxies trusted({"10.0.0.0/8"});
   EXPECT_FALSE(trusted.Contains(""));
@@ -291,6 +293,7 @@ TEST(ClientAddressTest, AnEmptyPeerDerivesEmpty) {
   // nothing is known, and empty never matches a trust set — so a spoofed
   // header cannot conjure an identity where the transport reported none.
   const TrustedProxies trusted({"10.0.0.0/8", "0.0.0.0/0"});
+  EXPECT_EQ(ClientAddress(RequestFrom("", {"203.0.113.9"}), TrustedProxies::None()), "");
   EXPECT_EQ(ClientAddress(RequestFrom("", {"203.0.113.9"}), trusted), "");
   EXPECT_EQ(ClientAddress(RequestFrom("garbage-peer", {"203.0.113.9"}), trusted), "");
 }

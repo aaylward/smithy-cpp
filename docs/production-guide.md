@@ -187,8 +187,10 @@ auto db = std::make_shared<MyDbPool>(/* ... */);
 
 // The deployment's proxy trust boundary (ADR-0012): x-forwarded-for
 // entries count only when appended by these networks. Directly reachable
-// (no proxy)? Construct TrustedProxies() — the header is then ignored and
-// every request keys as its TCP peer.
+// (no proxy)? Say so: TrustedProxies::None() — the header is then ignored
+// and every request keys as its TCP peer. (There is no default
+// constructor: an accidental empty set behind a proxy would silently
+// collapse all traffic onto the proxy's one key — issue #104.)
 const smithy::http::TrustedProxies trusted({"10.0.0.0/8"});
 
 transport.Start(smithy::server::Chain(

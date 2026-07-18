@@ -16,13 +16,18 @@ namespace smithy::http {
 // derivation. Built from CIDR strings ("10.0.0.0/8", "2600:1f00::/24"); a
 // bare address is a host route. Construction throws std::invalid_argument
 // on a malformed entry — a misconfigured trust boundary must fail
-// deployment, not silently widen or narrow. The default-constructed set
-// trusts nothing: ClientAddress then reduces every request to its bare
-// canonical peer. A copyable value; Contains is const and safe to share
-// across threads.
+// deployment, not silently widen or narrow. A copyable value; Contains is
+// const and safe to share across threads.
+//
+// "Trust nothing" is a statement, not an absence (issue #104): None() is
+// the greppable claim that the service is directly reachable — ClientAddress
+// then reduces every request to its bare canonical peer. There is
+// deliberately no default constructor, because behind a proxy the
+// accidental empty set (an unset config value) silently collapses all
+// traffic onto the proxy's one policy key.
 class TrustedProxies {
  public:
-  TrustedProxies() = default;
+  static TrustedProxies None();
   explicit TrustedProxies(const std::vector<std::string>& cidrs);
 
   // Whether a bare numeric address (no port, no brackets) is inside any
@@ -31,6 +36,8 @@ class TrustedProxies {
   bool Contains(std::string_view address) const;
 
  private:
+  TrustedProxies() = default;
+
   friend std::string ClientAddress(const HttpRequest& request, const TrustedProxies& trusted);
 
   // The parsed-form check ClientAddress's walk uses (one parse per entry,

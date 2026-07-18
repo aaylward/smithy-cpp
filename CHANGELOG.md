@@ -70,7 +70,8 @@ via `git_override` until then.
   derives the real client behind a reverse proxy from `peer_address` and
   `x-forwarded-for` — anchored at the L4 peer, walking rightmost-untrusted
   against a `TrustedProxies` CIDR set, so a spoofed entry from outside the
-  trust boundary never wins — and
+  trust boundary never wins; the no-proxy topology is the explicit
+  `TrustedProxies::None()`, never a default constructor (issue #104) — and
   the production guide's `Guard` example now keys on it instead of the raw
   (client-authored) header.
 - Server middleware additions for production serving: `Guard` admission

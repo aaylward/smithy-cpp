@@ -158,6 +158,8 @@ bool PrefixMatch(const std::array<std::uint8_t, 16>& network,
 
 }  // namespace
 
+TrustedProxies TrustedProxies::None() { return TrustedProxies(); }
+
 TrustedProxies::TrustedProxies(const std::vector<std::string>& cidrs) {
   networks_.reserve(cidrs.size());
   for (const std::string& cidr : cidrs) {

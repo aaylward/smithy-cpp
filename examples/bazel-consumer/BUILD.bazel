@@ -81,6 +81,7 @@ cc_test(
         "@smithy_cpp//runtime:http",
         "@smithy_cpp//runtime:http_beast",
         "@smithy_cpp//runtime:server",
+        "@smithy_cpp//runtime:test_tls_identity",
     ],
 )
 

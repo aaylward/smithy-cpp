@@ -7,6 +7,7 @@
 #include <unistd.h>
 
 #include <cstddef>
+#include <iostream>
 #include <string_view>
 #include <utility>
 
@@ -145,6 +146,12 @@ Outcome<Unit> SocketHttpServer::Start(RequestHandler handler) {
   getsockname(fd, reinterpret_cast<sockaddr*>(&bound), &bound_size);
   bound_port_ = ntohs(bound.sin_port);
   listener_ = static_cast<std::intptr_t>(fd);
+  // Relegation notice (ADR-0006, issue #46): docs already point production at
+  // BeastServerTransport, but a deployment that reached for this class anyway
+  // deserves the operator-visible trace, not a silent one-request-at-a-time
+  // service (the server_dispatch clog convention).
+  std::clog << "smithy: SocketHttpServer is a test-only transport (one connection at a time, "
+               "loopback only); production serving is BeastServerTransport\n";
   accept_thread_ = std::thread([this] { AcceptLoop(); });
   return Unit{};
 }

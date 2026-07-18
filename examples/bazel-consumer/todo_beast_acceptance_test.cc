@@ -19,6 +19,7 @@
 #include "acme/todo/server.h"
 #include "smithy/client/config.h"
 #include "smithy/http/beast_transport.h"
+#include "smithy/testing/tls_test_identity.h"
 
 namespace {
 
@@ -30,6 +31,22 @@ using acme::todo::NoSuchTask;
 using acme::todo::TodoClient;
 using acme::todo::TodoHandler;
 using acme::todo::TodoServer;
+using smithy::testing::kTestCertificatePem;
+using smithy::testing::kTestPrivateKeyPem;
+
+// The blessed endpoint→FromConfig→Create wiring from the production guide,
+// shared by every test here: plain http by default, https when a trust
+// anchor is supplied.
+smithy::Outcome<TodoClient> MakeTodoClient(int port, const std::string& ca_pem = "") {
+  smithy::ClientConfig config;
+  config.endpoint =
+      std::string(ca_pem.empty() ? "http" : "https") + "://127.0.0.1:" + std::to_string(port);
+  config.tls.ca_pem = ca_pem;
+  auto http_client = smithy::http::BeastHttpClient::FromConfig(config);
+  if (!http_client) return std::move(http_client).error();
+  config.http_client = *http_client;
+  return TodoClient::Create(std::move(config));
+}
 
 // A handler with the negative path every real service eventually ships: a
 // "boom" title throws (the bug the framework must contain).
@@ -62,12 +79,7 @@ class TodoBeastAcceptanceTest : public ::testing::Test {
             .threads = 1, .handler_threads = 8, .drain_timeout_seconds = 5});
     ASSERT_TRUE(transport_->Start(server_->Handler()).ok());
 
-    smithy::ClientConfig config;
-    config.endpoint = "http://127.0.0.1:" + std::to_string(transport_->port());
-    auto http_client = smithy::http::BeastHttpClient::FromConfig(config);
-    ASSERT_TRUE(http_client.ok()) << http_client.error().message();
-    config.http_client = *http_client;
-    auto client = TodoClient::Create(std::move(config));
+    auto client = MakeTodoClient(transport_->port());
     ASSERT_TRUE(client.ok()) << client.error().message();
     client_ = std::make_unique<TodoClient>(std::move(*client));
   }
@@ -105,12 +117,7 @@ TEST_F(TodoBeastAcceptanceTest, LifecycleStopsAndRestartsAcrossTransportGenerati
   smithy::http::BeastServerTransport second_generation(
       smithy::http::BeastServerTransport::Options{.threads = 1, .handler_threads = 8});
   ASSERT_TRUE(second_generation.Start(server_->Handler()).ok());
-  smithy::ClientConfig config;
-  config.endpoint = "http://127.0.0.1:" + std::to_string(second_generation.port());
-  auto http_client = smithy::http::BeastHttpClient::FromConfig(config);
-  ASSERT_TRUE(http_client.ok()) << http_client.error().message();
-  config.http_client = *http_client;
-  auto client = TodoClient::Create(std::move(config));
+  auto client = MakeTodoClient(second_generation.port());
   ASSERT_TRUE(client.ok()) << client.error().message();
   const auto after = client->AddTask(AddTaskInput{.title = "after restart"});
   ASSERT_TRUE(after.ok()) << after.error().message();
@@ -127,6 +134,28 @@ TEST_F(TodoBeastAcceptanceTest, HandlerExceptionIsContainedAndServiceSurvives) {
   const auto after = client_->AddTask(AddTaskInput{.title = "still serving"});
   ASSERT_TRUE(after.ok()) << after.error().message();
   EXPECT_EQ(after->title, "still serving");
+}
+
+TEST(TodoBeastTlsAcceptanceTest, TlsTerminationServesTheGeneratedClient) {
+  // The https flavor of the production wiring: TLS termination on the server
+  // options, trust via config.tls.ca_pem, everything else identical. Proves
+  // the server's fixed TLS posture (1.2 floor, AEAD ciphers, http/1.1 ALPN —
+  // pinned in the runtime suite) composes with the blessed FromConfig client
+  // from a consumer build.
+  TodoServer server(std::make_shared<AcceptanceHandler>());
+  smithy::http::BeastServerTransport transport(
+      smithy::http::BeastServerTransport::Options{.threads = 1,
+                                                  .tls_certificate_chain_pem = kTestCertificatePem,
+                                                  .tls_private_key_pem = kTestPrivateKeyPem});
+  ASSERT_TRUE(transport.Start(server.Handler()).ok());
+
+  auto client = MakeTodoClient(transport.port(), kTestCertificatePem);
+  ASSERT_TRUE(client.ok()) << client.error().message();
+
+  const auto added = client->AddTask(AddTaskInput{.title = "ship on https"});
+  ASSERT_TRUE(added.ok()) << added.error().message();
+  EXPECT_EQ(added->title, "ship on https");
+  transport.Stop();
 }
 
 }  // namespace

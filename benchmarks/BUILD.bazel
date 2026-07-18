@@ -27,6 +27,7 @@ cc_binary(
         "//runtime:client",
         "//runtime:http",
         "//runtime:http_beast",
+        "//runtime:test_tls_identity",
         "@google_benchmark//:benchmark",
     ],
 )

@@ -324,11 +324,12 @@ survived production use (see PLAN.md).
 
 ## Production client transport
 
-`SocketHttpClient` (the `config.endpoint` default) is plaintext,
-connection-per-request — fine for tests and simple internal deployments.
-Production clients should inject `BeastHttpClient` (ADR-0007): keep-alive
-connection pooling, per-request timeouts, and TLS with certificate and
-hostname verification on by default.
+`SocketHttpClient` (the `config.endpoint` default) is a test/reference
+transport (ADR-0006), kept as the zero-dependency fallback for plain-http
+endpoints: plaintext, connection-per-request. Production clients should
+inject `BeastHttpClient` (ADR-0007): keep-alive connection pooling,
+per-request timeouts, and TLS with certificate and hostname verification on
+by default.
 
 Every knob lives on the one `ClientConfig` (issue #49):
 `config.tls.ca_pem` / `config.tls.verify_peer` for trust,
@@ -388,8 +389,16 @@ framing pair is the classic request-smuggling vector); both server
 transports enforce this.
 
 The transport terminates TLS when
-`tls_certificate_chain_pem` + `tls_private_key_pem` are set (ADR-0007), and
-drains on `Stop()`: new
+`tls_certificate_chain_pem` + `tls_private_key_pem` are set (ADR-0007). The
+TLS posture is fixed rather than configurable: TLS 1.2 minimum, ECDHE+AEAD
+cipher suites for 1.2 (every 1.3 suite qualifies), and ALPN answering
+`http/1.1` — a client that offers ALPN without `http/1.1` (say, h2-only) is
+refused at the handshake rather than silently served a protocol it did not
+agree to; clients that send no ALPN are unaffected. The client transport
+enforces the same TLS 1.2 floor. Client-certificate (mTLS) verification is
+tracked with the auth work (#90).
+
+The transport drains on `Stop()`: new
 connections and keep-alive reads cease immediately, while requests already
 read off the wire get up to `drain_timeout_seconds` (default 10) to finish
 writing their responses before the thread pool is torn down. `Stop()` is

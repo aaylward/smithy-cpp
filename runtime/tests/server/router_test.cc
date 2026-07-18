@@ -70,6 +70,31 @@ TEST(RouterTest, Returns404And405) {
   EXPECT_EQ(router.Route(Request("GET", "/bad%2")).status, 400);
 }
 
+TEST(RouterTest, GreedyRefusesALoneEmptySegment) {
+  Router router;
+  ASSERT_TRUE(router.Add("GET", "/files/{path+}", Tag("greedy")).ok());
+
+  // "/files//" reduces to a lone empty segment for {path+}: no match (a
+  // greedy label never captures an empty value), while real captures keep
+  // working — including ones with embedded empty segments.
+  EXPECT_EQ(router.Route(Request("GET", "/files//")).status, 404);
+  EXPECT_EQ(router.Route(Request("GET", "/files")).status, 404);
+  EXPECT_EQ(router.Route(Request("GET", "/files/a/b")).headers.Get("x-label-path"), "a/b");
+}
+
+TEST(RouterTest, AllowListsEachMethodOnceInDeterministicOrder) {
+  Router router;
+  // Two GET patterns both match /a/b; GET must still appear once, and the
+  // list is method-sorted regardless of registration order.
+  ASSERT_TRUE(router.Add("PUT", "/a/b", Tag("put")).ok());
+  ASSERT_TRUE(router.Add("GET", "/a/{x}", Tag("one")).ok());
+  ASSERT_TRUE(router.Add("GET", "/{y}/b", Tag("two")).ok());
+
+  const auto response = router.Route(Request("DELETE", "/a/b"));
+  EXPECT_EQ(response.status, 405);
+  EXPECT_EQ(response.headers.Get("allow").value_or(""), "GET, PUT");
+}
+
 TEST(RouterTest, TrailingSlashesMatch) {
   Router router;
   ASSERT_TRUE(router.Add("GET", "/cities", Tag("list")).ok());

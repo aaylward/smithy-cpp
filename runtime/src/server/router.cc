@@ -62,8 +62,9 @@ Outcome<Unit> Router::Add(std::string_view method, std::string_view pattern, Rou
                           std::string_view operation) {
   auto segments = ParsePattern(pattern);
   if (!segments) return std::move(segments).error();
-  for (const RouteEntry& existing : routes_) {
-    if (existing.method != method || existing.segments.size() != segments->size()) continue;
+  std::vector<RouteEntry>& bucket = routes_.try_emplace(std::string(method)).first->second;
+  for (const RouteEntry& existing : bucket) {
+    if (existing.segments.size() != segments->size()) continue;
     bool same_shape = true;
     for (std::size_t i = 0; i < segments->size(); ++i) {
       const Segment& a = existing.segments[i];
@@ -78,14 +79,13 @@ Outcome<Unit> Router::Add(std::string_view method, std::string_view pattern, Rou
                                std::string(pattern));
     }
   }
-  routes_.push_back(RouteEntry{std::string(method), std::move(*segments), std::move(handler),
-                               std::string(operation)});
+  bucket.push_back(RouteEntry{std::move(*segments), std::move(handler), std::string(operation)});
   return Unit{};
 }
 
 bool Router::Matches(const RouteEntry& route, const std::vector<std::string>& segments,
                      PathLabels* labels) {
-  labels->clear();
+  if (labels != nullptr) labels->clear();
   const bool has_greedy =
       !route.segments.empty() && route.segments.back().kind == Segment::Kind::kGreedy;
   if (has_greedy) {
@@ -101,16 +101,20 @@ bool Router::Matches(const RouteEntry& route, const std::vector<std::string>& se
         break;
       case Segment::Kind::kLabel:
         if (segments[i].empty()) return false;
-        labels->emplace(expected.text, segments[i]);
+        if (labels != nullptr) labels->emplace(expected.text, segments[i]);
         break;
       case Segment::Kind::kGreedy: {
-        std::string joined;
-        for (std::size_t j = i; j < segments.size(); ++j) {
-          if (j > i) joined.push_back('/');
-          joined += segments[j];
+        // The joined value ("seg/seg/...") is empty only when a lone empty
+        // segment remains: two or more always meet at a '/'.
+        if (segments.size() - i == 1 && segments[i].empty()) return false;
+        if (labels != nullptr) {
+          std::string joined;
+          for (std::size_t j = i; j < segments.size(); ++j) {
+            if (j > i) joined.push_back('/');
+            joined += segments[j];
+          }
+          labels->emplace(expected.text, std::move(joined));
         }
-        if (joined.empty()) return false;
-        labels->emplace(expected.text, std::move(joined));
         return true;
       }
     }
@@ -140,45 +144,45 @@ bool Router::MoreSpecific(const std::vector<Segment>& a, const std::vector<Segme
 }
 
 http::HttpResponse Router::Route(const http::HttpRequest& request) const {
-  const auto target = http::ParseRequestTarget(request.target);
+  auto target = http::ParseRequestTarget(request.target);
   if (!target) {
     return MakeErrorResponse(400, "BadRequest", "malformed request target");
   }
-  // Drop a trailing empty segment so "/a/" matches "/a".
-  std::vector<std::string> segments = target->path_segments;
+  // Drop a trailing empty segment so "/a/" matches "/a". The parse is ours to
+  // mutate — no per-request copy of the segment vector.
+  std::vector<std::string>& segments = target->path_segments;
   if (!segments.empty() && segments.back().empty()) segments.pop_back();
 
   const RouteEntry* best = nullptr;
-  PathLabels best_labels;
-  std::vector<std::string> allowed_methods;
-  for (const RouteEntry& route : routes_) {
-    PathLabels labels;
-    if (!Matches(route, segments, &labels)) continue;
-    if (route.method != request.method) {
-      allowed_methods.push_back(route.method);
-      continue;
-    }
-    if (best == nullptr || MoreSpecific(route.segments, best->segments)) {
-      best = &route;
-      best_labels = std::move(labels);
+  if (const auto bucket = routes_.find(request.method); bucket != routes_.end()) {
+    for (const RouteEntry& route : bucket->second) {
+      if (!Matches(route, segments, nullptr)) continue;
+      if (best == nullptr || MoreSpecific(route.segments, best->segments)) best = &route;
     }
   }
   if (best == nullptr) {
-    if (!allowed_methods.empty()) {
+    // Miss path only: probe the other methods' buckets for the Allow list —
+    // each contributes at most once, in map (deterministic) order.
+    std::string allow;
+    for (const auto& [method, bucket] : routes_) {
+      if (method == request.method) continue;
+      const bool any_match = std::any_of(
+          bucket.begin(), bucket.end(),
+          [&segments](const RouteEntry& route) { return Matches(route, segments, nullptr); });
+      if (!any_match) continue;
+      if (!allow.empty()) allow += ", ";
+      allow += method;
+    }
+    if (!allow.empty()) {
       auto response = MakeErrorResponse(405, "MethodNotAllowed", "method not allowed");
-      std::string allow;
-      for (const std::string& method : allowed_methods) {
-        if (!allow.empty()) allow += ", ";
-        allow += method;
-      }
       response.headers.Set("allow", allow);
       return response;
     }
     return MakeErrorResponse(404, "NotFound", "no route matches the request");
   }
   RequestContext context;
-  context.labels = std::move(best_labels);
-  context.query_params = target->query_params;
+  Matches(*best, segments, &context.labels);  // label extraction: winner only
+  context.query_params = std::move(target->query_params);
   http::HttpResponse response = best->handler(request, context);
   if (!best->operation.empty()) response.operation = best->operation;
   return response;

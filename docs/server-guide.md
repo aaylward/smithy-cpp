@@ -6,10 +6,10 @@ target.
 
 ## Implementing a handler
 
-Handler implementations must be **thread-safe**: the production socket transport dispatches
-requests on a thread pool, so any mix of operations can run concurrently against the one
-handler instance you pass to the server. Guard shared state (the quickstart's in-memory
-handler shows the minimal mutex pattern).
+Handler implementations must be **thread-safe**: the production transport
+(`BeastServerTransport`, ADR-0006) dispatches requests on a thread pool, so any mix of
+operations can run concurrently against the one handler instance you pass to the server.
+Guard shared state (the quickstart's in-memory handler shows the minimal mutex pattern).
 
 ```cpp
 #include "example/weather/server.h"
@@ -56,7 +56,8 @@ example::weather::WeatherServer server(std::make_shared<MyHandler>());
 
 smithy::http::BeastServerTransport transport(options);  // production (ADR-0006)
 transport.Start(server.Handler());
-// or smithy::http::Loopback for in-process tests, SocketHttpServer for the built-in listener.
+// or smithy::http::Loopback for in-process tests. (SocketHttpServer is test-only: one
+// connection at a time, loopback only — its Start() says so on std::clog.)
 ```
 
 Cross-cutting behavior (auth checks, request logging, metrics) wraps `server.Handler()` as

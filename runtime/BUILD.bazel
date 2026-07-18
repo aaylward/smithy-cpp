@@ -90,6 +90,16 @@ cc_library(
 
 # Support library for the generated protocol conformance tests
 # (protocol-tests/): capturing transport, query/body equivalence assertions.
+# The shared test TLS identity (self-signed localhost cert + key) — one copy
+# for the runtime suite, the benchmarks, and the consumer module's tests.
+cc_library(
+    name = "test_tls_identity",
+    testonly = True,
+    hdrs = ["testing/include/smithy/testing/tls_test_identity.h"],
+    copts = COPTS,
+    includes = ["testing/include"],
+)
+
 cc_library(
     name = "protocol_test_support",
     testonly = True,
@@ -226,6 +236,9 @@ cc_test(
         ":core",
         ":http",
         ":http_beast",
+        ":test_tls_identity",
+        "@boost.asio",
+        "@boringssl//:ssl",
         "@googletest//:gtest_main",
     ],
 )

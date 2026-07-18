@@ -74,11 +74,11 @@ via `git_override` until then.
   `TrustedProxies::None()`, never a default constructor (issue #104).
   `smithy::server::PerClientRateLimit` ships the derivation-into-admission
   wiring (the pluggable `allow(client)` policy sees only the derived key;
-  underivable requests are admitted rather than sharing one "" bucket),
-  and `DeriveClient` reports each address's derivation `Source` so a
-  drifted trust boundary shows up on a dashboard instead of as a silent
-  one-bucket collapse (issue #104). The production guide teaches the
-  composed middleware plus the `TRUSTED_PROXY_CIDRS` plumbing convention.
+  underivable requests are admitted), and `DeriveClient` reports each
+  address's derivation `Source` so a drifted trust boundary shows up on a
+  dashboard instead of as a silent one-bucket collapse. The production
+  guide teaches the composed middleware plus the `TRUSTED_PROXY_CIDRS`
+  plumbing convention.
 - Server middleware additions for production serving: `Guard` admission
   control (rate limiting, allowlists, maintenance mode — policy stays an
   application dependency) with a `TooManyRequests` reject factory,

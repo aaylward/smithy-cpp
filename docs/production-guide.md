@@ -188,17 +188,14 @@ auto db = std::make_shared<MyDbPool>(/* ... */);
 // The deployment's proxy trust boundary (ADR-0012): x-forwarded-for
 // entries count only when appended by these networks. Directly reachable
 // (no proxy)? Say so: TrustedProxies::None() — the header is then ignored
-// and every request keys as its TCP peer. (There is no default
-// constructor: an accidental empty set behind a proxy would silently
-// collapse all traffic onto the proxy's one key — issue #104.)
+// and every request keys as its TCP peer.
 const smithy::http::TrustedProxies trusted({"10.0.0.0/8"});
 
 transport.Start(smithy::server::Chain(
     {// Outermost: shed abusive traffic before it costs anything. The
      // framework derives the client behind the trust boundary and keys
-     // admission on it (never the raw header, which any client can write —
-     // smithy/http/forwarded.h has the derivation contract); your limiter
-     // only sees the derived key.
+     // admission on it — never the raw header, which any client can write
+     // (smithy/http/forwarded.h has the derivation contract).
      smithy::server::PerClientRateLimit(
          [limiter](const std::string& client) { return limiter->Allow(client); },
          trusted, std::chrono::seconds(30)),
@@ -240,8 +237,8 @@ cheap (a pool's cached connectivity flag, not a fresh dial) and thread-safe.
 `Guard` is the generic admission primitive underneath — IP allowlists,
 maintenance mode — admit/reject callbacks in, one decision point out;
 `PerClientRateLimit` is `Guard` with the ADR-0012 derivation wired in by the
-framework, because hand-wiring it is exactly where adoption review found
-silent mutants (issue #104). `Observe`'s callbacks run on the transport's
+framework (the ADR records why hand-wiring it is the hazard).
+`Observe`'s callbacks run on the transport's
 request thread (keep them cheap or hand off) and always pair: when dispatch
 throws, `on_complete` reports a 500 completion before the exception reaches
 the transport's containment, so an in-flight gauge can never leak. Throwing
@@ -252,22 +249,24 @@ address changed; the CIDR didn't) fails silently: the spoof defense ignores
 the header on every request and all traffic collapses onto the proxy's one
 key. The fingerprint is visible in `smithy::http::DeriveClient` — the
 richer form of `ClientAddress` that also reports *how* the address was
-derived. Put its `source` in your `Observe` sink: behind a proxy, ~100%
-`kUntrustedHeaderIgnored` means the trust set no longer matches the
-topology, and ~100% `kTrustedTier` means the proxy is not appending
-`x-forwarded-for`.
+derived. Count its `source` where the request is still in hand — a
+one-line middleware wrapping the chain above; `Observe`'s sink sees only
+the finished observation, not the request. On the dashboard: behind a
+proxy, ~100% `kUntrustedHeaderIgnored` means the trust set no longer
+matches the topology, and ~100% `kTrustedTier` means the proxy is not
+appending `x-forwarded-for`.
 
 **Plumbing the trust set.** The boundary is deployment config; the
 convention is a `TRUSTED_PROXY_CIDRS` environment variable holding a
-comma-separated CIDR list, parsed once at startup — construction throws on
-a malformed entry, so a bad boundary aborts boot instead of silently
-mis-keying (`SplitHeaderListValues` in `smithy/http/headers.h` already
-splits comma lists with trimming). Unset must mean a *deliberate*
-direct-connect topology:
+comma-separated CIDR list, parsed once at startup. Unset must mean a
+*deliberate* direct-connect topology — and only unset: a set-but-empty
+value fails construction like any other malformed entry, so a template
+that renders an empty string aborts boot instead of silently collapsing
+proxied traffic onto one key (the issue-#104 accident, config edition):
 
 ```cpp
 const char* cidrs = std::getenv("TRUSTED_PROXY_CIDRS");
-const auto trusted = (cidrs == nullptr || *cidrs == '\0')
+const auto trusted = cidrs == nullptr
                          ? smithy::http::TrustedProxies::None()
                          : smithy::http::TrustedProxies(
                                smithy::http::SplitHeaderListValues(cidrs));

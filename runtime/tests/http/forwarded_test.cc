@@ -197,6 +197,8 @@ TEST(ClientAddressTest, AMalformedEntryStopsTheWalkAtTheLastVettedPosition) {
   // Leading-zero octets are octal-ambiguous, so they are garbage too.
   const auto octalish = RequestFrom("10.0.0.1:443", {"203.0.113.9, 010.0.0.2"});
   EXPECT_EQ(ClientAddress(octalish, trusted), "10.0.0.1");
+  // A mid-walk stop never left the trust set, and its source says so.
+  EXPECT_EQ(DeriveClient(beyond, trusted).source, DerivedClient::Source::kTrustedTier);
 }
 
 TEST(ClientAddressTest, TrustedHopsAreRecognizedInAnyEntryForm) {
@@ -289,10 +291,8 @@ TEST(ClientAddressTest, V6PeersAndMappedPeersDeriveBareCanonicalAddresses) {
 }
 
 TEST(DeriveClientTest, TheSourceNamesTheDerivationPath) {
-  // Issue #104: each source is correct behavior on the single request, but
-  // the distribution is the misconfiguration signal — ~100%
-  // kUntrustedHeaderIgnored behind a proxy means the trust set no longer
-  // matches the topology.
+  // Issue #104: each source is correct on the single request; the
+  // distribution is the misconfiguration signal.
   using Source = DerivedClient::Source;
   const TrustedProxies trusted({"10.0.0.0/8"});
 
@@ -303,6 +303,9 @@ TEST(DeriveClientTest, TheSourceNamesTheDerivationPath) {
   const auto ignored = DeriveClient(RequestFrom("203.0.113.9:52814", {"198.51.100.7"}), trusted);
   EXPECT_EQ(ignored.source, Source::kUntrustedHeaderIgnored);
   EXPECT_EQ(ignored.address, "203.0.113.9");
+  // Present-with-empty-value is still present-and-ignored.
+  EXPECT_EQ(DeriveClient(RequestFrom("203.0.113.9:52814", {""}), trusted).source,
+            Source::kUntrustedHeaderIgnored);
 
   const auto forwarded = DeriveClient(RequestFrom("10.0.0.1:443", {"203.0.113.9"}), trusted);
   EXPECT_EQ(forwarded.source, Source::kForwarded);
@@ -332,7 +335,6 @@ TEST(ClientAddressTest, AnEmptyPeerDerivesEmpty) {
   // nothing is known, and empty never matches a trust set — so a spoofed
   // header cannot conjure an identity where the transport reported none.
   const TrustedProxies trusted({"10.0.0.0/8", "0.0.0.0/0"});
-  EXPECT_EQ(ClientAddress(RequestFrom("", {"203.0.113.9"}), TrustedProxies::None()), "");
   EXPECT_EQ(ClientAddress(RequestFrom("", {"203.0.113.9"}), trusted), "");
   EXPECT_EQ(ClientAddress(RequestFrom("garbage-peer", {"203.0.113.9"}), trusted), "");
 }

@@ -58,12 +58,10 @@ class TrustedProxies {
 // (ADR-0012), with its provenance (issue #104). address is in canonical
 // numeric form (no port, no brackets, no v6 zone id; IPv4-mapped IPv6 as
 // the embedded IPv4) — directly usable as a policy or metrics key. source
-// records which path produced it: correct behavior on any single request,
-// but as a distribution it is the misconfiguration signal only the
-// framework sees — behind a proxy, ~100% kUntrustedHeaderIgnored means the
-// trust set no longer matches the topology (the spoof defense is eating
-// all real traffic), and ~100% kTrustedTier means the proxy is not
-// appending the header. Feed it to an Observe sink or a dashboard.
+// records which path produced it — correct behavior on any single
+// request; the distribution, not any single value, is the
+// misconfiguration signal. Count it where the request is still in hand (a
+// one-line middleware); docs/production-guide.md reads the distribution.
 struct DerivedClient {
   std::string address;
   enum class Source {

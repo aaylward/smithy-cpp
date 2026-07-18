@@ -46,19 +46,15 @@ std::function<http::HttpResponse(const http::HttpRequest&)> TooManyRequests(
 // The composed ADR-0012 admission chain (issue #104): derive the client
 // behind the configured proxy trust boundary, consult allow(client), shed
 // with the shaped TooManyRequests 429 when it refuses. The
-// derivation-into-admission wiring lives here — written and tested once —
-// because it is exactly where the first adoption's review found silent
-// wiring mutants (ignoring the trust set, keying on the raw peer) that
-// every naturally-written consumer test passes while all proxied traffic
-// collapses into one bucket. allow is the pluggable policy (a token
-// bucket, a ban list) keyed by the derived bare address; it runs on the
-// transport's request thread, concurrently across requests — it must be
-// thread-safe. A null allow throws std::invalid_argument at composition
-// time. A request with no derivable client (DerivedClient::Source::
-// kUnknown — the in-memory Loopback, handler chains driven directly in
-// tests) is admitted without consulting allow, so such requests never
-// share one "" bucket; compose Guard + DeriveClient directly for a
-// stricter policy.
+// derivation-into-admission wiring lives here, written and tested once
+// (ADR-0012 records why hand-wiring it is the hazard). allow is the
+// pluggable policy (a token bucket) keyed by the derived bare address; it
+// runs on the transport's request thread, concurrently across requests —
+// it must be thread-safe. A null allow throws std::invalid_argument at
+// composition time. A request with no derivable client (the in-memory
+// Loopback, handler chains driven directly in tests — Source::kUnknown)
+// is admitted without consulting allow, so such requests never share one
+// "" bucket; compose Guard + DeriveClient directly for a stricter policy.
 Middleware PerClientRateLimit(std::function<bool(const std::string& client)> allow,
                               http::TrustedProxies trusted,
                               std::optional<std::chrono::seconds> retry_after = std::nullopt);

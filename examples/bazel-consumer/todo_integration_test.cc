@@ -406,7 +406,7 @@ TEST(TodoMiddlewareTest, GuardObserveAndHealthComposeAroundTheServer) {
 // client-authored noise otherwise. The allow policy records the derived
 // key — the boundary claim is that a real transport-stamped peer flows
 // through the derivation, which the status alone cannot prove.
-TEST(TodoMiddlewareTest, GuardKeysOnTheDerivedClientAddressNotTheSpoofableHeader) {
+TEST(TodoMiddlewareTest, PerClientRateLimitKeysOnTheDerivedClientAddressNotTheSpoofableHeader) {
   std::string seen;
   const auto deny_banned = [&seen](const smithy::http::TrustedProxies& trusted) {
     return smithy::server::PerClientRateLimit(

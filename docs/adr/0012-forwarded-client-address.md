@@ -115,13 +115,10 @@ handlers via `context.request`).
   (`kUnknown`) are admitted without consulting the policy, closing the
   empty-string shared-bucket door.
 - Misconfiguration is observable rather than silent: `DeriveClient` returns
-  the address plus its `Source`, and the distribution is the diagnostic —
-  behind a proxy, all-`kUntrustedHeaderIgnored` means a drifted trust set,
-  all-`kTrustedTier` a proxy that is not appending the header
-  (issue #104). `ClientAddress` remains the simple string form.
-- The trust set is plumbed by convention from `TRUSTED_PROXY_CIDRS`
-  (comma-separated CIDRs, parsed once at startup, malformed aborts boot;
-  unset means a deliberate `TrustedProxies::None()`) —
-  docs/production-guide.md carries the snippet.
+  the address plus its `Source`, and the distribution is the diagnostic
+  (issue #104); `ClientAddress` remains the simple string form.
+  docs/production-guide.md reads the distribution.
+- The trust set is plumbed by convention from `TRUSTED_PROXY_CIDRS`;
+  docs/production-guide.md carries the snippet and the fail-fast rules.
 - Servers that never sit behind a proxy simply never construct a
   `TrustedProxies`; nothing changes for them.

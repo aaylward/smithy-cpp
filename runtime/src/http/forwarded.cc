@@ -209,7 +209,7 @@ bool TrustedProxies::ContainsBytes(const std::array<std::uint8_t, 16>& bytes, in
 DerivedClient DeriveClient(const HttpRequest& request, const TrustedProxies& trusted) {
   const auto peer = ParseEndpoint(request.peer_address);
   if (!peer.has_value()) {
-    return {};  // kUnknown: nothing is known, and "" never matches a trust set
+    return {};  // kUnknown via the Source default init
   }
   Address client = *peer;
   if (!trusted.ContainsBytes(client.bytes, client.family)) {

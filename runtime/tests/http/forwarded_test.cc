@@ -38,6 +38,11 @@ TEST(TrustedProxiesTest, MatchesMidBytePrefixBoundaries) {
   const TrustedProxies trusted({"172.16.0.0/20"});
   EXPECT_TRUE(trusted.Contains("172.16.15.255"));
   EXPECT_FALSE(trusted.Contains("172.16.16.0"));
+  // /10 (remainder 2): a reversed mask shift passes /20's remainder-4
+  // symmetry but fails here.
+  const TrustedProxies cgnat({"100.64.0.0/10"});
+  EXPECT_TRUE(cgnat.Contains("100.127.255.255"));
+  EXPECT_FALSE(cgnat.Contains("100.128.0.1"));
 }
 
 TEST(TrustedProxiesTest, ABareAddressIsAHostRoute) {
@@ -52,6 +57,31 @@ TEST(TrustedProxiesTest, AZeroPrefixTrustsTheWholeFamily) {
   const TrustedProxies v4_all({"0.0.0.0/0"});
   EXPECT_TRUE(v4_all.Contains("203.0.113.9"));
   EXPECT_FALSE(v4_all.Contains("2001:db8::1"));  // families never cross
+  const TrustedProxies v6_all({"::/0"});
+  EXPECT_TRUE(v6_all.Contains("2001:db8::1"));
+  EXPECT_FALSE(v6_all.Contains("10.0.0.1"));
+  // A mapped candidate is normalized to v4 before matching, so ::/0 is the
+  // v6 family, not "everything".
+  EXPECT_FALSE(v6_all.Contains("::ffff:10.0.0.1"));
+}
+
+TEST(TrustedProxiesTest, AHostBitsSetBaseMatchesAsIfMasked) {
+  // No canonical-base requirement on config: matching masks to the prefix.
+  const TrustedProxies trusted({"10.0.0.5/8"});
+  EXPECT_TRUE(trusted.Contains("10.99.99.99"));
+  EXPECT_FALSE(trusted.Contains("11.0.0.1"));
+}
+
+TEST(TrustedProxiesTest, RejectsAmbiguousNumericForms) {
+  // inet_pton is strict: no octal-ambiguous leading zeros, no dotted
+  // shorthand, no zone on a bare address (Contains takes bare numerics
+  // only). Pinned so a future parser swap (inet_aton/getaddrinfo accept
+  // some of these) fails loudly.
+  const TrustedProxies trusted({"10.0.0.0/8", "fe80::/10"});
+  EXPECT_FALSE(trusted.Contains("010.0.0.1"));
+  EXPECT_FALSE(trusted.Contains("10.0.1"));
+  EXPECT_FALSE(trusted.Contains("fe80::1%eth0"));
+  EXPECT_TRUE(trusted.Contains("fe80::1"));
 }
 
 TEST(TrustedProxiesTest, V4MappedV6IsTheEmbeddedV4Everywhere) {
@@ -63,7 +93,20 @@ TEST(TrustedProxiesTest, V4MappedV6IsTheEmbeddedV4Everywhere) {
   EXPECT_FALSE(v4.Contains("::ffff:11.0.0.1"));
   const TrustedProxies mapped({"::ffff:10.0.0.0/104"});
   EXPECT_TRUE(mapped.Contains("10.1.2.3"));
+  EXPECT_TRUE(mapped.Contains("10.128.0.1"));  // /104 is exactly /8, not /9
   EXPECT_FALSE(mapped.Contains("11.0.0.1"));
+  // The /96 boundary itself: the whole v4 family, still family-bound.
+  const TrustedProxies whole({"::ffff:0.0.0.0/96"});
+  EXPECT_TRUE(whole.Contains("203.0.113.9"));
+  EXPECT_FALSE(whole.Contains("2001:db8::1"));
+}
+
+TEST(TrustedProxiesTest, V4CompatibleV6IsNotTheEmbeddedV4) {
+  // Only the ::ffff:0:0/96 mapped form embeds v4. The deprecated
+  // v4-compatible form (::10.0.0.1) stays IPv6: it must not inherit v4
+  // trust — an attacker-writable entry would otherwise walk as trusted.
+  const TrustedProxies v4({"10.0.0.0/8"});
+  EXPECT_FALSE(v4.Contains("::10.0.0.1"));
 }
 
 TEST(TrustedProxiesTest, TheDefaultAndTheUnparseableTrustNothing) {
@@ -85,9 +128,12 @@ TEST(TrustedProxiesTest, MalformedConfigurationThrows) {
   EXPECT_THROW(TrustedProxies({"10.0.0.0/ 8"}), std::invalid_argument);
   EXPECT_THROW(TrustedProxies({"gateway/8"}), std::invalid_argument);
   EXPECT_THROW(TrustedProxies({""}), std::invalid_argument);
+  EXPECT_THROW(TrustedProxies({"fe80::1%eth0/64"}), std::invalid_argument);
   // A mapped base with a prefix spanning non-IPv4 space is meaningless as a
-  // proxy trust boundary.
+  // proxy trust boundary; both /96 boundary neighbors are pinned.
   EXPECT_THROW(TrustedProxies({"::ffff:10.0.0.0/64"}), std::invalid_argument);
+  EXPECT_THROW(TrustedProxies({"::ffff:10.0.0.0/95"}), std::invalid_argument);
+  EXPECT_THROW(TrustedProxies({"::ffff:10.0.0.0/129"}), std::invalid_argument);
 }
 
 TEST(ClientAddressTest, AnUntrustedPeerIsTheClientAndTheHeaderIsIgnored) {
@@ -143,6 +189,36 @@ TEST(ClientAddressTest, AMalformedEntryStopsTheWalkAtTheLastVettedPosition) {
   EXPECT_EQ(ClientAddress(immediate, trusted), "10.0.0.1");
   const auto empty_element = RequestFrom("10.0.0.1:443", {"203.0.113.9,,10.0.0.2"});
   EXPECT_EQ(ClientAddress(empty_element, trusted), "10.0.0.2");
+  // Leading-zero octets are octal-ambiguous, so they are garbage too.
+  const auto octalish = RequestFrom("10.0.0.1:443", {"203.0.113.9, 010.0.0.2"});
+  EXPECT_EQ(ClientAddress(octalish, trusted), "10.0.0.1");
+}
+
+TEST(ClientAddressTest, TrustedHopsAreRecognizedInAnyEntryForm) {
+  // The skip test parses, not string-matches: a trusted hop written with a
+  // port or as IPv4-mapped IPv6 is still skipped, and a mapped client
+  // derives as the embedded v4.
+  const TrustedProxies trusted({"10.0.0.0/8"});
+  EXPECT_EQ(ClientAddress(RequestFrom("10.0.0.1:443", {"203.0.113.9, 10.0.0.2:8080"}), trusted),
+            "203.0.113.9");
+  EXPECT_EQ(ClientAddress(RequestFrom("10.0.0.1:443", {"203.0.113.9, ::ffff:10.0.0.2"}), trusted),
+            "203.0.113.9");
+  EXPECT_EQ(ClientAddress(RequestFrom("10.0.0.1:443", {"::ffff:203.0.113.9"}), trusted),
+            "203.0.113.9");
+  // The v4-compatible form is NOT mapped: ::10.0.0.2 is an untrusted v6
+  // client, not a trusted v4 hop.
+  EXPECT_EQ(ClientAddress(RequestFrom("10.0.0.1:443", {"203.0.113.9, ::10.0.0.2"}), trusted),
+            "::10.0.0.2");
+}
+
+TEST(ClientAddressTest, AClientInsideTheTrustSetCanForgeItsAncestry) {
+  // The inherent recursive-walk caveat (ADR-0012, forwarded.h): a real
+  // client whose own address falls inside the trust set is skipped as a
+  // hop, so the attacker-authored entry before it wins. Trust only networks
+  // that proxies alone occupy.
+  const TrustedProxies trusted({"10.0.0.0/8"});
+  const auto request = RequestFrom("10.0.0.1:443", {"6.6.6.6, 10.0.0.5"});
+  EXPECT_EQ(ClientAddress(request, trusted), "6.6.6.6");
 }
 
 TEST(ClientAddressTest, EntriesTolerateTheFormsRealProxiesEmit) {
@@ -154,9 +230,28 @@ TEST(ClientAddressTest, EntriesTolerateTheFormsRealProxiesEmit) {
   EXPECT_EQ(ClientAddress(RequestFrom("10.0.0.1:443", {"[2001:db8::1]:443"}), trusted),
             "2001:db8::1");
   EXPECT_EQ(ClientAddress(RequestFrom("10.0.0.1:443", {"2001:DB8::1"}), trusted), "2001:db8::1");
-  // A bracketed form with trailing junk is malformed, not half-parsed.
+  // A bracketed form with trailing junk is malformed, not half-parsed —
+  // whether after the bracket or inside the port.
   EXPECT_EQ(ClientAddress(RequestFrom("10.0.0.1:443", {"[2001:db8::1]x"}), trusted), "10.0.0.1");
+  EXPECT_EQ(ClientAddress(RequestFrom("10.0.0.1:443", {"[2001:db8::1]:abc"}), trusted), "10.0.0.1");
   EXPECT_EQ(ClientAddress(RequestFrom("10.0.0.1:443", {"203.0.113.9:port"}), trusted), "10.0.0.1");
+  // The unspecified address parses like any other; whether "::" is an
+  // acceptable policy key is the policy's call, not the derivation's.
+  EXPECT_EQ(ClientAddress(RequestFrom("10.0.0.1:443", {"::"}), trusted), "::");
+}
+
+TEST(ClientAddressTest, ZoneIdsAreDroppedFromV6Endpoints) {
+  // getnameinfo stamps the zone for link-local peers ("[fe80::1%eth0]:443");
+  // the zone disambiguates link scope, not identity — link-local clients
+  // key as the bare address instead of collapsing onto the empty key, and a
+  // link-local proxy tier is trustable.
+  const TrustedProxies v4({"10.0.0.0/8"});
+  EXPECT_EQ(ClientAddress(RequestFrom("[fe80::1%eth0]:443", {"203.0.113.9"}), v4), "fe80::1");
+  EXPECT_EQ(ClientAddress(RequestFrom("10.0.0.1:443", {"fe80::2%eth1"}), v4), "fe80::2");
+  const TrustedProxies link({"fe80::/10"});
+  EXPECT_EQ(ClientAddress(RequestFrom("[fe80::1%eth0]:443", {"203.0.113.9"}), link), "203.0.113.9");
+  // A bare trailing '%' is not a zone; the entry is malformed.
+  EXPECT_EQ(ClientAddress(RequestFrom("10.0.0.1:443", {"fe80::3%"}), v4), "10.0.0.1");
 }
 
 TEST(ClientAddressTest, MultipleHeadersJoinInOrder) {
@@ -165,6 +260,12 @@ TEST(ClientAddressTest, MultipleHeadersJoinInOrder) {
   const TrustedProxies trusted({"10.0.0.0/8"});
   const auto request = RequestFrom("10.0.0.1:443", {"198.51.100.7", "203.0.113.9, 10.0.0.2"});
   EXPECT_EQ(ClientAddress(request, trusted), "203.0.113.9");
+  // The client in the FIRST header behind a spoofed prefix, the last header
+  // all trusted hops: only a true rightmost-first walk across the joined
+  // list finds it (a per-header-forward walk would answer 198.51.100.7).
+  const auto crossing =
+      RequestFrom("10.0.0.1:443", {"198.51.100.7, 203.0.113.9", "10.0.0.2, 10.0.0.3"});
+  EXPECT_EQ(ClientAddress(crossing, trusted), "203.0.113.9");
 }
 
 TEST(ClientAddressTest, V6PeersAndMappedPeersDeriveBareCanonicalAddresses) {

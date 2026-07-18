@@ -402,12 +402,16 @@ TEST(TodoMiddlewareTest, GuardObserveAndHealthComposeAroundTheServer) {
 // ADR-0012 composed at the consumer boundary, over a real socket so the
 // transport stamps a real peer: admission keys on ClientAddress, so
 // x-forwarded-for drives policy only through a trusted proxy tier and is
-// client-authored noise otherwise.
+// client-authored noise otherwise. The admit lambda records the derived
+// key — the boundary claim is that a real transport-stamped peer flows
+// through the derivation, which the status alone cannot prove.
 TEST(TodoMiddlewareTest, GuardKeysOnTheDerivedClientAddressNotTheSpoofableHeader) {
-  const auto deny_banned = [](const smithy::http::TrustedProxies& trusted) {
+  std::string seen;
+  const auto deny_banned = [&seen](const smithy::http::TrustedProxies& trusted) {
     return smithy::server::Guard(
-        [trusted](const smithy::http::HttpRequest& request) {
-          return smithy::http::ClientAddress(request, trusted) != "203.0.113.9";
+        [trusted, &seen](const smithy::http::HttpRequest& request) {
+          seen = smithy::http::ClientAddress(request, trusted);
+          return seen != "203.0.113.9";
         },
         smithy::server::TooManyRequests());
   };
@@ -420,9 +424,10 @@ TEST(TodoMiddlewareTest, GuardKeysOnTheDerivedClientAddressNotTheSpoofableHeader
   add.body = R"({"title":"who goes there"})";
 
   {
-    // Trusting loopback as the proxy tier: the banned client is seen through
-    // the appended entry — a spoofed prefix entry never reaches the walk —
-    // and shed as the shaped 429; the direct request keys as the peer.
+    // Trusting loopback as the proxy tier: the direct request keys as the
+    // stamped peer; the banned client is seen through the appended entry —
+    // the walk never reaches the spoofed prefix — and shed as the shaped
+    // 429.
     smithy::http::SocketHttpServer transport;
     ASSERT_TRUE(
         transport
@@ -434,12 +439,14 @@ TEST(TodoMiddlewareTest, GuardKeysOnTheDerivedClientAddressNotTheSpoofableHeader
     const auto direct = raw.Send(add);
     ASSERT_TRUE(direct.ok()) << direct.error().message();
     EXPECT_EQ(direct->status, 200);
+    EXPECT_EQ(seen, "127.0.0.1");
 
     smithy::http::HttpRequest banned = add;
     banned.headers.Set("x-forwarded-for", "198.51.100.7, 203.0.113.9");
     const auto denied = raw.Send(banned);
     ASSERT_TRUE(denied.ok()) << denied.error().message();
     EXPECT_EQ(denied->status, 429);
+    EXPECT_EQ(seen, "203.0.113.9");
     transport.Stop();
   }
   {
@@ -457,6 +464,7 @@ TEST(TodoMiddlewareTest, GuardKeysOnTheDerivedClientAddressNotTheSpoofableHeader
     const auto admitted = raw.Send(spoofed);
     ASSERT_TRUE(admitted.ok()) << admitted.error().message();
     EXPECT_EQ(admitted->status, 200);
+    EXPECT_EQ(seen, "127.0.0.1");
     transport.Stop();
   }
 }

@@ -17,9 +17,10 @@ limiter, a victim's address exhausts the victim's bucket, and an allowlist
 keyed on it is a bypass, not a control.
 
 The correct derivation is the one nginx's `real_ip` module
-(`set_real_ip_from` + `real_ip_recursive on`) and Envoy's trusted-hops
-implement: only entries appended by proxies you trust count, and trust is
-evaluated starting from the one non-forgeable fact — the L4 peer.
+(`set_real_ip_from` + `real_ip_recursive on`) implements — Envoy's
+trusted-hops applies the same anchored walk with a hop count where nginx
+uses a network set: only entries appended by proxies you trust count, and
+trust is evaluated starting from the one non-forgeable fact — the L4 peer.
 
 Placement options considered:
 
@@ -60,20 +61,28 @@ Placement options considered:
 Pinned semantics:
 
 - Returns the bare numeric address in canonical (`inet_ntop`) form — no
-  port, no brackets — so it is directly usable as a policy or metrics key.
-  IPv4-mapped IPv6 (`::ffff:203.0.113.9`, what a dual-stack listener
-  reports) is treated as the embedded IPv4 everywhere: as a candidate, in
-  entries, and in trust matching.
+  port, no brackets, no zone id — so it is directly usable as a policy or
+  metrics key. IPv4-mapped IPv6 (`::ffff:203.0.113.9`, what a dual-stack
+  listener reports) is treated as the embedded IPv4 everywhere: as a
+  candidate, in entries, and in trust matching. The deprecated
+  v4-compatible form (`::203.0.113.9`) stays IPv6 and inherits no v4 trust.
 - A malformed entry stops the walk at the last vetted position (the nearest
   trusted hop): garbage is never trusted and never reached past.
 - A chain exhausted with every entry trusted yields the leftmost entry —
   the request originated inside the trusted tier itself.
+- The inherent recursive-walk caveat (`real_ip_recursive` shares it): a
+  client whose own address falls inside the trust set is skipped as a hop,
+  so it can forge its ancestry. The trust set must name networks that
+  proxies alone occupy — never ranges clients share.
 - Entries tolerate the forms real proxies emit: bare IPv4/IPv6, `ip:port`,
   `[v6]`, `[v6]:port`; multiple `x-forwarded-for` headers join in order per
-  RFC 9110 list semantics.
-- An empty or unreportable `peer_address` (Loopback, direct handler-driven
-  tests) derives an empty client — nothing is known, and empty never
-  matches a trust set.
+  RFC 9110 list semantics. A v6 zone id (`[fe80::1%eth0]:443`, what
+  `getnameinfo` stamps for link-local peers) is dropped — the zone
+  disambiguates link scope, not identity, so link-local clients key as the
+  bare address instead of collapsing onto one empty key.
+- An empty (Loopback, an unreportable socket, direct handler-driven tests)
+  or unparseable `peer_address` derives an empty client — nothing is known,
+  and empty never matches a trust set.
 
 `peer_address` itself stays untouched everywhere: the transport-stamped fact
 remains the L4 truth, and derivation is an explicit, configured act at the

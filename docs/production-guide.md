@@ -229,9 +229,9 @@ reach `Observe` — track rejection rates in the limiter itself). Because the
 limiter keys on the derived client address, health probes budget as their
 real source (the node or balancer address the transport saw) rather than
 sharing one spoofable key with abusive traffic; if even that source's own
-budget matters — or probes arrive over the in-memory `Loopback`, which has
-no peer and derives an empty key — compose the `HealthEndpoint` instances
-outside `Guard`. Readiness probes run on the transport's request thread, once
+budget matters, compose the `HealthEndpoint` instances outside `Guard`. The
+same composition applies over the in-memory `Loopback`, which has no peer:
+every request there derives the one empty key. Readiness probes run on the transport's request thread, once
 per probe request — keep them cheap (a pool's cached connectivity flag, not a
 fresh dial) and thread-safe. `Guard` is the generic admission primitive — rate limiting (above), IP
 allowlists, maintenance mode — admit/reject callbacks in, one decision point

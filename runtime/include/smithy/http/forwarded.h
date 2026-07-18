@@ -17,8 +17,9 @@ namespace smithy::http {
 // bare address is a host route. Construction throws std::invalid_argument
 // on a malformed entry — a misconfigured trust boundary must fail
 // deployment, not silently widen or narrow. The default-constructed set
-// trusts nothing, making ClientAddress the identity on peer_address.
-// A copyable value; Contains is const and safe to share across threads.
+// trusts nothing: ClientAddress then reduces every request to its bare
+// canonical peer. A copyable value; Contains is const and safe to share
+// across threads.
 class TrustedProxies {
  public:
   TrustedProxies() = default;
@@ -45,18 +46,28 @@ class TrustedProxies {
 };
 
 // The client's address as derived from the L4 peer and x-forwarded-for
-// (ADR-0012), in canonical numeric form (no port, no brackets; IPv4-mapped
-// IPv6 as the embedded IPv4) — directly usable as a policy or metrics key.
+// (ADR-0012), in canonical numeric form (no port, no brackets, no v6 zone
+// id; IPv4-mapped IPv6 as the embedded IPv4) — directly usable as a policy
+// or metrics key.
 //
 // The walk is anchored at request.peer_address, the one fact a client
 // cannot forge: a peer outside the trust set IS the client and the header
 // is ignored wholly. A trusted peer walks the entries right to left
 // (rightmost were appended last, by the proxies closest to us), skipping
-// trusted entries; the first untrusted entry is the client. A chain
-// exhausted with everything trusted yields the leftmost entry (the request
-// originated inside the trusted tier); a malformed entry stops the walk at
-// the last vetted position. An empty peer_address (Loopback, handler chains
-// driven directly in tests) derives "".
+// trusted entries; the first untrusted entry is the client. Entries
+// tolerate the forms real proxies emit — "ip", "ip:port", "[v6]",
+// "[v6]:port", a zone id dropped — and multiple x-forwarded-for headers
+// join in order (RFC 9110 list semantics). A chain exhausted with
+// everything trusted yields the leftmost entry (the request originated
+// inside the trusted tier); a malformed entry ("unknown", an obfuscated
+// token, garbage) stops the walk at the last vetted position. An empty or
+// unparseable peer_address (Loopback, handler chains driven directly in
+// tests) derives "".
+//
+// Caveat, inherent to the recursive walk (nginx real_ip_recursive shares
+// it): a client whose own address falls inside the trust set is skipped as
+// a hop and can forge its ancestry — trust only networks that proxies
+// alone occupy.
 std::string ClientAddress(const HttpRequest& request, const TrustedProxies& trusted);
 
 }  // namespace smithy::http

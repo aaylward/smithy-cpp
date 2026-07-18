@@ -24,23 +24,26 @@ struct Address {
 constexpr std::array<std::uint8_t, 12> kV4MappedPrefix = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff};
 
 std::optional<Address> ParseAddress(std::string_view text) {
-  if (text.empty() || text.size() >= INET6_ADDRSTRLEN) {
+  // Stack copy for inet_pton's terminator; an embedded NUL would silently
+  // truncate inet_pton's view, so it is rejected outright.
+  std::array<char, INET6_ADDRSTRLEN> terminated{};
+  if (text.empty() || text.size() >= terminated.size() ||
+      text.find('\0') != std::string_view::npos) {
     return std::nullopt;
   }
-  const std::string copy(text);  // inet_pton needs a terminator
+  std::copy(text.begin(), text.end(), terminated.begin());
   Address address;
-  if (inet_pton(AF_INET, copy.c_str(), address.bytes.data()) == 1) {
+  if (inet_pton(AF_INET, terminated.data(), address.bytes.data()) == 1) {
     address.family = AF_INET;
     return address;
   }
-  if (inet_pton(AF_INET6, copy.c_str(), address.bytes.data()) != 1) {
+  if (inet_pton(AF_INET6, terminated.data(), address.bytes.data()) != 1) {
     return std::nullopt;
   }
   address.family = AF_INET6;
   if (std::equal(kV4MappedPrefix.begin(), kV4MappedPrefix.end(), address.bytes.begin())) {
-    const std::array<std::uint8_t, 16> mapped = address.bytes;
-    address.bytes.fill(0);
-    std::copy(mapped.begin() + 12, mapped.end(), address.bytes.begin());
+    std::copy(address.bytes.begin() + 12, address.bytes.end(), address.bytes.begin());
+    std::fill(address.bytes.begin() + 4, address.bytes.end(), 0);
     address.family = AF_INET;
   }
   return address;
@@ -60,12 +63,28 @@ bool AllDigits(std::string_view text) {
          std::all_of(text.begin(), text.end(), [](char c) { return c >= '0' && c <= '9'; });
 }
 
-// One x-forwarded-for element — or a peer_address, which uses the same
-// forms — reduced to the bare address: "[v6]"/"[v6]:port" unwrapped,
-// "v4:port" split (two or more colons is bare IPv6). Surrounding whitespace
-// was already trimmed by SplitHeaderListValues. nullopt for anything else:
-// "unknown", RFC 7239 obfuscated tokens, empty elements, garbage.
-std::optional<Address> ParseForwardedEntry(std::string_view entry) {
+// RFC 4007 zone suffix ("%<nonempty zone>"), dropped from IPv6 text before
+// parsing: getnameinfo stamps it for link-local peers ("fe80::1%eth0"), but
+// the zone disambiguates link scope on this box — it is not client
+// identity, and keeping it would collapse every link-local client onto the
+// unparseable empty key. A bare trailing '%' is left for inet_pton to
+// reject.
+std::string_view DropZone(std::string_view text) {
+  const auto percent = text.find('%');
+  if (percent == std::string_view::npos || percent + 1 == text.size()) {
+    return text;
+  }
+  return text.substr(0, percent);
+}
+
+// An address-with-optional-port endpoint reduced to the bare address —
+// the forms x-forwarded-for elements and transport-stamped peer_addresses
+// share: "v4", "v4:port", "[v6]", "[v6]:port", bare v6 (two or more
+// colons). Expects trimmed input (header elements arrive via
+// SplitHeaderListValues; peer_address is stamped unpadded). nullopt for
+// anything else: "unknown", RFC 7239 obfuscated tokens, empty elements,
+// garbage.
+std::optional<Address> ParseEndpoint(std::string_view entry) {
   if (entry.empty()) {
     return std::nullopt;
   }
@@ -78,7 +97,7 @@ std::optional<Address> ParseForwardedEntry(std::string_view entry) {
     if (!port.empty() && (port.front() != ':' || !AllDigits(port.substr(1)))) {
       return std::nullopt;
     }
-    return ParseAddress(entry.substr(1, close - 1));
+    return ParseAddress(DropZone(entry.substr(1, close - 1)));
   }
   const auto colons = std::count(entry.begin(), entry.end(), ':');
   if (colons == 1) {
@@ -86,9 +105,9 @@ std::optional<Address> ParseForwardedEntry(std::string_view entry) {
     if (!AllDigits(entry.substr(colon + 1))) {
       return std::nullopt;
     }
-    entry = entry.substr(0, colon);
+    return ParseAddress(entry.substr(0, colon));
   }
-  return ParseAddress(entry);
+  return ParseAddress(colons == 0 ? entry : DropZone(entry));
 }
 
 bool PrefixMatch(const std::array<std::uint8_t, 16>& network,
@@ -111,7 +130,8 @@ TrustedProxies::TrustedProxies(const std::vector<std::string>& cidrs) {
   networks_.reserve(cidrs.size());
   for (const std::string& cidr : cidrs) {
     const auto slash = cidr.find('/');
-    const auto base = ParseAddress(std::string_view(cidr).substr(0, slash));
+    const std::string_view base_text = std::string_view(cidr).substr(0, slash);
+    const auto base = ParseAddress(base_text);
     if (!base.has_value()) {
       throw std::invalid_argument("TrustedProxies: unparseable address in \"" + cidr + "\"");
     }
@@ -127,18 +147,14 @@ TrustedProxies::TrustedProxies(const std::vector<std::string>& cidrs) {
         prefix_bits = prefix_bits * 10 + (c - '0');
       }
       // A base written as IPv4-mapped IPv6 was normalized to the embedded
-      // IPv4, so its prefix translates too; a mapped prefix shorter than the
-      // /96 mapping range would span non-IPv4 space — meaningless as a
-      // proxy trust boundary, so it is a configuration error.
-      const bool was_mapped = base->family == AF_INET && cidr.find(':') != std::string::npos;
-      if (was_mapped) {
-        if (prefix_bits < 96 || prefix_bits > 128) {
-          throw std::invalid_argument("TrustedProxies: prefix outside the IPv4-mapped range in \"" +
-                                      cidr + "\"");
-        }
+      // IPv4, so its prefix shifts across the /96 mapping range with it;
+      // anything landing outside [0, max_bits] — including a mapped prefix
+      // that would span non-IPv4 space — is a configuration error.
+      if (base->family == AF_INET && base_text.find(':') != std::string_view::npos) {
         prefix_bits -= 96;
-      } else if (prefix_bits > max_bits) {
-        throw std::invalid_argument("TrustedProxies: prefix too long in \"" + cidr + "\"");
+      }
+      if (prefix_bits < 0 || prefix_bits > max_bits) {
+        throw std::invalid_argument("TrustedProxies: prefix out of range in \"" + cidr + "\"");
       }
     }
     networks_.push_back(Network{base->bytes, base->family, prefix_bits});
@@ -157,7 +173,7 @@ bool TrustedProxies::ContainsBytes(const std::array<std::uint8_t, 16>& bytes, in
 }
 
 std::string ClientAddress(const HttpRequest& request, const TrustedProxies& trusted) {
-  const auto peer = ParseForwardedEntry(request.peer_address);
+  const auto peer = ParseEndpoint(request.peer_address);
   if (!peer.has_value()) {
     return {};
   }
@@ -165,12 +181,10 @@ std::string ClientAddress(const HttpRequest& request, const TrustedProxies& trus
   if (!trusted.ContainsBytes(client.bytes, client.family)) {
     return FormatAddress(client);
   }
-  // Entries in order across headers (RFC 9110 list semantics), walked right
-  // to left: rightmost were appended last, by the proxies closest to us. A
-  // valid untrusted entry is the client; a malformed one stops the walk at
-  // the last vetted position — garbage is never trusted and never reached
-  // past. Exhausting the chain leaves the leftmost entry: the request
-  // originated inside the trusted tier.
+  // The walk half of the forwarded.h contract. client is assigned before
+  // each trust test, so both break arms and exhaustion all leave the right
+  // answer: the first untrusted entry, the last vetted hop, or the leftmost
+  // all-trusted entry.
   std::vector<std::string> entries;
   for (const std::string& value : request.headers.GetAll("x-forwarded-for")) {
     for (std::string& element : SplitHeaderListValues(value)) {
@@ -178,7 +192,7 @@ std::string ClientAddress(const HttpRequest& request, const TrustedProxies& trus
     }
   }
   for (const std::string& element : std::views::reverse(entries)) {
-    const auto entry = ParseForwardedEntry(element);
+    const auto entry = ParseEndpoint(element);
     if (!entry.has_value()) {
       break;
     }

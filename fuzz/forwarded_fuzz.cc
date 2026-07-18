@@ -1,9 +1,9 @@
 // Fuzz target: client-address derivation (ADR-0012). The walk parses two
 // attacker-influenced inputs — the x-forwarded-for header and, indirectly,
-// whatever ends up in peer_address — and must never crash on either; a
-// derived non-empty address must itself be one the trust machinery can
-// parse (it feeds policy keys). TrustedProxies construction must either
-// succeed or throw std::invalid_argument, never anything else.
+// whatever ends up in peer_address — and must never crash on either.
+// TrustedProxies construction must either succeed or throw
+// std::invalid_argument, never anything else.
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -14,25 +14,43 @@
 #include "smithy/http/forwarded.h"
 
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
-  const std::string_view text(reinterpret_cast<const char*>(data), size);
+  if (size == 0) {
+    return 0;
+  }
   static const smithy::http::TrustedProxies trusted(
       {"10.0.0.0/8", "192.0.2.1", "2001:db8::/32", "::ffff:172.16.0.0/108"});
 
-  // First line: peer_address; the rest: one x-forwarded-for value.
+  // data[0] picks the peer so every run anchors a walk — trusted and
+  // untrusted, v4/v6/mapped/empty — instead of waiting for the corpus to
+  // discover an address inside the trust set. The rest is header text,
+  // '\n'-split into multiple x-forwarded-for values (the GetAll join).
+  static constexpr std::array<std::string_view, 6> kPeers = {
+      "10.0.0.1:443", "203.0.113.9:52814", "[2001:db8::1]:443", "[::ffff:172.16.0.1]:1", "",
+      "garbage"};
   smithy::http::HttpRequest request;
-  const auto newline = text.find('\n');
-  request.peer_address = std::string(text.substr(0, newline));
-  if (newline != std::string_view::npos) {
-    request.headers.Set("x-forwarded-for", std::string(text.substr(newline + 1)));
-  }
-  const std::string client = smithy::http::ClientAddress(request, trusted);
-  if (!client.empty()) {
-    // Canonical output round-trips: a derived address is always a valid
-    // host-route trust entry.
-    const smithy::http::TrustedProxies echo({client});
-    if (!echo.Contains(client)) std::abort();
+  request.peer_address = std::string(kPeers[data[0] % kPeers.size()]);
+  std::string_view rest(reinterpret_cast<const char*>(data + 1), size - 1);
+  while (!rest.empty()) {
+    const auto newline = rest.find('\n');
+    request.headers.Add("x-forwarded-for", std::string(rest.substr(0, newline)));
+    if (newline == std::string_view::npos) break;
+    rest.remove_prefix(newline + 1);
   }
 
+  const std::string client = smithy::http::ClientAddress(request, trusted);
+  if (!client.empty()) {
+    // Canonical output is a fixed point: a derived key is a valid
+    // host-route trust entry, and re-deriving from it changes nothing.
+    const smithy::http::TrustedProxies echo({client});
+    if (!echo.Contains(client)) std::abort();
+    smithy::http::HttpRequest again;
+    again.peer_address = client;
+    if (smithy::http::ClientAddress(again, {}) != client) std::abort();
+  }
+
+  const std::string_view text(reinterpret_cast<const char*>(data), size);
+  // Contains is total on raw attacker text (unparseable is in no network),
+  // and construction throws invalid_argument or nothing.
   (void)trusted.Contains(text);
   try {
     const smithy::http::TrustedProxies probe({std::string(text)});

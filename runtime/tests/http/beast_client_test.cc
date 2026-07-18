@@ -116,6 +116,7 @@ TEST(BeastClientTest, MintsDistinctTraceIdsAcrossKeepAliveRequests) {
       ParseTraceparent(second->headers.Get("x-echo-traceparent").value_or(""));
   ASSERT_TRUE(first_trace.has_value() && second_trace.has_value());
   EXPECT_NE(first_trace->trace_id, second_trace->trace_id);
+  server.Stop();
 }
 
 TEST(BeastClientTest, TlsRoundTripsWithCustomCa) {

@@ -12,15 +12,12 @@
 namespace smithy::http {
 namespace {
 
-// The mint half of the guard's contract (see server_dispatch.h and
-// ADR-0011): a single valid inbound traceparent is kept verbatim, anything
-// else — absent, malformed, or duplicated (which W3C trace-context counts
-// as malformed) — restarts the trace, so the handler chain always sees
-// exactly one. A restart also drops any inbound tracestate: vendor state
-// from the abandoned trace must not pair with the fresh root.
+// The mint half of the guard's contract (server_dispatch.h, ADR-0011).
+// The size() == 1 gate: W3C counts duplicated traceparent headers as
+// malformed, so a duplicate restarts the trace like any other bad input.
 void EnsureInboundTraceIdentity(HttpRequest& request) {
-  const auto headers = request.headers.GetAll("traceparent");
-  if (headers.size() == 1 && ParseTraceparent(headers.front()).has_value()) {
+  const auto values = request.headers.GetAll("traceparent");
+  if (values.size() == 1 && ParseTraceparent(values.front()).has_value()) {
     return;
   }
   request.headers.Set("traceparent", FormatTraceparent(GenerateTraceContext()));

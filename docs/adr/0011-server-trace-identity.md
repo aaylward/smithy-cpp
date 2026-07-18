@@ -46,7 +46,8 @@ Mint in `InvokeHandlerGuarded` (option 1), into the header itself:
   that have no wire representation.)
 - The contained-exception 500's `x-correlation-id` becomes the request's trace id — one
   identity across the client-visible body, the `std::clog` line, and the distributed trace.
-  The #41 uuid remains only as a fallback for callers that bypass the guard's minting.
+  The #41 uuid mint is gone: the guard mints before every handler call, so the
+  parse-failure branch is unreachable and defensively yields an empty id.
 
 `InvokeHandlerGuarded` takes the request by value to own the stamp; transports move their
 requests in.

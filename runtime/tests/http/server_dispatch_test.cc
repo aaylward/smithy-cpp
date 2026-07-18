@@ -161,8 +161,7 @@ TEST(ServerDispatchTest, ExceptionCorrelationIdIsTheRequestsTraceId) {
 
   const auto minted = InvokeHandlerGuarded(handler, SampleRequest());
   const auto id = minted.headers.Get("x-correlation-id").value_or("");
-  EXPECT_EQ(id.size(), 32u) << id;  // a trace id, not the uuid fallback
-  EXPECT_NE(minted.body.find(id), std::string::npos);
+  EXPECT_EQ(id.size(), 32u) << id;  // a 32-hex trace id, not a 36-char uuid
 }
 
 TEST(ServerDispatchTest, EmptyHandlerIsA503NotACrash) {

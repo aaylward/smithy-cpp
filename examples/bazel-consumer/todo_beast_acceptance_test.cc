@@ -19,6 +19,7 @@
 #include "acme/todo/server.h"
 #include "smithy/client/config.h"
 #include "smithy/http/beast_transport.h"
+#include "smithy/testing/tls_test_identity.h"
 
 namespace {
 
@@ -30,6 +31,22 @@ using acme::todo::NoSuchTask;
 using acme::todo::TodoClient;
 using acme::todo::TodoHandler;
 using acme::todo::TodoServer;
+using smithy::testing::kTestCertificatePem;
+using smithy::testing::kTestPrivateKeyPem;
+
+// The blessed endpoint→FromConfig→Create wiring from the production guide,
+// shared by every test here: plain http by default, https when a trust
+// anchor is supplied.
+smithy::Outcome<TodoClient> MakeTodoClient(int port, const std::string& ca_pem = "") {
+  smithy::ClientConfig config;
+  config.endpoint =
+      std::string(ca_pem.empty() ? "http" : "https") + "://127.0.0.1:" + std::to_string(port);
+  config.tls.ca_pem = ca_pem;
+  auto http_client = smithy::http::BeastHttpClient::FromConfig(config);
+  if (!http_client) return std::move(http_client).error();
+  config.http_client = *http_client;
+  return TodoClient::Create(std::move(config));
+}
 
 // A handler with the negative path every real service eventually ships: a
 // "boom" title throws (the bug the framework must contain).
@@ -62,12 +79,7 @@ class TodoBeastAcceptanceTest : public ::testing::Test {
             .threads = 1, .handler_threads = 8, .drain_timeout_seconds = 5});
     ASSERT_TRUE(transport_->Start(server_->Handler()).ok());
 
-    smithy::ClientConfig config;
-    config.endpoint = "http://127.0.0.1:" + std::to_string(transport_->port());
-    auto http_client = smithy::http::BeastHttpClient::FromConfig(config);
-    ASSERT_TRUE(http_client.ok()) << http_client.error().message();
-    config.http_client = *http_client;
-    auto client = TodoClient::Create(std::move(config));
+    auto client = MakeTodoClient(transport_->port());
     ASSERT_TRUE(client.ok()) << client.error().message();
     client_ = std::make_unique<TodoClient>(std::move(*client));
   }
@@ -105,12 +117,7 @@ TEST_F(TodoBeastAcceptanceTest, LifecycleStopsAndRestartsAcrossTransportGenerati
   smithy::http::BeastServerTransport second_generation(
       smithy::http::BeastServerTransport::Options{.threads = 1, .handler_threads = 8});
   ASSERT_TRUE(second_generation.Start(server_->Handler()).ok());
-  smithy::ClientConfig config;
-  config.endpoint = "http://127.0.0.1:" + std::to_string(second_generation.port());
-  auto http_client = smithy::http::BeastHttpClient::FromConfig(config);
-  ASSERT_TRUE(http_client.ok()) << http_client.error().message();
-  config.http_client = *http_client;
-  auto client = TodoClient::Create(std::move(config));
+  auto client = MakeTodoClient(second_generation.port());
   ASSERT_TRUE(client.ok()) << client.error().message();
   const auto after = client->AddTask(AddTaskInput{.title = "after restart"});
   ASSERT_TRUE(after.ok()) << after.error().message();
@@ -129,29 +136,6 @@ TEST_F(TodoBeastAcceptanceTest, HandlerExceptionIsContainedAndServiceSurvives) {
   EXPECT_EQ(after->title, "still serving");
 }
 
-// Self-signed, CN=localhost with SANs for localhost and 127.0.0.1, valid to
-// 2046 — the same test identity the runtime suite uses (beast_client_test.cc;
-// regenerate both together).
-constexpr const char* kTestCertificatePem = R"pem(-----BEGIN CERTIFICATE-----
-MIIBmTCCAT+gAwIBAgIUV9JEHAQKR6U3ipSZd7B2JYm3AhYwCgYIKoZIzj0EAwIw
-FDESMBAGA1UEAwwJbG9jYWxob3N0MB4XDTI2MDcwNzE3NTUzOFoXDTQ2MDcwMjE3
-NTUzOFowFDESMBAGA1UEAwwJbG9jYWxob3N0MFkwEwYHKoZIzj0CAQYIKoZIzj0D
-AQcDQgAE9w/RcpMxfYw3dzUYhuTpvkuuABBXioP9Wtn/XjbPAIn+cQ0nRAd79Wck
-YwILgRQZdnQnNG7fasqRueFE4yTYkKNvMG0wHQYDVR0OBBYEFDc4bE/TAzWlbN5k
-ssc68nJgFclfMB8GA1UdIwQYMBaAFDc4bE/TAzWlbN5kssc68nJgFclfMA8GA1Ud
-EwEB/wQFMAMBAf8wGgYDVR0RBBMwEYIJbG9jYWxob3N0hwR/AAABMAoGCCqGSM49
-BAMCA0gAMEUCIDVtF5Rhglp49Ich8hPj3aJdmejLf3TueQj4L8bnWtrvAiEAlmDl
-mR4BsuAO7ZrPNIi5mCZbUTWfZwBuUgO3m/cFxsw=
------END CERTIFICATE-----
-)pem";
-
-constexpr const char* kTestPrivateKeyPem = R"pem(-----BEGIN PRIVATE KEY-----
-MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgk9X4X8xaMTznQYjF
-b4LQYbNRZPb87gFiSZ827xahR2mhRANCAAT3D9FykzF9jDd3NRiG5Om+S64AEFeK
-g/1a2f9eNs8Aif5xDSdEB3v1ZyRjAguBFBl2dCc0bt9qypG54UTjJNiQ
------END PRIVATE KEY-----
-)pem";
-
 TEST(TodoBeastTlsAcceptanceTest, TlsTerminationServesTheGeneratedClient) {
   // The https flavor of the production wiring: TLS termination on the server
   // options, trust via config.tls.ca_pem, everything else identical. Proves
@@ -165,13 +149,7 @@ TEST(TodoBeastTlsAcceptanceTest, TlsTerminationServesTheGeneratedClient) {
                                                   .tls_private_key_pem = kTestPrivateKeyPem});
   ASSERT_TRUE(transport.Start(server.Handler()).ok());
 
-  smithy::ClientConfig config;
-  config.endpoint = "https://127.0.0.1:" + std::to_string(transport.port());
-  config.tls.ca_pem = kTestCertificatePem;
-  auto http_client = smithy::http::BeastHttpClient::FromConfig(config);
-  ASSERT_TRUE(http_client.ok()) << http_client.error().message();
-  config.http_client = *http_client;
-  auto client = TodoClient::Create(std::move(config));
+  auto client = MakeTodoClient(transport.port(), kTestCertificatePem);
   ASSERT_TRUE(client.ok()) << client.error().message();
 
   const auto added = client->AddTask(AddTaskInput{.title = "ship on https"});

@@ -144,12 +144,13 @@ bool Router::MoreSpecific(const std::vector<Segment>& a, const std::vector<Segme
 }
 
 http::HttpResponse Router::Route(const http::HttpRequest& request) const {
-  const auto target = http::ParseRequestTarget(request.target);
+  auto target = http::ParseRequestTarget(request.target);
   if (!target) {
     return MakeErrorResponse(400, "BadRequest", "malformed request target");
   }
-  // Drop a trailing empty segment so "/a/" matches "/a".
-  std::vector<std::string> segments = target->path_segments;
+  // Drop a trailing empty segment so "/a/" matches "/a". The parse is ours to
+  // mutate — no per-request copy of the segment vector.
+  std::vector<std::string>& segments = target->path_segments;
   if (!segments.empty() && segments.back().empty()) segments.pop_back();
 
   const RouteEntry* best = nullptr;
@@ -181,7 +182,7 @@ http::HttpResponse Router::Route(const http::HttpRequest& request) const {
   }
   RequestContext context;
   Matches(*best, segments, &context.labels);  // label extraction: winner only
-  context.query_params = target->query_params;
+  context.query_params = std::move(target->query_params);
   http::HttpResponse response = best->handler(request, context);
   if (!best->operation.empty()) response.operation = best->operation;
   return response;

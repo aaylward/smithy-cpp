@@ -104,12 +104,19 @@ constexpr const char* kServerTls12Ciphers =
     "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:"
     "ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305";
 
-// ALPN: select http/1.1 when the client offers it; refuse the handshake
-// (RFC 7301 no_application_protocol) when the client offers ALPN without
-// http/1.1 — an h2-only client must fail cleanly, not silently be answered
-// in a protocol it did not agree to. Clients that send no ALPN at all never
-// invoke this callback and proceed as before. `in` is ALPN's wire format:
-// length-prefixed protocol names.
+// The version floor both transports share; it is the single source of truth
+// (a floor of 1.2 subsumes the legacy no_sslv2/no_sslv3 option flags).
+bool ApplyTls12Floor(asio::ssl::context& ssl_context) {
+  ssl_context.set_options(asio::ssl::context::default_workarounds);
+  return SSL_CTX_set_min_proto_version(ssl_context.native_handle(), TLS1_2_VERSION) == 1;
+}
+
+// ALPN select callback: answer http/1.1 when the client offers it; refuse
+// the handshake (RFC 7301 no_application_protocol) when the offer lacks it,
+// rather than silently speaking a protocol the client did not agree to. A
+// client that sends no ALPN never invokes this callback. `in` is ALPN's wire
+// format, length-prefixed protocol names — parsed by hand deliberately:
+// SSL_select_next_proto's no-overlap contract is the classic misuse trap.
 int SelectHttp11Alpn(SSL* /*ssl*/, const unsigned char** out, unsigned char* out_len,
                      const unsigned char* in, unsigned int in_len, void* /*arg*/) {
   constexpr std::string_view kHttp11 = "http/1.1";
@@ -428,14 +435,9 @@ Outcome<Unit> BeastServerTransport::Start(RequestHandler handler) {
     if (ssl_ec) {
       return Error::Validation("beast: invalid TLS certificate/key: " + ssl_ec.message());
     }
-    // Server TLS posture (issue #46): a TLS 1.2 floor, AEAD-only 1.2 cipher
-    // suites, and http/1.1 ALPN. Deliberately not knobs — every client this
-    // transport should serve clears this bar, and a downgrade escape hatch
-    // would be the first thing misconfigured. Client-certificate (mTLS)
-    // verification is issue #90's.
-    ssl_context.set_options(asio::ssl::context::default_workarounds | asio::ssl::context::no_sslv2 |
-                            asio::ssl::context::no_sslv3);
-    if (SSL_CTX_set_min_proto_version(ssl_context.native_handle(), TLS1_2_VERSION) != 1 ||
+    // The fixed server TLS posture — floor, ciphers, ALPN. Deliberately not
+    // knobs; the rationale lives on the Options doc (beast_transport.h).
+    if (!ApplyTls12Floor(ssl_context) ||
         SSL_CTX_set_cipher_list(ssl_context.native_handle(), kServerTls12Ciphers) != 1) {
       return Error::Validation("beast: cannot apply the TLS posture (version floor/ciphers)");
     }
@@ -608,11 +610,9 @@ struct BeastHttpClient::State {
       return;
     }
     asio::ssl::context& ssl_context = ssl.emplace(asio::ssl::context::tls_client);
-    ssl_context.set_options(asio::ssl::context::default_workarounds | asio::ssl::context::no_sslv2 |
-                            asio::ssl::context::no_sslv3);
-    // Same TLS 1.2 floor the server enforces: a client that verifies peers by
-    // default has no business completing a downgraded handshake either.
-    if (SSL_CTX_set_min_proto_version(ssl_context.native_handle(), TLS1_2_VERSION) != 1) {
+    // A client that verifies peers by default has no business completing a
+    // downgraded handshake either.
+    if (!ApplyTls12Floor(ssl_context)) {
       setup_error = "beast client: cannot set the TLS 1.2 version floor";
       return;
     }

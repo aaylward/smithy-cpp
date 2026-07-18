@@ -33,10 +33,10 @@ using RouteHandler =
 // specific matching route wins regardless of registration order.
 //
 // Routes are indexed by method: a request scans only its own method's
-// routes, and label values are extracted once, for the winning route. Only
-// the miss path probes the other methods (for the 405 Allow list), so a
-// flood of unroutable requests does no more matching work than a routable
-// one (issue #46).
+// routes, label values are extracted once (for the winning route), and no
+// candidate allocates during the scan. The miss path probes the other
+// methods' buckets once to build the 405 Allow list — never more matching
+// work than the old full scan (issue #46).
 class Router {
  public:
   // Fails on invalid patterns and on route conflicts (same method + pattern
@@ -71,7 +71,7 @@ class Router {
 
   // Keyed by HTTP method (exact match; methods are case-sensitive per
   // RFC 9110). Map order makes the 405 Allow list deterministic.
-  std::map<std::string, std::vector<RouteEntry>, std::less<>> routes_;
+  std::map<std::string, std::vector<RouteEntry>> routes_;
 };
 
 // Uniform error response used by the router and by generated servers for

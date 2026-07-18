@@ -20,31 +20,13 @@
 #include "smithy/http/beast_transport.h"
 #include "smithy/http/message.h"
 #include "smithy/http/transport.h"
+#include "smithy/testing/tls_test_identity.h"
 
 namespace smithy::http {
 namespace {
 
-// Self-signed, CN=localhost with SANs for localhost and 127.0.0.1, valid to
-// 2046 (regenerate with openssl before then; see the PR that added this).
-constexpr const char* kTestCertificatePem = R"pem(-----BEGIN CERTIFICATE-----
-MIIBmTCCAT+gAwIBAgIUV9JEHAQKR6U3ipSZd7B2JYm3AhYwCgYIKoZIzj0EAwIw
-FDESMBAGA1UEAwwJbG9jYWxob3N0MB4XDTI2MDcwNzE3NTUzOFoXDTQ2MDcwMjE3
-NTUzOFowFDESMBAGA1UEAwwJbG9jYWxob3N0MFkwEwYHKoZIzj0CAQYIKoZIzj0D
-AQcDQgAE9w/RcpMxfYw3dzUYhuTpvkuuABBXioP9Wtn/XjbPAIn+cQ0nRAd79Wck
-YwILgRQZdnQnNG7fasqRueFE4yTYkKNvMG0wHQYDVR0OBBYEFDc4bE/TAzWlbN5k
-ssc68nJgFclfMB8GA1UdIwQYMBaAFDc4bE/TAzWlbN5kssc68nJgFclfMA8GA1Ud
-EwEB/wQFMAMBAf8wGgYDVR0RBBMwEYIJbG9jYWxob3N0hwR/AAABMAoGCCqGSM49
-BAMCA0gAMEUCIDVtF5Rhglp49Ich8hPj3aJdmejLf3TueQj4L8bnWtrvAiEAlmDl
-mR4BsuAO7ZrPNIi5mCZbUTWfZwBuUgO3m/cFxsw=
------END CERTIFICATE-----
-)pem";
-
-constexpr const char* kTestPrivateKeyPem = R"pem(-----BEGIN PRIVATE KEY-----
-MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgk9X4X8xaMTznQYjF
-b4LQYbNRZPb87gFiSZ827xahR2mhRANCAAT3D9FykzF9jDd3NRiG5Om+S64AEFeK
-g/1a2f9eNs8Aif5xDSdEB3v1ZyRjAguBFBl2dCc0bt9qypG54UTjJNiQ
------END PRIVATE KEY-----
-)pem";
+using smithy::testing::kTestCertificatePem;
+using smithy::testing::kTestPrivateKeyPem;
 
 RequestHandler EchoHandler() {
   return [](const HttpRequest& request) {
@@ -65,6 +47,14 @@ HttpRequest PostRequest(const std::string& body) {
   request.headers.Set("content-length", std::to_string(body.size()));
   request.body = body;
   return request;
+}
+
+// The TLS-terminating server every TLS test here dials.
+BeastServerTransport::Options TlsServerOptions(int threads = 1) {
+  return {.port = 0,
+          .threads = threads,
+          .tls_certificate_chain_pem = kTestCertificatePem,
+          .tls_private_key_pem = kTestPrivateKeyPem};
 }
 
 TEST(BeastClientTest, PlaintextRoundTripsAndReusesConnections) {
@@ -109,10 +99,7 @@ TEST(BeastClientTest, SurvivesServerRestartBetweenRequests) {
 }
 
 TEST(BeastClientTest, TlsRoundTripsWithCustomCa) {
-  BeastServerTransport server({.port = 0,
-                               .threads = 2,
-                               .tls_certificate_chain_pem = kTestCertificatePem,
-                               .tls_private_key_pem = kTestPrivateKeyPem});
+  BeastServerTransport server(TlsServerOptions(/*threads=*/2));
   ASSERT_TRUE(server.Start(EchoHandler()).ok());
 
   BeastHttpClient client({.host = "127.0.0.1",
@@ -129,10 +116,7 @@ TEST(BeastClientTest, TlsRoundTripsWithCustomCa) {
 }
 
 TEST(BeastClientTest, TlsVerificationRejectsUntrustedServers) {
-  BeastServerTransport server({.port = 0,
-                               .threads = 1,
-                               .tls_certificate_chain_pem = kTestCertificatePem,
-                               .tls_private_key_pem = kTestPrivateKeyPem});
+  BeastServerTransport server(TlsServerOptions());
   ASSERT_TRUE(server.Start(EchoHandler()).ok());
 
   // Default trust roots do not contain the self-signed test certificate.
@@ -144,10 +128,7 @@ TEST(BeastClientTest, TlsVerificationRejectsUntrustedServers) {
 }
 
 TEST(BeastClientTest, TlsVerificationCanBeDisabledExplicitly) {
-  BeastServerTransport server({.port = 0,
-                               .threads = 1,
-                               .tls_certificate_chain_pem = kTestCertificatePem,
-                               .tls_private_key_pem = kTestPrivateKeyPem});
+  BeastServerTransport server(TlsServerOptions());
   ASSERT_TRUE(server.Start(EchoHandler()).ok());
 
   BeastHttpClient client({.host = "127.0.0.1",
@@ -173,10 +154,7 @@ TEST(BeastClientTest, FromConfigParsesTheEndpointAndRejectsBadSchemes) {
 }
 
 TEST(BeastClientTest, FromConfigHonorsTheConfigsTlsKnobs) {
-  BeastServerTransport server({.port = 0,
-                               .threads = 2,
-                               .tls_certificate_chain_pem = kTestCertificatePem,
-                               .tls_private_key_pem = kTestPrivateKeyPem});
+  BeastServerTransport server(TlsServerOptions(/*threads=*/2));
   ASSERT_TRUE(server.Start(EchoHandler()).ok());
 
   // The one-stop production path (issue #49): endpoint, TLS trust, timeout,
@@ -210,7 +188,8 @@ TEST(BeastClientTest, RejectsTlsServerMisconfiguration) {
 
 // Raw TLS dialer for the posture tests: BeastHttpClient can't be talked into
 // an old protocol version or a custom ALPN list, so these handshake with
-// asio::ssl directly. No verification — the posture, not trust, is under test.
+// asio::ssl directly. No verification — the posture, not trust, is under
+// test.
 struct RawTlsProbe {
   boost::asio::io_context io;
   boost::asio::ssl::context ctx{boost::asio::ssl::context::tls_client};
@@ -231,13 +210,6 @@ struct RawTlsProbe {
     return ec;
   }
 };
-
-BeastServerTransport::Options TlsServerOptions() {
-  return {.port = 0,
-          .threads = 1,
-          .tls_certificate_chain_pem = kTestCertificatePem,
-          .tls_private_key_pem = kTestPrivateKeyPem};
-}
 
 TEST(BeastClientTest, TlsServerRefusesPreTls12Clients) {
   BeastServerTransport server(TlsServerOptions());

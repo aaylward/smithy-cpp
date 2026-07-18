@@ -59,13 +59,29 @@ std::string FormatPeerAddress(const sockaddr* address, socklen_t length) {
                                         : std::string(host.data()) + ":" + service.data();
 }
 
+// A 5xx that leaves the handler chain without a correlation id gets the
+// request's trace id (issue #46) — a returned smithy::Error mapped to a 500
+// by a generated server then correlates exactly like a thrown one, across
+// every protocol, with no generated code involved. A handler-set id wins.
+void CorrelateServerError(const HttpRequest& request, HttpResponse& response) {
+  if (response.status < 500 || response.headers.Has("x-correlation-id")) {
+    return;
+  }
+  const auto trace = ParseTraceparent(request.headers.Get("traceparent").value_or(""));
+  if (trace.has_value()) {
+    response.headers.Set("x-correlation-id", trace->trace_id);
+  }
+}
+
 HttpResponse InvokeHandlerGuarded(const RequestHandler& handler, HttpRequest request) {
   if (!handler) {
     return HttpResponse{503, {}, "", ""};
   }
   EnsureInboundTraceIdentity(request);
   try {
-    return handler(request);
+    HttpResponse response = handler(request);
+    CorrelateServerError(request, response);
+    return response;
   } catch (const std::exception& e) {
     return InternalError(request, e.what());
   } catch (...) {

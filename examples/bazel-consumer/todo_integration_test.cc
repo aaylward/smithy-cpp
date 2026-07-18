@@ -283,6 +283,50 @@ TEST(TodoMetadataTest, RestHandlerSeesHeadersPeerAndTraceOverARealSocket) {
   transport.Stop();
 }
 
+// A returned (not thrown) unmodeled error correlates too: the generated
+// server maps it to a 500 InternalFailure, and the ingress identity arrives
+// as x-correlation-id (ADR-0011). Modeled errors are expected outcomes and
+// stay unstamped.
+TEST(TodoMetadataTest, ReturnedServerErrorsCarryTheTraceCorrelationId) {
+  class FailingHandler final : public TodoHandler {
+   public:
+    smithy::Outcome<AddTaskOutput> AddTask(const AddTaskInput&,
+                                           const smithy::server::RequestContext&) override {
+      return smithy::Error::Transport("db down");
+    }
+    smithy::Outcome<GetTaskOutput> GetTask(const GetTaskInput& input,
+                                           const smithy::server::RequestContext&) override {
+      return smithy::Error::Modeled("NoSuchTask", "no task: " + input.taskId);
+    }
+  };
+
+  TodoServer server(std::make_shared<FailingHandler>());
+  smithy::http::SocketHttpServer transport;
+  ASSERT_TRUE(transport.Start(server.Handler()).ok());
+  smithy::http::SocketHttpClient raw("127.0.0.1", transport.port());
+
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = "/tasks";
+  request.headers.Set("content-type", "application/json");
+  request.headers.Set("traceparent", "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01");
+  request.body = R"({"title":"boom"})";
+  const auto failed = raw.Send(request);
+  ASSERT_TRUE(failed.ok()) << failed.error().message();
+  EXPECT_EQ(failed->status, 500);
+  EXPECT_EQ(failed->headers.Get("x-correlation-id").value_or(""),
+            "0af7651916cd43dd8448eb211c80319c");
+
+  smithy::http::HttpRequest missing;
+  missing.method = "GET";
+  missing.target = "/tasks/nope";
+  const auto modeled = raw.Send(missing);
+  ASSERT_TRUE(modeled.ok()) << modeled.error().message();
+  EXPECT_EQ(modeled->status, 404);
+  EXPECT_FALSE(modeled->headers.Get("x-correlation-id").has_value());
+  transport.Stop();
+}
+
 // The production middleware chain from the guide — Guard, then Observe, then
 // liveness and readiness HealthEndpoints — composed around a generated server
 // and driven by the generated client.

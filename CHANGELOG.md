@@ -62,8 +62,10 @@ via `git_override` until then.
 - Server trace identity minted at transport ingress (ADR-0011): a valid
   inbound `traceparent` continues verbatim; an absent or malformed one is
   replaced with a fresh root context, so `Observe`'s `trace_parent` always
-  parses and the contained-exception 500's `x-correlation-id` is the
-  request's trace id.
+  parses and any 5xx leaving the handler chain — returned or thrown —
+  carries the request's trace id as `x-correlation-id` (a handler-set id
+  wins). `BeastServerTransport::Options::on_rejected` observes the
+  transport-written 413/431 rejections that never reach the handler chain.
 - Server middleware additions for production serving: `Guard` admission
   control (rate limiting, allowlists, maintenance mode — policy stays an
   application dependency) with a `TooManyRequests` reject factory,

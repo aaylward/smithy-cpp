@@ -106,6 +106,38 @@ TEST(ServerDispatchTest, ReplacesAMalformedTraceparent) {
   EXPECT_TRUE(ParseTraceparent(seen).has_value()) << seen;
 }
 
+TEST(ServerDispatchTest, ReturnedServerErrorsGetTheTraceCorrelationId) {
+  // A 500 the handler RETURNS correlates like one it throws: same header,
+  // same identity. Sub-5xx responses are expected outcomes and stay clean.
+  RequestHandler handler = [](const HttpRequest& request) {
+    HttpResponse response;
+    response.status = request.target == "/fail" ? 500 : 404;
+    return response;
+  };
+  HttpRequest fail = SampleRequest();
+  fail.target = "/fail";
+  fail.headers.Set("traceparent", "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01");
+  EXPECT_EQ(InvokeHandlerGuarded(handler, fail).headers.Get("x-correlation-id").value_or(""),
+            "0af7651916cd43dd8448eb211c80319c");
+
+  HttpRequest not_found = SampleRequest();
+  not_found.target = "/missing";
+  EXPECT_FALSE(
+      InvokeHandlerGuarded(handler, not_found).headers.Get("x-correlation-id").has_value());
+}
+
+TEST(ServerDispatchTest, AHandlerSetCorrelationIdWins) {
+  RequestHandler handler = [](const HttpRequest&) {
+    HttpResponse response;
+    response.status = 503;
+    response.headers.Set("x-correlation-id", "app-chosen");
+    return response;
+  };
+  EXPECT_EQ(
+      InvokeHandlerGuarded(handler, SampleRequest()).headers.Get("x-correlation-id").value_or(""),
+      "app-chosen");
+}
+
 TEST(ServerDispatchTest, DuplicatedTraceparentsRestartTheTrace) {
   // W3C counts multiple traceparent headers as malformed: the guard replaces
   // them with exactly one fresh root, so nothing downstream sees two.

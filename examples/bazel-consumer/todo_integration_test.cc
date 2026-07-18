@@ -226,6 +226,106 @@ TEST(TodoRoutingTest, WrongMethodGets405WithAllowAndUnknownPathGets404) {
   EXPECT_EQ(not_found->status, 404);
 }
 
+// The handler-visible request context (ADR-0010) at the module boundary:
+// the raw request — unmodeled headers, the transport-stamped peer address,
+// the inbound traceparent — reaches a consumer's handler.
+TEST(TodoMetadataTest, RestHandlerSeesHeadersPeerAndTraceOverARealSocket) {
+  class MetadataHandler final : public TodoHandler {
+   public:
+    smithy::Outcome<AddTaskOutput> AddTask(const AddTaskInput& input,
+                                           const smithy::server::RequestContext& context) override {
+      const auto trace =
+          smithy::http::ParseTraceparent(context.request->headers.Get("traceparent").value_or(""));
+      return AddTaskOutput{.taskId = context.request->peer_address,
+                           .title = input.title + "|" +
+                                    context.request->headers.Get("x-tenant").value_or("missing") +
+                                    "|" + (trace.has_value() ? trace->trace_id : "no-trace")};
+    }
+    smithy::Outcome<GetTaskOutput> GetTask(const GetTaskInput& input,
+                                           const smithy::server::RequestContext&) override {
+      return smithy::Error::Modeled("NoSuchTask", "no task: " + input.taskId);
+    }
+  };
+
+  TodoServer server(std::make_shared<MetadataHandler>());
+  smithy::http::SocketHttpServer transport;
+  ASSERT_TRUE(transport.Start(server.Handler()).ok());
+
+  // A raw request so unmodeled headers ride along (generated clients only
+  // send what the model binds).
+  smithy::http::SocketHttpClient raw("127.0.0.1", transport.port());
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = "/tasks";
+  request.headers.Set("content-type", "application/json");
+  request.headers.Set("x-tenant", "acme");
+  request.headers.Set("traceparent", "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01");
+  request.body = R"({"title":"trace me"})";
+  const auto response = raw.Send(request);
+  ASSERT_TRUE(response.ok()) << response.error().message();
+  EXPECT_NE(response->body.find("trace me|acme|0af7651916cd43dd8448eb211c80319c"),
+            std::string::npos)
+      << response->body;
+  EXPECT_NE(response->body.find("127.0.0.1:"), std::string::npos) << response->body;
+  transport.Stop();
+}
+
+// The same context arrives through the RPC bindings' dispatch (rpcv2Cbor's
+// per-operation routes, jsonRpc2's envelope dispatch), driven by the
+// generated clients over Loopback.
+TEST(TodoMetadataTest, RpcHandlersReceiveTheContextToo) {
+  class CborProbe final : public acme::todo::cbor::TodoHandler {
+   public:
+    smithy::Outcome<acme::todo::cbor::AddTaskOutput> AddTask(
+        const acme::todo::cbor::AddTaskInput&,
+        const smithy::server::RequestContext& context) override {
+      const bool threaded = context.request != nullptr && context.request->method == "POST";
+      return acme::todo::cbor::AddTaskOutput{.taskId = threaded ? "ctx-ok" : "ctx-missing",
+                                             .title = "x"};
+    }
+    smithy::Outcome<acme::todo::cbor::GetTaskOutput> GetTask(
+        const acme::todo::cbor::GetTaskInput&, const smithy::server::RequestContext&) override {
+      return smithy::Error::Modeled("NoSuchTask", "unused");
+    }
+  };
+  class JsonRpcProbe final : public acme::todo::jsonrpc::TodoHandler {
+   public:
+    smithy::Outcome<acme::todo::jsonrpc::AddTaskOutput> AddTask(
+        const acme::todo::jsonrpc::AddTaskInput&,
+        const smithy::server::RequestContext& context) override {
+      const bool threaded = context.request != nullptr && context.request->method == "POST";
+      return acme::todo::jsonrpc::AddTaskOutput{.taskId = threaded ? "ctx-ok" : "ctx-missing",
+                                                .title = "x"};
+    }
+    smithy::Outcome<acme::todo::jsonrpc::GetTaskOutput> GetTask(
+        const acme::todo::jsonrpc::GetTaskInput&, const smithy::server::RequestContext&) override {
+      return smithy::Error::Modeled("NoSuchTask", "unused");
+    }
+  };
+
+  acme::todo::cbor::TodoServer cbor_server(std::make_shared<CborProbe>());
+  auto cbor_loopback = std::make_shared<smithy::http::Loopback>();
+  ASSERT_TRUE(cbor_loopback->Start(cbor_server.Handler()).ok());
+  smithy::ClientConfig cbor_config;
+  cbor_config.http_client = cbor_loopback;
+  auto cbor_client = acme::todo::cbor::TodoClient::Create(std::move(cbor_config));
+  ASSERT_TRUE(cbor_client.ok());
+  const auto cbor_added = cbor_client->AddTask(acme::todo::cbor::AddTaskInput{.title = "x"});
+  ASSERT_TRUE(cbor_added.ok()) << cbor_added.error().message();
+  EXPECT_EQ(cbor_added->taskId, "ctx-ok");
+
+  acme::todo::jsonrpc::TodoServer rpc_server(std::make_shared<JsonRpcProbe>());
+  auto rpc_loopback = std::make_shared<smithy::http::Loopback>();
+  ASSERT_TRUE(rpc_loopback->Start(rpc_server.Handler()).ok());
+  smithy::ClientConfig rpc_config;
+  rpc_config.http_client = rpc_loopback;
+  auto rpc_client = acme::todo::jsonrpc::TodoClient::Create(std::move(rpc_config));
+  ASSERT_TRUE(rpc_client.ok());
+  const auto rpc_added = rpc_client->AddTask(acme::todo::jsonrpc::AddTaskInput{.title = "x"});
+  ASSERT_TRUE(rpc_added.ok()) << rpc_added.error().message();
+  EXPECT_EQ(rpc_added->taskId, "ctx-ok");
+}
+
 // The production middleware chain from the guide — Guard, then Observe, then
 // liveness and readiness HealthEndpoints — composed around a generated server
 // and driven by the generated client.

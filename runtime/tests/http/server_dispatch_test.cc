@@ -111,7 +111,8 @@ TEST(ServerDispatchTest, ReturnedServerErrorsGetTheTraceCorrelationId) {
   // same identity. Sub-5xx responses are expected outcomes and stay clean.
   RequestHandler handler = [](const HttpRequest& request) {
     HttpResponse response;
-    response.status = request.target == "/fail" ? 500 : 404;
+    response.status =
+        request.target == "/fail" ? 500 : (request.target == "/bad-gateway" ? 502 : 404);
     return response;
   };
   HttpRequest fail = SampleRequest();
@@ -119,6 +120,12 @@ TEST(ServerDispatchTest, ReturnedServerErrorsGetTheTraceCorrelationId) {
   fail.headers.Set("traceparent", "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01");
   EXPECT_EQ(InvokeHandlerGuarded(handler, fail).headers.Get("x-correlation-id").value_or(""),
             "0af7651916cd43dd8448eb211c80319c");
+
+  HttpRequest gateway = SampleRequest();
+  gateway.target = "/bad-gateway";  // the whole 5xx class stamps, not just 500
+  EXPECT_EQ(
+      InvokeHandlerGuarded(handler, gateway).headers.Get("x-correlation-id").value_or("").size(),
+      32u);
 
   HttpRequest not_found = SampleRequest();
   not_found.target = "/missing";

@@ -373,6 +373,25 @@ TEST(BeastTransportTest, OversizedDeclaredBodyReadsA413) {
   server.Stop();
 }
 
+TEST(BeastTransportTest, AThrowingRejectionObserverIsContained) {
+  // The observer must never take down the rejection path it is watching:
+  // the client still reads its 413 when the hook throws.
+  BeastServerTransport server(BeastServerTransport::Options{
+      .max_body_bytes = 1024, .on_rejected = [](const BeastServerTransport::RejectedRequest&) {
+        throw std::runtime_error("observer bug");
+      }});
+  ASSERT_TRUE(server.Start([](const HttpRequest&) { return HttpResponse{}; }).ok());
+  SocketHttpClient client("127.0.0.1", server.port());
+  HttpRequest request;
+  request.method = "POST";
+  request.target = "/";
+  request.body = std::string(64 * 1024, 'x');
+  const auto response = client.Send(request);
+  ASSERT_TRUE(response.ok()) << response.error().message();
+  EXPECT_EQ(response->status, 413);
+  server.Stop();
+}
+
 TEST(BeastTransportTest, OversizedHeadersReadA431) {
   std::mutex mutex;
   std::vector<BeastServerTransport::RejectedRequest> rejected;

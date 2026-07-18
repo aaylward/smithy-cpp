@@ -62,5 +62,7 @@ requests in.
   place: the guard stamps the trace id on any 5xx that leaves the handler chain without an
   `x-correlation-id` of its own, so no generated code is involved and hand-written
   handlers are covered too.
+- jsonRpc2's envelope errors ride HTTP 200 and are deliberately not stamped — correlation
+  inside the envelope is protocol territory (its error `data` already carries `__type`).
 - Servers do not rewrite `parent_id` for downstream propagation — opening child spans stays
   the handler's/adapter's job (#91), with `GenerateSpanId()` as the building block.

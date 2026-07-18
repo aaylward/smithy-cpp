@@ -185,13 +185,19 @@ WeatherServer server(handler);
 auto limiter = std::make_shared<MyRateLimiter>(/* window, budget */);
 auto db = std::make_shared<MyDbPool>(/* ... */);
 
+// The deployment's proxy trust boundary (ADR-0012): x-forwarded-for
+// entries count only when appended by these networks. Directly reachable
+// (no proxy)? Construct TrustedProxies() — the header is then ignored and
+// every request keys as its TCP peer.
+const smithy::http::TrustedProxies trusted({"10.0.0.0/8"});
+
 transport.Start(smithy::server::Chain(
-    {// Outermost: shed abusive traffic before it costs anything. Trust
-     // x-forwarded-for only behind a proxy that sets it.
+    {// Outermost: shed abusive traffic before it costs anything, keyed on
+     // the derived client address — never the raw header, which any client
+     // can write (smithy/http/forwarded.h has the derivation contract).
      smithy::server::Guard(
-         [limiter](const smithy::http::HttpRequest& request) {
-           return limiter->Allow(
-               request.headers.Get("x-forwarded-for").value_or(""));
+         [limiter, trusted](const smithy::http::HttpRequest& request) {
+           return limiter->Allow(smithy::http::ClientAddress(request, trusted));
          },
          smithy::server::TooManyRequests(std::chrono::seconds(30))),
      // Observe everything admitted — health probes included. on_start
@@ -219,13 +225,13 @@ transport.Start(smithy::server::Chain(
 
 The first middleware in the chain is outermost: it sees the request first and
 can short-circuit before anything below it runs (so `Guard`'s rejections never
-reach `Observe` — track rejection rates in the limiter itself). Health
-probes typically arrive without `x-forwarded-for`, so under this order they
-share the empty-string key with any client hitting the service directly, and
-one such direct-connect client can exhaust that key's budget and starve
-probes into liveness or readiness failures; where that risk is real, compose
-the `HealthEndpoint` instances outside `Guard`, or have `admit` always accept
-the empty key. Readiness probes run on the transport's request thread, once
+reach `Observe` — track rejection rates in the limiter itself). Because the
+limiter keys on the derived client address, health probes budget as their
+real source (the node or balancer address the transport saw) rather than
+sharing one spoofable key with abusive traffic; if even that source's own
+budget matters, compose the `HealthEndpoint` instances outside `Guard`. The
+same composition applies over the in-memory `Loopback`, which has no peer:
+every request there derives the one empty key. Readiness probes run on the transport's request thread, once
 per probe request — keep them cheap (a pool's cached connectivity flag, not a
 fresh dial) and thread-safe. `Guard` is the generic admission primitive — rate limiting (above), IP
 allowlists, maintenance mode — admit/reject callbacks in, one decision point

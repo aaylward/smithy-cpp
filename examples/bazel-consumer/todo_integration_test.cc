@@ -18,6 +18,7 @@
 #include "acme/todo/jsonrpc/server.h"
 #include "acme/todo/server.h"
 #include "smithy/client/config.h"
+#include "smithy/http/forwarded.h"
 #include "smithy/http/loopback.h"
 #include "smithy/http/socket_transport.h"
 #include "smithy/http/trace_context.h"
@@ -396,6 +397,76 @@ TEST(TodoMiddlewareTest, GuardObserveAndHealthComposeAroundTheServer) {
   // health + two readyz + AddTask; the rejected request never reached Observe.
   EXPECT_EQ(started, 4);
   EXPECT_EQ(completed, 4);
+}
+
+// ADR-0012 composed at the consumer boundary, over a real socket so the
+// transport stamps a real peer: admission keys on ClientAddress, so
+// x-forwarded-for drives policy only through a trusted proxy tier and is
+// client-authored noise otherwise. The admit lambda records the derived
+// key — the boundary claim is that a real transport-stamped peer flows
+// through the derivation, which the status alone cannot prove.
+TEST(TodoMiddlewareTest, GuardKeysOnTheDerivedClientAddressNotTheSpoofableHeader) {
+  std::string seen;
+  const auto deny_banned = [&seen](const smithy::http::TrustedProxies& trusted) {
+    return smithy::server::Guard(
+        [trusted, &seen](const smithy::http::HttpRequest& request) {
+          seen = smithy::http::ClientAddress(request, trusted);
+          return seen != "203.0.113.9";
+        },
+        smithy::server::TooManyRequests());
+  };
+  TodoServer server(std::make_shared<InMemoryHandler>());
+
+  smithy::http::HttpRequest add;
+  add.method = "POST";
+  add.target = "/tasks";
+  add.headers.Set("content-type", "application/json");
+  add.body = R"({"title":"who goes there"})";
+
+  {
+    // Trusting loopback as the proxy tier: the direct request keys as the
+    // stamped peer; the banned client is seen through the appended entry —
+    // the walk never reaches the spoofed prefix — and shed as the shaped
+    // 429.
+    smithy::http::SocketHttpServer transport;
+    ASSERT_TRUE(
+        transport
+            .Start(smithy::server::Chain(
+                {deny_banned(smithy::http::TrustedProxies({"127.0.0.0/8"}))}, server.Handler()))
+            .ok());
+    smithy::http::SocketHttpClient raw("127.0.0.1", transport.port());
+
+    const auto direct = raw.Send(add);
+    ASSERT_TRUE(direct.ok()) << direct.error().message();
+    EXPECT_EQ(direct->status, 200);
+    EXPECT_EQ(seen, "127.0.0.1");
+
+    smithy::http::HttpRequest banned = add;
+    banned.headers.Set("x-forwarded-for", "198.51.100.7, 203.0.113.9");
+    const auto denied = raw.Send(banned);
+    ASSERT_TRUE(denied.ok()) << denied.error().message();
+    EXPECT_EQ(denied->status, 429);
+    EXPECT_EQ(seen, "203.0.113.9");
+    transport.Stop();
+  }
+  {
+    // The direct-connect deployment (no trust configured): the same header
+    // is ignored wholly, the peer stays the key, the request is admitted.
+    smithy::http::SocketHttpServer transport;
+    ASSERT_TRUE(transport
+                    .Start(smithy::server::Chain({deny_banned(smithy::http::TrustedProxies())},
+                                                 server.Handler()))
+                    .ok());
+    smithy::http::SocketHttpClient raw("127.0.0.1", transport.port());
+
+    smithy::http::HttpRequest spoofed = add;
+    spoofed.headers.Set("x-forwarded-for", "203.0.113.9");
+    const auto admitted = raw.Send(spoofed);
+    ASSERT_TRUE(admitted.ok()) << admitted.error().message();
+    EXPECT_EQ(admitted->status, 200);
+    EXPECT_EQ(seen, "127.0.0.1");
+    transport.Stop();
+  }
 }
 
 }  // namespace

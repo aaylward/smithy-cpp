@@ -39,7 +39,10 @@ class MyHandler final : public example::weather::WeatherHandler {
   `smithy::http::ParseTraceparent` and `GenerateSpanId` (`smithy/http/trace_context.h`) to
   open child spans. `context.labels`
   and `context.query_params` hold the decoded routing captures. Handlers that need none of
-  it leave the parameter unnamed.
+  it leave the parameter unnamed. Behind a reverse proxy, derive the real client with
+  `smithy::http::ClientAddress` over a `TrustedProxies` set (`smithy/http/forwarded.h`,
+  ADR-0012) instead of reading `x-forwarded-for` yourself — the raw header is
+  client-authored.
 
 - **Modeled errors**: return `smithy::Error::Modeled("<ErrorShapeName>", message)`. The server
   maps the code to the shape's `@httpError` status (else 400/`@error("server")` → 500) and the

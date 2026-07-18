@@ -66,6 +66,13 @@ via `git_override` until then.
   parses and any 5xx leaving the handler chain — returned or thrown —
   carries the request's trace id as `x-correlation-id` (a handler-set id
   wins).
+- Proxy-aware client identity (ADR-0012): `smithy::http::ClientAddress`
+  derives the real client behind a reverse proxy from `peer_address` and
+  `x-forwarded-for` — anchored at the L4 peer, walking rightmost-untrusted
+  against a `TrustedProxies` CIDR set, so a spoofed entry from outside the
+  trust boundary never wins — and
+  the production guide's `Guard` example now keys on it instead of the raw
+  (client-authored) header.
 - Server middleware additions for production serving: `Guard` admission
   control (rate limiting, allowlists, maintenance mode — policy stays an
   application dependency) with a `TooManyRequests` reject factory,

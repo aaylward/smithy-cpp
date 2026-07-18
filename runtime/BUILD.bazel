@@ -65,6 +65,7 @@ cc_library(
 cc_library(
     name = "http",
     srcs = [
+        "src/http/forwarded.cc",
         "src/http/headers.cc",
         "src/http/http1.cc",
         "src/http/server_dispatch.cc",
@@ -73,6 +74,7 @@ cc_library(
         "src/http/uri.cc",
     ],
     hdrs = [
+        "include/smithy/http/forwarded.h",
         "include/smithy/http/headers.h",
         "include/smithy/http/http1.h",
         "include/smithy/http/loopback.h",
@@ -129,6 +131,17 @@ cc_test(
     name = "trace_context_test",
     size = "small",
     srcs = ["tests/http/trace_context_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":http",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "forwarded_test",
+    size = "small",
+    srcs = ["tests/http/forwarded_test.cc"],
     copts = COPTS,
     deps = [
         ":http",

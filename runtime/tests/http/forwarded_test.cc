@@ -114,9 +114,15 @@ TEST(TrustedProxiesTest, V4CompatibleV6IsNotTheEmbeddedV4) {
 
 TEST(TrustedProxiesTest, NoneAndTheUnparseableTrustNothing) {
   // None() is the deliberate no-proxy topology (issue #104); there is no
-  // default constructor to reach the empty set by accident.
+  // default constructor to reach the empty set by accident. The derivation
+  // pin is the issue's collapse scenario inverted: under None() even a
+  // would-be proxy address is just the client, and its header is noise.
   const TrustedProxies nothing = TrustedProxies::None();
   EXPECT_FALSE(nothing.Contains("127.0.0.1"));
+  EXPECT_FALSE(nothing.Contains("2001:db8::1"));
+  const auto derived = DeriveClient(RequestFrom("10.0.0.1:443", {"203.0.113.9"}), nothing);
+  EXPECT_EQ(derived.address, "10.0.0.1");
+  EXPECT_EQ(derived.source, DerivedClient::Source::kUntrustedHeaderIgnored);
   const TrustedProxies trusted({"10.0.0.0/8"});
   EXPECT_FALSE(trusted.Contains(""));
   EXPECT_FALSE(trusted.Contains("not-an-ip"));

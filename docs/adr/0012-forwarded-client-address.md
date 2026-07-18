@@ -96,8 +96,8 @@ handlers via `context.request`).
 
 ## Consequences
 
-- docs/production-guide.md's `Guard` example keys its limiter on
-  `ClientAddress` instead of the raw header, and the empty-key
+- docs/production-guide.md's example keys admission on the derived client
+  (via `PerClientRateLimit`) instead of the raw header, and the empty-key
   probe-starvation hazard the old example documented dissolves: with no
   spoofable key, health probes and direct-connect clients each rate-limit as
   their real peer.

@@ -327,17 +327,42 @@ TEST(PerClientRateLimitTest, KeysOnTheDerivedClientBehindTheTrustBoundary) {
   EXPECT_EQ(limited.headers.Get("retry-after").value_or(""), "7");
   EXPECT_EQ(limited.body, R"({"error":"Too many requests"})");  // the shaped reject, not a copy
 
-  // A direct (untrusted-peer) client is a key like any other — allow is
-  // consulted for every derivable source, not just forwarded ones, and the
-  // key is the bare port-stripped peer.
+  // Every derivable source is consulted, with the bare port-stripped key:
+  // a direct (untrusted) peer, the same peer with its spoofed header
+  // ignored, and a trusted peer that sent no header — which keys as the
+  // tier's own address, the shared-bucket consequence middleware.h
+  // documents for a proxy that stops appending x-forwarded-for.
   http::HttpRequest direct;
   direct.peer_address = "203.0.113.9:52814";
   EXPECT_EQ(handler(direct).status, 429);
 
-  ASSERT_EQ(seen.size(), 3u);
+  http::HttpRequest spoofing = direct;
+  spoofing.headers.Set("x-forwarded-for", "198.51.100.99");
+  EXPECT_EQ(handler(spoofing).status, 429);
+
+  http::HttpRequest tier;
+  tier.peer_address = "10.0.0.1:443";
+  EXPECT_EQ(handler(tier).status, 200);
+
+  ASSERT_EQ(seen.size(), 5u);
   EXPECT_EQ(seen[0], "198.51.100.7");
   EXPECT_EQ(seen[1], "203.0.113.9");
   EXPECT_EQ(seen[2], "203.0.113.9");
+  EXPECT_EQ(seen[3], "203.0.113.9");
+  EXPECT_EQ(seen[4], "10.0.0.1");
+}
+
+TEST(PerClientRateLimitTest, TheDefaultRejectCarriesNoRetryAfter) {
+  // The nullopt default must thread through to TooManyRequests unchanged,
+  // not become some fallback interval.
+  auto handler = Chain(
+      {PerClientRateLimit([](const std::string&) { return false; }, http::TrustedProxies::None())},
+      [](const http::HttpRequest&) { return Ok("in"); });
+  http::HttpRequest request;
+  request.peer_address = "203.0.113.9:52814";
+  const auto limited = handler(request);
+  EXPECT_EQ(limited.status, 429);
+  EXPECT_FALSE(limited.headers.Has("retry-after"));
 }
 
 TEST(PerClientRateLimitTest, AnUnknownClientIsAdmittedWithoutConsultingAllow) {

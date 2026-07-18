@@ -55,6 +55,10 @@ std::function<http::HttpResponse(const http::HttpRequest&)> TooManyRequests(
 // Loopback, handler chains driven directly in tests — Source::kUnknown)
 // is admitted without consulting allow, so such requests never share one
 // "" bucket; compose Guard + DeriveClient directly for a stricter policy.
+// Every other source IS consulted — including Source::kTrustedTier, where
+// the key is the trusted tier's own address: behind a proxy that is not
+// appending x-forwarded-for, all traffic shares that one bucket (the
+// dashboard signal in docs/production-guide.md catches this).
 Middleware PerClientRateLimit(std::function<bool(const std::string& client)> allow,
                               http::TrustedProxies trusted,
                               std::optional<std::chrono::seconds> retry_after = std::nullopt);

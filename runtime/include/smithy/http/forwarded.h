@@ -60,8 +60,7 @@ class TrustedProxies {
 // the embedded IPv4) — directly usable as a policy or metrics key. source
 // records which path produced it — correct behavior on any single
 // request; the distribution, not any single value, is the
-// misconfiguration signal. Count it where the request is still in hand (a
-// one-line middleware); docs/production-guide.md reads the distribution.
+// misconfiguration signal — docs/production-guide.md reads it.
 struct DerivedClient {
   std::string address;
   enum class Source {

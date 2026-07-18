@@ -80,8 +80,8 @@ via `git_override` until then.
   guide teaches the composed middleware plus the `TRUSTED_PROXY_CIDRS`
   plumbing convention.
 - Server middleware additions for production serving: `Guard` admission
-  control (rate limiting, allowlists, maintenance mode — policy stays an
-  application dependency) with a `TooManyRequests` reject factory,
+  control (allowlists, maintenance mode — policy stays an application
+  dependency) with a `TooManyRequests` reject factory,
   `HealthEndpoint` static liveness, and an optional `Observe` `on_start`
   callback for in-flight gauges with guaranteed start/complete pairing.
   **Breaking:** `Observe(callback, now)` call sites become

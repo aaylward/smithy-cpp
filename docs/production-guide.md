@@ -231,18 +231,24 @@ sharing one spoofable key with abusive traffic; if even that source's own
 budget matters, compose the `HealthEndpoint` instances outside the limiter.
 Requests with no derivable client at all (the in-memory `Loopback` has no
 peer) are admitted without consulting your policy, so hand-driven tests
-never rate-limit each other through one shared empty key. Readiness probes
-run on the transport's request thread, once per probe request — keep them
-cheap (a pool's cached connectivity flag, not a fresh dial) and thread-safe.
-`Guard` is the generic admission primitive underneath — IP allowlists,
-maintenance mode — admit/reject callbacks in, one decision point out;
-`PerClientRateLimit` is `Guard` with the ADR-0012 derivation wired in by the
-framework (the ADR records why hand-wiring it is the hazard).
-`Observe`'s callbacks run on the transport's
-request thread (keep them cheap or hand off) and always pair: when dispatch
-throws, `on_complete` reports a 500 completion before the exception reaches
-the transport's containment, so an in-flight gauge can never leak. Throwing
-callbacks are logged and swallowed.
+never rate-limit each other through one shared empty key. A trusted peer
+that sent no header keys as the tier's own address — correct, and the
+reason the dashboard signal below matters when a proxy stops appending the
+header.
+
+Readiness probes run on the transport's request thread, once per probe
+request — keep them cheap (a pool's cached connectivity flag, not a fresh
+dial) and thread-safe. `Guard` is the generic admission primitive
+underneath — IP allowlists, maintenance mode — admit/reject callbacks in,
+one decision point out; `PerClientRateLimit` is `Guard` with the ADR-0012
+derivation wired in by the framework (the ADR records why hand-wiring it is
+the hazard).
+
+`Observe`'s callbacks run on the transport's request thread (keep them
+cheap or hand off) and always pair: when dispatch throws, `on_complete`
+reports a 500 completion before the exception reaches the transport's
+containment, so an in-flight gauge can never leak. Throwing callbacks are
+logged and swallowed.
 
 **Watch the trust boundary itself.** A drifted trust set (the proxy's
 address changed; the CIDR didn't) fails silently: the spoof defense ignores
@@ -269,6 +275,7 @@ const char* cidrs = std::getenv("TRUSTED_PROXY_CIDRS");
 const auto trusted = cidrs == nullptr
                          ? smithy::http::TrustedProxies::None()
                          : smithy::http::TrustedProxies(
+                               // the comma-list splitter from smithy/http/headers.h
                                smithy::http::SplitHeaderListValues(cidrs));
 ```
 

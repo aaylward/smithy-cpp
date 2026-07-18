@@ -425,10 +425,10 @@ TEST(TodoMiddlewareTest, PerClientRateLimitKeysOnTheDerivedClientAddressNotTheSp
   add.body = R"({"title":"who goes there"})";
 
   {
-    // Trusting loopback as the proxy tier: the direct request keys as the
-    // stamped peer; the banned client is seen through the appended entry —
-    // the walk never reaches the spoofed prefix — and shed as the shaped
-    // 429.
+    // Trusting loopback as the proxy tier: the headerless request is the
+    // trusted-tier path and keys as the stamped peer itself; the banned
+    // client is seen through the appended entry — the walk never reaches
+    // the spoofed prefix — and shed as the shaped 429.
     smithy::http::SocketHttpServer transport;
     ASSERT_TRUE(
         transport

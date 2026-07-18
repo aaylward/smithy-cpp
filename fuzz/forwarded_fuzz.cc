@@ -46,11 +46,9 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
   const bool header_present = request.headers.Has("x-forwarded-for");
   if (derived.source == Source::kDirectPeer && header_present) std::abort();
   if (derived.source == Source::kUntrustedHeaderIgnored && !header_present) std::abort();
-  const bool address_trusted = trusted.Contains(derived.address);
-  if (derived.source == Source::kTrustedTier && !address_trusted) std::abort();
-  if ((derived.source == Source::kDirectPeer || derived.source == Source::kUntrustedHeaderIgnored ||
-       derived.source == Source::kForwarded) &&
-      address_trusted) {
+  // The real trust invariant, as one biconditional: the walk never left
+  // the trust set exactly when the derived address is itself trusted.
+  if ((derived.source == Source::kTrustedTier) != trusted.Contains(derived.address)) {
     std::abort();
   }
 

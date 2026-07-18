@@ -236,11 +236,13 @@ TEST(BeastClientTest, Tls12CipherPolicyIsEcdheAeadOnly) {
               cipher.find("CHACHA20") != std::string::npos)
       << cipher;
 
-  // A client that can only do CBC-mode 1.2 suites is refused.
+  // A client that can only do CBC-mode 1.2 suites is refused. (The AES-SHA1
+  // variants are the one CBC family BoringSSL still ships; the SHA384 CBC
+  // suites OpenSSL keeps would make this assert fail to even set up there.)
   RawTlsProbe cbc;
   ASSERT_EQ(SSL_CTX_set_max_proto_version(cbc.ctx.native_handle(), TLS1_2_VERSION), 1);
   ASSERT_EQ(SSL_CTX_set_cipher_list(cbc.ctx.native_handle(),
-                                    "ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384"),
+                                    "ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES128-SHA"),
             1);
   EXPECT_TRUE(cbc.Handshake(server.port()));
   server.Stop();

@@ -10,6 +10,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -335,7 +336,17 @@ TEST(BeastTransportTest, HandlesLargeBodies) {
 }
 
 TEST(BeastTransportTest, OversizedDeclaredBodyReadsA413) {
-  BeastServerTransport server(BeastServerTransport::Options{.max_body_bytes = 1024});
+  // The transport writes this rejection itself, before a handler chain
+  // exists, so Options::on_rejected is the only observation point (issue
+  // #46) — it must fire with what the parser got to (headers were parsed:
+  // method/target present) and the peer.
+  std::mutex mutex;
+  std::vector<BeastServerTransport::RejectedRequest> rejected;
+  BeastServerTransport server(BeastServerTransport::Options{
+      .max_body_bytes = 1024, .on_rejected = [&](const BeastServerTransport::RejectedRequest& r) {
+        const std::lock_guard<std::mutex> lock(mutex);
+        rejected.push_back(r);
+      }});
   ASSERT_TRUE(server.Start([](const HttpRequest&) { return HttpResponse{}; }).ok());
   SocketHttpClient client("127.0.0.1", server.port());
   HttpRequest request;
@@ -351,11 +362,25 @@ TEST(BeastTransportTest, OversizedDeclaredBodyReadsA413) {
   ASSERT_TRUE(response.ok()) << response.error().message();
   EXPECT_EQ(response->status, 413);
   EXPECT_EQ(response->headers.Get("connection"), "close");
+  {
+    const std::lock_guard<std::mutex> lock(mutex);
+    ASSERT_EQ(rejected.size(), 1u);
+    EXPECT_EQ(rejected[0].status, 413);
+    EXPECT_EQ(rejected[0].method, "POST");
+    EXPECT_EQ(rejected[0].target, "/");
+    EXPECT_EQ(rejected[0].peer_address.rfind("127.0.0.1:", 0), 0u) << rejected[0].peer_address;
+  }
   server.Stop();
 }
 
 TEST(BeastTransportTest, OversizedHeadersReadA431) {
-  BeastServerTransport server(BeastServerTransport::Options{.max_header_bytes = 1024});
+  std::mutex mutex;
+  std::vector<BeastServerTransport::RejectedRequest> rejected;
+  BeastServerTransport server(BeastServerTransport::Options{
+      .max_header_bytes = 1024, .on_rejected = [&](const BeastServerTransport::RejectedRequest& r) {
+        const std::lock_guard<std::mutex> lock(mutex);
+        rejected.push_back(r);
+      }});
   ASSERT_TRUE(server.Start([](const HttpRequest&) { return HttpResponse{200, {}, ""}; }).ok());
   SocketHttpClient client("127.0.0.1", server.port());
   HttpRequest request;
@@ -367,6 +392,14 @@ TEST(BeastTransportTest, OversizedHeadersReadA431) {
   ASSERT_TRUE(response.ok()) << response.error().message();
   EXPECT_EQ(response->status, 431);
   EXPECT_EQ(response->headers.Get("connection"), "close");
+  {
+    // A 431 can fire mid-headers; the contract promises the status and peer,
+    // while method/target carry whatever parsed.
+    const std::lock_guard<std::mutex> lock(mutex);
+    ASSERT_EQ(rejected.size(), 1u);
+    EXPECT_EQ(rejected[0].status, 431);
+    EXPECT_EQ(rejected[0].peer_address.rfind("127.0.0.1:", 0), 0u) << rejected[0].peer_address;
+  }
   server.Stop();
 }
 

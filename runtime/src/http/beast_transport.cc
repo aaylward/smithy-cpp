@@ -271,6 +271,28 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
                                });
   }
 
+  // One observation per transport-written rejection (Options::on_rejected):
+  // called before the 413/431 is written, with whatever the parser got to.
+  // Contained like the middleware hooks — an observer must never take down
+  // the rejection path it is watching.
+  template <typename Stream>
+  void NotifyRejected(Stream& stream, const bhttp::request<bhttp::string_body>& partial,
+                      int status) {
+    if (!opts.on_rejected) {
+      return;
+    }
+    BeastServerTransport::RejectedRequest rejected;
+    rejected.status = status;
+    rejected.peer_address = PeerAddressOf(stream);
+    rejected.method = std::string(partial.method_string());
+    rejected.target = std::string(partial.target());
+    try {
+      opts.on_rejected(rejected);
+    } catch (...) {
+      std::clog << "smithy: on_rejected observer threw; rejection continues\n";
+    }
+  }
+
   // Answers an over-limit request with a minimal 413/431 + Connection: close,
   // then performs a bounded lingering close: half-close the write side and
   // read-and-discard the request's remainder within a small time/byte budget
@@ -346,7 +368,9 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
             // Over-limit requests get a real status before the close instead
             // of a bare connection abort (issue #94); every other read error
             // keeps the close-only path below.
-            self->RejectOverLimit(stream, ec == bhttp::error::body_limit
+            const bool body_limit = ec == bhttp::error::body_limit;
+            self->NotifyRejected(*stream, parser->get(), body_limit ? 413 : 431);
+            self->RejectOverLimit(stream, body_limit
                                               ? bhttp::status::payload_too_large
                                               : bhttp::status::request_header_fields_too_large);
             return;

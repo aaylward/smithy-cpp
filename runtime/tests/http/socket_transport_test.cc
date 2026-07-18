@@ -7,6 +7,8 @@
 #include <stdexcept>
 #include <string>
 
+#include "smithy/http/trace_context.h"
+
 namespace smithy::http {
 namespace {
 
@@ -180,6 +182,29 @@ TEST(SocketTransportTest, StampsThePeerAddress) {
   const std::string peer = response->headers.Get("x-peer").value_or("");
   EXPECT_EQ(peer.rfind("127.0.0.1:", 0), 0u) << peer;
   EXPECT_GT(peer.size(), std::string("127.0.0.1:").size()) << peer;  // a port follows
+  server.Stop();
+}
+
+TEST(SocketTransportTest, MintsATraceIdentityOverTheWire) {
+  // ADR-0011 end to end: a client that sends no traceparent still yields a
+  // parseable identity inside the handler chain.
+  SocketHttpServer server;
+  ASSERT_TRUE(server
+                  .Start([](const HttpRequest& request) {
+                    HttpResponse response;
+                    response.headers.Set("x-trace",
+                                         request.headers.Get("traceparent").value_or(""));
+                    return response;
+                  })
+                  .ok());
+  SocketHttpClient client("127.0.0.1", server.port());
+  HttpRequest request;
+  request.method = "GET";
+  request.target = "/";
+  const auto response = client.Send(request);
+  ASSERT_TRUE(response.ok()) << response.error().message();
+  EXPECT_TRUE(ParseTraceparent(response->headers.Get("x-trace").value_or("")).has_value())
+      << response->headers.Get("x-trace").value_or("");
   server.Stop();
 }
 

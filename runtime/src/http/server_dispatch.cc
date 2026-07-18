@@ -7,13 +7,32 @@
 #include <iostream>
 #include <string>
 
-#include "smithy/core/uuid.h"
+#include "smithy/http/trace_context.h"
 
 namespace smithy::http {
 namespace {
 
+// The mint half of the guard's contract (server_dispatch.h, ADR-0011).
+// The size() == 1 gate: W3C counts duplicated traceparent headers as
+// malformed, so a duplicate restarts the trace like any other bad input.
+void EnsureInboundTraceIdentity(HttpRequest& request) {
+  const auto values = request.headers.GetAll("traceparent");
+  if (values.size() == 1 && ParseTraceparent(values.front()).has_value()) {
+    return;
+  }
+  request.headers.Set("traceparent", FormatTraceparent(GenerateTraceContext()));
+  request.headers.Remove("tracestate");
+}
+
 HttpResponse InternalError(const HttpRequest& request, const std::string& what) {
-  const std::string correlation_id = GenerateUuidV4();
+  // The correlation id is the request's trace id (issues #41/#46).
+  // EnsureInboundTraceIdentity ran before the handler, so this parse cannot
+  // fail; re-parsing here keeps the common path free of an extra id copy
+  // while this rare path pays it.
+  const std::string correlation_id =
+      ParseTraceparent(request.headers.Get("traceparent").value_or(""))
+          .value_or(TraceContext{})
+          .trace_id;
   // The built-in default sink. A structured-logging seam can replace this, but
   // an unhandled handler exception must never be silent — this line is often
   // the only server-side trace of a 500.
@@ -40,10 +59,11 @@ std::string FormatPeerAddress(const sockaddr* address, socklen_t length) {
                                         : std::string(host.data()) + ":" + service.data();
 }
 
-HttpResponse InvokeHandlerGuarded(const RequestHandler& handler, const HttpRequest& request) {
+HttpResponse InvokeHandlerGuarded(const RequestHandler& handler, HttpRequest request) {
   if (!handler) {
     return HttpResponse{503, {}, "", ""};
   }
+  EnsureInboundTraceIdentity(request);
   try {
     return handler(request);
   } catch (const std::exception& e) {

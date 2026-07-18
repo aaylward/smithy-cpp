@@ -59,6 +59,11 @@ via `git_override` until then.
   size limits, graceful drain, TLS termination) and `BeastHttpClient`
   (keep-alive connection pool, per-request timeouts, TLS via BoringSSL with
   certificate + hostname verification on by default).
+- Server trace identity minted at transport ingress (ADR-0011): a valid
+  inbound `traceparent` continues verbatim; an absent or malformed one is
+  replaced with a fresh root context, so `Observe`'s `trace_parent` always
+  parses and the contained-exception 500's `x-correlation-id` is the
+  request's trace id.
 - Server middleware additions for production serving: `Guard` admission
   control (rate limiting, allowlists, maintenance mode — policy stays an
   application dependency) with a `TooManyRequests` reject factory,

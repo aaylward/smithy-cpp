@@ -34,8 +34,10 @@ class MyHandler final : public example::weather::WeatherHandler {
   (issue #46). `context.request` is the raw `smithy::http::HttpRequest`: read unmodeled
   headers (`context.request->headers.Get("x-tenant")`), the transport-stamped client
   address (`context.request->peer_address`, `"ip:port"`, empty on the in-memory Loopback),
-  or the inbound `traceparent` — parse it with `smithy::http::ParseTraceparent` and
-  `GenerateSpanId` (`smithy/http/trace_context.h`) to open child spans. `context.labels`
+  or the request's `traceparent` — always present and parseable behind a transport, since
+  the ingress mints a root context when the client sent none (ADR-0011); parse it with
+  `smithy::http::ParseTraceparent` and `GenerateSpanId` (`smithy/http/trace_context.h`) to
+  open child spans. `context.labels`
   and `context.query_params` hold the decoded routing captures. Handlers that need none of
   it leave the parameter unnamed.
 
@@ -51,11 +53,11 @@ class MyHandler final : public example::weather::WeatherHandler {
   before your handler runs) map to 400; any other failure is a non-leaking 500
   `InternalFailure`.
 - **A handler that throws** (rather than returning an `Error`) is contained by the transport
-  layer: the exception is converted into a 500 carrying an `x-correlation-id` header, and the
-  same id plus the exception's `what()` is written to `std::clog`. One throwing request fails
-  alone — it never unwinds into the transport's I/O thread and terminates the process. Prefer
-  returning `smithy::Error` for expected failures; the catch-all is a safety net, not a control
-  path.
+  layer: the exception is converted into a 500 whose `x-correlation-id` header is the
+  request's trace id (ADR-0011), and the same id plus the exception's `what()` is written to
+  `std::clog`. One throwing request fails alone — it never unwinds into the transport's I/O
+  thread and terminates the process. Prefer returning `smithy::Error` for expected failures;
+  the catch-all is a safety net, not a control path.
 
 ## Running a server
 

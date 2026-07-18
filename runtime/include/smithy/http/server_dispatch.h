@@ -22,13 +22,21 @@ std::string FormatPeerAddress(const sockaddr* address, socklen_t length);
 // exactly one request instead of unwinding out of the transport's I/O thread
 // and terminating the whole process.
 //
-// The synthesized 500 carries a generated correlation id in the
-// "x-correlation-id" header (and a minimal JSON body repeating it); the same id
-// plus the exception's what() is written to std::clog, so an otherwise-silent
-// crash leaves one greppable line tying the client-visible failure to a
-// server-side cause. handler may be empty — that yields a 503 (no correlation
-// id: nothing ran).
-HttpResponse InvokeHandlerGuarded(const RequestHandler& handler, const HttpRequest& request);
+// This is also where the server mints the request's trace identity
+// (ADR-0011): a single valid inbound traceparent continues verbatim, while
+// an absent, malformed, or duplicated one restarts the trace — a fresh root
+// context replaces it in the request's headers, and any inbound tracestate
+// is dropped with the abandoned trace — so Observe, the router, and
+// handlers all see exactly one parseable identity on every request that
+// enters the handler chain.
+//
+// The synthesized 500's "x-correlation-id" header (and the minimal JSON body
+// repeating it) carries that trace id; the same id plus the exception's
+// what() is written to std::clog, so an otherwise-silent crash leaves one
+// greppable line tying the client-visible failure to the server-side cause
+// and the distributed trace. handler may be empty — that yields a 503 (no
+// correlation id: nothing ran).
+HttpResponse InvokeHandlerGuarded(const RequestHandler& handler, HttpRequest request);
 
 }  // namespace smithy::http
 

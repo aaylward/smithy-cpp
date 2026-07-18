@@ -79,8 +79,11 @@ struct RequestObservation {
   // router's HttpResponse::operation annotation); empty for 404/405/400
   // dispatch failures.
   std::string operation;
-  // The request's W3C traceparent header, verbatim, for log correlation;
-  // empty when absent. See smithy/http/trace_context.h to parse it.
+  // The request's W3C traceparent header, verbatim, for log correlation.
+  // Never empty for requests served through a transport: the ingress mints a
+  // root context when the client sent none (ADR-0011; server_dispatch.h).
+  // Empty only when the handler chain is driven directly in tests. See
+  // smithy/http/trace_context.h to parse it.
   std::string trace_parent;
   int status = 0;
   // Microseconds so fast-path latencies (cache hits, loopback) don't report

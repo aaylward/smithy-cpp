@@ -376,7 +376,7 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
   template <typename Stream>
   void Dispatch(const std::shared_ptr<Stream>& stream, HttpRequest request, bool keep_alive) {
     if (handler_pool == nullptr) {
-      Respond(stream, InvokeHandlerGuarded(handler, request), keep_alive);
+      Respond(stream, InvokeHandlerGuarded(handler, std::move(request)), keep_alive);
       return;
     }
     asio::post(*handler_pool, [weak = weak_from_this(), stream, request = std::move(request),
@@ -385,7 +385,7 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
       if (self == nullptr) {
         return;  // Torn down; the abandoned stream closes the fd.
       }
-      HttpResponse response = InvokeHandlerGuarded(self->handler, request);
+      HttpResponse response = InvokeHandlerGuarded(self->handler, std::move(request));
       asio::post(stream->get_executor(),
                  [weak, stream, response = std::move(response), keep_alive]() mutable {
                    auto self = weak.lock();

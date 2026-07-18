@@ -206,19 +206,21 @@ bool TrustedProxies::ContainsBytes(const std::array<std::uint8_t, 16>& bytes, in
   });
 }
 
-std::string ClientAddress(const HttpRequest& request, const TrustedProxies& trusted) {
+DerivedClient DeriveClient(const HttpRequest& request, const TrustedProxies& trusted) {
   const auto peer = ParseEndpoint(request.peer_address);
   if (!peer.has_value()) {
-    return {};
+    return {};  // kUnknown: nothing is known, and "" never matches a trust set
   }
   Address client = *peer;
   if (!trusted.ContainsBytes(client.bytes, client.family)) {
-    return FormatAddress(client);
+    return {FormatAddress(client), request.headers.Has("x-forwarded-for")
+                                       ? DerivedClient::Source::kUntrustedHeaderIgnored
+                                       : DerivedClient::Source::kDirectPeer};
   }
   // The walk half of the forwarded.h contract. client is assigned before
-  // each trust test, so both break arms and exhaustion all leave the right
-  // answer: the first untrusted entry, the last vetted hop, or the leftmost
-  // all-trusted entry.
+  // each trust test, so a malformed-entry stop and exhaustion both leave
+  // the right answer — the last vetted hop or the leftmost all-trusted
+  // entry — and either way the walk never left the trust set.
   std::vector<std::string> entries;
   for (const std::string& value : request.headers.GetAll("x-forwarded-for")) {
     for (std::string& element : SplitHeaderListValues(value)) {
@@ -232,10 +234,14 @@ std::string ClientAddress(const HttpRequest& request, const TrustedProxies& trus
     }
     client = *entry;
     if (!trusted.ContainsBytes(client.bytes, client.family)) {
-      break;
+      return {FormatAddress(client), DerivedClient::Source::kForwarded};
     }
   }
-  return FormatAddress(client);
+  return {FormatAddress(client), DerivedClient::Source::kTrustedTier};
+}
+
+std::string ClientAddress(const HttpRequest& request, const TrustedProxies& trusted) {
+  return DeriveClient(request, trusted).address;
 }
 
 }  // namespace smithy::http

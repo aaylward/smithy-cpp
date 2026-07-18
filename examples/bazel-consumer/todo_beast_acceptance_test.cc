@@ -193,9 +193,12 @@ TEST(TodoBeastMetadataTest, TransportRejectionsAreObservableFromAConsumerBuild) 
   const auto response = raw.Send(request);
   ASSERT_TRUE(response.ok()) << response.error().message();
   EXPECT_EQ(response->status, 413);
-  const std::lock_guard<std::mutex> lock(mutex);
-  ASSERT_EQ(rejected.size(), 1u);
-  EXPECT_EQ(rejected[0].status, 413);
+  {
+    // Scoped so the mutex is released before Stop() joins the io threads.
+    const std::lock_guard<std::mutex> lock(mutex);
+    ASSERT_EQ(rejected.size(), 1u);
+    EXPECT_EQ(rejected[0].status, 413);
+  }
   transport.Stop();
 }
 

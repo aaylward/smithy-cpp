@@ -56,7 +56,8 @@ via `git_override` until then.
 - Transports: in-memory loopback and dependency-free socket client/server
   for tests and simple deployments; **Boost.Beast production transports both
   directions** — `BeastServerTransport` (thread pool, keep-alive, timeouts,
-  size limits, graceful drain, TLS termination) and `BeastHttpClient`
+  size limits with the 413/431 rejections observable via
+  `Options::on_rejected`, graceful drain, TLS termination) and `BeastHttpClient`
   (keep-alive connection pool, per-request timeouts, TLS via BoringSSL with
   certificate + hostname verification on by default).
 - Server trace identity minted at transport ingress (ADR-0011): a valid
@@ -64,8 +65,7 @@ via `git_override` until then.
   replaced with a fresh root context, so `Observe`'s `trace_parent` always
   parses and any 5xx leaving the handler chain — returned or thrown —
   carries the request's trace id as `x-correlation-id` (a handler-set id
-  wins). `BeastServerTransport::Options::on_rejected` observes the
-  transport-written 413/431 rejections that never reach the handler chain.
+  wins).
 - Server middleware additions for production serving: `Guard` admission
   control (rate limiting, allowlists, maintenance mode — policy stays an
   application dependency) with a `TooManyRequests` reject factory,

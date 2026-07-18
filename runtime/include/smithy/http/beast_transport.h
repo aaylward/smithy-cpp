@@ -2,6 +2,7 @@
 #define SMITHY_HTTP_BEAST_TRANSPORT_H_
 
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <string>
 #include <string_view>

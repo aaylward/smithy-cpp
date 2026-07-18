@@ -277,19 +277,21 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
   // the rejection path it is watching.
   template <typename Stream>
   void NotifyRejected(Stream& stream, const bhttp::request<bhttp::string_body>& partial,
-                      int status) {
+                      bhttp::status status) {
     if (!opts.on_rejected) {
       return;
     }
-    BeastServerTransport::RejectedRequest rejected;
-    rejected.status = status;
-    rejected.peer_address = PeerAddressOf(stream);
-    rejected.method = std::string(partial.method_string());
-    rejected.target = std::string(partial.target());
+    const BeastServerTransport::RejectedRequest rejected{
+        .status = static_cast<int>(status),
+        .peer_address = PeerAddressOf(stream),
+        .method = std::string(partial.method_string()),
+        .target = std::string(partial.target())};
     try {
       opts.on_rejected(rejected);
+    } catch (const std::exception& e) {
+      std::clog << "smithy: on_rejected observer threw: " << e.what() << "\n";
     } catch (...) {
-      std::clog << "smithy: on_rejected observer threw; rejection continues\n";
+      std::clog << "smithy: on_rejected observer threw a non-std exception\n";
     }
   }
 
@@ -368,11 +370,11 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
             // Over-limit requests get a real status before the close instead
             // of a bare connection abort (issue #94); every other read error
             // keeps the close-only path below.
-            const bool body_limit = ec == bhttp::error::body_limit;
-            self->NotifyRejected(*stream, parser->get(), body_limit ? 413 : 431);
-            self->RejectOverLimit(stream, body_limit
-                                              ? bhttp::status::payload_too_large
-                                              : bhttp::status::request_header_fields_too_large);
+            const bhttp::status status = ec == bhttp::error::body_limit
+                                             ? bhttp::status::payload_too_large
+                                             : bhttp::status::request_header_fields_too_large;
+            self->NotifyRejected(*stream, parser->get(), status);
+            self->RejectOverLimit(stream, status);
             return;
           }
           if (ec) {

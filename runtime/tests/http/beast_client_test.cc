@@ -160,10 +160,12 @@ TEST(BeastClientTest, OverLimitRejectionIsObservedUnderTls) {
   ASSERT_TRUE(response.ok()) << response.error().message();
   EXPECT_EQ(response->status, 413);
   {
+    // Status and peer only: field extraction is pinned by the plaintext twin
+    // (beast_transport_test.cc); peer exercises get_lowest_layer on the
+    // ssl-stream instantiation.
     const std::lock_guard<std::mutex> lock(mutex);
     ASSERT_EQ(rejected.size(), 1u);
     EXPECT_EQ(rejected[0].status, 413);
-    EXPECT_EQ(rejected[0].method, "POST");
     EXPECT_EQ(rejected[0].peer_address.rfind("127.0.0.1:", 0), 0u) << rejected[0].peer_address;
   }
   server.Stop();

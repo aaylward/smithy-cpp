@@ -19,6 +19,16 @@ HttpRequest SampleRequest() {
   return request;
 }
 
+// Echoes the traceparent the handler chain observed, so tests can assert on
+// the minted (or preserved) identity.
+RequestHandler TraceEchoHandler() {
+  return [](const HttpRequest& request) {
+    HttpResponse response;
+    response.headers.Set("x-seen", request.headers.Get("traceparent").value_or(""));
+    return response;
+  };
+}
+
 TEST(ServerDispatchTest, PassesThroughASuccessfulResponse) {
   RequestHandler handler = [](const HttpRequest&) {
     HttpResponse response;
@@ -66,11 +76,7 @@ TEST(ServerDispatchTest, MintsATraceIdentityWhenTheClientSentNone) {
   // ADR-0011: every request entering the handler chain carries a parseable
   // traceparent — a fresh root when the client sent none — and each request
   // gets its own.
-  RequestHandler handler = [](const HttpRequest& request) {
-    HttpResponse response;
-    response.headers.Set("x-seen", request.headers.Get("traceparent").value_or(""));
-    return response;
-  };
+  const RequestHandler handler = TraceEchoHandler();
   const auto first = InvokeHandlerGuarded(handler, SampleRequest());
   const auto second = InvokeHandlerGuarded(handler, SampleRequest());
   const auto first_trace = ParseTraceparent(first.headers.Get("x-seen").value_or(""));
@@ -81,11 +87,7 @@ TEST(ServerDispatchTest, MintsATraceIdentityWhenTheClientSentNone) {
 }
 
 TEST(ServerDispatchTest, KeepsAValidInboundTraceparentVerbatim) {
-  RequestHandler handler = [](const HttpRequest& request) {
-    HttpResponse response;
-    response.headers.Set("x-seen", request.headers.Get("traceparent").value_or(""));
-    return response;
-  };
+  const RequestHandler handler = TraceEchoHandler();
   HttpRequest request = SampleRequest();
   request.headers.Set("traceparent", "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01");
   const auto response = InvokeHandlerGuarded(handler, request);
@@ -95,11 +97,7 @@ TEST(ServerDispatchTest, KeepsAValidInboundTraceparentVerbatim) {
 
 TEST(ServerDispatchTest, ReplacesAMalformedTraceparent) {
   // The W3C restart-the-trace rule: unparseable identity is not propagated.
-  RequestHandler handler = [](const HttpRequest& request) {
-    HttpResponse response;
-    response.headers.Set("x-seen", request.headers.Get("traceparent").value_or(""));
-    return response;
-  };
+  const RequestHandler handler = TraceEchoHandler();
   HttpRequest request = SampleRequest();
   request.headers.Set("traceparent", "not-a-traceparent");
   const auto response = InvokeHandlerGuarded(handler, request);

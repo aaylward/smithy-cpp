@@ -7,18 +7,14 @@
 #include <iostream>
 #include <string>
 
-#include "smithy/core/uuid.h"
 #include "smithy/http/trace_context.h"
 
 namespace smithy::http {
 namespace {
 
-// The request's trace identity (ADR-0011): a valid inbound traceparent is
-// kept verbatim (the caller's trace continues), while an absent or malformed
-// one is replaced with a fresh root context — the W3C restart-the-trace
-// rule. After this, every request in the handler chain carries a parseable
-// traceparent: Observe's trace_parent is never empty, and a handler can
-// always derive child spans from context.request.
+// The mint half of the guard's contract (see server_dispatch.h and
+// ADR-0011): valid inbound traceparent kept verbatim, anything else
+// replaced with a fresh root, so the handler chain always sees one.
 void EnsureInboundTraceIdentity(HttpRequest& request) {
   const auto header = request.headers.Get("traceparent");
   if (header.has_value() && ParseTraceparent(*header).has_value()) {
@@ -28,12 +24,14 @@ void EnsureInboundTraceIdentity(HttpRequest& request) {
 }
 
 HttpResponse InternalError(const HttpRequest& request, const std::string& what) {
-  // The correlation id is the request's trace id (minted at ingress when the
-  // client sent none), so the clog line, the 500 body, and any distributed
-  // trace all name one identity (issues #41/#46). The uuid fallback only
-  // fires for callers that bypassed the guard's minting.
-  const auto trace = ParseTraceparent(request.headers.Get("traceparent").value_or(""));
-  const std::string correlation_id = trace.has_value() ? trace->trace_id : GenerateUuidV4();
+  // The correlation id is the request's trace id (issues #41/#46).
+  // EnsureInboundTraceIdentity ran before the handler, so this parse cannot
+  // fail; re-parsing here keeps the common path free of an extra id copy
+  // while this rare path pays it.
+  const std::string correlation_id =
+      ParseTraceparent(request.headers.Get("traceparent").value_or(""))
+          .value_or(TraceContext{})
+          .trace_id;
   // The built-in default sink. A structured-logging seam can replace this, but
   // an unhandled handler exception must never be silent — this line is often
   // the only server-side trace of a 500.

@@ -289,15 +289,13 @@ OpenTelemetry — plugs in without the core taking a telemetry dependency.
 **Server:** `Observe` (above) reports, per request: `method`, `target`,
 `operation` (the Smithy operation that handled it, stamped by the generated
 router; empty for 404/405/400 dispatch failures), `status`, `duration`, and
-`trace_parent` — the request's W3C `traceparent` header for log correlation.
-A valid inbound header arrives verbatim (the caller's trace continues); when
-the client sent none — or sent garbage — the transport ingress mints a fresh
-root context (ADR-0011), so `trace_parent` always parses and every request is
-correlatable. The same trace id is the `x-correlation-id` on the contained
-500 when a handler throws, tying the client report, the `std::clog` line, and
-the distributed trace to one identity. An optional `on_start` callback fires
-before dispatch (method and target only), enabling in-flight gauges;
-start/complete always pair, even when the handler throws.
+`trace_parent` — the request's W3C `traceparent` header, which always parses:
+a valid inbound one continues verbatim, and the transport ingress mints a
+fresh root when the client sent none or sent garbage (ADR-0011). The same
+trace id is the `x-correlation-id` on the contained 500 when a handler
+throws. An optional `on_start` callback fires before dispatch (method and
+target only), enabling in-flight gauges; start/complete always pair, even
+when the handler throws.
 
 **Client:** two ready-made interceptors in
 `smithy/client/observability.h`:

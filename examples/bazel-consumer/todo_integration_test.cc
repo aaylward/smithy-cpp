@@ -195,6 +195,30 @@ TEST(TodoJsonRpcTest, SameModelServesJsonRpc2) {
   ASSERT_NE(missing.error().detail<acme::todo::jsonrpc::NoSuchTask>(), nullptr);
 }
 
+// Framework-level routing at the module boundary: requests no generated
+// client would send (wrong method, unknown path) get the router's shaped
+// answers — 405 with a deterministic, deduplicated Allow list, and 404.
+TEST(TodoRoutingTest, WrongMethodGets405WithAllowAndUnknownPathGets404) {
+  TodoServer server(std::make_shared<InMemoryHandler>());
+  auto loopback = std::make_shared<smithy::http::Loopback>();
+  ASSERT_TRUE(loopback->Start(server.Handler()).ok());
+
+  smithy::http::HttpRequest wrong_method;
+  wrong_method.method = "DELETE";
+  wrong_method.target = "/tasks";
+  const auto not_allowed = loopback->Send(wrong_method);
+  ASSERT_TRUE(not_allowed.ok());
+  EXPECT_EQ(not_allowed->status, 405);
+  EXPECT_EQ(not_allowed->headers.Get("allow").value_or(""), "POST");
+
+  smithy::http::HttpRequest unknown;
+  unknown.method = "GET";
+  unknown.target = "/no/such/route";
+  const auto not_found = loopback->Send(unknown);
+  ASSERT_TRUE(not_found.ok());
+  EXPECT_EQ(not_found->status, 404);
+}
+
 // The production middleware chain from the guide — Guard, then Observe, then
 // liveness and readiness HealthEndpoints — composed around a generated server
 // and driven by the generated client.

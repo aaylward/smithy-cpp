@@ -70,6 +70,18 @@ TEST(RouterTest, Returns404And405) {
   EXPECT_EQ(router.Route(Request("GET", "/bad%2")).status, 400);
 }
 
+TEST(RouterTest, GreedyRefusesALoneEmptySegment) {
+  Router router;
+  ASSERT_TRUE(router.Add("GET", "/files/{path+}", Tag("greedy")).ok());
+
+  // "/files//" reduces to a lone empty segment for {path+}: no match (a
+  // greedy label never captures an empty value), while real captures keep
+  // working — including ones with embedded empty segments.
+  EXPECT_EQ(router.Route(Request("GET", "/files//")).status, 404);
+  EXPECT_EQ(router.Route(Request("GET", "/files")).status, 404);
+  EXPECT_EQ(router.Route(Request("GET", "/files/a/b")).headers.Get("x-label-path"), "a/b");
+}
+
 TEST(RouterTest, AllowListsEachMethodOnceInDeterministicOrder) {
   Router router;
   // Two GET patterns both match /a/b; GET must still appear once, and the

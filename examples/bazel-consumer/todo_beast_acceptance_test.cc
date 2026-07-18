@@ -129,4 +129,55 @@ TEST_F(TodoBeastAcceptanceTest, HandlerExceptionIsContainedAndServiceSurvives) {
   EXPECT_EQ(after->title, "still serving");
 }
 
+// Self-signed, CN=localhost with SANs for localhost and 127.0.0.1, valid to
+// 2046 — the same test identity the runtime suite uses (beast_client_test.cc;
+// regenerate both together).
+constexpr const char* kTestCertificatePem = R"pem(-----BEGIN CERTIFICATE-----
+MIIBmTCCAT+gAwIBAgIUV9JEHAQKR6U3ipSZd7B2JYm3AhYwCgYIKoZIzj0EAwIw
+FDESMBAGA1UEAwwJbG9jYWxob3N0MB4XDTI2MDcwNzE3NTUzOFoXDTQ2MDcwMjE3
+NTUzOFowFDESMBAGA1UEAwwJbG9jYWxob3N0MFkwEwYHKoZIzj0CAQYIKoZIzj0D
+AQcDQgAE9w/RcpMxfYw3dzUYhuTpvkuuABBXioP9Wtn/XjbPAIn+cQ0nRAd79Wck
+YwILgRQZdnQnNG7fasqRueFE4yTYkKNvMG0wHQYDVR0OBBYEFDc4bE/TAzWlbN5k
+ssc68nJgFclfMB8GA1UdIwQYMBaAFDc4bE/TAzWlbN5kssc68nJgFclfMA8GA1Ud
+EwEB/wQFMAMBAf8wGgYDVR0RBBMwEYIJbG9jYWxob3N0hwR/AAABMAoGCCqGSM49
+BAMCA0gAMEUCIDVtF5Rhglp49Ich8hPj3aJdmejLf3TueQj4L8bnWtrvAiEAlmDl
+mR4BsuAO7ZrPNIi5mCZbUTWfZwBuUgO3m/cFxsw=
+-----END CERTIFICATE-----
+)pem";
+
+constexpr const char* kTestPrivateKeyPem = R"pem(-----BEGIN PRIVATE KEY-----
+MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgk9X4X8xaMTznQYjF
+b4LQYbNRZPb87gFiSZ827xahR2mhRANCAAT3D9FykzF9jDd3NRiG5Om+S64AEFeK
+g/1a2f9eNs8Aif5xDSdEB3v1ZyRjAguBFBl2dCc0bt9qypG54UTjJNiQ
+-----END PRIVATE KEY-----
+)pem";
+
+TEST(TodoBeastTlsAcceptanceTest, TlsTerminationServesTheGeneratedClient) {
+  // The https flavor of the production wiring: TLS termination on the server
+  // options, trust via config.tls.ca_pem, everything else identical. Proves
+  // the server's fixed TLS posture (1.2 floor, AEAD ciphers, http/1.1 ALPN —
+  // pinned in the runtime suite) composes with the blessed FromConfig client
+  // from a consumer build.
+  TodoServer server(std::make_shared<AcceptanceHandler>());
+  smithy::http::BeastServerTransport transport(
+      smithy::http::BeastServerTransport::Options{.threads = 1,
+                                                  .tls_certificate_chain_pem = kTestCertificatePem,
+                                                  .tls_private_key_pem = kTestPrivateKeyPem});
+  ASSERT_TRUE(transport.Start(server.Handler()).ok());
+
+  smithy::ClientConfig config;
+  config.endpoint = "https://127.0.0.1:" + std::to_string(transport.port());
+  config.tls.ca_pem = kTestCertificatePem;
+  auto http_client = smithy::http::BeastHttpClient::FromConfig(config);
+  ASSERT_TRUE(http_client.ok()) << http_client.error().message();
+  config.http_client = *http_client;
+  auto client = TodoClient::Create(std::move(config));
+  ASSERT_TRUE(client.ok()) << client.error().message();
+
+  const auto added = client->AddTask(AddTaskInput{.title = "ship on https"});
+  ASSERT_TRUE(added.ok()) << added.error().message();
+  EXPECT_EQ(added->title, "ship on https");
+  transport.Stop();
+}
+
 }  // namespace

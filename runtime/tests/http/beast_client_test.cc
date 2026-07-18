@@ -249,6 +249,31 @@ TEST(BeastClientTest, TlsServerRefusesPreTls12Clients) {
   server.Stop();
 }
 
+TEST(BeastClientTest, Tls12CipherPolicyIsEcdheAeadOnly) {
+  BeastServerTransport server(TlsServerOptions());
+  ASSERT_TRUE(server.Start(EchoHandler()).ok());
+
+  // A TLS 1.2 client with default ciphers lands on an ECDHE+AEAD suite (1.3
+  // is capped away so cipher_list, not the fixed 1.3 suites, decides).
+  RawTlsProbe aead;
+  ASSERT_EQ(SSL_CTX_set_max_proto_version(aead.ctx.native_handle(), TLS1_2_VERSION), 1);
+  ASSERT_FALSE(aead.Handshake(server.port()));
+  const std::string cipher =
+      SSL_CIPHER_get_name(SSL_get_current_cipher(aead.stream->native_handle()));
+  EXPECT_TRUE(cipher.find("GCM") != std::string::npos ||
+              cipher.find("CHACHA20") != std::string::npos)
+      << cipher;
+
+  // A client that can only do CBC-mode 1.2 suites is refused.
+  RawTlsProbe cbc;
+  ASSERT_EQ(SSL_CTX_set_max_proto_version(cbc.ctx.native_handle(), TLS1_2_VERSION), 1);
+  ASSERT_EQ(SSL_CTX_set_cipher_list(cbc.ctx.native_handle(),
+                                    "ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384"),
+            1);
+  EXPECT_TRUE(cbc.Handshake(server.port()));
+  server.Stop();
+}
+
 TEST(BeastClientTest, TlsServerNegotiatesHttp11Alpn) {
   BeastServerTransport server(TlsServerOptions());
   ASSERT_TRUE(server.Start(EchoHandler()).ok());

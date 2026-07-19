@@ -57,7 +57,9 @@ Codec decisions pinned now:
 - **Message model:** `Message{headers, payload}`; a header is a name plus
   one of the format's ten wire types (bool true/false collapse into one
   C++ `bool` alternative; timestamps and UUIDs get distinct value types so
-  they cannot be confused with `long`/byte-array). The payload is a
+  they cannot be confused with `long`/byte-array — the timestamp is the
+  runtime's one `smithy::Timestamp`, so slice-3 generated code trades
+  timestamps with headers without a conversion). The payload is a
   `smithy::Blob` — the framing layer carries protocol bytes, it does not
   interpret them.
 - **Hand-rolled, dependency-free:** big-endian packing and CRC32 (the

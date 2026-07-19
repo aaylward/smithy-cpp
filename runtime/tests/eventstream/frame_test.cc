@@ -122,8 +122,7 @@ TEST(EventStreamFrameTest, AStringHeaderAndPayloadAreByteExact) {
       0x3A, 0x65, 0x76, 0x65, 0x6E, 0x74, 0x2D, 0x74, 0x79, 0x70, 0x65, 0x07, 0x00,
       0x04, 0x63, 0x68, 0x61, 0x74, 0x68, 0x69, 0xDD, 0xF4, 0xE3, 0xAC};
   const std::string frame =
-      EncodeOrDie(Message{.headers = {{":event-type", HeaderValue{std::string("chat")}}},
-                          .payload = Blob::FromString("hi")});
+      EncodeOrDie(Message{.headers = {{":event-type", "chat"}}, .payload = Blob::FromString("hi")});
   ASSERT_EQ(frame.size(), expected.size());
   for (std::size_t i = 0; i < expected.size(); ++i) {
     EXPECT_EQ(static_cast<std::uint8_t>(frame[i]), expected[i]) << "byte " << i;
@@ -135,66 +134,60 @@ TEST(EventStreamFrameTest, WireTypeVectorsAreByteExactBothWays) {
   // bytes). Round-trips cannot catch a wire-tag renumbering: encoder and
   // decoder share the enum, so both sides would drift together. Only bytes
   // pinned outside the codec kill that mutant class.
-  ExpectByteExact(
-      Message{.headers = {{"flag", HeaderValue{true}}}, .payload = Blob::FromString("yes")},
-      {0x00, 0x00, 0x00, 0x19, 0x00, 0x00, 0x00, 0x06, 0xE1, 0xB1, 0x8F, 0xAF, 0x04,
-       0x66, 0x6C, 0x61, 0x67, 0x00, 0x79, 0x65, 0x73, 0x2A, 0x0A, 0x2C, 0x32},
-      "bool true = tag 0, no value bytes");
-  ExpectByteExact(
-      Message{.headers = {{"flag", HeaderValue{false}}}, .payload = Blob::FromString("no")},
-      {0x00, 0x00, 0x00, 0x18, 0x00, 0x00, 0x00, 0x06, 0xDC, 0xD1, 0xA6, 0x1F,
-       0x04, 0x66, 0x6C, 0x61, 0x67, 0x01, 0x6E, 0x6F, 0x28, 0x21, 0x53, 0x07},
-      "bool false = tag 1, no value bytes");
-  ExpectByteExact(
-      Message{.headers = {{"b", HeaderValue{std::int8_t{-1}}}}, .payload = Blob::FromString("i8")},
-      {0x00, 0x00, 0x00, 0x16, 0x00, 0x00, 0x00, 0x04, 0x8D, 0xEF, 0x79,
-       0x52, 0x01, 0x62, 0x02, 0xFF, 0x69, 0x38, 0xE0, 0x79, 0x2A, 0x42},
-      "byte = tag 2");
-  ExpectByteExact(Message{.headers = {{"s", HeaderValue{std::int16_t{-2}}}},
-                          .payload = Blob::FromString("i16")},
+  ExpectByteExact(Message{.headers = {{"flag", true}}, .payload = Blob::FromString("yes")},
+                  {0x00, 0x00, 0x00, 0x19, 0x00, 0x00, 0x00, 0x06, 0xE1, 0xB1, 0x8F, 0xAF, 0x04,
+                   0x66, 0x6C, 0x61, 0x67, 0x00, 0x79, 0x65, 0x73, 0x2A, 0x0A, 0x2C, 0x32},
+                  "bool true = tag 0, no value bytes");
+  ExpectByteExact(Message{.headers = {{"flag", false}}, .payload = Blob::FromString("no")},
+                  {0x00, 0x00, 0x00, 0x18, 0x00, 0x00, 0x00, 0x06, 0xDC, 0xD1, 0xA6, 0x1F,
+                   0x04, 0x66, 0x6C, 0x61, 0x67, 0x01, 0x6E, 0x6F, 0x28, 0x21, 0x53, 0x07},
+                  "bool false = tag 1, no value bytes");
+  ExpectByteExact(Message{.headers = {{"b", std::int8_t{-1}}}, .payload = Blob::FromString("i8")},
+                  {0x00, 0x00, 0x00, 0x16, 0x00, 0x00, 0x00, 0x04, 0x8D, 0xEF, 0x79,
+                   0x52, 0x01, 0x62, 0x02, 0xFF, 0x69, 0x38, 0xE0, 0x79, 0x2A, 0x42},
+                  "byte = tag 2");
+  ExpectByteExact(Message{.headers = {{"s", std::int16_t{-2}}}, .payload = Blob::FromString("i16")},
                   {0x00, 0x00, 0x00, 0x18, 0x00, 0x00, 0x00, 0x05, 0x45, 0xD8, 0xF7, 0xA5,
                    0x01, 0x73, 0x03, 0xFF, 0xFE, 0x69, 0x31, 0x36, 0xD7, 0xC6, 0x1B, 0x3A},
                   "short = tag 3, big-endian");
-  ExpectByteExact(Message{.headers = {{"i", HeaderValue{std::int32_t{-3}}}},
-                          .payload = Blob::FromString("i32")},
+  ExpectByteExact(Message{.headers = {{"i", std::int32_t{-3}}}, .payload = Blob::FromString("i32")},
                   {0x00, 0x00, 0x00, 0x1A, 0x00, 0x00, 0x00, 0x07, 0xD1, 0x16, 0xC5, 0xE9, 0x01,
                    0x69, 0x04, 0xFF, 0xFF, 0xFF, 0xFD, 0x69, 0x33, 0x32, 0xCC, 0xFD, 0x6E, 0x86},
                   "int = tag 4, big-endian");
   ExpectByteExact(
-      Message{.headers = {{"l", HeaderValue{std::int64_t{-4}}}},
-              .payload = Blob::FromString("i64")},
+      Message{.headers = {{"l", std::int64_t{-4}}}, .payload = Blob::FromString("i64")},
       {0x00, 0x00, 0x00, 0x1E, 0x00, 0x00, 0x00, 0x0B, 0x2D, 0x20, 0x2F, 0x02, 0x01, 0x6C, 0x05,
        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFC, 0x69, 0x36, 0x34, 0xC2, 0x12, 0xDB, 0x29},
       "long = tag 5, big-endian");
   ExpectByteExact(
-      Message{.headers = {{"bin", HeaderValue{Blob::FromString(std::string("\x00\xFF\x10", 3))}}},
+      Message{.headers = {{"bin", Blob::FromString(std::string("\x00\xFF\x10", 3))}},
               .payload = Blob::FromString("blob")},
       {0x00, 0x00, 0x00, 0x1E, 0x00, 0x00, 0x00, 0x0A, 0x5A, 0x27, 0x1F, 0x94, 0x03, 0x62, 0x69,
        0x6E, 0x06, 0x00, 0x03, 0x00, 0xFF, 0x10, 0x62, 0x6C, 0x6F, 0x62, 0x6D, 0x2F, 0x76, 0x70},
       "byte-array = tag 6, u16 length prefix");
   ExpectByteExact(
-      Message{.headers = {{"str", HeaderValue{std::string("\xC3\xA9", 2)}}},
+      Message{.headers = {{"str", std::string("\xC3\xA9", 2)}},
               .payload = Blob::FromString("utf8")},
       {0x00, 0x00, 0x00, 0x1D, 0x00, 0x00, 0x00, 0x09, 0x84, 0x8E, 0x34, 0xFE, 0x03, 0x73, 0x74,
        0x72, 0x07, 0x00, 0x02, 0xC3, 0xA9, 0x75, 0x74, 0x66, 0x38, 0x44, 0x06, 0xF5, 0x90},
       "string = tag 7, u16 length prefix");
-  ExpectByteExact(
-      Message{.headers = {{"ts", HeaderValue{Timestamp{-1}}}}, .payload = Blob::FromString("time")},
-      {0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x0C, 0xAD, 0x55, 0xBC,
-       0x46, 0x02, 0x74, 0x73, 0x08, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-       0xFF, 0xFF, 0x74, 0x69, 0x6D, 0x65, 0x0C, 0x66, 0x50, 0xB5},
-      "timestamp = tag 8, not the long tag");
+  ExpectByteExact(Message{.headers = {{"ts", Timestamp::FromEpochMilliseconds(-1)}},
+                          .payload = Blob::FromString("time")},
+                  {0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x0C, 0xAD, 0x55, 0xBC,
+                   0x46, 0x02, 0x74, 0x73, 0x08, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+                   0xFF, 0xFF, 0x74, 0x69, 0x6D, 0x65, 0x0C, 0x66, 0x50, 0xB5},
+                  "timestamp = tag 8, not the long tag");
   Uuid uuid;
   for (std::size_t i = 0; i < uuid.bytes.size(); ++i) {
     uuid.bytes[i] = static_cast<std::uint8_t>(i);
   }
   ExpectByteExact(
-      Message{.headers = {{"id", HeaderValue{uuid}}}, .payload = Blob::FromString("uuid")},
+      Message{.headers = {{"id", uuid}}, .payload = Blob::FromString("uuid")},
       {0x00, 0x00, 0x00, 0x28, 0x00, 0x00, 0x00, 0x14, 0x8E, 0x49, 0x6F, 0xD1, 0x02, 0x69,
        0x64, 0x09, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B,
        0x0C, 0x0D, 0x0E, 0x0F, 0x75, 0x75, 0x69, 0x64, 0xDA, 0x2E, 0xD3, 0xD8},
       "uuid = tag 9, 16 raw bytes with no length prefix");
-  ExpectByteExact(Message{.headers = {{"e", HeaderValue{std::string()}}}},
+  ExpectByteExact(Message{.headers = {{"e", std::string()}}},
                   {0x00, 0x00, 0x00, 0x15, 0x00, 0x00, 0x00, 0x05, 0xBD, 0x48, 0x33,
                    0x14, 0x01, 0x65, 0x07, 0x00, 0x00, 0xBB, 0x9F, 0x51, 0x2C},
                   "empty string keeps its explicit u16 zero length");
@@ -205,32 +198,45 @@ TEST(EventStreamFrameTest, EveryHeaderTypeRoundTrips) {
   for (std::size_t i = 0; i < uuid.bytes.size(); ++i) {
     uuid.bytes[i] = static_cast<std::uint8_t>(i * 17);
   }
-  const Message message{
-      .headers =
-          {
-              {"t", HeaderValue{true}},
-              {"f", HeaderValue{false}},
-              {"byte", HeaderValue{std::int8_t{-7}}},
-              {"short", HeaderValue{std::int16_t{-30000}}},
-              {"int", HeaderValue{std::int32_t{-2000000000}}},
-              {"long", HeaderValue{std::int64_t{-9000000000000000000LL}}},
-              {"bytes", HeaderValue{Blob::FromString(std::string("\x00\xFF\x7F", 3))}},
-              {"string", HeaderValue{std::string("héllo")}},
-              {"when", HeaderValue{Timestamp{1721400000000}}},
-              {"id", HeaderValue{uuid}},
-          },
-      .payload = Blob::FromString("payload bytes")};
+  const Message message{.headers =
+                            {
+                                {"t", true},
+                                {"f", false},
+                                {"byte", std::int8_t{-7}},
+                                {"short", std::int16_t{-30000}},
+                                {"int", std::int32_t{-2000000000}},
+                                {"long", std::int64_t{-9000000000000000000LL}},
+                                {"bytes", Blob::FromString(std::string("\x00\xFF\x7F", 3))},
+                                {"string", "héllo"},
+                                {"when", Timestamp::FromEpochMilliseconds(1721400000000)},
+                                {"id", uuid},
+                            },
+                        .payload = Blob::FromString("payload bytes")};
   const std::string frame = EncodeOrDie(message);
   const auto decoded = DecodeOrDie(frame);
   EXPECT_EQ(decoded.message, message);
   EXPECT_EQ(decoded.bytes_consumed, frame.size());
 }
 
+TEST(EventStreamFrameTest, LiteralsSelectTheExpectedHeaderAlternative) {
+  // C++20 variant converting-construction, pinned so a future alternative
+  // added to HeaderValue cannot silently re-route plain-value spellings: a
+  // string literal is a string (never bool), a plain int is an int32, and
+  // byte/short require their explicit fixed-width types.
+  const Header text{"n", "text"};
+  EXPECT_TRUE(std::holds_alternative<std::string>(text.value));
+  const Header number{"n", 42};
+  EXPECT_TRUE(std::holds_alternative<std::int32_t>(number.value));
+  const Header truth{"n", true};
+  EXPECT_TRUE(std::holds_alternative<bool>(truth.value));
+  const Header wide{"n", std::int64_t{42}};
+  EXPECT_TRUE(std::holds_alternative<std::int64_t>(wide.value));
+}
+
 TEST(EventStreamFrameTest, EveryStrictPrefixAsksForMoreBytes) {
   // The incremental contract: an incomplete buffer is never an error.
   const std::string frame =
-      EncodeOrDie(Message{.headers = {{":event-type", HeaderValue{std::string("chat")}}},
-                          .payload = Blob::FromString("hi")});
+      EncodeOrDie(Message{.headers = {{":event-type", "chat"}}, .payload = Blob::FromString("hi")});
   for (std::size_t length = 0; length < frame.size(); ++length) {
     const auto decoded = DecodeMessage(std::string_view(frame).substr(0, length));
     ASSERT_TRUE(decoded.ok()) << "prefix " << length << ": " << decoded.error().message();
@@ -241,8 +247,7 @@ TEST(EventStreamFrameTest, EveryStrictPrefixAsksForMoreBytes) {
 
 TEST(EventStreamFrameTest, EveryFlippedByteIsAnErrorNeverAWrongMessage) {
   // The CRCs' whole job: corruption surfaces as an error, not as content.
-  const Message message{.headers = {{":event-type", HeaderValue{std::string("chat")}},
-                                    {"n", HeaderValue{std::int32_t{42}}}},
+  const Message message{.headers = {{":event-type", "chat"}, {"n", std::int32_t{42}}},
                         .payload = Blob::FromString("payload")};
   const std::string frame = EncodeOrDie(message);
   for (std::size_t i = 0; i < frame.size(); ++i) {
@@ -257,8 +262,8 @@ TEST(EventStreamFrameTest, EveryFlippedByteIsAnErrorNeverAWrongMessage) {
 
 TEST(EventStreamFrameTest, BackToBackFramesDecodeInOrder) {
   const std::string first = EncodeOrDie(Message{.payload = Blob::FromString("one")});
-  const std::string second = EncodeOrDie(
-      Message{.headers = {{"n", HeaderValue{std::int8_t{2}}}}, .payload = Blob::FromString("two")});
+  const std::string second =
+      EncodeOrDie(Message{.headers = {{"n", std::int8_t{2}}}, .payload = Blob::FromString("two")});
   std::string buffer = first + second;
 
   const auto a = DecodeOrDie(buffer);
@@ -367,19 +372,18 @@ TEST(EventStreamFrameTest, EveryValueShapeTruncatedInsideTheBlockIsAHardError) {
 
 TEST(EventStreamFrameTest, EncodeRefusesWhatDecodeWouldReject) {
   // The symmetric-bounds contract (ADR-0014).
-  const auto empty_name = EncodeMessage(Message{.headers = {{"", HeaderValue{true}}}});
+  const auto empty_name = EncodeMessage(Message{.headers = {{"", true}}});
   EXPECT_FALSE(empty_name.ok());
-  const auto long_name =
-      EncodeMessage(Message{.headers = {{std::string(256, 'n'), HeaderValue{true}}}});
+  const auto long_name = EncodeMessage(Message{.headers = {{std::string(256, 'n'), true}}});
   EXPECT_FALSE(long_name.ok());
   const auto oversized_value =
-      EncodeMessage(Message{.headers = {{"v", HeaderValue{std::string(0x10000, 'x')}}}});
+      EncodeMessage(Message{.headers = {{"v", std::string(0x10000, 'x')}}});
   EXPECT_FALSE(oversized_value.ok());
 
   // 500 headers of 255-byte values blow the 128 KiB block limit.
   Message block_bomb;
   for (int i = 0; i < 500; ++i) {
-    block_bomb.headers.push_back({"h" + std::to_string(i), HeaderValue{std::string(255, 'x')}});
+    block_bomb.headers.push_back({"h" + std::to_string(i), std::string(255, 'x')});
   }
   EXPECT_FALSE(EncodeMessage(block_bomb).ok());
 
@@ -394,9 +398,9 @@ TEST(EventStreamFrameTest, NameAndValueLengthBoundariesRoundTripAtTheLimit) {
   // accepted range would pass every refusal test. One message per boundary:
   // together they would blow the 128 KiB block limit.
   const Message messages[] = {
-      Message{.headers = {{std::string(255, 'n'), HeaderValue{true}}}},
-      Message{.headers = {{"s", HeaderValue{std::string(0xFFFF, 's')}}}},
-      Message{.headers = {{"b", HeaderValue{Blob(std::vector<std::uint8_t>(0xFFFF, 0xAB))}}}},
+      Message{.headers = {{std::string(255, 'n'), true}}},
+      Message{.headers = {{"s", std::string(0xFFFF, 's')}}},
+      Message{.headers = {{"b", Blob(std::vector<std::uint8_t>(0xFFFF, 0xAB))}}},
   };
   for (const Message& message : messages) {
     const std::string frame = EncodeOrDie(message);
@@ -408,17 +412,14 @@ TEST(EventStreamFrameTest, NameAndValueLengthBoundariesRoundTripAtTheLimit) {
   // One past the u16 value limit refuses on the Blob branch too (the
   // refusal suite above only exercised the string branch).
   EXPECT_FALSE(
-      EncodeMessage(
-          Message{.headers = {{"b", HeaderValue{Blob(std::vector<std::uint8_t>(0x10000, 0))}}}})
-          .ok());
+      EncodeMessage(Message{.headers = {{"b", Blob(std::vector<std::uint8_t>(0x10000, 0))}}}).ok());
 }
 
 TEST(EventStreamFrameTest, HeaderBlockAtExactly128KiBDecodesAndOneMoreByteIsRejected) {
   // Two string headers land the block on exactly 128 KiB:
   //   "a": 1 + 1 + 1 + 2 + 65535 = 65540 bytes
   //   "b": 1 + 1 + 1 + 2 + 65527 = 65532 bytes   -> 131072 total.
-  Message message{.headers = {{"a", HeaderValue{std::string(65535, 'x')}},
-                              {"b", HeaderValue{std::string(65527, 'y')}}}};
+  Message message{.headers = {{"a", std::string(65535, 'x')}, {"b", std::string(65527, 'y')}}};
   const std::string frame = EncodeOrDie(message);
   ASSERT_EQ(frame.size(), 16 + kMaxHeaderBlockBytes);
   // The declared headers length is exactly 0x00020000.
@@ -464,7 +465,7 @@ TEST(EventStreamFrameTest, TotalAtExactly16MiBRoundTripsAndOneByteMoreIsRefused)
 
 TEST(EventStreamFrameTest, EmptyValuesKeepTheirWireTypeAcrossTheRoundTrip) {
   // Empty is a value, not an absence: the variant alternative must survive.
-  const Message message{.headers = {{"s", HeaderValue{std::string()}}, {"b", HeaderValue{Blob()}}}};
+  const Message message{.headers = {{"s", std::string()}, {"b", Blob()}}};
   const auto decoded = DecodeOrDie(EncodeOrDie(message));
   ASSERT_EQ(decoded.message.headers.size(), 2u);
   EXPECT_TRUE(std::holds_alternative<std::string>(decoded.message.headers[0].value));
@@ -477,10 +478,10 @@ TEST(EventStreamFrameTest, Int64ExtremesRoundTripAsLongAndAsTimestamp) {
   // a wire width but must keep their distinct alternatives.
   constexpr std::int64_t kMin = std::numeric_limits<std::int64_t>::min();
   constexpr std::int64_t kMax = std::numeric_limits<std::int64_t>::max();
-  const Message message{.headers = {{"lmin", HeaderValue{kMin}},
-                                    {"lmax", HeaderValue{kMax}},
-                                    {"tmin", HeaderValue{Timestamp{kMin}}},
-                                    {"tmax", HeaderValue{Timestamp{kMax}}}}};
+  const Message message{.headers = {{"lmin", kMin},
+                                    {"lmax", kMax},
+                                    {"tmin", Timestamp::FromEpochMilliseconds(kMin)},
+                                    {"tmax", Timestamp::FromEpochMilliseconds(kMax)}}};
   const auto decoded = DecodeOrDie(EncodeOrDie(message));
   ASSERT_EQ(decoded.message.headers.size(), 4u);
   EXPECT_TRUE(std::holds_alternative<std::int64_t>(decoded.message.headers[0].value));
@@ -499,7 +500,7 @@ TEST(EventStreamFrameTest, PayloadOnlyAndHeadersOnlyFramesRoundTrip) {
   const auto decoded_payload = DecodeOrDie(payload_frame);
   EXPECT_EQ(decoded_payload.message, payload_only);
 
-  const Message headers_only{.headers = {{"k", HeaderValue{std::string("v")}}}};
+  const Message headers_only{.headers = {{"k", "v"}}};
   const auto decoded_headers = DecodeOrDie(EncodeOrDie(headers_only));
   EXPECT_EQ(decoded_headers.message, headers_only);
   EXPECT_EQ(decoded_headers.message.payload.size(), 0u);
@@ -508,17 +509,51 @@ TEST(EventStreamFrameTest, PayloadOnlyAndHeadersOnlyFramesRoundTrip) {
 TEST(EventStreamFrameTest, DuplicateHeaderNamesAreBothPreservedInOrder) {
   // The codec carries headers; deduplication and ordering policy belong to
   // the protocol layer above it.
-  const Message message{
-      .headers = {{"dup", HeaderValue{std::int32_t{1}}}, {"dup", HeaderValue{std::string("two")}}}};
+  const Message message{.headers = {{"dup", std::int32_t{1}}, {"dup", "two"}}};
   const auto decoded = DecodeOrDie(EncodeOrDie(message));
   ASSERT_EQ(decoded.message.headers.size(), 2u);
   EXPECT_EQ(decoded.message, message);
 }
 
+TEST(EventStreamFrameTest, FindHeaderAndFindStringLookUpDecodedHeaders) {
+  const Message message{
+      .headers = {{":event-type", "chat"}, {"n", 7}, {"dup", "first"}, {"dup", "second"}},
+      .payload = Blob::FromString("x")};
+  const Message decoded = DecodeOrDie(EncodeOrDie(message)).message;
+  // FindString: present-and-string yields the value; a present header of a
+  // different wire type and an absent name are both nullptr.
+  ASSERT_NE(decoded.FindString(":event-type"), nullptr);
+  EXPECT_EQ(*decoded.FindString(":event-type"), "chat");
+  EXPECT_EQ(decoded.FindString("n"), nullptr);
+  EXPECT_EQ(decoded.FindString("missing"), nullptr);
+  // FindHeader: any wire type; duplicates yield the first, in wire order.
+  const HeaderValue* n = decoded.FindHeader("n");
+  ASSERT_NE(n, nullptr);
+  EXPECT_EQ(std::get<std::int32_t>(*n), 7);
+  ASSERT_NE(decoded.FindString("dup"), nullptr);
+  EXPECT_EQ(*decoded.FindString("dup"), "first");
+  EXPECT_EQ(decoded.FindHeader("missing"), nullptr);
+}
+
+TEST(EventStreamFrameTest, MessagesRenderThroughTheDebugPrinter) {
+  // The house AppendDebugTo convention (issue #85): a failing comparison
+  // logged via DebugString reads as structure, not gtest's raw byte dump.
+  // Exact output is deliberately unpinned — debug text is not a format.
+  Uuid uuid;
+  uuid.bytes[0] = 0xAB;
+  const Message message{.headers = {{"k", "v"}, {"id", uuid}},
+                        .payload = Blob::FromString("payload")};
+  const std::string rendered = DebugString(message);
+  EXPECT_NE(rendered.find("\"k\""), std::string::npos);
+  EXPECT_NE(rendered.find("\"v\""), std::string::npos);
+  EXPECT_NE(rendered.find("Uuid(ab"), std::string::npos);
+  EXPECT_NE(rendered.find("Blob("), std::string::npos);
+}
+
 TEST(EventStreamFrameTest, OneHundredHeadersDecodeInEncodeOrder) {
   Message message;
   for (std::size_t i = 0; i < 100; ++i) {
-    message.headers.push_back({"h" + std::to_string(i), HeaderValue{static_cast<std::int32_t>(i)}});
+    message.headers.push_back({"h" + std::to_string(i), static_cast<std::int32_t>(i)});
   }
   const auto decoded = DecodeOrDie(EncodeOrDie(message));
   ASSERT_EQ(decoded.message.headers.size(), 100u);
@@ -536,8 +571,8 @@ TEST(EventStreamFrameTest, NamesAndStringValuesAreOpaqueBytesNotValidatedUtf8) {
   const Message message{
       .headers =
           {
-              {std::string("\xFF\xFE name", 7), HeaderValue{std::string("\xC3\x28", 2)}},
-              {std::string("nul\0name", 8), HeaderValue{std::string("lone continuation \x80", 19)}},
+              {std::string("\xFF\xFE name", 7), std::string("\xC3\x28", 2)},
+              {std::string("nul\0name", 8), std::string("lone continuation \x80", 19)},
           },
       .payload = Blob::FromString("payload")};
   const auto decoded = DecodeOrDie(EncodeOrDie(message));
@@ -594,7 +629,7 @@ TEST(EventStreamFrameTest, RandomMessagesRoundTripByteExactly) {
           break;
         }
         case 7:
-          value = Timestamp{draw64()};
+          value = Timestamp::FromEpochMilliseconds(draw64());
           break;
         default: {
           Uuid uuid;

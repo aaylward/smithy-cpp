@@ -103,7 +103,8 @@ bool EncodeValue(std::string& out, const HeaderValue& value) {
                         },
                         [&](const Timestamp& v) {
                           out.push_back(static_cast<char>(kWireTimestamp));
-                          AppendBigEndian(out, static_cast<std::uint64_t>(v.epoch_millis), 8);
+                          AppendBigEndian(out, static_cast<std::uint64_t>(v.epoch_milliseconds()),
+                                          8);
                           return true;
                         },
                         [&](const Uuid& v) {
@@ -171,7 +172,10 @@ std::optional<HeaderValue> DecodeValue(std::string_view block, std::size_t& curs
     case kWireTimestamp: {
       const auto bytes = fixed(8);
       if (!bytes) return std::nullopt;
-      return HeaderValue{Timestamp{static_cast<std::int64_t>(ReadBigEndian(*bytes))}};
+      // The unchecked factory: int64 wire extremes round-trip verbatim
+      // (only string formatting is range-limited, and headers never format).
+      return HeaderValue{
+          Timestamp::FromEpochMilliseconds(static_cast<std::int64_t>(ReadBigEndian(*bytes)))};
     }
     case kWireUuid: {
       const auto bytes = fixed(16);
@@ -194,6 +198,20 @@ Error Malformed(const char* what) {
 }
 
 }  // namespace
+
+const HeaderValue* Message::FindHeader(std::string_view name) const {
+  for (const Header& header : headers) {
+    if (header.name == name) {
+      return &header.value;
+    }
+  }
+  return nullptr;
+}
+
+const std::string* Message::FindString(std::string_view name) const {
+  const HeaderValue* value = FindHeader(name);
+  return value != nullptr ? std::get_if<std::string>(value) : nullptr;
+}
 
 Outcome<std::string> EncodeMessage(const Message& message) {
   std::string headers;

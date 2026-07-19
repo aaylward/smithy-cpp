@@ -15,6 +15,7 @@
 #include <mutex>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "acme/todo/client.h"
@@ -198,6 +199,49 @@ TEST(TodoBeastMetadataTest, TransportRejectionsAreObservableFromAConsumerBuild) 
     const std::lock_guard<std::mutex> lock(mutex);
     ASSERT_EQ(rejected.size(), 1u);
     EXPECT_EQ(rejected[0].status, 413);
+  }
+  transport.Stop();
+}
+
+TEST(TodoBeastMetadataTest, ConnectionEventsAreObservableFromAConsumerBuild) {
+  // The on_connection_event knob at the module boundary (ADR-0013): a TLS
+  // client speaking to a plain-http server never produces a request, so
+  // only the transport can see it — as framing garbage (the ClientHello).
+  std::mutex mutex;
+  std::vector<smithy::http::BeastServerTransport::ConnectionEvent> events;
+  TodoServer server(std::make_shared<AcceptanceHandler>());
+  smithy::http::BeastServerTransport transport(smithy::http::BeastServerTransport::Options{
+      .threads = 1,
+      .on_connection_event = [&](const smithy::http::BeastServerTransport::ConnectionEvent& e) {
+        const std::lock_guard<std::mutex> lock(mutex);
+        events.push_back(e);
+      }});
+  ASSERT_TRUE(transport.Start(server.Handler()).ok());
+
+  smithy::http::BeastHttpClient wrong_scheme({.host = "127.0.0.1",
+                                              .port = transport.port(),
+                                              .tls = true,
+                                              .tls_options = {.ca_pem = kTestCertificatePem}});
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = "/tasks";
+  const auto response = wrong_scheme.Send(request);
+  EXPECT_FALSE(response.ok());
+
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  while (std::chrono::steady_clock::now() < deadline) {
+    {
+      const std::lock_guard<std::mutex> lock(mutex);
+      if (!events.empty()) break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  {
+    const std::lock_guard<std::mutex> lock(mutex);
+    ASSERT_GE(events.size(), 1u);
+    EXPECT_EQ(events[0].kind,
+              smithy::http::BeastServerTransport::ConnectionEvent::Kind::kFramingError);
+    EXPECT_EQ(events[0].peer_address.rfind("127.0.0.1:", 0), 0u) << events[0].peer_address;
   }
   transport.Stop();
 }

@@ -57,7 +57,12 @@ via `git_override` until then.
   for tests and simple deployments; **Boost.Beast production transports both
   directions** — `BeastServerTransport` (thread pool, keep-alive, timeouts,
   size limits with the 413/431 rejections observable via
-  `Options::on_rejected`, graceful drain, TLS termination) and `BeastHttpClient`
+  `Options::on_rejected`, connections terminated without a response —
+  TLS handshake failures, framing garbage, stalled reads, mid-stream
+  drops — observable via `Options::on_connection_event` with peer, error
+  detail, and phase-elapsed time while clean closes, idle reaping, and
+  shutdown stay deliberately silent (ADR-0013), graceful drain, TLS
+  termination) and `BeastHttpClient`
   (keep-alive connection pool, per-request timeouts, TLS via BoringSSL with
   certificate + hostname verification on by default).
 - Server trace identity minted at transport ingress (ADR-0011): a valid

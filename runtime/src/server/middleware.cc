@@ -47,6 +47,22 @@ std::function<http::HttpResponse(const http::HttpRequest&)> TooManyRequests(
   };
 }
 
+Middleware PerClientRateLimit(std::function<bool(const std::string& client)> allow,
+                              http::TrustedProxies trusted,
+                              std::optional<std::chrono::seconds> retry_after) {
+  if (allow == nullptr) {
+    // A null policy would throw std::bad_function_call per request — fail
+    // at composition like HealthEndpoint and Observe do.
+    throw std::invalid_argument("PerClientRateLimit: allow must not be null");
+  }
+  return Guard(
+      [allow = std::move(allow), trusted = std::move(trusted)](const http::HttpRequest& request) {
+        const http::DerivedClient client = http::DeriveClient(request, trusted);
+        return client.source == http::DerivedClient::Source::kUnknown || allow(client.address);
+      },
+      TooManyRequests(retry_after));
+}
+
 namespace {
 
 // A throwing observation sink (e.g. a metrics backend under backpressure)

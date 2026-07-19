@@ -70,12 +70,18 @@ via `git_override` until then.
   derives the real client behind a reverse proxy from `peer_address` and
   `x-forwarded-for` — anchored at the L4 peer, walking rightmost-untrusted
   against a `TrustedProxies` CIDR set, so a spoofed entry from outside the
-  trust boundary never wins — and
-  the production guide's `Guard` example now keys on it instead of the raw
-  (client-authored) header.
+  trust boundary never wins; the no-proxy topology is the explicit
+  `TrustedProxies::None()`, never a default constructor (issue #104).
+  `smithy::server::PerClientRateLimit` ships the derivation-into-admission
+  wiring (the pluggable `allow(client)` policy sees only the derived key;
+  underivable requests are admitted), and `DeriveClient` reports each
+  address's derivation `Source` so a drifted trust boundary shows up on a
+  dashboard instead of as a silent one-bucket collapse. The production
+  guide teaches the composed middleware plus the `TRUSTED_PROXY_CIDRS`
+  plumbing convention.
 - Server middleware additions for production serving: `Guard` admission
-  control (rate limiting, allowlists, maintenance mode — policy stays an
-  application dependency) with a `TooManyRequests` reject factory,
+  control (allowlists, maintenance mode — policy stays an application
+  dependency) with a `TooManyRequests` reject factory,
   `HealthEndpoint` static liveness, and an optional `Observe` `on_start`
   callback for in-flight gauges with guaranteed start/complete pairing.
   **Breaking:** `Observe(callback, now)` call sites become

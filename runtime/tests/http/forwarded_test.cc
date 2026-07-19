@@ -112,9 +112,17 @@ TEST(TrustedProxiesTest, V4CompatibleV6IsNotTheEmbeddedV4) {
   EXPECT_FALSE(v4.Contains("::10.0.0.1"));
 }
 
-TEST(TrustedProxiesTest, TheDefaultAndTheUnparseableTrustNothing) {
-  const TrustedProxies nothing;
+TEST(TrustedProxiesTest, NoneAndTheUnparseableTrustNothing) {
+  // None() is the deliberate no-proxy topology (issue #104); there is no
+  // default constructor to reach the empty set by accident. The derivation
+  // pin is the issue's collapse scenario inverted: under None() even a
+  // would-be proxy address is just the client, and its header is noise.
+  const TrustedProxies nothing = TrustedProxies::None();
   EXPECT_FALSE(nothing.Contains("127.0.0.1"));
+  EXPECT_FALSE(nothing.Contains("2001:db8::1"));
+  const auto derived = DeriveClient(RequestFrom("10.0.0.1:443", {"203.0.113.9"}), nothing);
+  EXPECT_EQ(derived.address, "10.0.0.1");
+  EXPECT_EQ(derived.source, DerivedClient::Source::kUntrustedHeaderIgnored);
   const TrustedProxies trusted({"10.0.0.0/8"});
   EXPECT_FALSE(trusted.Contains(""));
   EXPECT_FALSE(trusted.Contains("not-an-ip"));
@@ -195,6 +203,8 @@ TEST(ClientAddressTest, AMalformedEntryStopsTheWalkAtTheLastVettedPosition) {
   // Leading-zero octets are octal-ambiguous, so they are garbage too.
   const auto octalish = RequestFrom("10.0.0.1:443", {"203.0.113.9, 010.0.0.2"});
   EXPECT_EQ(ClientAddress(octalish, trusted), "10.0.0.1");
+  // A mid-walk stop never left the trust set, and its source says so.
+  EXPECT_EQ(DeriveClient(beyond, trusted).source, DerivedClient::Source::kTrustedTier);
 }
 
 TEST(ClientAddressTest, TrustedHopsAreRecognizedInAnyEntryForm) {
@@ -284,6 +294,46 @@ TEST(ClientAddressTest, V6PeersAndMappedPeersDeriveBareCanonicalAddresses) {
   EXPECT_EQ(ClientAddress(RequestFrom("[::ffff:10.0.0.1]:443", {"203.0.113.9"}), v4),
             "203.0.113.9");
   EXPECT_EQ(ClientAddress(RequestFrom("[::ffff:203.0.113.9]:52814"), v4), "203.0.113.9");
+}
+
+TEST(DeriveClientTest, TheSourceNamesTheDerivationPath) {
+  // Issue #104: each source is correct on the single request; the
+  // distribution is the misconfiguration signal.
+  using Source = DerivedClient::Source;
+  const TrustedProxies trusted({"10.0.0.0/8"});
+
+  const auto direct = DeriveClient(RequestFrom("203.0.113.9:52814"), trusted);
+  EXPECT_EQ(direct.source, Source::kDirectPeer);
+  EXPECT_EQ(direct.address, "203.0.113.9");
+
+  const auto ignored = DeriveClient(RequestFrom("203.0.113.9:52814", {"198.51.100.7"}), trusted);
+  EXPECT_EQ(ignored.source, Source::kUntrustedHeaderIgnored);
+  EXPECT_EQ(ignored.address, "203.0.113.9");
+  // Present-with-empty-value is still present-and-ignored.
+  EXPECT_EQ(DeriveClient(RequestFrom("203.0.113.9:52814", {""}), trusted).source,
+            Source::kUntrustedHeaderIgnored);
+
+  const auto forwarded = DeriveClient(RequestFrom("10.0.0.1:443", {"203.0.113.9"}), trusted);
+  EXPECT_EQ(forwarded.source, Source::kForwarded);
+  EXPECT_EQ(forwarded.address, "203.0.113.9");
+
+  // kTrustedTier covers all three walk-never-left-trust shapes: no header,
+  // exhausted chain, malformed stop.
+  EXPECT_EQ(DeriveClient(RequestFrom("10.0.0.1:443"), trusted).source, Source::kTrustedTier);
+  EXPECT_EQ(DeriveClient(RequestFrom("10.0.0.1:443", {"10.0.0.2"}), trusted).source,
+            Source::kTrustedTier);
+  EXPECT_EQ(DeriveClient(RequestFrom("10.0.0.1:443", {"not-an-ip"}), trusted).source,
+            Source::kTrustedTier);
+
+  const auto unknown = DeriveClient(RequestFrom("", {"203.0.113.9"}), trusted);
+  EXPECT_EQ(unknown.source, Source::kUnknown);
+  EXPECT_EQ(unknown.address, "");
+}
+
+TEST(DeriveClientTest, ClientAddressIsTheAddressAlone) {
+  const TrustedProxies trusted({"10.0.0.0/8"});
+  const auto request = RequestFrom("10.0.0.1:443", {"203.0.113.9"});
+  EXPECT_EQ(ClientAddress(request, trusted), DeriveClient(request, trusted).address);
 }
 
 TEST(ClientAddressTest, AnEmptyPeerDerivesEmpty) {

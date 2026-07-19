@@ -48,7 +48,12 @@ Placement options considered:
   widen or narrow. A CIDR set rather than Envoy-style hop counts: hop counts
   are only correct when every request path traverses exactly that many
   proxies, and the failure mode of a wrong count is silent forgeability.
-  The default-constructed set trusts nothing.
+  "Trust nothing" is the named constructor `TrustedProxies::None()`, not a
+  default constructor: the first adoption (issue #104) showed the empty set
+  means two opposite things — a deliberate directly-reachable topology, or
+  a forgotten config behind a proxy that silently collapses all traffic
+  onto the proxy's one policy key — and only a greppable statement
+  separates them.
 - **`ClientAddress(request, trusted)`** — the rightmost-untrusted walk,
   anchored at `peer_address`: if the peer is not a trusted proxy the peer
   *is* the client and the header is ignored wholly (it is client-authored
@@ -91,17 +96,29 @@ handlers via `context.request`).
 
 ## Consequences
 
-- docs/production-guide.md's `Guard` example keys its limiter on
-  `ClientAddress` instead of the raw header, and the empty-key
+- docs/production-guide.md's example keys admission on the derived client
+  (via `PerClientRateLimit`) instead of the raw header, and the empty-key
   probe-starvation hazard the old example documented dissolves: with no
   spoofable key, health probes and direct-connect clients each rate-limit as
   their real peer.
 - `x-forwarded-for` only. RFC 7239 `Forwarded` support would be a
   compatible extension (same walk, one more entry parser), adopted when a
   real proxy in front of a consumer emits it.
-- The helper is the key extractor, not the policy: a per-client rate
-  limiter composing `TrustedProxies` + `ClientAddress` + `Guard` +
-  `TooManyRequests` is the natural follow-on, and stays an application
-  choice per the middleware contract.
+- The helper is the key extractor, not the policy — but the first
+  adoption (issue #104) showed the extractor-into-admission *wiring* is
+  where silent mutants live (ignoring the trust set, keying on the raw
+  peer: both compile, both pass naturally-written tests, both collapse all
+  proxied traffic into one bucket). So `smithy::server::PerClientRateLimit`
+  ships that wiring — derive, consult the pluggable `allow(client)`
+  policy, shed with the shaped 429 — while the limiter itself stays an
+  application choice per the middleware contract. Underivable requests
+  (`kUnknown`) are admitted without consulting the policy, closing the
+  empty-string shared-bucket door.
+- Misconfiguration is observable rather than silent: `DeriveClient` returns
+  the address plus its `Source`, and the distribution is the diagnostic
+  (issue #104); `ClientAddress` remains the simple string form.
+  docs/production-guide.md reads the distribution.
+- The trust set is plumbed by convention from `TRUSTED_PROXY_CIDRS`;
+  docs/production-guide.md carries the snippet and the fail-fast rules.
 - Servers that never sit behind a proxy simply never construct a
   `TrustedProxies`; nothing changes for them.

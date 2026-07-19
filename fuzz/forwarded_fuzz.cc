@@ -37,7 +37,22 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     rest.remove_prefix(newline + 1);
   }
 
-  const std::string client = smithy::http::ClientAddress(request, trusted);
+  // Source/address consistency invariants (issue #104): the label must
+  // always agree with what the walk actually did.
+  const auto derived = smithy::http::DeriveClient(request, trusted);
+  using Source = smithy::http::DerivedClient::Source;
+  if (smithy::http::ClientAddress(request, trusted) != derived.address) std::abort();
+  if ((derived.source == Source::kUnknown) != derived.address.empty()) std::abort();
+  const bool header_present = request.headers.Has("x-forwarded-for");
+  if (derived.source == Source::kDirectPeer && header_present) std::abort();
+  if (derived.source == Source::kUntrustedHeaderIgnored && !header_present) std::abort();
+  // The real trust invariant, as one biconditional: the walk never left
+  // the trust set exactly when the derived address is itself trusted.
+  if ((derived.source == Source::kTrustedTier) != trusted.Contains(derived.address)) {
+    std::abort();
+  }
+
+  const std::string& client = derived.address;
   if (!client.empty()) {
     // Canonical output is a fixed point: a derived key is a valid
     // host-route trust entry, and re-deriving from it changes nothing.
@@ -45,7 +60,9 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     if (!echo.Contains(client)) std::abort();
     smithy::http::HttpRequest again;
     again.peer_address = client;
-    if (smithy::http::ClientAddress(again, {}) != client) std::abort();
+    if (smithy::http::ClientAddress(again, smithy::http::TrustedProxies::None()) != client) {
+      std::abort();
+    }
   }
 
   const std::string_view text(reinterpret_cast<const char*>(data), size);

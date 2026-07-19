@@ -400,20 +400,21 @@ TEST(TodoMiddlewareTest, GuardObserveAndHealthComposeAroundTheServer) {
 }
 
 // ADR-0012 composed at the consumer boundary, over a real socket so the
-// transport stamps a real peer: admission keys on ClientAddress, so
+// transport stamps a real peer — through the shipped PerClientRateLimit
+// (issue #104), the exact middleware the production guide teaches:
 // x-forwarded-for drives policy only through a trusted proxy tier and is
-// client-authored noise otherwise. The admit lambda records the derived
+// client-authored noise otherwise. The allow policy records the derived
 // key — the boundary claim is that a real transport-stamped peer flows
 // through the derivation, which the status alone cannot prove.
-TEST(TodoMiddlewareTest, GuardKeysOnTheDerivedClientAddressNotTheSpoofableHeader) {
+TEST(TodoMiddlewareTest, PerClientRateLimitKeysOnTheDerivedClientAddressNotTheSpoofableHeader) {
   std::string seen;
   const auto deny_banned = [&seen](const smithy::http::TrustedProxies& trusted) {
-    return smithy::server::Guard(
-        [trusted, &seen](const smithy::http::HttpRequest& request) {
-          seen = smithy::http::ClientAddress(request, trusted);
-          return seen != "203.0.113.9";
+    return smithy::server::PerClientRateLimit(
+        [&seen](const std::string& client) {
+          seen = client;
+          return client != "203.0.113.9";
         },
-        smithy::server::TooManyRequests());
+        trusted);
   };
   TodoServer server(std::make_shared<InMemoryHandler>());
 
@@ -424,10 +425,10 @@ TEST(TodoMiddlewareTest, GuardKeysOnTheDerivedClientAddressNotTheSpoofableHeader
   add.body = R"({"title":"who goes there"})";
 
   {
-    // Trusting loopback as the proxy tier: the direct request keys as the
-    // stamped peer; the banned client is seen through the appended entry —
-    // the walk never reaches the spoofed prefix — and shed as the shaped
-    // 429.
+    // Trusting loopback as the proxy tier: the headerless request is the
+    // trusted-tier path and keys as the stamped peer itself; the banned
+    // client is seen through the appended entry — the walk never reaches
+    // the spoofed prefix — and shed as the shaped 429.
     smithy::http::SocketHttpServer transport;
     ASSERT_TRUE(
         transport
@@ -454,8 +455,8 @@ TEST(TodoMiddlewareTest, GuardKeysOnTheDerivedClientAddressNotTheSpoofableHeader
     // is ignored wholly, the peer stays the key, the request is admitted.
     smithy::http::SocketHttpServer transport;
     ASSERT_TRUE(transport
-                    .Start(smithy::server::Chain({deny_banned(smithy::http::TrustedProxies())},
-                                                 server.Handler()))
+                    .Start(smithy::server::Chain(
+                        {deny_banned(smithy::http::TrustedProxies::None())}, server.Handler()))
                     .ok());
     smithy::http::SocketHttpClient raw("127.0.0.1", transport.port());
 

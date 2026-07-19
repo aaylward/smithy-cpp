@@ -17,7 +17,9 @@ http::HttpResponse MakeErrorResponse(int status, std::string_view code, std::str
   return response;
 }
 
-Outcome<std::vector<Router::Segment>> Router::ParsePattern(std::string_view pattern) {
+namespace internal {
+
+Outcome<std::vector<Segment>> ParsePattern(std::string_view pattern) {
   if (pattern.empty() || pattern[0] != '/') {
     return Error::Validation("router: pattern must start with '/': " + std::string(pattern));
   }
@@ -58,43 +60,17 @@ Outcome<std::vector<Router::Segment>> Router::ParsePattern(std::string_view patt
   return segments;
 }
 
-Outcome<Unit> Router::Add(std::string_view method, std::string_view pattern, RouteHandler handler,
-                          std::string_view operation) {
-  auto segments = ParsePattern(pattern);
-  if (!segments) return std::move(segments).error();
-  std::vector<RouteEntry>& bucket = routes_.try_emplace(std::string(method)).first->second;
-  for (const RouteEntry& existing : bucket) {
-    if (existing.segments.size() != segments->size()) continue;
-    bool same_shape = true;
-    for (std::size_t i = 0; i < segments->size(); ++i) {
-      const Segment& a = existing.segments[i];
-      const Segment& b = (*segments)[i];
-      if (a.kind != b.kind || (a.kind == Segment::Kind::kLiteral && a.text != b.text)) {
-        same_shape = false;
-        break;
-      }
-    }
-    if (same_shape) {
-      return Error::Validation("router: conflicting route: " + std::string(method) + " " +
-                               std::string(pattern));
-    }
-  }
-  bucket.push_back(RouteEntry{std::move(*segments), std::move(handler), std::string(operation)});
-  return Unit{};
-}
-
-bool Router::Matches(const RouteEntry& route, const std::vector<std::string>& segments,
-                     PathLabels* labels) {
+bool MatchSegments(const std::vector<Segment>& pattern, const std::vector<std::string>& segments,
+                   PathLabels* labels) {
   if (labels != nullptr) labels->clear();
-  const bool has_greedy =
-      !route.segments.empty() && route.segments.back().kind == Segment::Kind::kGreedy;
+  const bool has_greedy = !pattern.empty() && pattern.back().kind == Segment::Kind::kGreedy;
   if (has_greedy) {
-    if (segments.size() < route.segments.size()) return false;
-  } else if (segments.size() != route.segments.size()) {
+    if (segments.size() < pattern.size()) return false;
+  } else if (segments.size() != pattern.size()) {
     return false;
   }
-  for (std::size_t i = 0; i < route.segments.size(); ++i) {
-    const Segment& expected = route.segments[i];
+  for (std::size_t i = 0; i < pattern.size(); ++i) {
+    const Segment& expected = pattern[i];
     switch (expected.kind) {
       case Segment::Kind::kLiteral:
         if (segments[i] != expected.text) return false;
@@ -122,7 +98,7 @@ bool Router::Matches(const RouteEntry& route, const std::vector<std::string>& se
   return true;
 }
 
-bool Router::MoreSpecific(const std::vector<Segment>& a, const std::vector<Segment>& b) {
+bool MoreSpecific(const std::vector<Segment>& a, const std::vector<Segment>& b) {
   // Segment-by-segment: literal beats label beats greedy. Longer patterns
   // rank higher when a prefix ties.
   const std::size_t common = std::min(a.size(), b.size());
@@ -143,6 +119,32 @@ bool Router::MoreSpecific(const std::vector<Segment>& a, const std::vector<Segme
   return a.size() > b.size();
 }
 
+bool SameShape(const std::vector<Segment>& a, const std::vector<Segment>& b) {
+  if (a.size() != b.size()) return false;
+  for (std::size_t i = 0; i < a.size(); ++i) {
+    if (a[i].kind != b[i].kind) return false;
+    if (a[i].kind == Segment::Kind::kLiteral && a[i].text != b[i].text) return false;
+  }
+  return true;
+}
+
+}  // namespace internal
+
+Outcome<Unit> Router::Add(std::string_view method, std::string_view pattern, RouteHandler handler,
+                          std::string_view operation) {
+  auto segments = internal::ParsePattern(pattern);
+  if (!segments) return std::move(segments).error();
+  std::vector<RouteEntry>& bucket = routes_.try_emplace(std::string(method)).first->second;
+  for (const RouteEntry& existing : bucket) {
+    if (internal::SameShape(existing.segments, *segments)) {
+      return Error::Validation("router: conflicting route: " + std::string(method) + " " +
+                               std::string(pattern));
+    }
+  }
+  bucket.push_back(RouteEntry{std::move(*segments), std::move(handler), std::string(operation)});
+  return Unit{};
+}
+
 http::HttpResponse Router::Route(const http::HttpRequest& request) const {
   auto target = http::ParseRequestTarget(request.target);
   if (!target) {
@@ -156,8 +158,8 @@ http::HttpResponse Router::Route(const http::HttpRequest& request) const {
   const RouteEntry* best = nullptr;
   if (const auto bucket = routes_.find(request.method); bucket != routes_.end()) {
     for (const RouteEntry& route : bucket->second) {
-      if (!Matches(route, segments, nullptr)) continue;
-      if (best == nullptr || MoreSpecific(route.segments, best->segments)) best = &route;
+      if (!internal::MatchSegments(route.segments, segments, nullptr)) continue;
+      if (best == nullptr || internal::MoreSpecific(route.segments, best->segments)) best = &route;
     }
   }
   if (best == nullptr) {
@@ -166,9 +168,10 @@ http::HttpResponse Router::Route(const http::HttpRequest& request) const {
     std::string allow;
     for (const auto& [method, bucket] : routes_) {
       if (method == request.method) continue;
-      const bool any_match = std::any_of(
-          bucket.begin(), bucket.end(),
-          [&segments](const RouteEntry& route) { return Matches(route, segments, nullptr); });
+      const bool any_match =
+          std::any_of(bucket.begin(), bucket.end(), [&segments](const RouteEntry& route) {
+            return internal::MatchSegments(route.segments, segments, nullptr);
+          });
       if (!any_match) continue;
       if (!allow.empty()) allow += ", ";
       allow += method;
@@ -181,7 +184,7 @@ http::HttpResponse Router::Route(const http::HttpRequest& request) const {
     return MakeErrorResponse(404, "NotFound", "no route matches the request");
   }
   RequestContext context;
-  Matches(*best, segments, &context.labels);  // label extraction: winner only
+  internal::MatchSegments(best->segments, segments, &context.labels);  // winner only
   context.query_params = std::move(target->query_params);
   context.request = &request;
   http::HttpResponse response = best->handler(request, context);

@@ -62,12 +62,20 @@ cc_library(
     deps = [":core"],
 )
 
-# The event-stream framing codec (ADR-0014): a leaf over :core, so
-# consumers pay for it only when they stream.
+# The event-stream framing codec (ADR-0014) and the envelope convention on
+# top of it (ADR-0016): a leaf over :core, so consumers pay for it only
+# when they stream. The typed EventStream lives in :http (it wraps the
+# WebSocket seam there).
 cc_library(
     name = "eventstream",
-    srcs = ["src/eventstream/frame.cc"],
-    hdrs = ["include/smithy/eventstream/frame.h"],
+    srcs = [
+        "src/eventstream/envelope.cc",
+        "src/eventstream/frame.cc",
+    ],
+    hdrs = [
+        "include/smithy/eventstream/envelope.h",
+        "include/smithy/eventstream/frame.h",
+    ],
     copts = COPTS,
     includes = ["include"],
     deps = [":core"],
@@ -84,6 +92,33 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "envelope_test",
+    size = "small",
+    srcs = ["tests/eventstream/envelope_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":eventstream",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "event_stream_test",
+    size = "small",
+    srcs = ["tests/eventstream/event_stream_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":eventstream",
+        ":http",
+        "@googletest//:gtest_main",
+    ],
+)
+
+# Includes the transport-neutral WebSocket seam (ADR-0016): the WebSocket
+# interface, the typed EventStream over it, and the in-memory pair (the
+# Loopback analog), so streams run and test without Boost; the Beast
+# implementations stay in :http_beast.
 cc_library(
     name = "http",
     srcs = [
@@ -94,8 +129,10 @@ cc_library(
         "src/http/socket_transport.cc",
         "src/http/trace_context.cc",
         "src/http/uri.cc",
+        "src/http/websocket_pair.cc",
     ],
     hdrs = [
+        "include/smithy/eventstream/event_stream.h",
         "include/smithy/http/forwarded.h",
         "include/smithy/http/headers.h",
         "include/smithy/http/http1.h",
@@ -106,10 +143,15 @@ cc_library(
         "include/smithy/http/trace_context.h",
         "include/smithy/http/transport.h",
         "include/smithy/http/uri.h",
+        "include/smithy/http/websocket.h",
+        "include/smithy/http/websocket_pair.h",
     ],
     copts = COPTS,
     includes = ["include"],
-    deps = [":core"],
+    deps = [
+        ":core",
+        ":eventstream",
+    ],
 )
 
 # Support library for the generated protocol conformance tests
@@ -197,6 +239,18 @@ cc_test(
 )
 
 cc_test(
+    name = "websocket_pair_test",
+    size = "small",
+    srcs = ["tests/http/websocket_pair_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":eventstream",
+        ":http",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "socket_transport_test",
     size = "small",
     srcs = ["tests/http/socket_transport_test.cc"],
@@ -241,10 +295,7 @@ cc_library(
         "src/http/beast_src.cc",
         "src/http/beast_transport.cc",
     ],
-    hdrs = [
-        "include/smithy/http/beast_transport.h",
-        "include/smithy/http/websocket.h",
-    ],
+    hdrs = ["include/smithy/http/beast_transport.h"],
     copts = COPTS,
     includes = ["include"],
     # Static only: Bazel's dynamic test linking would put the asio/beast
@@ -400,10 +451,12 @@ cc_library(
     srcs = [
         "src/server/middleware.cc",
         "src/server/router.cc",
+        "src/server/websocket_router.cc",
     ],
     hdrs = [
         "include/smithy/server/middleware.h",
         "include/smithy/server/router.h",
+        "include/smithy/server/websocket_router.h",
     ],
     copts = COPTS,
     includes = ["include"],
@@ -419,6 +472,19 @@ cc_test(
     srcs = ["tests/server/router_test.cc"],
     copts = COPTS,
     deps = [
+        ":server",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "websocket_router_test",
+    size = "small",
+    srcs = ["tests/server/websocket_router_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":eventstream",
+        ":http",
         ":server",
         "@googletest//:gtest_main",
     ],

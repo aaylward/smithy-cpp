@@ -1,0 +1,38 @@
+#ifndef SMITHY_HTTP_WEBSOCKET_PAIR_H_
+#define SMITHY_HTTP_WEBSOCKET_PAIR_H_
+
+#include <memory>
+#include <utility>
+
+#include "smithy/http/websocket.h"
+
+namespace smithy::http {
+
+// In-memory WebSocket session: two connected WebSocket ends sharing bounded
+// queues, with no sockets or io threads — the Loopback analog for event
+// streams (ADR-0016), so generated streaming integration tests run without
+// Boost. Both ends honor the WebSocket contract:
+//
+// - Send blocks while the direction's queue is full (the Beast session's
+//   receive-buffer bound), so backpressure is real: a receiver that stops
+//   calling Receive stalls its sender. Send fails with Error::Validation
+//   for a message the framing codec refuses to encode (the session stays
+//   usable) and Error::Transport once the session is closed — validation
+//   parity with the wire transports, minus the wire.
+// - Close on EITHER end ends the session for both, mirroring the close
+//   handshake; it is idempotent and unblocks blocked Send (Transport
+//   error) and Receive calls on both ends. Messages queued before the
+//   close still belong to their receiver, in order; Receive reports the
+//   clean close (nullopt) only once its queue drains.
+// - Thread safety is the WebSocket contract's: one sender plus one
+//   receiver per end may block concurrently, and Close is safe from any
+//   thread. There is no idle timeout — nothing here can vanish.
+class InMemoryWebSocketPair {
+ public:
+  // The two connected ends; each keeps the shared session alive.
+  static std::pair<std::shared_ptr<WebSocket>, std::shared_ptr<WebSocket>> Create();
+};
+
+}  // namespace smithy::http
+
+#endif  // SMITHY_HTTP_WEBSOCKET_PAIR_H_

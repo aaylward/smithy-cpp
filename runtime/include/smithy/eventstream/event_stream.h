@@ -12,6 +12,16 @@
 
 namespace smithy::eventstream {
 
+// The vacant direction of a one-directional stream (ADR-0016): when an
+// operation models no event union for a direction, generated code
+// parameterizes that direction's EventStream slot with NoEvents. Nothing
+// ever constructs one, so the direction's encode function is never invoked;
+// a message received on a NoEvents direction is undecodable and therefore
+// terminal (the generated decoder rejects it).
+struct NoEvents {
+  friend bool operator==(const NoEvents&, const NoEvents&) = default;
+};
+
 // The typed event-stream session (ADR-0016): one WebSocket plus the two
 // codec functions generated code supplies. Tx is what this end sends, Rx
 // what it receives — a client and its server hold the same session with

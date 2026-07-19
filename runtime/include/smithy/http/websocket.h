@@ -1,6 +1,7 @@
 #ifndef SMITHY_HTTP_WEBSOCKET_H_
 #define SMITHY_HTTP_WEBSOCKET_H_
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -66,6 +67,32 @@ class WebSocket {
   virtual void Close() = 0;
 };
 
+// One streaming dial as generated clients describe it (ADR-0016): where to
+// connect (host, port, TLS — derived from the client's http(s) endpoint, so
+// nothing is configured twice), the upgrade GET's target with its bound
+// labels and query, and the headers that ride the upgrade request.
+// BeastWebSocketClient::Dialer() consumes it by building Dial's Options;
+// custom dialers (ClientConfig::websocket_dialer — how tests run streams
+// without Beast) receive it verbatim.
+struct WebSocketDialRequest {
+  std::string host;
+  // 0 means the scheme default: 443 with tls, 80 without.
+  int port = 0;
+  bool tls = false;
+  // Verification knobs when `tls` is true (ClientConfig::tls).
+  TlsOptions tls_options;
+  // The request target of the upgrade GET (the streaming endpoint).
+  std::string target = "/";
+  // Extra headers on the upgrade request — bearer tokens, api keys.
+  Headers headers;
+};
+
+// The dialer a generated streaming client calls: one WebSocketDialRequest
+// in, one connected session out (ADR-0016). ClientConfig::websocket_dialer
+// carries an injected one; BeastWebSocketClient::Dialer() is the default.
+using WebSocketDialer =
+    std::function<Outcome<std::shared_ptr<WebSocket>>(const WebSocketDialRequest&)>;
+
 // Dials a WebSocket connection carrying event-stream messages (ADR-0015):
 // resolve, connect, TLS (ADR-0007 posture: TLS 1.2 floor, certificate and
 // hostname verification on by default, SNI), then the WebSocket upgrade
@@ -106,6 +133,12 @@ class BeastWebSocketClient {
   };
 
   static Outcome<std::shared_ptr<WebSocket>> Dial(Options options);
+
+  // Dial in WebSocketDialer form — what a generated streaming client uses
+  // when ClientConfig::websocket_dialer is unset (ADR-0016). Declared here,
+  // implemented in the Beast TU: linking the returned dialer is what pulls
+  // in Boost, so dep-light consumers that inject their own never pay for it.
+  static WebSocketDialer Dialer();
 };
 
 }  // namespace smithy::http

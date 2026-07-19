@@ -37,14 +37,16 @@ experience assumed. Day 2 (evolving the model) is
 
 Consolidated in one place — if your API depends on any of these, check here before adopting:
 
-- **`@streaming` is not modeled yet.** The trait is ignored: a `@streaming` member generates
-  as its plain shape (a streaming blob payload becomes an ordinary `smithy::Blob`, fully
-  buffered in memory). Streaming — blob streams and event streams, client and server — is
-  [PLAN Phase 8](docs/PLAN.md), landing wire-format-first
-  ([ADR-0014](docs/adr/0014-event-stream-framing-first.md)): the event-stream framing codec
-  (`//runtime:eventstream`) and the WebSocket transports carrying it
-  ([ADR-0015](docs/adr/0015-websocket-transports.md) — server upgrade + client dial, usable
-  directly today) are in; the generated `EventStream` API is the remaining slice.
+- **`@streaming` blobs are not modeled yet.** A streaming blob payload generates as an
+  ordinary `smithy::Blob`, fully buffered in memory. Event streams, by contrast, are real
+  ([ADR-0016](docs/adr/0016-generated-event-streams.md)): a `@streaming` union operation
+  generates a typed `smithy::eventstream::EventStream` session over WebSocket for
+  `simpleRestJson` and `rpcv2Cbor` (client and server; `jsonRpc2` refuses at generation
+  time), riding the event-stream framing codec
+  ([ADR-0014](docs/adr/0014-event-stream-framing-first.md)) and the WebSocket transports
+  ([ADR-0015](docs/adr/0015-websocket-transports.md)). Scoping edges (`@eventHeader` /
+  `@eventPayload`, body-bound initial-request members, initial-response members) are
+  rejected with generation-time diagnostics.
 - **No Bazel Central Registry / Maven publishing** — consumers pin a git commit
   ([quickstart](docs/quickstart.md)); publishing is deferred until the project is
   production-validated (#44 tracks release readiness).

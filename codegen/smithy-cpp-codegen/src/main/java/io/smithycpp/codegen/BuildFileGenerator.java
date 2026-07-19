@@ -15,7 +15,8 @@ final class BuildFileGenerator {
       boolean hasClient,
       boolean hasSerde,
       boolean hasServer,
-      boolean hasCompression) {
+      boolean hasCompression,
+      boolean hasStreaming) {
     CppSettings settings = context.settings();
     StringBuilder out = new StringBuilder();
     out.append(
@@ -63,6 +64,12 @@ final class BuildFileGenerator {
       if (hasCompression) {
         deps.add("\"" + pkg + ":compression\"");
       }
+      if (hasStreaming) {
+        // ADR-0016: the typed sessions plus the default Beast dialer the
+        // generated streaming operations fall back to.
+        deps.add("\"" + pkg + ":eventstream\"");
+        deps.add("\"" + pkg + ":http_beast\"");
+      }
       for (String dep : protocol.runtimeDeps()) {
         deps.add("\"" + pkg + dep + "\"");
       }
@@ -89,6 +96,11 @@ final class BuildFileGenerator {
       serverDeps.add("\"" + pkg + ":server\"");
       if (hasCompression) {
         serverDeps.add("\"" + pkg + ":compression\"");
+      }
+      if (hasStreaming) {
+        // Servers speak the transport-neutral WebSocket seam only — the
+        // router lives in :server, so no Beast dep (ADR-0016).
+        serverDeps.add("\"" + pkg + ":eventstream\"");
       }
       for (String dep : protocol.runtimeDeps()) {
         serverDeps.add("\"" + pkg + dep + "\"");

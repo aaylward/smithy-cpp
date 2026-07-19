@@ -60,6 +60,9 @@ public final class DirectedCppCodegen
       java.util.List<software.amazon.smithy.model.shapes.OperationShape> operations =
           clientGenerator.operations();
       if (!operations.isEmpty()) {
+        // Event-stream scope checks (ADR-0016) fail generation with a named
+        // diagnostic before any streaming code is emitted.
+        EventStreamCodeGen.validate(directive.context(), service, protocol, operations);
         if (directive.settings().generateClient()) {
           clientGenerator.run();
           hasClient = true;
@@ -117,8 +120,20 @@ public final class DirectedCppCodegen
           protocol != null
               && ProtocolSupport.containedOperations(directive.context().model(), service).stream()
                   .anyMatch(ProtocolSupport::gzipCompressed);
+      // Same closure scoping for the event-stream deps (ADR-0016): only a
+      // streaming service links :eventstream (and, client-side, :http_beast).
+      boolean hasStreaming =
+          protocol != null
+              && ProtocolSupport.containedOperations(directive.context().model(), service).stream()
+                  .anyMatch(op -> EventStreamCodeGen.streaming(directive.context().model(), op));
       BuildFileGenerator.run(
-          directive.context(), protocol, hasClient, hasSerde, hasServer, hasCompression);
+          directive.context(),
+          protocol,
+          hasClient,
+          hasSerde,
+          hasServer,
+          hasCompression,
+          hasStreaming);
     }
   }
 

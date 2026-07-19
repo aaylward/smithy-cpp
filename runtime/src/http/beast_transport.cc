@@ -1780,4 +1780,17 @@ Outcome<std::shared_ptr<WebSocket>> BeastWebSocketClient::Dial(Options options) 
   return FinishDial(std::move(connection), std::move(carrier), options);
 }
 
+WebSocketDialer BeastWebSocketClient::Dialer() {
+  return [](const WebSocketDialRequest& request) {
+    Options options;
+    options.host = request.host;
+    options.port = request.port;
+    options.tls = request.tls;
+    options.tls_options = request.tls_options;
+    options.target = request.target;
+    options.headers = request.headers;
+    return Dial(std::move(options));
+  };
+}
+
 }  // namespace smithy::http

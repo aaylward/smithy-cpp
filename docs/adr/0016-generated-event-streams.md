@@ -52,11 +52,13 @@ normative definition, with an in-repo suite):
   first, then closes.
 - **Initial members**: input-structure members outside the stream must be
   bound to labels, query, or headers (they travel on the upgrade
-  request); output-structure members outside the stream travel as the
-  first message, `:event-type` `":initial-response"`, before any event.
-  Unbound (body) initial-request members are rejected at generation time
-  with a clear diagnostic — a scoping decision, not a wire constraint;
-  lifting it later is additive.
+  request). Output-structure members outside the stream — the
+  initial-response — are **rejected at generation time** with a clear
+  diagnostic, as are unbound (body) initial-request members: the
+  blocking handler contract has no seam to produce initial members
+  before streaming without inverting message order, so the deferral is
+  scope honesty, not a wire constraint. The envelope reserves
+  `":initial-response"` for the additive lift later.
 
 ## The API
 

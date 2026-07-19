@@ -14,7 +14,10 @@
 
 #include "compile/streaming/cbor/client.h"
 #include "compile/streaming/rest/client.h"
+#include "smithy/cbor/cbor.h"
 #include "smithy/client/config.h"
+#include "smithy/core/document.h"
+#include "smithy/eventstream/envelope.h"
 #include "smithy/http/websocket_pair.h"
 
 namespace {
@@ -66,10 +69,46 @@ TEST(StreamingCompileTest, CborClientExchangesOnTheFixedUpgradeUri) {
 
   compile::streaming::cbor::ChatMessage message;
   message.text = "hello";
+  message.sender = "ada";
   ASSERT_TRUE(stream->Send(compile::streaming::cbor::ClientEvents::FromMessage(message)).ok());
+
+  // The frame is the real envelope convention (ADR-0016): :event-type names
+  // the engaged member, and the payload is the protocol's CBOR.
   auto frame = server_end->Receive();
   ASSERT_TRUE(frame.ok());
   ASSERT_TRUE(frame->has_value());
+  auto envelope = smithy::eventstream::ParseEnvelope(**frame);
+  ASSERT_TRUE(envelope.ok());
+  EXPECT_EQ(envelope->kind, smithy::eventstream::EventEnvelope::Kind::kEvent);
+  EXPECT_EQ(envelope->type, "message");
+  EXPECT_EQ(envelope->content_type, "application/cbor");
+  auto payload = smithy::cbor::Decode(envelope->payload);
+  ASSERT_TRUE(payload.ok());
+  ASSERT_TRUE(payload->is_map());
+  const smithy::Document* text = payload->Find("text");
+  ASSERT_NE(text, nullptr);
+  ASSERT_TRUE(text->is_string());
+  EXPECT_EQ(text->as_string(), "hello");
+  const smithy::Document* sender = payload->Find("sender");
+  ASSERT_NE(sender, nullptr);
+  ASSERT_TRUE(sender->is_string());
+  EXPECT_EQ(sender->as_string(), "ada");
+
+  // The other direction: the test plays the server, minting the same
+  // envelope shape; the generated decoder yields the typed event.
+  smithy::DocumentMap joined;
+  joined.emplace("member", smithy::Document("ada"));
+  ASSERT_TRUE(server_end
+                  ->Send(smithy::eventstream::MakeEventMessage(
+                      "joined", "application/cbor",
+                      smithy::cbor::Encode(smithy::Document(std::move(joined)))))
+                  .ok());
+  auto received = stream->Receive();
+  ASSERT_TRUE(received.ok());
+  ASSERT_TRUE(received->has_value());
+  ASSERT_TRUE((**received).is_joined());
+  EXPECT_EQ((**received).as_joined().member, "ada");
+
   stream->Close();
 }
 

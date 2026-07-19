@@ -25,6 +25,8 @@
 #include "example/chat/client.h"
 #include "example/chat/server.h"
 #include "smithy/client/config.h"
+#include "smithy/core/blob.h"
+#include "smithy/eventstream/envelope.h"
 #include "smithy/http/loopback.h"
 #include "smithy/http/message.h"
 #include "smithy/http/websocket.h"
@@ -114,8 +116,10 @@ class ChatEndToEndTest : public testing::Test {
       upgrade.target = request.target;
       upgrade.headers = request.headers;
       server_sessions_.push_back(far);
-      serve_threads_.emplace_back([serve = server_->StreamRouter()->Serve(), upgrade,
-                                   session = far] { serve(upgrade, *session); });
+      if (serve_far_end_) {
+        serve_threads_.emplace_back([serve = server_->StreamRouter()->Serve(), upgrade,
+                                     session = far] { serve(upgrade, *session); });
+      }
       return near;
     };
     auto client = ChatClient::Create(std::move(config));
@@ -135,6 +139,10 @@ class ChatEndToEndTest : public testing::Test {
   std::vector<std::shared_ptr<smithy::http::WebSocket>> server_sessions_;
   std::vector<std::thread> serve_threads_;
   std::string last_dialed_target_;
+  // Cleared by a test that wants the dialed pair's far end raw — held in
+  // server_sessions_ (so TearDown still closes it) but not served through
+  // the router, leaving the test free to speak the wire itself.
+  bool serve_far_end_ = true;
 };
 
 TEST_F(ChatEndToEndTest, BidiEventsRoundTripThroughTheGeneratedPair) {
@@ -247,6 +255,40 @@ TEST_F(ChatEndToEndTest, ModeledMidStreamErrorSurfacesTypedOnTheClient) {
   const ConverseErrors errors = ConverseErrors::FromError(outcome.error());
   ASSERT_TRUE(errors.is_kicked());
   EXPECT_EQ(errors.as_kicked().by, kModerator);
+}
+
+TEST_F(ChatEndToEndTest, UnknownEventTypeIsATerminalSerializationError) {
+  // Hold the far end raw: no serve thread, so the test can speak the
+  // envelope convention (smithy/eventstream/envelope.h) at the generated
+  // client directly.
+  serve_far_end_ = false;
+  ConverseInput input;
+  input.room = "lobby";
+  input.nickname = "eve";
+  auto stream = client_->Converse(input);
+  ASSERT_TRUE(stream.ok()) << stream.error().message();
+  ASSERT_EQ(server_sessions_.size(), 1U);
+  const std::shared_ptr<smithy::http::WebSocket> far = server_sessions_.back();
+
+  // A well-formed event message whose :event-type matches no RoomEvents
+  // member — a newer peer's event, or a corrupted one.
+  ASSERT_TRUE(far->Send(smithy::eventstream::MakeEventMessage("presence", "application/json",
+                                                              smithy::Blob::FromString("{}")))
+                  .ok());
+
+  // Undecodable is terminal (ADR-0016): the error is Serialization-kinded
+  // and names the stray type...
+  auto outcome = stream->Receive();
+  ASSERT_FALSE(outcome.ok());
+  EXPECT_EQ(outcome.error().kind(), smithy::ErrorKind::kSerialization);
+  EXPECT_NE(outcome.error().message().find("presence"), std::string::npos)
+      << outcome.error().message();
+
+  // ...and the receiving stream closed the session — the raw far end
+  // observes the close, not a stalled stream.
+  auto closed = far->Receive();
+  ASSERT_TRUE(closed.ok()) << closed.error().message();
+  EXPECT_FALSE(closed->has_value());
 }
 
 TEST_F(ChatEndToEndTest, GateRefusesAnUnknownStreamPath) {

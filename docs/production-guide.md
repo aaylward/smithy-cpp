@@ -427,7 +427,8 @@ and time spent in the failing phase. Silence means healthy: clean
 keep-alive closes, idle timeouts with nothing received, and shutdown
 cancellations are deliberately not reported, so the signal does not scale
 with healthy traffic. Wire it to the same sink as `on_rejected` and
-`Observe` — together they cover every connection the transport terminates.
+`Observe`: with both hooks installed, every connection the transport
+terminates is either accounted for or deliberately, documented-ly healthy.
 
 Concurrent connections are capped by `max_connections` (default 1024; 0
 disables the cap): at the cap the server pauses accepting and new

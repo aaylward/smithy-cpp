@@ -78,6 +78,7 @@ cc_test(
         ":todo_server",
         "@googletest//:gtest_main",
         "@smithy_cpp//runtime:client",
+        "@smithy_cpp//runtime:connection_event_recorder",
         "@smithy_cpp//runtime:http",
         "@smithy_cpp//runtime:http_beast",
         "@smithy_cpp//runtime:server",

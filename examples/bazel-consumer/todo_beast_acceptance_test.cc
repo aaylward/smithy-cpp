@@ -22,6 +22,7 @@
 #include "acme/todo/server.h"
 #include "smithy/client/config.h"
 #include "smithy/http/beast_transport.h"
+#include "smithy/testing/connection_event_recorder.h"
 #include "smithy/testing/tls_test_identity.h"
 
 namespace {
@@ -207,15 +208,10 @@ TEST(TodoBeastMetadataTest, ConnectionEventsAreObservableFromAConsumerBuild) {
   // The on_connection_event knob at the module boundary (ADR-0013): a TLS
   // client speaking to a plain-http server never produces a request, so
   // only the transport can see it — as framing garbage (the ClientHello).
-  std::mutex mutex;
-  std::vector<smithy::http::BeastServerTransport::ConnectionEvent> events;
+  smithy::testing::ConnectionEventRecorder recorder;
   TodoServer server(std::make_shared<AcceptanceHandler>());
   smithy::http::BeastServerTransport transport(smithy::http::BeastServerTransport::Options{
-      .threads = 1,
-      .on_connection_event = [&](const smithy::http::BeastServerTransport::ConnectionEvent& e) {
-        const std::lock_guard<std::mutex> lock(mutex);
-        events.push_back(e);
-      }});
+      .threads = 1, .on_connection_event = recorder.Hook()});
   ASSERT_TRUE(transport.Start(server.Handler()).ok());
 
   smithy::http::BeastHttpClient wrong_scheme({.host = "127.0.0.1",
@@ -228,20 +224,14 @@ TEST(TodoBeastMetadataTest, ConnectionEventsAreObservableFromAConsumerBuild) {
   const auto response = wrong_scheme.Send(request);
   EXPECT_FALSE(response.ok());
 
-  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
-  while (std::chrono::steady_clock::now() < deadline) {
-    {
-      const std::lock_guard<std::mutex> lock(mutex);
-      if (!events.empty()) break;
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
+  ASSERT_TRUE(recorder.WaitFor(1));
   {
-    const std::lock_guard<std::mutex> lock(mutex);
-    ASSERT_GE(events.size(), 1u);
-    EXPECT_EQ(events[0].kind,
+    const std::lock_guard<std::mutex> lock(recorder.mutex);
+    ASSERT_EQ(recorder.events.size(), 1u);
+    EXPECT_EQ(recorder.events[0].kind,
               smithy::http::BeastServerTransport::ConnectionEvent::Kind::kFramingError);
-    EXPECT_EQ(events[0].peer_address.rfind("127.0.0.1:", 0), 0u) << events[0].peer_address;
+    EXPECT_EQ(recorder.events[0].peer_address.rfind("127.0.0.1:", 0), 0u)
+        << recorder.events[0].peer_address;
   }
   transport.Stop();
 }

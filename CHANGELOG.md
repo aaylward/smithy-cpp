@@ -57,14 +57,18 @@ via `git_override` until then.
   for tests and simple deployments; **Boost.Beast production transports both
   directions** — `BeastServerTransport` (thread pool, keep-alive, timeouts,
   size limits with the 413/431 rejections observable via
-  `Options::on_rejected`, connections terminated without a response —
-  TLS handshake failures, framing garbage, stalled reads, mid-stream
-  drops — observable via `Options::on_connection_event` with peer, error
-  detail, and phase-elapsed time while clean closes, idle reaping, and
-  shutdown stay deliberately silent (ADR-0013), graceful drain, TLS
-  termination) and `BeastHttpClient`
+  `Options::on_rejected`, graceful drain, TLS termination) and `BeastHttpClient`
   (keep-alive connection pool, per-request timeouts, TLS via BoringSSL with
   certificate + hostname verification on by default).
+- Connections the transport terminates without a response are observable
+  (ADR-0013): `BeastServerTransport::Options::on_connection_event` reports
+  TLS handshake failures (handshakes that went wrong, not probe non-starts),
+  framing garbage, stalled reads (the slowloris shape), and mid-stream
+  drops, each with the peer, the error text, and phase-elapsed time — while
+  clean closes (with or without TLS close_notify), idle reaping, and
+  shutdown stay deliberately silent. Each wire phase now gets its own
+  `request_timeout_seconds` budget, so a handler outrunning the read
+  deadline's residue no longer has its response cancelled.
 - Server trace identity minted at transport ingress (ADR-0011): a valid
   inbound `traceparent` continues verbatim; an absent or malformed one is
   replaced with a fresh root context, so `Observe`'s `trace_parent` always

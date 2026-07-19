@@ -50,14 +50,18 @@ class BeastServerTransport : public HttpServerTransport {
 
   // A connection the transport terminated without a response (ADR-0013) —
   // the failures Observe middleware can never see because no handler chain
-  // ever ran (issue #46). Silence means healthy: clean keep-alive closes,
-  // idle timeouts with nothing received, and Stop()-time cancellations are
-  // deliberately not reported.
+  // ever ran (issue #46). Silence means healthy: clean keep-alive closes
+  // (with or without TLS close_notify), idle timeouts with nothing
+  // received, probe-shaped handshake non-starts, and Stop()-time
+  // cancellations are deliberately not reported.
   struct ConnectionEvent {
     enum class Kind {
-      // TLS was configured and the handshake did not complete (including a
-      // handshake timeout). A flood of these on a TLS port is the
-      // "something is sending plaintext here" alarm.
+      // TLS was configured and a handshake went WRONG: plaintext to the
+      // TLS port, a version/cipher/ALPN mismatch. A flood of these is the
+      // "something is sending plaintext here" alarm. Connections that just
+      // went away — TCP health probes and scanners that connect and leave
+      // or idle into the deadline — are silent: that noise scales with
+      // infrastructure, not incidents.
       kTlsHandshakeFailure,
       // Bytes arrived that never parsed into a request.
       kFramingError,

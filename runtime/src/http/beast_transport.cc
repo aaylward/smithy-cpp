@@ -260,20 +260,29 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
     std::shared_ptr<asio::ssl::stream<beast::tcp_stream>> stream(session, &session->stream);
     beast::get_lowest_layer(*stream).expires_after(
         std::chrono::seconds(opts.request_timeout_seconds));
-    const auto started = std::chrono::steady_clock::now();
     auto& stream_ref = *stream;
     stream_ref.async_handshake(
-        asio::ssl::stream_base::server, [weak = weak_from_this(), stream, started,
-                                         peer = EventPeer(*stream)](beast::error_code ec) mutable {
+        asio::ssl::stream_base::server,
+        [weak = weak_from_this(), stream, phase = Phase(*stream)](beast::error_code ec) mutable {
           auto self = weak.lock();
           if (self == nullptr) {
             return;
           }
           if (ec) {
-            // Drop the connection, observed: a flood of these on a TLS port
-            // is the something-is-sending-plaintext-here alarm (ADR-0013).
-            using Kind = BeastServerTransport::ConnectionEvent::Kind;
-            self->NotifyConnectionEvent(Kind::kTlsHandshakeFailure, ec, std::move(peer), started);
+            // Drop the connection — observed only for handshakes that went
+            // wrong, not connections that went away (ADR-0013): TCP health
+            // probes and scanners connect and leave (eof/stream_truncated)
+            // or idle into the deadline, and that noise would scale with
+            // infrastructure, not incidents. A handshake that exchanged
+            // bytes and failed — plaintext to the TLS port, a
+            // version/cipher/ALPN mismatch — is the misrouting alarm.
+            const bool probe_shape = ec == asio::error::eof ||
+                                     ec == asio::ssl::error::stream_truncated ||
+                                     ec == beast::error::timeout;
+            if (!probe_shape) {
+              using Kind = BeastServerTransport::ConnectionEvent::Kind;
+              self->NotifyConnectionEvent(Kind::kTlsHandshakeFailure, ec, std::move(phase));
+            }
             return;
           }
           self->ReadNext(stream);
@@ -304,14 +313,19 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
     }
   }
 
-  // The peer for a would-be connection event, captured when a wire phase
-  // BEGINS: by the time a failure completes, the deadline machinery may
-  // already have closed the socket and getpeername has nothing to report
-  // (a timed-out stream is closed before its handler runs). Free when the
-  // hook is not installed.
+  // A wire phase's identity, captured when the phase BEGINS: by the time a
+  // failure completes, the deadline machinery may already have closed the
+  // socket and getpeername has nothing to report (a timed-out stream is
+  // closed before its handler runs). The peer lookup happens only when the
+  // hook is installed, so the unobserved path pays nothing.
+  struct PhaseStart {
+    std::string peer;
+    std::chrono::steady_clock::time_point at;
+  };
   template <typename Stream>
-  std::string EventPeer(Stream& stream) const {
-    return opts.on_connection_event ? PeerAddressOf(stream) : std::string();
+  PhaseStart Phase(Stream& stream) const {
+    return {opts.on_connection_event ? PeerAddressOf(stream) : std::string(),
+            std::chrono::steady_clock::now()};
   }
 
   // One observation per transport-terminated connection (ADR-0013,
@@ -319,17 +333,16 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
   // is reported while stopping: shutdown cancellations are lifecycle, not
   // incident.
   void NotifyConnectionEvent(BeastServerTransport::ConnectionEvent::Kind kind,
-                             const beast::error_code& ec, std::string peer,
-                             std::chrono::steady_clock::time_point started) const {
+                             const beast::error_code& ec, PhaseStart phase) const {
     if (!opts.on_connection_event || stopping) {
       return;
     }
     const BeastServerTransport::ConnectionEvent event{
         .kind = kind,
-        .peer_address = std::move(peer),
+        .peer_address = std::move(phase.peer),
         .detail = ec.message(),
         .elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
-            std::chrono::steady_clock::now() - started)};
+            std::chrono::steady_clock::now() - phase.at)};
     try {
       opts.on_connection_event(event);
     } catch (const std::exception& e) {
@@ -343,28 +356,36 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
   // healthy shapes: a clean close at a message boundary, and a timeout with
   // nothing received — idle keep-alive reaping, indistinguishable from a
   // healthy client leaving.
-  void NotifyReadFailure(const beast::error_code& ec, bool got_some, std::string peer,
-                         std::chrono::steady_clock::time_point started) const {
+  void NotifyReadFailure(const beast::error_code& ec, bool got_some, PhaseStart phase) const {
     using Kind = BeastServerTransport::ConnectionEvent::Kind;
     if (ec == bhttp::error::end_of_stream) {
       return;
     }
+    if (ec == asio::ssl::error::stream_truncated) {
+      // A TLS peer that skips close_notify — as this repo's own client and
+      // CloseStream do, tolerated HTTP practice — surfaces here rather than
+      // as end_of_stream. Same shape as a plain close: silent between
+      // messages, a drop mid-message.
+      if (got_some) {
+        NotifyConnectionEvent(Kind::kDropped, ec, std::move(phase));
+      }
+      return;
+    }
     if (ec == beast::error::timeout) {
       if (got_some) {
-        NotifyConnectionEvent(Kind::kReadTimeout, ec, std::move(peer), started);
+        NotifyConnectionEvent(Kind::kReadTimeout, ec, std::move(phase));
       }
       return;
     }
     if (ec == bhttp::error::partial_message) {
-      NotifyConnectionEvent(Kind::kDropped, ec, std::move(peer), started);
+      NotifyConnectionEvent(Kind::kDropped, ec, std::move(phase));
       return;
     }
     // The rest of Beast's HTTP error category is the parse family; anything
     // from another category is transport-level (reset, broken pipe, ...).
     const bool parse_error =
         ec.category() == bhttp::make_error_code(bhttp::error::bad_method).category();
-    NotifyConnectionEvent(parse_error ? Kind::kFramingError : Kind::kDropped, ec, std::move(peer),
-                          started);
+    NotifyConnectionEvent(parse_error ? Kind::kFramingError : Kind::kDropped, ec, std::move(phase));
   }
 
   // Answers an over-limit request with a minimal 413/431 + Connection: close,
@@ -429,11 +450,10 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
     parser->header_limit(static_cast<std::uint32_t>(opts.max_header_bytes));
     beast::get_lowest_layer(*stream).expires_after(
         std::chrono::seconds(opts.request_timeout_seconds));
-    const auto started = std::chrono::steady_clock::now();
     auto& stream_ref = *stream;
     bhttp::async_read(stream_ref, *buffer, *parser,
-                      [weak = weak_from_this(), stream, buffer, parser, started,
-                       peer = EventPeer(*stream)](beast::error_code ec, std::size_t) mutable {
+                      [weak = weak_from_this(), stream, buffer, parser, phase = Phase(*stream)](
+                          beast::error_code ec, std::size_t) mutable {
                         auto self = weak.lock();
                         if (self == nullptr) {
                           CloseStream(*stream);
@@ -452,7 +472,7 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
                           return;
                         }
                         if (ec) {
-                          self->NotifyReadFailure(ec, parser->got_some(), std::move(peer), started);
+                          self->NotifyReadFailure(ec, parser->got_some(), std::move(phase));
                           CloseStream(*stream);
                           return;
                         }
@@ -476,56 +496,69 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
   // the process, dropping every in-flight request.
   template <typename Stream>
   void Dispatch(const std::shared_ptr<Stream>& stream, HttpRequest request, bool keep_alive) {
+    // The request's own peer stamp rides along for the write-phase event:
+    // by write time the peer may already be gone (an RST while the handler
+    // ran) and a fresh getpeername would come back empty.
+    std::string peer = request.peer_address;
     if (handler_pool == nullptr) {
-      Respond(stream, InvokeHandlerGuarded(handler, std::move(request)), keep_alive);
+      Respond(stream, InvokeHandlerGuarded(handler, std::move(request)), keep_alive,
+              std::move(peer));
       return;
     }
     asio::post(*handler_pool, [weak = weak_from_this(), stream, request = std::move(request),
-                               keep_alive]() mutable {
+                               keep_alive, peer = std::move(peer)]() mutable {
       auto self = weak.lock();
       if (self == nullptr) {
         return;  // Torn down; the abandoned stream closes the fd.
       }
       HttpResponse response = InvokeHandlerGuarded(self->handler, std::move(request));
-      asio::post(stream->get_executor(),
-                 [weak, stream, response = std::move(response), keep_alive]() mutable {
-                   auto self = weak.lock();
-                   if (self == nullptr) {
-                     CloseStream(*stream);
-                     return;
-                   }
-                   self->Respond(stream, std::move(response), keep_alive);
-                 });
+      asio::post(stream->get_executor(), [weak, stream, response = std::move(response), keep_alive,
+                                          peer = std::move(peer)]() mutable {
+        auto self = weak.lock();
+        if (self == nullptr) {
+          CloseStream(*stream);
+          return;
+        }
+        self->Respond(stream, std::move(response), keep_alive, std::move(peer));
+      });
     });
   }
 
   template <typename Stream>
-  void Respond(const std::shared_ptr<Stream>& stream, const HttpResponse& response,
-               bool keep_alive) {
+  void Respond(const std::shared_ptr<Stream>& stream, const HttpResponse& response, bool keep_alive,
+               std::string peer) {
     auto wire =
         std::make_shared<bhttp::response<bhttp::string_body>>(ToWireResponse(response, keep_alive));
-    const auto started = std::chrono::steady_clock::now();
+    // Each wire phase gets its own request_timeout_seconds budget: Beast
+    // expiries are absolute and outlive the op, so without a re-arm the
+    // write would run under the deadline set at READ start — and a handler
+    // outrunning the residue would have its response cancelled and the
+    // healthy, waiting peer misreported as a drop (ADR-0013). Handler time
+    // is bounded by the drain/executor policy, not the wire deadline.
+    beast::get_lowest_layer(*stream).expires_after(
+        std::chrono::seconds(opts.request_timeout_seconds));
     auto& wire_stream = *stream;
     auto& wire_ref = *wire;
-    bhttp::async_write(
-        wire_stream, wire_ref,
-        [weak = weak_from_this(), stream, wire, keep_alive, started, peer = EventPeer(*stream)](
-            beast::error_code write_ec, std::size_t) mutable {
-          auto self = weak.lock();
-          if (self != nullptr) {
-            self->active.fetch_sub(1);
-          }
-          if (self == nullptr || write_ec || !keep_alive) {
-            if (self != nullptr && write_ec) {
-              // The peer vanished mid-response (ADR-0013).
-              using Kind = BeastServerTransport::ConnectionEvent::Kind;
-              self->NotifyConnectionEvent(Kind::kDropped, write_ec, std::move(peer), started);
-            }
-            CloseStream(*stream);
-            return;
-          }
-          self->ReadNext(stream);
-        });
+    bhttp::async_write(wire_stream, wire_ref,
+                       [weak = weak_from_this(), stream, wire, keep_alive,
+                        phase = PhaseStart{std::move(peer), std::chrono::steady_clock::now()}](
+                           beast::error_code write_ec, std::size_t) mutable {
+                         auto self = weak.lock();
+                         if (self != nullptr) {
+                           self->active.fetch_sub(1);
+                         }
+                         if (self == nullptr || write_ec || !keep_alive) {
+                           if (self != nullptr && write_ec) {
+                             // The peer vanished mid-response (ADR-0013).
+                             using Kind = BeastServerTransport::ConnectionEvent::Kind;
+                             self->NotifyConnectionEvent(Kind::kDropped, write_ec,
+                                                         std::move(phase));
+                           }
+                           CloseStream(*stream);
+                           return;
+                         }
+                         self->ReadNext(stream);
+                       });
   }
 };
 

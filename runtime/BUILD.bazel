@@ -102,6 +102,17 @@ cc_library(
     includes = ["testing/include"],
 )
 
+# The ADR-0013 connection-event test recorder — one copy for the runtime
+# Beast suites and the consumer module's tests, like the TLS identity above.
+cc_library(
+    name = "connection_event_recorder",
+    testonly = True,
+    hdrs = ["testing/include/smithy/testing/connection_event_recorder.h"],
+    copts = COPTS,
+    includes = ["testing/include"],
+    deps = [":http_beast"],
+)
+
 cc_library(
     name = "protocol_test_support",
     testonly = True,
@@ -232,6 +243,7 @@ cc_test(
     copts = COPTS,
     tags = ["requires-network"],
     deps = [
+        ":connection_event_recorder",
         ":http",
         ":http_beast",
         "@googletest//:gtest_main",
@@ -246,6 +258,7 @@ cc_test(
     tags = ["requires-network"],
     deps = [
         ":client",
+        ":connection_event_recorder",
         ":core",
         ":http",
         ":http_beast",

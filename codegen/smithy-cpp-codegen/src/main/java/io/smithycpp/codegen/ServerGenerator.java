@@ -131,8 +131,12 @@ final class ServerGenerator {
         // ADR-0010 shape, with the borrowed session in between.
         w.write("/// Streaming operation (ADR-0016): Send/Receive on `stream` until done,");
         w.write("/// then return Unit for a clean close — or an error, which ends the");
-        w.write("/// stream with an exception message before the close. Blocks the");
-        w.write("/// transport's handler thread for the session's lifetime.");
+        w.write("/// stream with an exception message before the close (unless the");
+        w.write("/// stream already terminated: propagating a failed Receive() closes");
+        w.write("/// without a message — the peer already observed that failure).");
+        w.write("/// `stream` is valid only until this method returns; join any helper");
+        w.write("/// thread still using it. Blocks the transport's handler thread for");
+        w.write("/// the session's lifetime.");
         w.write(
             "virtual smithy::Outcome<smithy::Unit> $L(const $L& input, $L& stream, $L context)"
                 + " = 0;",

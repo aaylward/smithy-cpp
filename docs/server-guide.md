@@ -98,7 +98,10 @@ Event-stream operations (ADR-0016) grow the handler a streaming method — input
 typed session in the middle, context last — that blocks for the session's lifetime:
 `Send`/`Receive` until done, then return `Unit` for a clean close, or an `Error`, which ends
 the stream with one typed exception message before the close (a `Modeled` error with
-`set_detail()` surfaces on the client exactly like a unary modeled error). The generated
+`set_detail()` surfaces on the client exactly like a unary modeled error) — unless the
+stream already terminated: propagating a failed `Receive()` closes without a message,
+which that peer already observed. The `stream&` is valid only until the handler returns,
+so join any helper thread still using it before returning. The generated
 server exposes `StreamRouter()`, a `smithy::server::WebSocketRouter` with every streaming
 route registered; mount it on the transport in two lines — the upgrade path deliberately
 bypasses the HTTP middleware chain (ADR-0015), so unary dispatch beside it is untouched:

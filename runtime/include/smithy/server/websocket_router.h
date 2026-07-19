@@ -32,8 +32,8 @@ using StreamServe =
 // middleware chain (ADR-0015), so a generated server's streaming routes
 // mount in two lines:
 //
-//   options.websocket_gate = server.StreamRouter().Gate();
-//   options.on_websocket = server.StreamRouter().Serve();
+//   options.websocket_gate = server.StreamRouter()->Gate();
+//   options.on_websocket = server.StreamRouter()->Serve();
 //
 // Application admission policy (auth, rate limits) composes by wrapping
 // Gate(): run the application's refusal first, then defer to the router's.

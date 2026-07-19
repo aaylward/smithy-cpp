@@ -432,7 +432,11 @@ admission refusals around `Gate()` — see
 notes above apply verbatim: upgraded sessions idle under
 `websocket_idle_timeout_seconds`, and `Stop()` aborts live streams rather
 than draining them (ADR-0015), so end streams application-side first when a
-rollout needs grace.
+rollout needs grace. Every live stream also pins one handler-pool
+thread for its whole lifetime (the serve callback blocks by design), so
+size `handler_threads` at expected concurrent sessions plus unary
+headroom — sixteen idle streams on the default pool starve everything
+else.
 
 ## Server hardening
 

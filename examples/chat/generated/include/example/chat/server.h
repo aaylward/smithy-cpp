@@ -32,8 +32,12 @@ class ChatHandler {
     /// errors list, not as event union members — ADR-0016's wire binding).
     /// Streaming operation (ADR-0016): Send/Receive on `stream` until done,
     /// then return Unit for a clean close — or an error, which ends the
-    /// stream with an exception message before the close. Blocks the
-    /// transport's handler thread for the session's lifetime.
+    /// stream with an exception message before the close (unless the
+    /// stream already terminated: propagating a failed Receive() closes
+    /// without a message — the peer already observed that failure).
+    /// `stream` is valid only until this method returns; join any helper
+    /// thread still using it. Blocks the transport's handler thread for
+    /// the session's lifetime.
     virtual smithy::Outcome<smithy::Unit> Converse(const ConverseInput& input, smithy::eventstream::EventStream<RoomEvents, ChatEvents>& stream, const smithy::server::RequestContext& context) = 0;
     /// Unary neighbor: an ordinary request/response on the same service, served
     /// by the same transport that upgrades the streaming operations.
@@ -42,8 +46,12 @@ class ChatHandler {
     /// runtime's NoEvents — the client only listens to the room.
     /// Streaming operation (ADR-0016): Send/Receive on `stream` until done,
     /// then return Unit for a clean close — or an error, which ends the
-    /// stream with an exception message before the close. Blocks the
-    /// transport's handler thread for the session's lifetime.
+    /// stream with an exception message before the close (unless the
+    /// stream already terminated: propagating a failed Receive() closes
+    /// without a message — the peer already observed that failure).
+    /// `stream` is valid only until this method returns; join any helper
+    /// thread still using it. Blocks the transport's handler thread for
+    /// the session's lifetime.
     virtual smithy::Outcome<smithy::Unit> Watch(const WatchInput& input, smithy::eventstream::EventStream<RoomEvents, smithy::eventstream::NoEvents>& stream, const smithy::server::RequestContext& context) = 0;
 };
 

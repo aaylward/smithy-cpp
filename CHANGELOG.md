@@ -95,6 +95,16 @@ via `git_override` until then.
   callback for in-flight gauges with guaranteed start/complete pairing.
   **Breaking:** `Observe(callback, now)` call sites become
   `Observe(callback, nullptr, now)`.
+- Phase 8 groundwork, wire-format-first (ADR-0014): `//runtime:eventstream`
+  is the event-stream message framing both streaming protocols are defined
+  against — CRC-guarded prelude, ten typed header wire types (headers
+  build from plain values and the timestamp is the runtime's own
+  `smithy::Timestamp`), opaque `Blob` payloads, an incremental strict
+  fail-closed decoder, and symmetric bounds (Encode refuses whatever
+  Decode would reject). `Message::FindHeader`/`FindString` cover the
+  dispatch-on-`:event-type` lookup every consumer does, and messages
+  debug-render. Fuzzed, and pinned with byte-exact vectors from an
+  independent implementation.
 - Fuzz harnesses (JSON, CBOR, URI, server dispatch, regex) and a Google
   Benchmark suite (serde, codecs, per-protocol request round trips, real-TCP
   transport round trips incl. Beast and Beast TLS) run in CI.

@@ -105,3 +105,18 @@ cc_test(
         "@smithy_cpp//runtime:server",
     ],
 )
+
+# Out-of-tree acceptance for the event-stream framing codec (ADR-0014
+# slice 1): the documented consumer surface — plain-value headers, the
+# canonical chunked decode loop, FindString dispatch — compiles and runs
+# against the runtime targets alone, ahead of the generated streaming API.
+cc_test(
+    name = "eventstream_consumer_test",
+    size = "small",
+    srcs = ["eventstream_consumer_test.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "@smithy_cpp//runtime:core",
+        "@smithy_cpp//runtime:eventstream",
+    ],
+)

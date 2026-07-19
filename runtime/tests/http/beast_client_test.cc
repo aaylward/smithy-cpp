@@ -238,7 +238,14 @@ TEST(BeastClientTest, TlsLifecycleAndProbesStaySilent) {
     boost::asio::ip::tcp::socket idler(probe_io);
     idler.connect(boost::asio::ip::tcp::endpoint(boost::asio::ip::make_address("127.0.0.1"),
                                                  static_cast<unsigned short>(server.port())));
-    std::this_thread::sleep_for(std::chrono::milliseconds(1500));  // deadline passes
+    // A probe that dies mid-TLS-record (three bytes of a five-byte record
+    // header) is still the connect-and-leave shape, not a wrong handshake.
+    boost::asio::ip::tcp::socket half_record(probe_io);
+    half_record.connect(boost::asio::ip::tcp::endpoint(boost::asio::ip::make_address("127.0.0.1"),
+                                                       static_cast<unsigned short>(server.port())));
+    (void)half_record.send(boost::asio::buffer(std::string_view("\x16\x03\x01")));
+    half_record.close();
+    std::this_thread::sleep_for(std::chrono::milliseconds(1500));  // idler's deadline passes
     idler.close();
   }
 
@@ -346,6 +353,36 @@ struct RawTlsProbe {
     return ec;
   }
 };
+
+TEST(BeastClientTest, ATlsPeerVanishingMidRequestIsObservedAsDropped) {
+  // The mid-message side of the stream_truncated split (ADR-0013): a TLS
+  // client that dies after starting a request — TCP close, no close_notify
+  // — is a drop, not a clean close.
+  smithy::testing::ConnectionEventRecorder recorder;
+  auto options = TlsServerOptions();
+  options.on_connection_event = recorder.Hook();
+  BeastServerTransport server(options);
+  ASSERT_TRUE(server.Start(EchoHandler()).ok());
+
+  RawTlsProbe probe;
+  ASSERT_FALSE(probe.Handshake(server.port()));
+  boost::system::error_code ec;
+  (void)probe.stream->write_some(boost::asio::buffer(std::string_view("POST /echo HTTP/1.1\r\n")),
+                                 ec);
+  ASSERT_FALSE(ec) << ec.message();
+  (void)probe.stream->next_layer().close(ec);  // TCP close, no SSL shutdown
+
+  ASSERT_TRUE(recorder.WaitFor(1));
+  const std::lock_guard<std::mutex> lock(recorder.mutex);
+  ASSERT_EQ(recorder.events.size(), 1u);
+  EXPECT_EQ(recorder.events[0].kind, BeastServerTransport::ConnectionEvent::Kind::kDropped);
+  EXPECT_FALSE(recorder.events[0].detail.empty());
+  // No peer assertion: the probe never reads the server's session tickets,
+  // so its close() is an RST that can land before the read phase even arms
+  // — the documented may-be-empty case. Peer presence on drops is pinned
+  // by the plaintext twins (beast_transport_test.cc).
+  server.Stop();
+}
 
 TEST(BeastClientTest, TlsServerRefusesPreTls12Clients) {
   BeastServerTransport server(TlsServerOptions());

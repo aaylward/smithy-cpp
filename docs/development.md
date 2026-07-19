@@ -142,13 +142,13 @@ cd codegen && gradle spotlessApply
 - The Boost-dependent targets (`//runtime:http_beast` and the tests that use it) fetch ~30
   modular Boost archives. Behind a proxy that blocks GitHub they won't fetch; exclude them and
   run everything else with
-  `bazel test //... -- -//runtime:http_beast -//runtime:connection_event_recorder -//runtime:beast_transport_test -//runtime:beast_client_test -//examples/weather:weather_e2e_beast_test`
+  `bazel test //... -- -//runtime:http_beast -//runtime:connection_event_recorder -//runtime:beast_transport_test -//runtime:beast_client_test -//examples/weather:weather_e2e_beast_test -//examples/simplerestjson:bookstore_server -//examples/simplerestjson:bookstore_server_lifecycle_test -//benchmarks/...`
   (the consumer module's `//:todo_beast_acceptance_test` needs the same exclusion).
   The Beast code itself can still be exercised against distro packages with plain g++ —
   `apt-get install libboost-dev libgtest-dev`, then:
 
   ```sh
-  g++ -std=c++20 -O1 -pthread -Iruntime/include \
+  g++ -std=c++20 -O1 -pthread -Iruntime/include -Iruntime/testing/include \
     runtime/tests/http/beast_transport_test.cc \
     runtime/src/http/{beast_transport,socket_transport,headers,http1,server_dispatch,uri,trace_context}.cc \
     runtime/src/core/{uuid,text}.cc \

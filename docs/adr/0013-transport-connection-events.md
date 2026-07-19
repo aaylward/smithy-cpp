@@ -51,10 +51,9 @@ runs; an RST during handler execution empties `getpeername` before the
 write starts). The handshake and read phases look it up at phase start
 only when the hook is installed, so the unobserved path pays nothing; the
 write phase reuses the request's own `peer_address` stamp. The observer
-runs on the
-io thread, is contained like `on_rejected` and the middleware hooks
-(a throwing sink logs and never takes down the connection path it is
-watching), and must be cheap and thread-safe.
+runs on the io thread, is contained like `on_rejected` and the middleware
+hooks (a throwing sink logs and never takes down the connection path it
+is watching), and must be cheap and thread-safe.
 
 **Deliberately silent — silence means healthy:**
 
@@ -95,7 +94,9 @@ new kind, not a reinterpretation of these.
   middleware can compose full-request pictures without `Observe` growing a
   transport dependency.
 - The production guide wires `on_connection_event` to the same sink as
-  `on_rejected` and `Observe`; a `kFramingError` flood at the TLS port is
-  the "LB is misrouting" alarm, `kReadTimeout` the stall alarm.
+  `on_rejected` and `Observe`. The misrouting alarm reads both ways: a
+  `kTlsHandshakeFailure` flood at the TLS port is plaintext arriving
+  there, a `kFramingError` flood at the plain port is TLS ClientHellos
+  arriving *there*; `kReadTimeout` is the stall alarm.
 - Event kinds are a closed enum; new failure classes are new kinds
   (additive), never reinterpretations of existing ones.

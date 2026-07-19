@@ -15,7 +15,6 @@
 #include <mutex>
 #include <stdexcept>
 #include <string>
-#include <thread>
 #include <vector>
 
 #include "acme/todo/client.h"

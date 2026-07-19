@@ -74,9 +74,10 @@ bhttp::response<bhttp::string_body> ToWireResponse(HttpResponse response, bool k
   return wire;
 }
 
-// The connection's remote peer for HttpRequest::peer_address, rendered by
-// the shared formatter (server_dispatch.h) so the transports' stamps cannot
-// drift; empty when the socket can no longer report one.
+// The connection's remote peer for the request, rejection, and
+// connection-event stamps, rendered by the shared formatter
+// (server_dispatch.h) so the transports' stamps cannot drift; empty when
+// the socket can no longer report one.
 template <typename Stream>
 std::string PeerAddressOf(Stream& stream) {
   beast::error_code ec;
@@ -479,8 +480,12 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
                         self->active.fetch_add(1);
                         const bool keep_alive = parser->get().keep_alive() && !self->stopping;
                         HttpRequest request = ToSmithyRequest(parser->release());
-                        // Per request rather than per connection: one getpeername-class
-                        // syscall, and no extra state threaded through the session chain.
+                        // Per request rather than per connection (with the
+                        // event hook installed, Phase() above adds a second
+                        // lookup per read arm — the price of observability);
+                        // Dispatch threads this stamp to the write-phase
+                        // event, where a fresh lookup could already be
+                        // empty.
                         request.peer_address = PeerAddressOf(*stream);
                         self->Dispatch(stream, std::move(request), keep_alive);
                       });

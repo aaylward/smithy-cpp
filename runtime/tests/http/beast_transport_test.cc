@@ -11,7 +11,6 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <future>
 #include <mutex>
 #include <stdexcept>
@@ -501,20 +500,28 @@ TEST(BeastTransportTest, APeerResetMidRequestIsObservedAsDropped) {
   const std::lock_guard<std::mutex> lock(recorder.mutex);
   ASSERT_EQ(recorder.events.size(), 1u);
   EXPECT_EQ(recorder.events[0].kind, BeastServerTransport::ConnectionEvent::Kind::kDropped);
-  EXPECT_EQ(recorder.events[0].peer_address.rfind("127.0.0.1:", 0), 0u);
+  EXPECT_FALSE(recorder.events[0].detail.empty());
+  EXPECT_EQ(recorder.events[0].peer_address.rfind("127.0.0.1:", 0), 0u)
+      << recorder.events[0].peer_address;
   server.Stop();
 }
 
 TEST(BeastTransportTest, APeerVanishingBeforeTheResponseWriteIsObservedAsDropped) {
   // The write-path event (ADR-0013): the handler is held until the client
-  // has RST-closed, so the response write itself fails.
+  // has RST-closed, so the response write itself fails. The entered latch
+  // makes the sequencing deterministic — the RST cannot land before the
+  // read completed, so the read path cannot produce this event's kind for
+  // the wrong reason (the pre-release emptiness check pins that).
   ConnectionEventRecorder recorder;
+  std::promise<void> entered;
+  auto entered_future = entered.get_future();
   std::promise<void> release;
   auto released = std::make_shared<std::shared_future<void>>(release.get_future().share());
   BeastServerTransport server(
       BeastServerTransport::Options{.on_connection_event = recorder.Hook()});
   ASSERT_TRUE(server
-                  .Start([released](const HttpRequest&) {
+                  .Start([&entered, released](const HttpRequest&) {
+                    entered.set_value();  // the request was fully read
                     released->wait();
                     HttpResponse response;
                     response.body = std::string(64 * 1024, 'r');  // beat kernel buffering
@@ -526,47 +533,66 @@ TEST(BeastTransportTest, APeerVanishingBeforeTheResponseWriteIsObservedAsDropped
   ASSERT_GE(fd, 0);
   const std::string request = "POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\n\r\n";
   ASSERT_EQ(::send(fd, request.data(), request.size(), 0), static_cast<ssize_t>(request.size()));
-  std::this_thread::sleep_for(std::chrono::milliseconds(150));  // request read; handler blocked
+  entered_future.wait();  // deterministic: the read phase is over
   RstClose(fd);
   std::this_thread::sleep_for(std::chrono::milliseconds(100));  // RST lands
+  {
+    const std::lock_guard<std::mutex> lock(recorder.mutex);
+    EXPECT_TRUE(recorder.events.empty());  // nothing until the write runs
+  }
   release.set_value();
 
   ASSERT_TRUE(recorder.WaitFor(1));
   const std::lock_guard<std::mutex> lock(recorder.mutex);
   ASSERT_EQ(recorder.events.size(), 1u);
   EXPECT_EQ(recorder.events[0].kind, BeastServerTransport::ConnectionEvent::Kind::kDropped);
-  EXPECT_EQ(recorder.events[0].peer_address.rfind("127.0.0.1:", 0), 0u);
+  EXPECT_FALSE(recorder.events[0].detail.empty());
+  EXPECT_EQ(recorder.events[0].peer_address.rfind("127.0.0.1:", 0), 0u)
+      << recorder.events[0].peer_address;
   server.Stop();
 }
 
 TEST(BeastTransportTest, FailuresDuringStopStaySilent) {
   // The stopping gate (ADR-0013): the same vanishing peer produces no
   // event when the write fails inside Stop()'s drain window — shutdown
-  // cancellations are lifecycle, not incident.
+  // cancellations are lifecycle, not incident. Sequencing is latched, not
+  // slept: the handler-entered promise proves the read phase finished
+  // before the RST, and a refused fresh connect proves Stop() closed the
+  // acceptor (its first act after setting stopping) before the release.
   ConnectionEventRecorder recorder;
+  std::promise<void> entered;
+  auto entered_future = entered.get_future();
   std::promise<void> release;
   auto released = std::make_shared<std::shared_future<void>>(release.get_future().share());
   BeastServerTransport server(BeastServerTransport::Options{
       .drain_timeout_seconds = 5, .on_connection_event = recorder.Hook()});
   ASSERT_TRUE(server
-                  .Start([released](const HttpRequest&) {
+                  .Start([&entered, released](const HttpRequest&) {
+                    entered.set_value();
                     released->wait();
                     HttpResponse response;
                     response.body = std::string(64 * 1024, 'r');
                     return response;
                   })
                   .ok());
+  const int port = server.port();
 
-  const int fd = ConnectLoopback(server.port());
+  const int fd = ConnectLoopback(port);
   ASSERT_GE(fd, 0);
   const std::string request = "POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\n\r\n";
   ASSERT_EQ(::send(fd, request.data(), request.size(), 0), static_cast<ssize_t>(request.size()));
-  std::this_thread::sleep_for(std::chrono::milliseconds(150));
+  entered_future.wait();
   RstClose(fd);
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
   std::thread stopper([&server] { server.Stop(); });
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));  // Stop() is draining
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  while (std::chrono::steady_clock::now() < deadline) {
+    const int probe = ConnectLoopback(port);
+    if (probe < 0) break;  // the acceptor is closed: Stop() is underway
+    ::close(probe);
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
   release.set_value();  // handler finishes; the write fails while stopping
   stopper.join();
 
@@ -606,8 +632,13 @@ TEST(BeastTransportTest, ASlowHandlerStillWritesItsResponse) {
 }
 
 TEST(BeastTransportTest, HealthyLifecycleEmitsNoConnectionEvents) {
-  // A served request, the client's clean close, and Stop() itself: silence
-  // means healthy (ADR-0013) — the signal must not scale with traffic.
+  // Silence means healthy (ADR-0013) — the signal must not scale with
+  // traffic. Both healthy close shapes are exercised: a connection:close
+  // request (the server closes first), and — the load-bearing one — a raw
+  // KEEP-ALIVE connection whose client sends FIN at the message boundary,
+  // so the server's re-armed read actually completes with end_of_stream.
+  // SocketHttpClient alone cannot pin that arm: it always sends
+  // connection: close, and the server then never reads the FIN.
   ConnectionEventRecorder recorder;
   BeastServerTransport server(
       BeastServerTransport::Options{.on_connection_event = recorder.Hook()});
@@ -628,7 +659,17 @@ TEST(BeastTransportTest, HealthyLifecycleEmitsNoConnectionEvents) {
     ASSERT_TRUE(response.ok()) << response.error().message();
     EXPECT_EQ(response->body, "healthy");
   }  // client destructor closes cleanly
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+  const int fd = ConnectLoopback(server.port());
+  ASSERT_GE(fd, 0);
+  const std::string keep_alive = "GET / HTTP/1.1\r\nHost: x\r\n\r\n";  // no connection: close
+  ASSERT_EQ(::send(fd, keep_alive.data(), keep_alive.size(), 0),
+            static_cast<ssize_t>(keep_alive.size()));
+  char scratch[1024];
+  ASSERT_GT(::recv(fd, scratch, sizeof(scratch), 0), 0);  // the response arrived
+  ::close(fd);  // clean FIN at the message boundary -> end_of_stream server-side
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(300));
   server.Stop();
   const std::lock_guard<std::mutex> lock(recorder.mutex);
   EXPECT_TRUE(recorder.events.empty());

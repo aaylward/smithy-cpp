@@ -48,10 +48,13 @@ class BeastServerTransport : public HttpServerTransport {
     std::string target;
   };
 
-  // A connection the transport terminated without a response (ADR-0013) —
-  // the failures Observe middleware can never see because no handler chain
-  // ever ran (issue #46). Silence means healthy: clean keep-alive closes
-  // (with or without TLS close_notify), idle timeouts with nothing
+  // A connection the transport terminated without delivering a response
+  // (ADR-0013) — failures the wire sees and Observe middleware doesn't:
+  // most happen before any handler chain ran; the write-phase kDropped
+  // happens after, so that request appears in BOTH the Observe stream and
+  // here (the composition, not a double-count — the event says its
+  // response never arrived). Silence means healthy: clean keep-alive
+  // closes (with or without TLS close_notify), idle timeouts with nothing
   // received, probe-shaped handshake non-starts, and Stop()-time
   // cancellations are deliberately not reported.
   struct ConnectionEvent {

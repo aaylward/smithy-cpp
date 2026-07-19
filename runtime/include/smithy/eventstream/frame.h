@@ -62,7 +62,9 @@ inline constexpr std::size_t kMaxMessageBytes = std::size_t{16} * 1024 * 1024;
 // Encodes one message as a complete frame. Validation errors (an empty or
 // oversized header name, an oversized string/byte-array value, a header
 // block or total frame over the limits) fail the encode — nothing partial
-// is produced.
+// is produced. Frames travel as std::string (unlike the cbor codec's Blob)
+// because they splice into transport buffers, which are string-shaped;
+// the payload INSIDE stays a Blob.
 Outcome<std::string> EncodeMessage(const Message& message);
 
 // One message decoded from the FRONT of `buffer`, and how many bytes its

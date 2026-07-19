@@ -23,9 +23,8 @@ enum WireType : std::uint8_t {
   kWireUuid = 9,
 };
 
-// CRC32, IEEE/zlib polynomial (reflected 0xEDB88320) — written out like the
-// CBOR codec's primitives rather than pulling in zlib for one table and two
-// loops (ADR-0014).
+// CRC32, IEEE/zlib polynomial (reflected 0xEDB88320), written out like the
+// CBOR codec's primitives (ADR-0014).
 std::uint32_t Crc32(std::string_view bytes) {
   static const auto kTable = [] {
     std::array<std::uint32_t, 256> table{};
@@ -189,6 +188,11 @@ std::optional<HeaderValue> DecodeValue(std::string_view block, std::size_t& curs
 constexpr std::size_t kPreludeBytes = 12;  // total + headers length + prelude CRC
 constexpr std::size_t kFrameOverheadBytes = kPreludeBytes + 4;  // + message CRC
 
+// The decode-side rejection, prefixed once (the cbor codec's Fail shape).
+Error Malformed(const char* what) {
+  return Error::Serialization(std::string("eventstream: ") + what);
+}
+
 }  // namespace
 
 Outcome<std::string> EncodeMessage(const Message& message) {
@@ -230,20 +234,20 @@ Outcome<std::optional<DecodedFrame>> DecodeMessage(std::string_view buffer) {
   // a corrupted length must not drive buffering or allocation decisions.
   const auto prelude_crc = static_cast<std::uint32_t>(ReadBigEndian(buffer.substr(8, 4)));
   if (Crc32(buffer.substr(0, 8)) != prelude_crc) {
-    return Error::Serialization("eventstream: prelude CRC mismatch");
+    return Malformed("prelude CRC mismatch");
   }
   const auto total = static_cast<std::size_t>(ReadBigEndian(buffer.substr(0, 4)));
   const auto headers_length = static_cast<std::size_t>(ReadBigEndian(buffer.substr(4, 4)));
   if (total > kMaxMessageBytes || total < kFrameOverheadBytes ||
       headers_length > kMaxHeaderBlockBytes || headers_length > total - kFrameOverheadBytes) {
-    return Error::Serialization("eventstream: declared lengths out of bounds");
+    return Malformed("declared lengths out of bounds");
   }
   if (buffer.size() < total) {
     return std::optional<DecodedFrame>();  // feed me more
   }
   const auto message_crc = static_cast<std::uint32_t>(ReadBigEndian(buffer.substr(total - 4, 4)));
   if (Crc32(buffer.substr(0, total - 4)) != message_crc) {
-    return Error::Serialization("eventstream: message CRC mismatch");
+    return Malformed("message CRC mismatch");
   }
 
   Message message;
@@ -252,19 +256,18 @@ Outcome<std::optional<DecodedFrame>> DecodeMessage(std::string_view buffer) {
   while (cursor < block.size()) {
     const auto name_length = static_cast<std::uint8_t>(block[cursor++]);
     if (name_length == 0 || block.size() - cursor < name_length) {
-      return Error::Serialization("eventstream: malformed header name");
+      return Malformed("malformed header name");
     }
     std::string name(block.substr(cursor, name_length));
     cursor += name_length;
     auto value = DecodeValue(block, cursor);
     if (!value.has_value()) {
-      return Error::Serialization("eventstream: malformed header value");
+      return Malformed("malformed header value");
     }
     message.headers.push_back(Header{std::move(name), std::move(*value)});
   }
-  // The loop consumes exactly the declared block or errors above; landing
-  // past it is impossible, landing short means a truncated final header
-  // already errored. cursor == block.size() holds here by construction.
+  // The bounds checks above keep cursor <= block.size() at every step, so
+  // the loop exits exactly at the block boundary.
 
   message.payload = Blob::FromString(
       buffer.substr(kPreludeBytes + headers_length, total - kFrameOverheadBytes - headers_length));

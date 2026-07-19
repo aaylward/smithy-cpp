@@ -1,6 +1,7 @@
 #ifndef SMITHY_HTTP_BEAST_TRANSPORT_H_
 #define SMITHY_HTTP_BEAST_TRANSPORT_H_
 
+#include <chrono>
 #include <cstddef>
 #include <functional>
 #include <memory>
@@ -47,6 +48,41 @@ class BeastServerTransport : public HttpServerTransport {
     std::string target;
   };
 
+  // A connection the transport terminated without delivering a response
+  // (ADR-0013) — failures the wire sees and Observe middleware doesn't:
+  // most happen before any handler chain ran; the write-phase kDropped
+  // happens after, so that request appears in BOTH the Observe stream and
+  // here (the composition, not a double-count — the event says its
+  // response never arrived). Silence means healthy: clean keep-alive
+  // closes (with or without TLS close_notify), idle timeouts with nothing
+  // received, probe-shaped handshake non-starts, and Stop()-time
+  // cancellations are deliberately not reported.
+  struct ConnectionEvent {
+    enum class Kind {
+      // TLS was configured and a handshake went WRONG: plaintext to the
+      // TLS port, a version/cipher/ALPN mismatch. A flood of these is the
+      // "something is sending plaintext here" alarm. Connections that just
+      // went away — TCP health probes and scanners that connect and leave
+      // or idle into the deadline — are silent: that noise scales with
+      // infrastructure, not incidents.
+      kTlsHandshakeFailure,
+      // Bytes arrived that never parsed into a request.
+      kFramingError,
+      // A request that had begun (at least one octet parsed) stalled past
+      // request_timeout_seconds: the slowloris shape.
+      kReadTimeout,
+      // The peer vanished mid-request or mid-response.
+      kDropped,
+    };
+    Kind kind = Kind::kDropped;
+    // "ip:port"; may be empty when the socket can no longer report it.
+    std::string peer_address;
+    // The transport's own error text (error_code::message()).
+    std::string detail;
+    // Time spent in the failing phase (handshake, read, or write).
+    std::chrono::microseconds elapsed{0};
+  };
+
   struct Options {
     // "127.0.0.1" keeps test servers private; use "0.0.0.0" to serve externally.
     std::string address = "127.0.0.1";
@@ -86,6 +122,13 @@ class BeastServerTransport : public HttpServerTransport {
     // the same sink as smithy::server::Observe so over-limit abuse is
     // visible in the same metrics.
     std::function<void(const RejectedRequest&)> on_rejected;
+    // Observation hook for connections the transport terminated without a
+    // response (one call per ConnectionEvent; ADR-0013). Same contract as
+    // on_rejected: io thread, concurrent across connections, cheap and
+    // thread-safe, throwing callbacks contained and logged. Wire it to the
+    // same sink so handshake failures, framing garbage, stalls, and drops
+    // are visible in the same metrics as served requests.
+    std::function<void(const ConnectionEvent&)> on_connection_event;
     // TLS termination: set both (PEM text, not file paths) to serve https.
     // Posture is fixed, not configurable (issue #46): TLS 1.2 minimum,
     // ECDHE+AEAD cipher suites for 1.2 (every 1.3 suite qualifies), and ALPN

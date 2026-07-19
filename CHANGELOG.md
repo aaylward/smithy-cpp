@@ -60,6 +60,15 @@ via `git_override` until then.
   `Options::on_rejected`, graceful drain, TLS termination) and `BeastHttpClient`
   (keep-alive connection pool, per-request timeouts, TLS via BoringSSL with
   certificate + hostname verification on by default).
+- Connections the transport terminates without a response are observable
+  (ADR-0013): `BeastServerTransport::Options::on_connection_event` reports
+  TLS handshake failures (handshakes that went wrong, not probe non-starts),
+  framing garbage, stalled reads (the slowloris shape), and mid-stream
+  drops, each with the peer, the error text, and phase-elapsed time — while
+  clean closes (with or without TLS close_notify), idle reaping, and
+  shutdown stay deliberately silent. Each wire phase now gets its own
+  `request_timeout_seconds` budget, so a handler outrunning the read
+  deadline's residue no longer has its response cancelled.
 - Server trace identity minted at transport ingress (ADR-0011): a valid
   inbound `traceparent` continues verbatim; an absent or malformed one is
   replaced with a fresh root context, so `Observe`'s `trace_parent` always

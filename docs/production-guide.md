@@ -417,6 +417,19 @@ handler chain exists, so `Observe` middleware never sees them — set
 `Options::on_rejected` to observe them (status, peer address, and whatever
 the parser got to), wired to the same sink as your `Observe` callbacks.
 
+The connections that die without any response are observable the same way
+(ADR-0013): set `Options::on_connection_event` for TLS handshake failures
+(a flood on the TLS port means something is sending plaintext there — a
+misrouting load balancer), framing garbage, stalled requests
+(`kReadTimeout`, the slowloris shape), and peers vanishing mid-request or
+mid-response (`kDropped`), each with the peer, the transport's error text,
+and time spent in the failing phase. Silence means healthy: clean
+keep-alive closes, idle timeouts with nothing received, and shutdown
+cancellations are deliberately not reported, so the signal does not scale
+with healthy traffic. Wire it to the same sink as `on_rejected` and
+`Observe`: with both hooks installed, every connection the transport
+terminates is either accounted for or deliberately, documented-ly healthy.
+
 Concurrent connections are capped by `max_connections` (default 1024; 0
 disables the cap): at the cap the server pauses accepting and new
 connections wait in the kernel's listen backlog until a session closes, so

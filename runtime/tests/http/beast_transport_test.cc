@@ -9,7 +9,9 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -370,6 +372,161 @@ TEST(BeastTransportTest, OversizedDeclaredBodyReadsA413) {
     EXPECT_EQ(rejected[0].target, "/");
     EXPECT_EQ(rejected[0].peer_address.rfind("127.0.0.1:", 0), 0u) << rejected[0].peer_address;
   }
+  server.Stop();
+}
+
+// Shared recorder for the ADR-0013 connection-event tests: a mutex-guarded
+// vector plus a bounded wait for the io thread to deliver.
+struct ConnectionEventRecorder {
+  std::mutex mutex;
+  std::vector<BeastServerTransport::ConnectionEvent> events;
+
+  std::function<void(const BeastServerTransport::ConnectionEvent&)> Hook() {
+    return [this](const BeastServerTransport::ConnectionEvent& event) {
+      const std::lock_guard<std::mutex> lock(mutex);
+      events.push_back(event);
+    };
+  }
+
+  // True once at least `count` events arrived (io-thread delivery is
+  // asynchronous relative to the client's view of the close).
+  bool WaitFor(std::size_t count, std::chrono::milliseconds budget = std::chrono::seconds(5)) {
+    const auto deadline = std::chrono::steady_clock::now() + budget;
+    while (std::chrono::steady_clock::now() < deadline) {
+      {
+        const std::lock_guard<std::mutex> lock(mutex);
+        if (events.size() >= count) return true;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    const std::lock_guard<std::mutex> lock(mutex);
+    return events.size() >= count;
+  }
+};
+
+TEST(BeastTransportTest, FramingGarbageIsObservedAsAConnectionEvent) {
+  // Bytes that never parse into a request are invisible to Observe — the
+  // connection-event hook is the only observation point (ADR-0013).
+  ConnectionEventRecorder recorder;
+  BeastServerTransport server(
+      BeastServerTransport::Options{.on_connection_event = recorder.Hook()});
+  ASSERT_TRUE(server.Start([](const HttpRequest&) { return HttpResponse{}; }).ok());
+
+  EXPECT_EQ(RawRoundTrip(server.port(), "\x01\x02\x03\r\n\r\n"), "");  // closed, no response
+  ASSERT_TRUE(recorder.WaitFor(1));
+  {
+    const std::lock_guard<std::mutex> lock(recorder.mutex);
+    ASSERT_EQ(recorder.events.size(), 1u);
+    EXPECT_EQ(recorder.events[0].kind, BeastServerTransport::ConnectionEvent::Kind::kFramingError);
+    EXPECT_EQ(recorder.events[0].peer_address.rfind("127.0.0.1:", 0), 0u)
+        << recorder.events[0].peer_address;
+    EXPECT_FALSE(recorder.events[0].detail.empty());
+  }
+  server.Stop();
+}
+
+TEST(BeastTransportTest, AMidRequestDisconnectIsObservedAsDropped) {
+  ConnectionEventRecorder recorder;
+  BeastServerTransport server(
+      BeastServerTransport::Options{.on_connection_event = recorder.Hook()});
+  ASSERT_TRUE(server.Start([](const HttpRequest&) { return HttpResponse{}; }).ok());
+
+  const int fd = ConnectLoopback(server.port());
+  ASSERT_GE(fd, 0);
+  const std::string head = "POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 10\r\n\r\nabc";
+  ASSERT_EQ(::send(fd, head.data(), head.size(), 0), static_cast<ssize_t>(head.size()));
+  ::close(fd);  // vanish mid-body
+
+  ASSERT_TRUE(recorder.WaitFor(1));
+  {
+    const std::lock_guard<std::mutex> lock(recorder.mutex);
+    ASSERT_EQ(recorder.events.size(), 1u);
+    EXPECT_EQ(recorder.events[0].kind, BeastServerTransport::ConnectionEvent::Kind::kDropped);
+    EXPECT_EQ(recorder.events[0].peer_address.rfind("127.0.0.1:", 0), 0u);
+  }
+  server.Stop();
+}
+
+TEST(BeastTransportTest, AStalledRequestIsObservedAsAReadTimeoutAndIdleIsSilent) {
+  // Two connections against a 1-second request timeout: one sent part of a
+  // request and stalled (the slowloris shape — observed, with the stall's
+  // elapsed), one connected and sent nothing (indistinguishable from
+  // healthy idle keep-alive reaping — deliberately silent, ADR-0013).
+  ConnectionEventRecorder recorder;
+  BeastServerTransport server(BeastServerTransport::Options{
+      .request_timeout_seconds = 1, .on_connection_event = recorder.Hook()});
+  ASSERT_TRUE(server.Start([](const HttpRequest&) { return HttpResponse{}; }).ok());
+
+  const int idle = ConnectLoopback(server.port());
+  ASSERT_GE(idle, 0);
+  const int stalled = ConnectLoopback(server.port());
+  ASSERT_GE(stalled, 0);
+  const std::string partial = "POST / HTTP/1.1\r\nHost: x\r\n";
+  ASSERT_EQ(::send(stalled, partial.data(), partial.size(), 0),
+            static_cast<ssize_t>(partial.size()));
+
+  ASSERT_TRUE(recorder.WaitFor(1));
+  // Give the idle connection's reap a moment too, then assert it stayed
+  // silent: exactly one event, the stall.
+  std::this_thread::sleep_for(std::chrono::milliseconds(500));
+  {
+    const std::lock_guard<std::mutex> lock(recorder.mutex);
+    ASSERT_EQ(recorder.events.size(), 1u);
+    EXPECT_EQ(recorder.events[0].kind, BeastServerTransport::ConnectionEvent::Kind::kReadTimeout);
+    EXPECT_GE(recorder.events[0].elapsed, std::chrono::milliseconds(900));
+    EXPECT_EQ(recorder.events[0].peer_address.rfind("127.0.0.1:", 0), 0u);
+  }
+  ::close(idle);
+  ::close(stalled);
+  server.Stop();
+}
+
+TEST(BeastTransportTest, HealthyLifecycleEmitsNoConnectionEvents) {
+  // A served request, the client's clean close, and Stop() itself: silence
+  // means healthy (ADR-0013) — the signal must not scale with traffic.
+  ConnectionEventRecorder recorder;
+  BeastServerTransport server(
+      BeastServerTransport::Options{.on_connection_event = recorder.Hook()});
+  ASSERT_TRUE(server
+                  .Start([](const HttpRequest& request) {
+                    HttpResponse response;
+                    response.body = request.body;
+                    return response;
+                  })
+                  .ok());
+  {
+    SocketHttpClient client("127.0.0.1", server.port());
+    HttpRequest request;
+    request.method = "POST";
+    request.target = "/echo";
+    request.body = "healthy";
+    const auto response = client.Send(request);
+    ASSERT_TRUE(response.ok()) << response.error().message();
+    EXPECT_EQ(response->body, "healthy");
+  }  // client destructor closes cleanly
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  server.Stop();
+  const std::lock_guard<std::mutex> lock(recorder.mutex);
+  EXPECT_TRUE(recorder.events.empty());
+}
+
+TEST(BeastTransportTest, AThrowingConnectionObserverIsContained) {
+  // The observer must never take down the connection path it is watching:
+  // after it throws on a garbage connection, the next request still serves.
+  BeastServerTransport server(BeastServerTransport::Options{
+      .on_connection_event = [](const BeastServerTransport::ConnectionEvent&) {
+        throw std::runtime_error("observer bug");
+      }});
+  ASSERT_TRUE(server.Start([](const HttpRequest&) { return HttpResponse{}; }).ok());
+
+  EXPECT_EQ(RawRoundTrip(server.port(), "\x01\x02\x03\r\n\r\n"), "");
+  SocketHttpClient client("127.0.0.1", server.port());
+  HttpRequest request;
+  request.method = "POST";
+  request.target = "/";
+  const auto response = client.Send(request);
+  ASSERT_TRUE(response.ok()) << response.error().message();
+  EXPECT_EQ(response->status, 200);
   server.Stop();
 }
 

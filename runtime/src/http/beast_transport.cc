@@ -260,15 +260,24 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
     std::shared_ptr<asio::ssl::stream<beast::tcp_stream>> stream(session, &session->stream);
     beast::get_lowest_layer(*stream).expires_after(
         std::chrono::seconds(opts.request_timeout_seconds));
+    const auto started = std::chrono::steady_clock::now();
     auto& stream_ref = *stream;
-    stream_ref.async_handshake(asio::ssl::stream_base::server,
-                               [weak = weak_from_this(), stream](beast::error_code ec) {
-                                 auto self = weak.lock();
-                                 if (self == nullptr || ec) {
-                                   return;  // Handshake failure: drop the connection.
-                                 }
-                                 self->ReadNext(stream);
-                               });
+    stream_ref.async_handshake(
+        asio::ssl::stream_base::server, [weak = weak_from_this(), stream, started,
+                                         peer = EventPeer(*stream)](beast::error_code ec) mutable {
+          auto self = weak.lock();
+          if (self == nullptr) {
+            return;
+          }
+          if (ec) {
+            // Drop the connection, observed: a flood of these on a TLS port
+            // is the something-is-sending-plaintext-here alarm (ADR-0013).
+            using Kind = BeastServerTransport::ConnectionEvent::Kind;
+            self->NotifyConnectionEvent(Kind::kTlsHandshakeFailure, ec, std::move(peer), started);
+            return;
+          }
+          self->ReadNext(stream);
+        });
   }
 
   // One observation per transport-written rejection (Options::on_rejected):
@@ -293,6 +302,69 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
     } catch (...) {
       std::clog << "smithy: on_rejected observer threw a non-std exception\n";
     }
+  }
+
+  // The peer for a would-be connection event, captured when a wire phase
+  // BEGINS: by the time a failure completes, the deadline machinery may
+  // already have closed the socket and getpeername has nothing to report
+  // (a timed-out stream is closed before its handler runs). Free when the
+  // hook is not installed.
+  template <typename Stream>
+  std::string EventPeer(Stream& stream) const {
+    return opts.on_connection_event ? PeerAddressOf(stream) : std::string();
+  }
+
+  // One observation per transport-terminated connection (ADR-0013,
+  // Options::on_connection_event), contained like NotifyRejected. Nothing
+  // is reported while stopping: shutdown cancellations are lifecycle, not
+  // incident.
+  void NotifyConnectionEvent(BeastServerTransport::ConnectionEvent::Kind kind,
+                             const beast::error_code& ec, std::string peer,
+                             std::chrono::steady_clock::time_point started) const {
+    if (!opts.on_connection_event || stopping) {
+      return;
+    }
+    const BeastServerTransport::ConnectionEvent event{
+        .kind = kind,
+        .peer_address = std::move(peer),
+        .detail = ec.message(),
+        .elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - started)};
+    try {
+      opts.on_connection_event(event);
+    } catch (const std::exception& e) {
+      std::clog << "smithy: on_connection_event observer threw: " << e.what() << "\n";
+    } catch (...) {
+      std::clog << "smithy: on_connection_event observer threw a non-std exception\n";
+    }
+  }
+
+  // Classifies a failed request read (ADR-0013's taxonomy). Silent for the
+  // healthy shapes: a clean close at a message boundary, and a timeout with
+  // nothing received — idle keep-alive reaping, indistinguishable from a
+  // healthy client leaving.
+  void NotifyReadFailure(const beast::error_code& ec, bool got_some, std::string peer,
+                         std::chrono::steady_clock::time_point started) const {
+    using Kind = BeastServerTransport::ConnectionEvent::Kind;
+    if (ec == bhttp::error::end_of_stream) {
+      return;
+    }
+    if (ec == beast::error::timeout) {
+      if (got_some) {
+        NotifyConnectionEvent(Kind::kReadTimeout, ec, std::move(peer), started);
+      }
+      return;
+    }
+    if (ec == bhttp::error::partial_message) {
+      NotifyConnectionEvent(Kind::kDropped, ec, std::move(peer), started);
+      return;
+    }
+    // The rest of Beast's HTTP error category is the parse family; anything
+    // from another category is transport-level (reset, broken pipe, ...).
+    const bool parse_error =
+        ec.category() == bhttp::make_error_code(bhttp::error::bad_method).category();
+    NotifyConnectionEvent(parse_error ? Kind::kFramingError : Kind::kDropped, ec, std::move(peer),
+                          started);
   }
 
   // Answers an over-limit request with a minimal 413/431 + Connection: close,
@@ -357,38 +429,41 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
     parser->header_limit(static_cast<std::uint32_t>(opts.max_header_bytes));
     beast::get_lowest_layer(*stream).expires_after(
         std::chrono::seconds(opts.request_timeout_seconds));
+    const auto started = std::chrono::steady_clock::now();
     auto& stream_ref = *stream;
-    bhttp::async_read(
-        stream_ref, *buffer, *parser,
-        [weak = weak_from_this(), stream, buffer, parser](beast::error_code ec, std::size_t) {
-          auto self = weak.lock();
-          if (self == nullptr) {
-            CloseStream(*stream);
-            return;
-          }
-          if (ec == bhttp::error::body_limit || ec == bhttp::error::header_limit) {
-            // Over-limit requests get a real status before the close instead
-            // of a bare connection abort (issue #94); every other read error
-            // keeps the close-only path below.
-            const bhttp::status status = ec == bhttp::error::body_limit
-                                             ? bhttp::status::payload_too_large
-                                             : bhttp::status::request_header_fields_too_large;
-            self->NotifyRejected(*stream, parser->get(), status);
-            self->RejectOverLimit(stream, status);
-            return;
-          }
-          if (ec) {
-            CloseStream(*stream);
-            return;
-          }
-          self->active.fetch_add(1);
-          const bool keep_alive = parser->get().keep_alive() && !self->stopping;
-          HttpRequest request = ToSmithyRequest(parser->release());
-          // Per request rather than per connection: one getpeername-class
-          // syscall, and no extra state threaded through the session chain.
-          request.peer_address = PeerAddressOf(*stream);
-          self->Dispatch(stream, std::move(request), keep_alive);
-        });
+    bhttp::async_read(stream_ref, *buffer, *parser,
+                      [weak = weak_from_this(), stream, buffer, parser, started,
+                       peer = EventPeer(*stream)](beast::error_code ec, std::size_t) mutable {
+                        auto self = weak.lock();
+                        if (self == nullptr) {
+                          CloseStream(*stream);
+                          return;
+                        }
+                        if (ec == bhttp::error::body_limit || ec == bhttp::error::header_limit) {
+                          // Over-limit requests get a real status before the close instead
+                          // of a bare connection abort (issue #94); every other read error
+                          // keeps the close-only path below.
+                          const bhttp::status status =
+                              ec == bhttp::error::body_limit
+                                  ? bhttp::status::payload_too_large
+                                  : bhttp::status::request_header_fields_too_large;
+                          self->NotifyRejected(*stream, parser->get(), status);
+                          self->RejectOverLimit(stream, status);
+                          return;
+                        }
+                        if (ec) {
+                          self->NotifyReadFailure(ec, parser->got_some(), std::move(peer), started);
+                          CloseStream(*stream);
+                          return;
+                        }
+                        self->active.fetch_add(1);
+                        const bool keep_alive = parser->get().keep_alive() && !self->stopping;
+                        HttpRequest request = ToSmithyRequest(parser->release());
+                        // Per request rather than per connection: one getpeername-class
+                        // syscall, and no extra state threaded through the session chain.
+                        request.peer_address = PeerAddressOf(*stream);
+                        self->Dispatch(stream, std::move(request), keep_alive);
+                      });
   }
 
   // Runs the handler — on the handler pool when configured, else inline on
@@ -429,21 +504,28 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
                bool keep_alive) {
     auto wire =
         std::make_shared<bhttp::response<bhttp::string_body>>(ToWireResponse(response, keep_alive));
+    const auto started = std::chrono::steady_clock::now();
     auto& wire_stream = *stream;
     auto& wire_ref = *wire;
-    bhttp::async_write(wire_stream, wire_ref,
-                       [weak = weak_from_this(), stream, wire, keep_alive](
-                           beast::error_code write_ec, std::size_t) {
-                         auto self = weak.lock();
-                         if (self != nullptr) {
-                           self->active.fetch_sub(1);
-                         }
-                         if (self == nullptr || write_ec || !keep_alive) {
-                           CloseStream(*stream);
-                           return;
-                         }
-                         self->ReadNext(stream);
-                       });
+    bhttp::async_write(
+        wire_stream, wire_ref,
+        [weak = weak_from_this(), stream, wire, keep_alive, started, peer = EventPeer(*stream)](
+            beast::error_code write_ec, std::size_t) mutable {
+          auto self = weak.lock();
+          if (self != nullptr) {
+            self->active.fetch_sub(1);
+          }
+          if (self == nullptr || write_ec || !keep_alive) {
+            if (self != nullptr && write_ec) {
+              // The peer vanished mid-response (ADR-0013).
+              using Kind = BeastServerTransport::ConnectionEvent::Kind;
+              self->NotifyConnectionEvent(Kind::kDropped, write_ec, std::move(peer), started);
+            }
+            CloseStream(*stream);
+            return;
+          }
+          self->ReadNext(stream);
+        });
   }
 };
 

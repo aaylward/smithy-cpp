@@ -1638,13 +1638,19 @@ class DialedWebSocket final : public WebSocket {
 };
 
 // The upgrade handshake plus session wiring, generic over the carrier the
-// dial produced (plain or TLS).
+// dial produced (plain or TLS). The carrier arrives as the unique_ptr
+// itself and its husk is destroyed HERE, while the io_context lives:
+// a moved-from Beast stream still owns a fresh impl whose timer touches
+// the io_context's timer service at destruction, so a husk left in the
+// caller's frame would outlive the io on the refusal path (ASan/UBSan,
+// found by CI).
 template <typename Stream>
 Outcome<std::shared_ptr<WebSocket>> FinishDial(std::unique_ptr<DialedConnection> connection,
-                                               Stream carrier,
+                                               std::unique_ptr<Stream> carrier,
                                                const BeastWebSocketClient::Options& options) {
   using Ws = bws::stream<Stream>;
-  auto session = std::make_shared<WsSession<Ws>>(Ws(std::move(carrier)), nullptr);
+  auto session = std::make_shared<WsSession<Ws>>(Ws(std::move(*carrier)), nullptr);
+  carrier.reset();  // the husk dies while its timer service is still alive
   Ws& ws = session->stream();
   // The websocket timeout machinery owns the wire from here; the
   // tcp_stream deadline armed during connect must not keep ticking.
@@ -1680,6 +1686,12 @@ Outcome<std::shared_ptr<WebSocket>> FinishDial(std::unique_ptr<DialedConnection>
   }
   connection->io.restart();
   if (upgrade_ec) {
+    // Tear down in order before returning: the session (and its websocket
+    // timeout timer) first, then run the io dry so the timer's canceled
+    // wait executes now — nothing may still reference the io_context's
+    // services when the connection is destroyed.
+    session.reset();
+    connection->Run();
     // A refused upgrade is the server's decision (auth, routing); a retry
     // would only repeat it.
     return Error::Transport("beast websocket: upgrade of " + options.host + options.target +
@@ -1761,12 +1773,10 @@ Outcome<std::shared_ptr<WebSocket>> BeastWebSocketClient::Dial(Options options) 
                                   " failed: " + handshake_ec.message(),
                               /*retryable=*/false);
     }
-    auto carrier = std::move(*connection->tls);
-    connection->tls.reset();
+    auto carrier = std::move(connection->tls);
     return FinishDial(std::move(connection), std::move(carrier), options);
   }
-  auto carrier = std::move(*connection->plain);
-  connection->plain.reset();
+  auto carrier = std::move(connection->plain);
   return FinishDial(std::move(connection), std::move(carrier), options);
 }
 

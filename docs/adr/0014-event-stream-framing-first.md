@@ -42,7 +42,11 @@ shippable and tested in the house pattern:
 2. **WebSocket transports** (server upgrade on `BeastServerTransport` via
    the ADR-0006 extension point, client dial), carrying framed messages —
    with `on_connection_event` (ADR-0013) extended to upgrade failures as
-   a new Kind if slice 2 finds the need.
+   a new Kind if slice 2 finds the need. Definition of done includes an
+   out-of-tree consumer e2e in `examples/bazel-consumer` (a consumer
+   dials the upgraded server and drains real frames through the module
+   boundary), the way slice 1 shipped `eventstream_consumer_test` — not
+   just in-repo transport tests.
 3. **The streaming API + codegen**: `smithy::EventStream<Tx, Rx>` as a
    blocking sender/receiver pair mirroring the sync unary API (recorded
    here as *direction*: no coroutine surface before 1.0 — a coroutine

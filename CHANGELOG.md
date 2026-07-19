@@ -95,6 +95,15 @@ via `git_override` until then.
   callback for in-flight gauges with guaranteed start/complete pairing.
   **Breaking:** `Observe(callback, now)` call sites become
   `Observe(callback, nullptr, now)`.
+- Phase 8 groundwork, wire-format-first (ADR-0014): `//runtime:eventstream`
+  is the event-stream message framing both streaming protocols are defined
+  against — CRC-guarded prelude, the ten typed header wire types, opaque
+  `Blob` payloads; the incremental decoder is strict and fail-closed (both
+  CRCs verified before lengths or content are trusted, unknown wire types
+  and block overruns are hard errors), and Encode refuses whatever Decode
+  would reject, so an unroundtrippable message cannot be produced. Fuzzed
+  (decode-total, re-encode bijectivity, every-strict-prefix-asks-for-more)
+  with byte-exact vectors pinned against an independent CRC32.
 - Fuzz harnesses (JSON, CBOR, URI, server dispatch, regex) and a Google
   Benchmark suite (serde, codecs, per-protocol request round trips, real-TCP
   transport round trips incl. Beast and Beast TLS) run in CI.

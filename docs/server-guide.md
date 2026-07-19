@@ -92,12 +92,42 @@ JSON-RPC call — success or error — as an HTTP 200 envelope (envelope-level f
 reserved JSON-RPC codes: -32700 parse, -32600 invalid request, -32601 method not found,
 -32602 invalid params).
 
+## Serving event streams
+
+Event-stream operations (ADR-0016) grow the handler a streaming method — input first, the
+typed session in the middle, context last — that blocks for the session's lifetime:
+`Send`/`Receive` until done, then return `Unit` for a clean close, or an `Error`, which ends
+the stream with one typed exception message before the close (a `Modeled` error with
+`set_detail()` surfaces on the client exactly like a unary modeled error). The generated
+server exposes `StreamRouter()`, a `smithy::server::WebSocketRouter` with every streaming
+route registered; mount it on the transport in two lines — the upgrade path deliberately
+bypasses the HTTP middleware chain (ADR-0015), so unary dispatch beside it is untouched:
+
+```cpp
+smithy::http::BeastServerTransport::Options options;
+options.websocket_gate = server.StreamRouter()->Gate();  // 404/405 refusals pre-upgrade
+options.on_websocket = server.StreamRouter()->Serve();   // blocking per-session dispatch
+smithy::http::BeastServerTransport transport(options);
+transport.Start(server.Handler());                       // unary routes, same port
+```
+
+Application admission policy (auth, rate limits) composes by wrapping `Gate()`: run your
+refusal first, then defer to the router's (`smithy/server/websocket_router.h` shows the
+pattern). Note `Stop()`'s semantics from ADR-0015: it *aborts* live stream sessions rather
+than draining them, so end streams application-side first if your rollout cares. The
+full-duplex chat example ([examples/chat/](../examples/chat/)) is the working reference:
+a generated client and server streaming both directions over real WebSockets, plus the
+in-memory `InMemoryWebSocketPair` wiring for Boost-free tests.
+
 ## Generated smoke tests
 
 Every generated module ships `tests/smoke_test.cc` (target `:smoke_test` in the module's
 `tests/` package): the generated client calls the generated server over the loopback transport
 — every operation round-trips a minimal valid value and one test proves modeled-error mapping.
-It passes out of the box and is the natural place to start testing a real handler.
+It passes out of the box and is the natural place to start testing a real handler. Streaming
+operations are skipped by the generated smoke/integration suites (a unary round trip has no
+meaning for a session; their handler overrides are close-immediately stubs) — drive them the
+way the chat example's e2e tests do.
 
 ## Constraint validation
 

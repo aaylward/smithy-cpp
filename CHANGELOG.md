@@ -95,6 +95,32 @@ via `git_override` until then.
   callback for in-flight gauges with guaranteed start/complete pairing.
   **Breaking:** `Observe(callback, now)` call sites become
   `Observe(callback, nullptr, now)`.
+- Phase 8 slice 3, generated event streams (ADR-0016): `@streaming` union
+  operations generate real streaming code for `simpleRestJson` and
+  `rpcv2Cbor` (`jsonRpc2` refuses with a diagnostic). Clients gain
+  `Outcome<EventStream<In, Out>> Op(input)` — the upgrade GET resolves
+  `@http` bindings exactly like a unary request, dialing derives from the
+  one `ClientConfig` endpoint (an `https` endpoint dials `wss`), and
+  `ClientConfig::websocket_dialer` injects a custom dialer the way
+  `http_client` injects the unary transport (with
+  `smithy::http::InMemoryWebSocketPair`, that is how streams test without
+  Boost). Handlers grow
+  `Outcome<Unit> Op(input, EventStream<Out, In>&, context)`; generated
+  servers expose `StreamRouter()`, a `smithy::server::WebSocketRouter`
+  sharing the unary `Router`'s matching, mounted on the transport via
+  `websocket_gate`/`on_websocket` in two lines. One event travels per
+  binary WebSocket message in the slice-1 framing with an authored,
+  vendor-neutral envelope (`:message-type`/`:event-type`/
+  `:exception-type`); a handler error becomes one typed exception message
+  then a close, surfacing client-side exactly like a unary modeled error
+  (kind, code, typed detail). Scope edges are generation-time diagnostics
+  (`@eventHeader`/`@eventPayload`, body-bound initial-request members,
+  initial-response members), generated smoke/integration suites skip
+  streaming operations, and BUILD deps grow only for streaming services.
+  PLAN §Phase 8's exit criterion lands as `examples/chat/`: the generated
+  chat client and server run full duplex over real WebSockets (TLS
+  included) in CI, with an in-memory twin and an out-of-tree consumer
+  acceptance test beside it.
 - Phase 8 slice 2, WebSocket transports (ADR-0015): `BeastServerTransport`
   upgrades WebSocket requests in place — `Options::websocket_gate` refuses
   with a plain HTTP answer before any 101 exists (auth sees the whole

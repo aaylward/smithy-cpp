@@ -403,6 +403,37 @@ local experiments and must never reach production. The lower-level
 self-contained — it carries the asio SSL implementation and the BoringSSL
 dependency itself, so no extra build flags are needed.
 
+## Event streams
+
+A streaming operation (ADR-0016) needs no extra client configuration: the
+WebSocket dial derives host, port, and TLS from the same `config.endpoint`
+and `config.tls` the unary transport uses (an `https` endpoint dials `wss`).
+The call returns the typed session; drive it with the canonical loop —
+`Receive()`'s nullopt is the peer's clean close, and a received exception is
+terminal, surfacing exactly like a unary modeled error:
+
+```cpp
+auto stream = client.Converse(input);            // upgrade GET on the @http URI
+if (!stream) { /* dial/refusal error */ }
+while (true) {
+  auto event = stream->Receive();
+  if (!event.ok()) { /* modeled exception or wire failure */ break; }
+  if (!event->has_value()) break;                // server closed cleanly
+  /* dispatch on (**event).is_...() */
+  (void)stream->Send(/* your next event */);
+}
+stream->Close();                                 // idempotent; also the cancel path
+```
+
+Server-side, mount the generated `StreamRouter()` on the transport
+(`websocket_gate` = `Gate()`, `on_websocket` = `Serve()`; compose your own
+admission refusals around `Gate()` — see
+[server-guide.md](server-guide.md#serving-event-streams)). The hardening
+notes above apply verbatim: upgraded sessions idle under
+`websocket_idle_timeout_seconds`, and `Stop()` aborts live streams rather
+than draining them (ADR-0015), so end streams application-side first when a
+rollout needs grace.
+
 ## Server hardening
 
 The production server transport (`BeastServerTransport`, ADR-0006) enforces

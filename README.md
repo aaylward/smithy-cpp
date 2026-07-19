@@ -44,9 +44,11 @@ Consolidated in one place — if your API depends on any of these, check here be
   `simpleRestJson` and `rpcv2Cbor` (client and server; `jsonRpc2` refuses at generation
   time), riding the event-stream framing codec
   ([ADR-0014](docs/adr/0014-event-stream-framing-first.md)) and the WebSocket transports
-  ([ADR-0015](docs/adr/0015-websocket-transports.md)). Scoping edges (`@eventHeader` /
-  `@eventPayload`, body-bound initial-request members, initial-response members) are
-  rejected with generation-time diagnostics.
+  ([ADR-0015](docs/adr/0015-websocket-transports.md)) — the full-duplex chat example
+  ([`examples/chat/`](examples/chat/)) runs generated client ↔ generated server over real
+  WebSockets in CI. Scoping edges (`@eventHeader` / `@eventPayload`, body-bound
+  initial-request members, initial-response members) are rejected with generation-time
+  diagnostics.
 - **No Bazel Central Registry / Maven publishing** — consumers pin a git commit
   ([quickstart](docs/quickstart.md)); publishing is deferred until the project is
   production-validated (#44 tracks release readiness).

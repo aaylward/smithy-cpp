@@ -201,6 +201,29 @@ final class EventStreamCodeGen {
   }
 
   /**
+   * The streaming override a generated test handler (smoke/integration) emits: streaming operations
+   * are skipped by the unary-shaped test harnesses — a blocking round trip has no meaning for a
+   * session, and their transports never upgrade — but the handler subclass still needs every
+   * pure-virtual method defined, so each streaming operation gets this close-immediately stub.
+   */
+  static void writeTestHandlerStub(CppWriter w, CppContext context, OperationShape operation) {
+    String inputType =
+        context.cppSymbols().toSymbol(ProtocolSupport.inputShape(context, operation)).getName();
+    w.write("// Streaming operation (ADR-0016): no generated unary-shaped test drives");
+    w.write("// this; the stub closes the stream so the interface stays implemented.");
+    w.openBlock(
+        "smithy::Outcome<smithy::Unit> $L(const $L& input, $L& stream, $L) override {",
+        opName(operation),
+        inputType,
+        serverStreamType(context, operation),
+        ProtocolSupport.REQUEST_CONTEXT_PARAM);
+    w.write("(void)input;");
+    w.write("stream.Close();");
+    w.write("return smithy::Unit{};");
+    w.closeBlock("}");
+  }
+
+  /**
    * Emits the client-side stream support into client.cc's anonymous namespace: the DialStream
    * helper and one Encode/Decode pair per streaming operation. Must run after {@link
    * ProtocolSupport#writeOperationErrorParsers} — the decoders dispatch exceptions through the

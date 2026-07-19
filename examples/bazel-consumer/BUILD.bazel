@@ -137,3 +137,43 @@ cc_test(
         "@smithy_cpp//runtime:http_beast",
     ],
 )
+
+# Generated streaming API acceptance (ADR-0016, slice 3's consumer e2e): the
+# smallest bidirectional event-stream service, client and server both
+# generated inside this module's build graph.
+smithy_cpp_client_library(
+    name = "chat_stream_client",
+    srcs = ["model/chatstream.smithy"],
+    namespace = "acme::chat",
+    service = "acme.chat#Chat",
+)
+
+smithy_cpp_server_library(
+    name = "chat_stream_server",
+    srcs = ["model/chatstream.smithy"],
+    namespace = "acme::chat",
+    service = "acme.chat#Chat",
+)
+
+# One bidi round trip through the module boundary, the streams riding an
+# injected InMemoryWebSocketPair dialer — no wire, no sockets. Linking a
+# generated streaming client still pulls the default Beast dialer's
+# definition (the defs.bzl extra-deps seam), so behind a download-blocking
+# proxy exclude this with the Beast targets:
+# bazel test //... -- -//:todo_beast_acceptance_test
+# -//:websocket_acceptance_test -//:streaming_acceptance_test
+cc_test(
+    name = "streaming_acceptance_test",
+    size = "small",
+    srcs = ["streaming_acceptance_test.cc"],
+    deps = [
+        ":chat_stream_client",
+        ":chat_stream_server",
+        "@googletest//:gtest_main",
+        "@smithy_cpp//runtime:client",
+        "@smithy_cpp//runtime:eventstream",
+        "@smithy_cpp//runtime:http",
+        "@smithy_cpp//runtime:http_beast",
+        "@smithy_cpp//runtime:server",
+    ],
+)

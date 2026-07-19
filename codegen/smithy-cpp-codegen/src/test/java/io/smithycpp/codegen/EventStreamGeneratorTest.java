@@ -367,6 +367,60 @@ class EventStreamGeneratorTest {
     assertFalse(unaryBuild.contains(":http_beast"), unaryBuild);
   }
 
+  /** REST_MODEL plus a unary neighbor, generated with the test suites on. */
+  private static MockManifest restWithUnaryNeighborAndTests() {
+    String model =
+        REST_MODEL.replace(
+                "service Svc { version: \"1\", operations: [Converse, Watch] }",
+                "service Svc { version: \"1\", operations: [Converse, Watch, Ping] }")
+            + """
+
+            @http(method: "POST", uri: "/ping")
+            operation Ping { input := { name: String } }
+            """;
+    return PluginTestHarness.generate(
+        model,
+        "test.stream#Svc",
+        "test::stream",
+        b ->
+            b.withMember("runtimeTarget", "//runtime:core")
+                .withMember("testsPackage", "//generated")
+                .withMember("integrationTests", true));
+  }
+
+  @Test
+  void smokeTestsSkipStreamingOperations() {
+    String smoke = restWithUnaryNeighborAndTests().expectFileString("/tests/smoke_test.cc");
+    // The unary neighbor round-trips; the streaming operations get no
+    // unary-shaped test (no minimal output, no round-trip TEST).
+    assertTrue(smoke.contains("TEST(SvcSmokeTest, PingRoundTrips)"), smoke);
+    assertFalse(smoke.contains("TEST(SvcSmokeTest, ConverseRoundTrips)"), smoke);
+    assertFalse(smoke.contains("TEST(SvcSmokeTest, WatchRoundTrips)"), smoke);
+    assertFalse(smoke.contains("MinimalConverseOutput"), smoke);
+    // The handler subclass still implements the streaming interface, via the
+    // close-immediately stub.
+    assertTrue(
+        smoke.contains("smithy::eventstream::EventStream<ServerEvents, ClientEvents>& stream"),
+        smoke);
+    assertTrue(smoke.contains("stream.Close();"), smoke);
+  }
+
+  @Test
+  void integrationTestsSkipStreamingOperations() {
+    String tests = restWithUnaryNeighborAndTests().expectFileString("/tests/integration_test.cc");
+    assertTrue(tests.contains("PingRandomRoundTrips"), tests);
+    assertFalse(tests.contains("ConverseRandomRoundTrips"), tests);
+    assertFalse(tests.contains("WatchRandomRoundTrips"), tests);
+    // No scripted state for streaming operations, and no error test for the
+    // streaming-only RoomGone; the scripted handler keeps the interface
+    // implemented through the stub.
+    assertFalse(tests.contains("lastConverse"), tests);
+    assertFalse(tests.contains("RoomGoneMapsAcrossTheWire"), tests);
+    assertTrue(
+        tests.contains("smithy::eventstream::EventStream<ServerEvents, ClientEvents>& stream"),
+        tests);
+  }
+
   @Test
   void unaryServicesEmitNoStreamingSurface() {
     String model =

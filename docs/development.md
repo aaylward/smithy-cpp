@@ -142,8 +142,12 @@ cd codegen && gradle spotlessApply
 - The Boost-dependent targets (`//runtime:http_beast` and the tests that use it) fetch ~30
   modular Boost archives. Behind a proxy that blocks GitHub they won't fetch; exclude them and
   run everything else with
-  `bazel test //... -- -//runtime:http_beast -//runtime:connection_event_recorder -//runtime:beast_transport_test -//runtime:beast_client_test -//runtime:beast_websocket_test -//examples/weather:weather_e2e_beast_test -//examples/simplerestjson:bookstore_server -//examples/simplerestjson:bookstore_server_lifecycle_test -//benchmarks/...`
-  (the consumer module's `//:todo_beast_acceptance_test` and `//:websocket_acceptance_test` need the same exclusion).
+  `bazel test //... -- -//runtime:http_beast -//runtime:connection_event_recorder -//runtime:beast_transport_test -//runtime:beast_client_test -//runtime:beast_websocket_test -//examples/weather:weather_e2e_beast_test -//examples/simplerestjson:bookstore_server -//examples/simplerestjson:bookstore_server_lifecycle_test -//examples/chat/... -//codegen/compile-tests:streaming_compile_test -//benchmarks/...`
+  (the consumer module's `//:todo_beast_acceptance_test`, `//:websocket_acceptance_test`, and
+  `//:streaming_acceptance_test` need the same exclusion). `//examples/chat/...` goes
+  wholesale because every generated *streaming* client library links the default Beast
+  dialer's definition (ADR-0016) — even the in-memory `chat_e2e_test` and the fixture's
+  generated tests are Beast targets at link time, wire or no wire.
   The Beast code itself can still be exercised against distro packages with plain g++ —
   `apt-get install libboost-dev libgtest-dev`, then:
 
@@ -158,6 +162,25 @@ cd codegen && gradle spotlessApply
   The same recipe runs `beast_client_test.cc` and `beast_websocket_test.cc` (swap the test
   file); the eventstream codec source rides along because the transport now carries
   event-stream messages over WebSocket (ADR-0015).
+
+  The chat example's e2e suites (Phase 8's exit criterion, CI-only under Bazel behind a
+  proxy) run the same way with the generated sources and the JSON stack added — nlohmann
+  comes from `libnlohmann-json3-dev` or any checkout's `single_include/`:
+
+  ```sh
+  g++ -std=c++20 -O1 -pthread -Iruntime/include -Iruntime/testing/include \
+    -Iexamples/chat/generated/include -I<nlohmann-json>/single_include \
+    examples/chat/chat_e2e_beast_test.cc examples/chat/generated/src/*.cc \
+    runtime/src/core/{base64,document_serde,regex,text,timestamp,uuid,version}.cc \
+    runtime/src/json/json.cc runtime/src/client/{retry,observability}.cc \
+    runtime/src/http/{beast_transport,socket_transport,headers,http1,server_dispatch,uri,trace_context,websocket_pair,forwarded}.cc \
+    runtime/src/eventstream/{frame,envelope}.cc \
+    runtime/src/server/{router,websocket_router,middleware}.cc \
+    -lgtest -lgtest_main -lssl -lcrypto -o /tmp/chat_e2e && /tmp/chat_e2e
+  ```
+
+  Swap in `chat_e2e_test.cc` (or the fixture's generated `tests/*.cc`) for the in-memory
+  suites — same source list; Beast is only a link-time passenger there.
 
   Add `-g -fsanitize=thread` for a TSan pass — worth running on any change to the
   transport's threading (system Boost is header-only here, so no beast_src.cc and no

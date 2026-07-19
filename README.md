@@ -39,10 +39,12 @@ Consolidated in one place — if your API depends on any of these, check here be
 
 - **`@streaming` is not modeled yet.** The trait is ignored: a `@streaming` member generates
   as its plain shape (a streaming blob payload becomes an ordinary `smithy::Blob`, fully
-  buffered in memory), and there is no event-stream or WebSocket transport. Streaming — blob
-  streams and event streams, client and server — is [PLAN Phase 8](docs/PLAN.md), landing
-  wire-format-first: the event-stream framing codec (`//runtime:eventstream`) is in;
-  transports and the streaming API follow ([ADR-0014](docs/adr/0014-event-stream-framing-first.md)).
+  buffered in memory). Streaming — blob streams and event streams, client and server — is
+  [PLAN Phase 8](docs/PLAN.md), landing wire-format-first
+  ([ADR-0014](docs/adr/0014-event-stream-framing-first.md)): the event-stream framing codec
+  (`//runtime:eventstream`) and the WebSocket transports carrying it
+  ([ADR-0015](docs/adr/0015-websocket-transports.md) — server upgrade + client dial, usable
+  directly today) are in; the generated `EventStream` API is the remaining slice.
 - **No Bazel Central Registry / Maven publishing** — consumers pin a git commit
   ([quickstart](docs/quickstart.md)); publishing is deferred until the project is
   production-validated (#44 tracks release readiness).

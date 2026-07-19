@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "smithy/http/transport.h"
+#include "smithy/http/websocket.h"
 
 namespace smithy {
 // smithy/client/config.h — forward-declared so this header stays includable
@@ -73,6 +74,11 @@ class BeastServerTransport : public HttpServerTransport {
       kReadTimeout,
       // The peer vanished mid-request or mid-response.
       kDropped,
+      // A request asked for a WebSocket upgrade, the gate admitted it, and
+      // the upgrade handshake then failed (ADR-0015). Once a session is
+      // up, wire failures surface through Send/Receive to the serve
+      // callback instead — the application is the observer there.
+      kUpgradeFailure,
     };
     Kind kind = Kind::kDropped;
     // "ip:port"; may be empty when the socket can no longer report it.
@@ -129,6 +135,26 @@ class BeastServerTransport : public HttpServerTransport {
     // same sink so handshake failures, framing garbage, stalls, and drops
     // are visible in the same metrics as served requests.
     std::function<void(const ConnectionEvent&)> on_connection_event;
+    // WebSocket upgrade (ADR-0015). Unset, requests that ask for an
+    // upgrade remain ordinary HTTP requests for the handler chain to
+    // answer (426, 404 — its call). Set, an upgrade request is offered to
+    // websocket_gate after being fully read (the decision sees the whole
+    // request: target, headers, auth material) — return an HttpResponse
+    // to refuse with that answer before any 101 exists, nullopt to
+    // accept — and the accepted session runs in on_websocket on the
+    // handler pool (it blocks by design, so Start refuses this with
+    // handler_threads == 0). on_websocket's return ends the session with
+    // a close handshake — the WebSocket& is valid only until then, so
+    // join any helper thread still using it before returning. An unset
+    // gate accepts every upgrade: admission policy is the application's,
+    // composable from the same middleware pieces the HTTP chain uses.
+    std::function<std::optional<HttpResponse>(const HttpRequest&)> websocket_gate;
+    std::function<void(const HttpRequest&, WebSocket&)> on_websocket;
+    // How long a silent upgraded connection stays up (keep-alive pings
+    // run underneath — a healthy-but-quiet stream survives, a vanished
+    // peer is detected). The HTTP request_timeout_seconds governs the
+    // wire only up through the 101.
+    int websocket_idle_timeout_seconds = 300;
     // TLS termination: set both (PEM text, not file paths) to serve https.
     // Posture is fixed, not configurable (issue #46): TLS 1.2 minimum,
     // ECDHE+AEAD cipher suites for 1.2 (every 1.3 suite qualifies), and ALPN

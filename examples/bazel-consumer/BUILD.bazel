@@ -120,3 +120,20 @@ cc_test(
         "@smithy_cpp//runtime:eventstream",
     ],
 )
+
+# Streaming-transport acceptance (ADR-0015, the e2e ADR-0014's amendment
+# requires): a consumer dials the upgraded server and drains real frames
+# through the module boundary. Beast-backed like todo_beast_acceptance_test;
+# behind a download-blocking proxy exclude it the same way:
+# bazel test //... -- -//:todo_beast_acceptance_test -//:websocket_acceptance_test
+cc_test(
+    name = "websocket_acceptance_test",
+    size = "small",
+    srcs = ["websocket_acceptance_test.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "@smithy_cpp//runtime:eventstream",
+        "@smithy_cpp//runtime:http",
+        "@smithy_cpp//runtime:http_beast",
+    ],
+)

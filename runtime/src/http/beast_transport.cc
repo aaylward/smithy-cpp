@@ -15,14 +15,19 @@
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/ssl.hpp>
+#include <boost/beast/websocket.hpp>
+#include <boost/beast/websocket/ssl.hpp>
 #include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <future>
 #include <iostream>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <thread>
 #include <utility>
@@ -38,6 +43,7 @@ namespace {
 namespace asio = boost::asio;
 namespace beast = boost::beast;
 namespace bhttp = boost::beast::http;
+namespace bws = boost::beast::websocket;
 
 HttpRequest ToSmithyRequest(bhttp::request<bhttp::string_body> wire) {
   HttpRequest request;
@@ -146,6 +152,367 @@ int SelectHttp11Alpn(SSL* /*ssl*/, const unsigned char** out, unsigned char* out
   return SSL_TLSEXT_ERR_ALERT_FATAL;
 }
 
+// The session type both ends share plus the teardown hook the owners need:
+// the server transport aborts registered sessions at Stop(); the client
+// handle aborts at destruction (which its contract permits only after
+// every Send/Receive has returned — Close() is the live cancellation
+// path).
+class WebSocketSessionBase : public WebSocket {
+ public:
+  virtual void Abort(std::string reason) = 0;
+};
+
+// One live event-stream-over-WebSocket session (ADR-0015). Beast's
+// synchronous websocket reads may write control-frame replies, so true full
+// duplex cannot be two threads doing sync calls; instead every wire
+// operation is asynchronous on the connection's executor and the blocking
+// facade waits on it. The facade runs on application threads (the handler
+// pool, or any client thread); nothing here blocks an io thread.
+//
+// Wire-side invariants (Beast's op contract): at most one async_read
+// outstanding (the read pump), and at most one write-class op — a message
+// write or the close — outstanding (`wire_write_busy_` + the deferred
+// `close_requested_`). Once the close op starts it owns the read side too
+// (Beast's close drains frames itself until the peer's close arrives), so
+// the pump stops arming reads and a read it already had in flight
+// completes operation_aborted, which OnRead filters.
+template <typename WsStream>
+class WsSession final : public WebSocketSessionBase,
+                        public std::enable_shared_from_this<WsSession<WsStream>> {
+ public:
+  // `keeper` is whatever must live exactly as long as the connection — for
+  // server sessions, the aliasing pointer that holds the transport's
+  // connection slot (max_connections accounting fires when this session
+  // dies). Declared before ws_ so the socket closes first, then the slot
+  // frees.
+  WsSession(WsStream ws, std::shared_ptr<void> keeper)
+      : keeper_(std::move(keeper)), ws_(std::move(ws)) {}
+
+  WsStream& stream() { return ws_; }
+
+  // Arms the read pump; call once, on the connection's executor.
+  void Start() { PumpRead(); }
+
+  Outcome<std::optional<eventstream::Message>> Receive() override {
+    std::unique_lock<std::mutex> lock(mutex_);
+    wake_.wait(lock, [this] { return !received_.empty() || peer_closed_ || failed_; });
+    if (!received_.empty()) {
+      // Messages that arrived before a close or failure still belong to
+      // the application, in order.
+      eventstream::Message message = std::move(received_.front());
+      received_.pop_front();
+      ResumeReadsIfPaused();
+      return std::optional<eventstream::Message>(std::move(message));
+    }
+    if (peer_closed_) {
+      return std::optional<eventstream::Message>();  // the stream's natural end
+    }
+    return Error::Transport("websocket: " + error_);
+  }
+
+  Outcome<Unit> Send(const eventstream::Message& message) override {
+    auto frame = eventstream::EncodeMessage(message);
+    if (!frame.ok()) {
+      return std::move(frame).error();  // the codec's Validation, verbatim
+    }
+    // Serializes concurrent senders; the wire itself allows one write op.
+    const std::lock_guard<std::mutex> send_turn(send_mutex_);
+    std::unique_lock<std::mutex> lock(mutex_);
+    if (failed_ || peer_closed_ || close_requested_) {
+      return Error::Transport("websocket: " +
+                              (failed_ ? error_ : std::string("session is closed")));
+    }
+    write_complete_ = false;
+    write_error_.clear();
+    lock.unlock();
+    auto self = this->shared_from_this();
+    try {
+      asio::post(ws_.get_executor(), [self, frame = std::move(*frame)]() mutable {
+        self->StartWrite(std::move(frame));
+      });
+    } catch (...) {
+      return Error::Transport("websocket: cannot schedule the write");
+    }
+    lock.lock();
+    wake_.wait(lock, [this] { return write_complete_ || failed_; });
+    if (write_complete_ && write_error_.empty()) {
+      return Unit{};
+    }
+    return Error::Transport("websocket: " + (write_error_.empty() ? error_ : write_error_));
+  }
+
+  void Close() override {
+    auto self = this->shared_from_this();
+    try {
+      asio::post(ws_.get_executor(), [self] {
+        std::unique_lock<std::mutex> lock(self->mutex_);
+        self->RequestCloseLocked(lock);
+      });
+    } catch (...) {
+      Abort("websocket: cannot schedule the close");
+    }
+  }
+
+  // Fails both facade calls immediately and closes the socket out from
+  // under any outstanding op — Stop()-time and client-teardown semantics,
+  // safe from any thread even when the io context is already stopped.
+  void Abort(std::string reason) override {
+    {
+      const std::lock_guard<std::mutex> lock(mutex_);
+      if (!failed_ && !peer_closed_) {
+        failed_ = true;
+        error_ = std::move(reason);
+      }
+      wake_.notify_all();
+    }
+    auto self = this->shared_from_this();
+    try {
+      asio::post(ws_.get_executor(), [self] {
+        beast::error_code ignored;
+        (void)beast::get_lowest_layer(self->ws_).socket().close(ignored);
+      });
+    } catch (...) {
+      // io already gone; the socket closes with the session.
+    }
+  }
+
+ private:
+  static constexpr std::size_t kReceiveQueueDepth = 8;
+
+  // --- everything below runs on the connection's executor ---
+
+  void PumpRead() {
+    {
+      const std::lock_guard<std::mutex> lock(mutex_);
+      if (failed_ || peer_closed_ || close_started_) {
+        return;  // ended, or the close op owns the read side now
+      }
+      if (received_.size() >= kReceiveQueueDepth) {
+        // Backpressure: stop reading until Receive drains the queue; TCP
+        // then pushes back on the peer. ResumeReadsIfPaused re-arms.
+        read_paused_ = true;
+        return;
+      }
+    }
+    auto self = this->shared_from_this();
+    ws_.async_read(read_buffer_,
+                   [self](beast::error_code ec, std::size_t n) { self->OnRead(ec, n); });
+  }
+
+  void OnRead(beast::error_code ec, std::size_t n) {
+    if (ec == bws::error::closed) {
+      const std::lock_guard<std::mutex> lock(mutex_);
+      peer_closed_ = true;
+      wake_.notify_all();
+      return;
+    }
+    if (ec) {
+      {
+        // Our own async_close displaces the outstanding read: Beast's
+        // close op takes over the read side to finish the closing
+        // handshake itself. That abort is not an outcome — the close
+        // completion below decides clean-versus-error.
+        const std::lock_guard<std::mutex> lock(mutex_);
+        if (close_started_ && ec == asio::error::operation_aborted) {
+          return;
+        }
+      }
+      Fail(ec.message());
+      return;
+    }
+    if (!ws_.got_binary()) {
+      FailAndClose("text message on an event-stream socket");
+      return;
+    }
+    const auto data = read_buffer_.data();
+    const std::string_view bytes(static_cast<const char*>(data.data()), data.size());
+    auto decoded = eventstream::DecodeMessage(bytes);
+    // Exactly one frame per binary message (ADR-0015): WebSocket framing
+    // provides the boundaries, so a partial, trailing-bytes, or malformed
+    // payload is a protocol violation, not a feed-me-more.
+    if (!decoded.ok()) {
+      FailAndClose(decoded.error().message());
+      return;
+    }
+    std::optional<eventstream::DecodedFrame>& frame = *decoded;
+    if (!frame.has_value() || frame->bytes_consumed != bytes.size()) {
+      FailAndClose("binary message is not exactly one event-stream frame");
+      return;
+    }
+    read_buffer_.consume(n);
+    {
+      const std::lock_guard<std::mutex> lock(mutex_);
+      received_.push_back(std::move(frame->message));
+      wake_.notify_all();
+    }
+    PumpRead();
+  }
+
+  void StartWrite(std::string frame) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    if (failed_ || peer_closed_ || close_requested_) {
+      write_complete_ = true;
+      write_error_ = failed_ ? error_ : "session is closed";
+      wake_.notify_all();
+      return;
+    }
+    wire_write_busy_ = true;
+    write_buffer_ = std::move(frame);
+    lock.unlock();
+    ws_.binary(true);
+    auto self = this->shared_from_this();
+    ws_.async_write(asio::buffer(write_buffer_),
+                    [self](beast::error_code ec, std::size_t) { self->OnWrite(ec); });
+  }
+
+  void OnWrite(beast::error_code ec) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    wire_write_busy_ = false;
+    write_complete_ = true;
+    if (ec) {
+      write_error_ = ec.message();
+      if (!failed_ && !peer_closed_) {
+        failed_ = true;  // a failed write means the wire is gone for both directions
+        error_ = ec.message();
+      }
+    }
+    wake_.notify_all();
+    if (!ec && close_requested_ && !close_started_) {
+      StartCloseLocked(lock);
+    }
+  }
+
+  // Records the close request; defers behind an in-flight message write
+  // (close is a write-class op on this wire).
+  void RequestCloseLocked(std::unique_lock<std::mutex>& lock) {
+    if (close_requested_ || failed_ || peer_closed_) {
+      return;
+    }
+    close_requested_ = true;
+    if (!wire_write_busy_) {
+      StartCloseLocked(lock);
+    }
+  }
+
+  void StartCloseLocked(std::unique_lock<std::mutex>& lock) {
+    close_started_ = true;
+    const bws::close_code code = close_code_;
+    lock.unlock();
+    auto self = this->shared_from_this();
+    // Beast's close op performs the whole closing handshake (it reads
+    // until the peer's close arrives, then tears down): its success IS
+    // the session's clean end.
+    ws_.async_close(code, [self](beast::error_code ec) {
+      const std::lock_guard<std::mutex> lock(self->mutex_);
+      if (!self->failed_ && !self->peer_closed_) {
+        if (ec) {
+          self->failed_ = true;
+          self->error_ = ec.message();
+        } else {
+          self->peer_closed_ = true;
+        }
+      }
+      self->wake_.notify_all();
+    });
+  }
+
+  void Fail(std::string reason) {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    if (!failed_ && !peer_closed_) {
+      failed_ = true;
+      error_ = std::move(reason);
+    }
+    wake_.notify_all();
+  }
+
+  // A protocol violation by the peer: fail the session for the
+  // application, and tell the peer why — as a protocol_error close frame,
+  // deferred behind any in-flight write (OnWrite runs the deferred close).
+  void FailAndClose(std::string reason) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    if (!failed_ && !peer_closed_) {
+      failed_ = true;
+      error_ = std::move(reason);
+    }
+    wake_.notify_all();
+    close_code_ = bws::close_code::protocol_error;
+    close_requested_ = true;
+    if (!close_started_ && !wire_write_busy_) {
+      StartCloseLocked(lock);
+    }
+  }
+
+  // Called with mutex_ held, from the facade side.
+  void ResumeReadsIfPaused() {
+    if (!read_paused_ || failed_ || peer_closed_ || received_.size() >= kReceiveQueueDepth) {
+      return;
+    }
+    read_paused_ = false;
+    auto self = this->shared_from_this();
+    try {
+      asio::post(ws_.get_executor(), [self] { self->PumpRead(); });
+    } catch (...) {
+      failed_ = true;
+      error_ = "cannot schedule the read";
+      wake_.notify_all();
+    }
+  }
+
+  std::shared_ptr<void> keeper_;
+  WsStream ws_;
+  beast::flat_buffer read_buffer_;
+  std::string write_buffer_;
+
+  std::mutex send_mutex_;  // serializes Send callers end to end
+
+  std::mutex mutex_;
+  std::condition_variable wake_;
+  std::deque<eventstream::Message> received_;
+  bool read_paused_ = false;
+  bool peer_closed_ = false;  // clean close: Receive's nullopt
+  bool failed_ = false;       // broken/violated/aborted: Receive's error
+  std::string error_;
+  bool write_complete_ = true;
+  std::string write_error_;
+  bool wire_write_busy_ = false;
+  bool close_requested_ = false;
+  bool close_started_ = false;
+  bws::close_code close_code_ = bws::close_code::normal;
+};
+
+// The websocket_gate and on_websocket callbacks are contained the way
+// InvokeHandlerGuarded contains handlers: application policy must never
+// take down the wire it runs on. A gate that throws refuses the upgrade
+// with a 500 — never a completed handshake by accident.
+std::optional<HttpResponse> InvokeGateGuarded(
+    const std::function<std::optional<HttpResponse>(const HttpRequest&)>& gate,
+    const HttpRequest& request) {
+  if (!gate) {
+    return std::nullopt;
+  }
+  try {
+    return gate(request);
+  } catch (const std::exception& e) {
+    std::clog << "smithy: websocket_gate threw: " << e.what() << "\n";
+  } catch (...) {
+    std::clog << "smithy: websocket_gate threw a non-std exception\n";
+  }
+  HttpResponse refusal;
+  refusal.status = 500;
+  return refusal;
+}
+
+void InvokeServeGuarded(const std::function<void(const HttpRequest&, WebSocket&)>& serve,
+                        const HttpRequest& request, WebSocket& socket) {
+  try {
+    serve(request, socket);
+  } catch (const std::exception& e) {
+    std::clog << "smithy: on_websocket threw: " << e.what() << "\n";
+  } catch (...) {
+    std::clog << "smithy: on_websocket threw a non-std exception\n";
+  }
+}
+
 }  // namespace
 
 // Shared by the acceptor loop, sessions, and the transport object; sessions
@@ -179,6 +546,48 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
   // there), so plain non-atomic values are safe.
   std::size_t open_connections = 0;
   bool accept_paused = false;
+
+  // Live upgraded sessions (ADR-0015): Stop() aborts them so serve
+  // callbacks blocked in Send/Receive wake and the handler pool can join.
+  // Weak entries — the sessions' own lifetime stays with their pumps.
+  // The aborted flag closes the Stop()-vs-registration race: a session
+  // whose accept completes after the one abort sweep ran must self-abort,
+  // or its serve callback would block forever and wedge the pool join.
+  std::mutex websockets_mutex;
+  std::vector<std::weak_ptr<WebSocketSessionBase>> websockets;
+  bool websockets_aborted = false;
+  std::string websockets_abort_reason;
+
+  void RegisterWebSocket(const std::shared_ptr<WebSocketSessionBase>& session) {
+    std::string abort_reason;
+    {
+      const std::lock_guard<std::mutex> lock(websockets_mutex);
+      if (!websockets_aborted) {
+        std::erase_if(websockets, [](const auto& weak) { return weak.expired(); });
+        websockets.push_back(session);
+        return;
+      }
+      abort_reason = websockets_abort_reason;
+    }
+    session->Abort(std::move(abort_reason));  // lost the race with the sweep
+  }
+
+  void AbortWebSockets(const std::string& reason) {
+    std::vector<std::shared_ptr<WebSocketSessionBase>> live;
+    {
+      const std::lock_guard<std::mutex> lock(websockets_mutex);
+      websockets_aborted = true;
+      websockets_abort_reason = reason;
+      for (const auto& weak : websockets) {
+        if (auto session = weak.lock()) {
+          live.push_back(std::move(session));
+        }
+      }
+    }
+    for (const auto& session : live) {
+      session->Abort(reason);
+    }
+  }
 
   // All completion handlers capture State weakly: handlers queued inside the
   // io_context must not own the State that owns the io_context, or abandoned
@@ -477,6 +886,21 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
                           CloseStream(*stream);
                           return;
                         }
+                        if (self->opts.on_websocket && bws::is_upgrade(parser->get())) {
+                          if (self->stopping) {
+                            // No new streams during the drain (the normal
+                            // path folds stopping into keep_alive the same
+                            // way).
+                            CloseStream(*stream);
+                            return;
+                          }
+                          // The upgrade path (ADR-0015): the request is fully
+                          // read and within the transport's limits; the gate
+                          // and handshake take it from here. Not a tracked
+                          // request — a stream has no pending response.
+                          self->Upgrade(stream, parser);
+                          return;
+                        }
                         self->active.fetch_add(1);
                         const bool keep_alive = parser->get().keep_alive() && !self->stopping;
                         HttpRequest request = ToSmithyRequest(parser->release());
@@ -565,6 +989,105 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
                          self->ReadNext(stream);
                        });
   }
+
+  // The WebSocket upgrade path (ADR-0015), entered from ReadNext's success
+  // arm on the connection strand. The gate is application policy and may
+  // block, so it runs on the handler pool; the handshake and session
+  // machinery stay on the strand.
+  template <typename Stream>
+  void Upgrade(const std::shared_ptr<Stream>& stream,
+               const std::shared_ptr<bhttp::request_parser<bhttp::string_body>>& parser) {
+    // The smithy view of the upgrade request, for the gate and the serve
+    // callback; the wire request object stays alive in the parser for
+    // async_accept.
+    HttpRequest request = ToSmithyRequest(bhttp::request<bhttp::string_body>(parser->get()));
+    request.peer_address = PeerAddressOf(*stream);
+    asio::post(*handler_pool, [weak = weak_from_this(), stream, parser,
+                               request = std::move(request)]() mutable {
+      auto self = weak.lock();
+      if (self == nullptr) {
+        return;  // Torn down; the abandoned stream closes the fd.
+      }
+      std::optional<HttpResponse> refusal = InvokeGateGuarded(self->opts.websocket_gate, request);
+      asio::post(stream->get_executor(), [weak, stream, parser, request = std::move(request),
+                                          refusal = std::move(refusal)]() mutable {
+        auto self = weak.lock();
+        if (self == nullptr || self->stopping) {
+          // Torn down, or Stop() began while the gate ran: no new streams.
+          CloseStream(*stream);
+          return;
+        }
+        if (refusal.has_value()) {
+          // Refused before any 101 exists: the answer is a plain HTTP
+          // response on the plain HTTP connection, keep-alive intact.
+          self->active.fetch_add(1);
+          const bool keep_alive = parser->get().keep_alive() && !self->stopping;
+          self->Respond(stream, *refusal, keep_alive, request.peer_address);
+          return;
+        }
+        self->CompleteUpgrade(stream, parser, std::move(request));
+      });
+    });
+  }
+
+  template <typename Stream>
+  void CompleteUpgrade(const std::shared_ptr<Stream>& stream,
+                       const std::shared_ptr<bhttp::request_parser<bhttp::string_body>>& parser,
+                       HttpRequest request) {
+    auto phase = Phase(*stream);  // before the move: the socket must still answer getpeername
+    // The websocket stream owns the wire's timers from here (handshake
+    // budget + idle-with-pings); the HTTP per-phase deadline must not keep
+    // ticking underneath it.
+    beast::get_lowest_layer(*stream).expires_never();
+    using Ws = bws::stream<Stream>;
+    // The session adopts the stream; the aliasing `stream` pointer rides
+    // along as the keeper, so the transport's connection slot stays held
+    // exactly until the session dies (~Session accounting, unchanged).
+    auto session = std::make_shared<WsSession<Ws>>(Ws(std::move(*stream)), stream);
+    session->stream().set_option(bws::stream_base::timeout{
+        .handshake_timeout = std::chrono::seconds(std::max(opts.request_timeout_seconds, 1)),
+        .idle_timeout = std::chrono::seconds(std::max(opts.websocket_idle_timeout_seconds, 1)),
+        .keep_alive_pings = true});
+    // The transport refuses what the codec could not represent — the
+    // symmetric-bounds line (ADR-0014), extended to the wire.
+    session->stream().read_message_max(eventstream::kMaxMessageBytes);
+    session->stream().async_accept(
+        parser->get(), [weak = weak_from_this(), session, parser, request = std::move(request),
+                        phase = std::move(phase)](beast::error_code ec) mutable {
+          auto self = weak.lock();
+          if (self == nullptr) {
+            return;
+          }
+          if (ec) {
+            // The gate admitted it and the handshake still failed: the
+            // 101 never completed, no response will ever exist — ADR-0013's
+            // exact contract, as the ADR-0015 kind.
+            using Kind = BeastServerTransport::ConnectionEvent::Kind;
+            self->NotifyConnectionEvent(Kind::kUpgradeFailure, ec, std::move(phase));
+            return;
+          }
+          if (self->stopping) {
+            // The 101 completed as Stop() began; the abort sweep may
+            // already have run, so this session must not wait for it.
+            session->Abort("server stopping");
+            return;
+          }
+          self->RegisterWebSocket(session);
+          session->Start();  // on the strand: the accept completion runs here
+          asio::post(*self->handler_pool, [weak, session, request = std::move(request)]() mutable {
+            auto self = weak.lock();
+            if (self == nullptr) {
+              session->Abort("websocket: server torn down");
+              return;
+            }
+            InvokeServeGuarded(self->opts.on_websocket, request, *session);
+            // Serve returned: the session ends with a close handshake; the
+            // pumps wind down and the connection slot frees with the
+            // session.
+            session->Close();
+          });
+        });
+  }
 };
 
 BeastServerTransport::BeastServerTransport(Options options) : options_(std::move(options)) {}
@@ -577,6 +1100,17 @@ Outcome<Unit> BeastServerTransport::Start(RequestHandler handler) {
   }
   auto state = std::make_shared<State>(options_);
   state->handler = std::move(handler);
+
+  if (options_.on_websocket && options_.handler_threads <= 0) {
+    // The serve callback blocks by design (its Receive/Send are blocking);
+    // inline-on-io would wedge the wire it serves.
+    return Error::Validation("beast: on_websocket needs handler_threads > 0");
+  }
+  if (options_.websocket_gate && !options_.on_websocket) {
+    // The gate only guards the upgrade path, which exists only with a
+    // serve callback — a gate alone would be silently dead config.
+    return Error::Validation("beast: websocket_gate without on_websocket never runs");
+  }
 
   const bool has_cert = !options_.tls_certificate_chain_pem.empty();
   const bool has_key = !options_.tls_private_key_pem.empty();
@@ -687,6 +1221,11 @@ void BeastServerTransport::Shutdown() noexcept {
     while (state_->active.load() > 0 && std::chrono::steady_clock::now() < deadline) {
       std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
+    // Live stream sessions never count toward the drain (they have no
+    // pending response); abort them now so serve callbacks blocked in
+    // Send/Receive wake with an error and the pool below can join
+    // (ADR-0015).
+    state_->AbortWebSockets("server stopping");
     // Past the deadline: abandon handler work that hasn't started yet
     // (running handlers finish; their responses are dropped once io stops).
     if (state_->handler_pool != nullptr) {
@@ -740,6 +1279,37 @@ void BeastServerTransport::Shutdown() noexcept {
 
 namespace {
 
+// Client-side TLS context setup shared by the HTTP client and the
+// WebSocket dial (ADR-0007 posture): version floor, verify mode, trust
+// anchors. Returns an error message; empty is success.
+std::string SetupClientTlsContext(asio::ssl::context& ssl_context, const TlsOptions& tls) {
+  // A client that verifies peers by default has no business completing a
+  // downgraded handshake either.
+  if (!ApplyTls12Floor(ssl_context)) {
+    return "cannot set the TLS 1.2 version floor";
+  }
+  boost::system::error_code ec;
+  if (!tls.verify_peer) {
+    (void)ssl_context.set_verify_mode(asio::ssl::verify_none, ec);
+    return "";
+  }
+  (void)ssl_context.set_verify_mode(asio::ssl::verify_peer, ec);
+  if (ec) {
+    return "cannot enable TLS verification: " + ec.message();
+  }
+  if (!tls.ca_pem.empty()) {
+    (void)ssl_context.add_certificate_authority(asio::buffer(tls.ca_pem), ec);
+    if (ec) {
+      return "invalid ca_pem: " + ec.message();
+    }
+  } else {
+    // Best effort: platforms without system OpenSSL paths simply fail
+    // verification at handshake time.
+    (void)ssl_context.set_default_verify_paths(ec);
+  }
+  return "";
+}
+
 // One dialed connection. Beast's stream timeouts only apply to asynchronous
 // operations, so Send() runs async chains and drives the connection's own
 // io_context to completion — which also makes concurrent Send() calls
@@ -770,32 +1340,10 @@ struct BeastHttpClient::State {
     if (!opts.tls) {
       return;
     }
-    asio::ssl::context& ssl_context = ssl.emplace(asio::ssl::context::tls_client);
-    // A client that verifies peers by default has no business completing a
-    // downgraded handshake either.
-    if (!ApplyTls12Floor(ssl_context)) {
-      setup_error = "beast client: cannot set the TLS 1.2 version floor";
-      return;
-    }
-    boost::system::error_code ec;
-    if (!opts.tls_options.verify_peer) {
-      (void)ssl_context.set_verify_mode(asio::ssl::verify_none, ec);
-      return;
-    }
-    (void)ssl_context.set_verify_mode(asio::ssl::verify_peer, ec);
-    if (ec) {
-      setup_error = "beast client: cannot enable TLS verification: " + ec.message();
-      return;
-    }
-    if (!opts.tls_options.ca_pem.empty()) {
-      (void)ssl_context.add_certificate_authority(asio::buffer(opts.tls_options.ca_pem), ec);
-      if (ec) {
-        setup_error = "beast client: invalid ca_pem: " + ec.message();
-      }
-    } else {
-      // Best effort: platforms without system OpenSSL paths simply fail
-      // verification at handshake time.
-      (void)ssl_context.set_default_verify_paths(ec);
+    const std::string error =
+        SetupClientTlsContext(ssl.emplace(asio::ssl::context::tls_client), opts.tls_options);
+    if (!error.empty()) {
+      setup_error = "beast client: " + error;
     }
   }
 
@@ -1019,6 +1567,217 @@ Outcome<HttpResponse> BeastHttpClient::Send(const HttpRequest& request) {
     state_->ReturnIdle(std::move(connection));
   }
   return outcome;
+}
+
+// ---------------------------------------------------------------------------
+// BeastWebSocketClient (ADR-0015)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// One dialed WebSocket connection's io machinery. Unlike ClientConnection's
+// drive-to-completion model, a stream is long-lived and full-duplex: after
+// the handshakes, the session's pumps run on this io_context from one
+// dedicated background thread (the accepted ADR-0015 cost).
+struct DialedConnection {
+  DialedConnection() : io(1) {}
+
+  asio::io_context io;
+  // The dial's TLS context must outlive the stream that speaks it.
+  std::optional<asio::ssl::context> ssl;
+  // Exactly one is set before the upgrade; the websocket stream adopts it.
+  std::unique_ptr<beast::tcp_stream> plain;
+  std::unique_ptr<asio::ssl::stream<beast::tcp_stream>> tls;
+
+  beast::tcp_stream& lowest() const {
+    return tls != nullptr ? beast::get_lowest_layer(*tls) : *plain;
+  }
+
+  void Run() {
+    io.run();
+    io.restart();
+  }
+};
+
+// The handle the application owns: delegates to the session and keeps the
+// io thread alive for the connection's lifetime. Destruction (an app
+// thread — pump callbacks never own this object) aborts the session, stops
+// the io, and joins.
+class DialedWebSocket final : public WebSocket {
+ public:
+  DialedWebSocket(std::shared_ptr<WebSocketSessionBase> session,
+                  std::unique_ptr<DialedConnection> connection)
+      : connection_(std::move(connection)),
+        session_(std::move(session)),
+        work_guard_(asio::make_work_guard(connection_->io)),
+        runner_([this] { connection_->io.run(); }) {}
+
+  ~DialedWebSocket() override {
+    session_->Abort("client released the session");
+    work_guard_.reset();
+    connection_->io.stop();
+    if (runner_.joinable()) {
+      runner_.join();
+    }
+  }
+
+  Outcome<std::optional<eventstream::Message>> Receive() override { return session_->Receive(); }
+  Outcome<Unit> Send(const eventstream::Message& message) override {
+    return session_->Send(message);
+  }
+  void Close() override { session_->Close(); }
+
+ private:
+  // Declaration order is load-bearing: members destroy in reverse, so the
+  // session (whose websocket stream references the io_context) must be
+  // released BEFORE connection_ destroys that context.
+  std::unique_ptr<DialedConnection> connection_;
+  std::shared_ptr<WebSocketSessionBase> session_;
+  asio::executor_work_guard<asio::io_context::executor_type> work_guard_;
+  std::thread runner_;
+};
+
+// The upgrade handshake plus session wiring, generic over the carrier the
+// dial produced (plain or TLS). The carrier arrives as the unique_ptr
+// itself and its husk is destroyed HERE, while the io_context lives:
+// a moved-from Beast stream still owns a fresh impl whose timer touches
+// the io_context's timer service at destruction, so a husk left in the
+// caller's frame would outlive the io on the refusal path (ASan/UBSan,
+// found by CI).
+template <typename Stream>
+Outcome<std::shared_ptr<WebSocket>> FinishDial(std::unique_ptr<DialedConnection> connection,
+                                               std::unique_ptr<Stream> carrier,
+                                               const BeastWebSocketClient::Options& options) {
+  using Ws = bws::stream<Stream>;
+  auto session = std::make_shared<WsSession<Ws>>(Ws(std::move(*carrier)), nullptr);
+  carrier.reset();  // the husk dies while its timer service is still alive
+  Ws& ws = session->stream();
+  // The websocket timeout machinery owns the wire from here; the
+  // tcp_stream deadline armed during connect must not keep ticking.
+  beast::get_lowest_layer(ws).expires_never();
+  ws.set_option(bws::stream_base::timeout{
+      .handshake_timeout = std::chrono::milliseconds(std::max(options.handshake_timeout_ms, 1)),
+      .idle_timeout = std::chrono::seconds(std::max(options.idle_timeout_seconds, 1)),
+      .keep_alive_pings = true});
+  ws.read_message_max(eventstream::kMaxMessageBytes);
+  if (!options.headers.entries().empty()) {
+    ws.set_option(bws::stream_base::decorator([headers = options.headers](bws::request_type& req) {
+      for (const auto& [name, value] : headers.entries()) {
+        req.insert(name, value);
+      }
+    }));
+  }
+
+  const int default_port = options.tls ? 443 : 80;
+  const std::string host_header = options.port == default_port
+                                      ? options.host
+                                      : options.host + ":" + std::to_string(options.port);
+  beast::error_code upgrade_ec;
+  bool handshake_done = false;
+  ws.async_handshake(host_header, options.target.empty() ? "/" : options.target,
+                     [&upgrade_ec, &handshake_done](beast::error_code ec) {
+                       upgrade_ec = ec;
+                       handshake_done = true;
+                     });
+  // Not Run(): a failed upgrade leaves the websocket timeout timer pending
+  // and run() would sit out the whole handshake budget after the refusal
+  // already arrived. Pump handlers only until the handshake completes.
+  while (!handshake_done && connection->io.run_one() > 0) {
+  }
+  connection->io.restart();
+  if (upgrade_ec) {
+    // Tear down in order before returning: the session (and its websocket
+    // timeout timer) first, then run the io dry so the timer's canceled
+    // wait executes now — nothing may still reference the io_context's
+    // services when the connection is destroyed.
+    session.reset();
+    connection->Run();
+    // A refused upgrade is the server's decision (auth, routing); a retry
+    // would only repeat it.
+    return Error::Transport("beast websocket: upgrade of " + options.host + options.target +
+                                " failed: " + upgrade_ec.message(),
+                            /*retryable=*/false);
+  }
+  asio::post(connection->io, [session] { session->Start(); });
+  return std::shared_ptr<WebSocket>(
+      std::make_shared<DialedWebSocket>(std::move(session), std::move(connection)));
+}
+
+}  // namespace
+
+Outcome<std::shared_ptr<WebSocket>> BeastWebSocketClient::Dial(Options options) {
+  if (options.host.empty()) {
+    return Error::Validation("beast websocket: options need a host");
+  }
+  if (options.port == 0) {
+    options.port = options.tls ? 443 : 80;  // the scheme default
+  }
+  auto connection = std::make_unique<DialedConnection>();
+  const auto handshake_budget =
+      std::chrono::milliseconds(std::max(options.handshake_timeout_ms, 1));
+
+  asio::ip::tcp::resolver resolver(connection->io);
+  boost::system::error_code resolve_ec;
+  const auto results = resolver.resolve(options.host, std::to_string(options.port), resolve_ec);
+  if (resolve_ec) {
+    return Error::Transport("beast websocket: cannot resolve " + options.host + ": " +
+                            resolve_ec.message());
+  }
+
+  if (options.tls) {
+    asio::ssl::context& tls_context = connection->ssl.emplace(asio::ssl::context::tls_client);
+    const std::string tls_error = SetupClientTlsContext(tls_context, options.tls_options);
+    if (!tls_error.empty()) {
+      return Error::Validation("beast websocket: " + tls_error);
+    }
+    connection->tls =
+        std::make_unique<asio::ssl::stream<beast::tcp_stream>>(connection->io, tls_context);
+    // SNI: virtual-hosted servers need the name before the handshake.
+    if (SSL_set_tlsext_host_name(connection->tls->native_handle(), options.host.c_str()) != 1) {
+      return Error::Transport("beast websocket: cannot set SNI host name");
+    }
+    if (options.tls_options.verify_peer) {
+      boost::system::error_code verify_ec;
+      (void)connection->tls->set_verify_callback(asio::ssl::host_name_verification(options.host),
+                                                 verify_ec);
+      if (verify_ec) {
+        return Error::Transport("beast websocket: cannot enable hostname verification: " +
+                                verify_ec.message());
+      }
+    }
+  } else {
+    connection->plain = std::make_unique<beast::tcp_stream>(connection->io);
+  }
+
+  connection->lowest().expires_after(handshake_budget);
+  beast::error_code connect_ec;
+  connection->lowest().async_connect(
+      results,
+      [&connect_ec](beast::error_code ec, const asio::ip::tcp::endpoint&) { connect_ec = ec; });
+  connection->Run();
+  if (connect_ec) {
+    return Error::Transport("beast websocket: cannot connect to " + options.host + ":" +
+                            std::to_string(options.port) + ": " + connect_ec.message());
+  }
+
+  if (options.tls) {
+    connection->lowest().expires_after(handshake_budget);
+    beast::error_code handshake_ec;
+    connection->tls->async_handshake(asio::ssl::stream_base::client,
+                                     [&handshake_ec](beast::error_code ec) { handshake_ec = ec; });
+    connection->Run();
+    if (handshake_ec) {
+      // Verification failures are configuration/identity problems, not
+      // transient transport blips: not retryable.
+      return Error::Transport("beast websocket: TLS handshake with " + options.host +
+                                  " failed: " + handshake_ec.message(),
+                              /*retryable=*/false);
+    }
+    auto carrier = std::move(connection->tls);
+    return FinishDial(std::move(connection), std::move(carrier), options);
+  }
+  auto carrier = std::move(connection->plain);
+  return FinishDial(std::move(connection), std::move(carrier), options);
 }
 
 }  // namespace smithy::http

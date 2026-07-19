@@ -95,6 +95,20 @@ via `git_override` until then.
   callback for in-flight gauges with guaranteed start/complete pairing.
   **Breaking:** `Observe(callback, now)` call sites become
   `Observe(callback, nullptr, now)`.
+- Phase 8 slice 2, WebSocket transports (ADR-0015): `BeastServerTransport`
+  upgrades WebSocket requests in place — `Options::websocket_gate` refuses
+  with a plain HTTP answer before any 101 exists (auth sees the whole
+  request), `Options::on_websocket` serves the accepted session on the
+  handler pool — and `BeastWebSocketClient::Dial` is the client end
+  (ADR-0007 TLS posture, SNI, hostname verification, one handshake
+  budget). Both ends speak `smithy::http::WebSocket`: blocking full-duplex
+  `Send`/`Receive`/`Close` carrying one event-stream frame per binary
+  WebSocket message, with real backpressure both directions, keep-alive
+  pings under an idle timeout, and protocol violations (text messages,
+  non-frame payloads) failing the session. Failed upgrades surface as the
+  new `ConnectionEvent::Kind::kUpgradeFailure`; `Stop()` aborts live
+  sessions so blocked serve callbacks wake. Usable directly ahead of the
+  generated streaming API (slice 3).
 - Phase 8 groundwork, wire-format-first (ADR-0014): `//runtime:eventstream`
   is the event-stream message framing both streaming protocols are defined
   against — CRC-guarded prelude, ten typed header wire types (headers

@@ -430,6 +430,17 @@ with healthy traffic. Wire it to the same sink as `on_rejected` and
 `Observe`: with both hooks installed, every connection the transport
 terminates is either accounted for or deliberately, documented-ly healthy.
 
+Serving WebSocket event streams (ADR-0015) adds one kind and two
+behaviors to know about: `kUpgradeFailure` reports upgrade handshakes
+that failed after the gate admitted them (once a session is up, wire
+failures surface to your serve callback through `Send`/`Receive` — the
+application is the observer there); an upgraded connection's silence is
+governed by `websocket_idle_timeout_seconds` (default 300, keep-alive
+pings underneath) instead of `request_timeout_seconds`; and `Stop()`
+*aborts* live stream sessions rather than draining them — an in-flight
+stream gets no grace period, so end streams application-side first if
+that matters to your rollout.
+
 Concurrent connections are capped by `max_connections` (default 1024; 0
 disables the cap): at the cap the server pauses accepting and new
 connections wait in the kernel's listen backlog until a session closes, so

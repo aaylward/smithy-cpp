@@ -4,6 +4,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "smithy/core/fatal.h"
@@ -18,15 +19,15 @@ namespace {
 // "https://a.com:443" collide the way RFC 6454 says they must. nullopt
 // for anything that is not an http(s) origin (or "null") — schemes,
 // paths, userinfo, and garbage all land here.
-std::optional<std::string> NormalizeOrigin(const std::string& text) {
-  std::string lowered = text;
+std::optional<std::string> NormalizeOrigin(std::string_view text) {
+  std::string lowered(text);
   for (char& c : lowered) {
     c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
   }
   if (lowered == "null") {
     return lowered;
   }
-  auto endpoint = http::ParseEndpoint(lowered);
+  const auto endpoint = http::ParseEndpoint(lowered);
   if (!endpoint.ok() || !endpoint->path_prefix.empty() ||
       endpoint->host.find('@') != std::string::npos) {
     // An origin is scheme://host[:port] and nothing else: a path or

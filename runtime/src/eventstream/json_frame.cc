@@ -1,6 +1,7 @@
 #include "smithy/eventstream/json_frame.h"
 
 #include <cctype>
+#include <cstddef>
 #include <string>
 #include <utility>
 
@@ -91,7 +92,7 @@ Outcome<Message> DecodeJsonFrame(std::string_view text) {
   if (text.size() > kMaxMessageBytes) {
     return Malformed("message over the 16 MiB limit");
   }
-  auto envelope = json::Decode(text);
+  const auto envelope = json::Decode(text);
   if (!envelope.ok()) {
     return Malformed("text frame is not JSON: " + envelope.error().message());
   }

@@ -13,6 +13,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <future>
 #include <memory>
 #include <optional>
 #include <string>
@@ -380,7 +381,7 @@ TEST(SessionRegistryAsyncTest, DeliversFifoThroughCompletionChains) {
   EXPECT_TRUE(registry.Remove("ada"));
 }
 
-TEST(SessionRegistryAsyncTest, AChainCollisionWithADirectSendPausesDeliveryNotKillsIt) {
+TEST(SessionRegistryAsyncTest, AChainCollisionWithADirectSendFallsBackToAWriterNotAStall) {
   Registry registry = AsyncRegistry();
   Session session = MakeSession();
   ASSERT_TRUE(registry.Add("ada", *session.handle));
@@ -399,8 +400,10 @@ TEST(SessionRegistryAsyncTest, AChainCollisionWithADirectSendPausesDeliveryNotKi
   ASSERT_FALSE(parked_completed.load());  // in flight: the send slot is busy
 
   // The chain's kick collides with the in-flight send and is refused with
-  // Validation. The collision is transient — it must pause this session's
-  // delivery, not kill it.
+  // Validation. The collision must not kill delivery — and it must not
+  // merely pause it either: nothing may depend on a rescuing later
+  // enqueue, because sparse traffic never sends one (the session falls
+  // back to a writer thread, which serializes by waiting).
   EXPECT_TRUE(registry.SendTo("ada", Note{"note-0"}));
 
   // Drain the wire: the fills, then the parked direct send completes.
@@ -410,9 +413,25 @@ TEST(SessionRegistryAsyncTest, AChainCollisionWithADirectSendPausesDeliveryNotKi
   EXPECT_EQ(NextAt(session), "parked");
   EXPECT_TRUE(parked_completed.load());
 
-  // Delivery resumes on the next enqueue: both events arrive, in order.
+  // note-0 arrives with NO further registry activity. Deadlined receive:
+  // a regression to pause-until-next-enqueue fails here instead of
+  // hanging. The promise lives on the heap, owned by the callback, so an
+  // early exit cannot dangle it.
+  auto note0 = std::make_shared<std::promise<std::optional<std::string>>>();
+  auto note0_future = note0->get_future();
+  session.client->ReceiveAsync([note0](Outcome<std::optional<Message>> message) {
+    if (message.ok() && message->has_value()) {
+      note0->set_value((**message).payload.ToString());
+    } else {
+      note0->set_value(std::nullopt);
+    }
+  });
+  ASSERT_EQ(note0_future.wait_for(std::chrono::seconds(5)), std::future_status::ready)
+      << "the collision stalled delivery: note-0 never arrived without a second enqueue";
+  EXPECT_EQ(note0_future.get(), "note-0");
+
+  // And the queue keeps flowing afterwards.
   EXPECT_TRUE(registry.SendTo("ada", Note{"note-1"}));
-  EXPECT_EQ(NextAt(session), "note-0");
   EXPECT_EQ(NextAt(session), "note-1");
   EXPECT_TRUE(registry.Remove("ada"));
 }

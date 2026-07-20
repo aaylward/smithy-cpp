@@ -188,10 +188,11 @@ its writer threads too: each session's queue drains through
 `EventStreamHandle::SendAsync` completion chains, same FIFO/policy/drain contracts, zero
 registry threads (sessions on sockets without async support fall back to a writer thread
 automatically). One interplay to know: the chain and a direct send (`co_await
-stream.Send`, a raw handle send) share the socket's one send slot, and a collision
-pauses that session's chain until the next enqueue — so steady-state pushes to a
-registered session belong in the registry, and direct sends in its serve loop are for
-request/reply moments. The generated streaming serve path
+stream.Send`, a raw handle send) share the socket's one send slot, and on the first
+collision that session falls back to writer-thread delivery — nothing lost, but that
+session thereafter costs the one thread async mode exists to avoid. So steady-state
+pushes to a registered session belong in the registry, and direct sends in its serve
+loop are for request/reply moments. The generated streaming serve path
 stays blocking in this slice — route matching and serde for an async mount are
 hand-written on the public envelope helpers, as the thread-free hub shows
 ([examples/chat/async_hub_server_main.cc](../examples/chat/async_hub_server_main.cc),

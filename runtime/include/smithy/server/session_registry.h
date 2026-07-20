@@ -85,13 +85,14 @@ class SessionRegistry {
     // cost. Chain steps run on completion contexts — a Beast io thread —
     // so on_slow_consumer stays quick there too.
     //
-    // Interplay with direct sends: the writer thread waited out an
+    // Interplay with direct sends: a writer thread waits out an
     // application send on the session (a handle Send, a co_await Send);
-    // the chain cannot wait, so a collision refuses the chain's send and
-    // PAUSES that session's delivery — the event stays queued, and the
-    // next enqueue resumes the chain. Steady-state pushes to a registered
-    // session belong in the registry (SendTo/Broadcast); direct sends are
-    // for a session's own request/reply moments.
+    // the chain cannot wait, so on the first collision the session falls
+    // back to a writer thread — nothing is lost or stalled, and that one
+    // session thereafter delivers at the writer's one-thread cost while
+    // the rest of the fleet stays thread-free. Steady-state pushes to a
+    // registered session belong in the registry (SendTo/Broadcast);
+    // direct sends are for a session's own request/reply moments.
     bool async_delivery = false;
   };
 
@@ -158,12 +159,24 @@ class SessionRegistry {
       if (it == sessions_.end()) return false;
       entry = std::move(it->second);
       sessions_.erase(it);
-      // Only writer-thread entries retire (their threads need a later
-      // join); an async entry's in-flight chain owns its own shared_ptr.
-      if (!entry->async_mode) retired_.push_back(entry);
+      // Stop and decide retirement under ONE entry-lock hold: a chain
+      // callback converting this entry to writer mode (PumpAsync's
+      // collision fallback) either spawned first — and the writer is
+      // joinable here, so it retires and gets its join — or observes
+      // stopping and never spawns. No interleaving orphans a thread.
+      // Entries without a writer need no join; an in-flight chain owns
+      // its own shared_ptr.
+      bool has_writer = false;
+      {
+        const std::lock_guard<std::mutex> entry_lock(entry->mutex);
+        entry->stopping = true;
+        entry->queue.clear();
+        has_writer = entry->writer.joinable();
+      }
+      entry->wake.notify_all();
+      if (has_writer) retired_.push_back(entry);
       ReapLocked();
     }
-    RequestStop(*entry);
     drained_.notify_all();
     return true;
   }
@@ -362,17 +375,16 @@ class SessionRegistry {
   // The in-flight event stays at the queue's front until its completion
   // reports success, so a refused send loses nothing. Outcomes:
   // Error::Transport is terminal exactly as in WriterLoop (the session is
-  // closed or gone); Error::Validation is a pause, not a death — it means
-  // the application transiently holds the socket's one send slot (a direct
-  // handle or co_await send in flight), so the chain goes idle with the
-  // event still queued and the next enqueue re-kicks it. (An event the
-  // encoder refuses also pauses this way; it stalls its session's queue
-  // until the slow-consumer policy ends the session — an encoder-refusable
-  // event in a fan-out union is an application bug either way.) Chain
-  // steps run on the transport's completion context; the in-memory pair's
-  // ready path completes inline on the enqueuer, one frame per drained
-  // event, so recursion depth tracks the drain — the wire transports post
-  // completions and stay at depth one.
+  // closed or gone); Error::Validation means the socket's one send slot
+  // is held by an application send, and converts the session to
+  // writer-thread delivery (the collision fallback — see the callback
+  // below). An event the encoder refuses converts the same way and then
+  // kills delivery in the writer, WriterLoop's terminal semantics — an
+  // encoder-refusable event in a fan-out union is an application bug.
+  // Chain steps run on the transport's completion context; the in-memory
+  // pair's ready path completes inline on the enqueuer, one frame per
+  // drained event, so recursion depth tracks the drain — the wire
+  // transports post completions and stay at depth one.
   static void PumpAsync(const std::shared_ptr<Entry>& entry) {
     Tx event;
     {
@@ -391,7 +403,21 @@ class SessionRegistry {
           // queue mid-flight, so the pop is guarded.)
           if (!entry->queue.empty()) entry->queue.pop_front();
         } else if (sent.error().kind() == ErrorKind::kValidation) {
-          entry->delivering = false;  // slot busy: pause, keep the event
+          // Refused, not failed: an application send holds the session's
+          // one send slot (websocket.h's one-outstanding contract) — and
+          // that includes the tail of a coroutine's own completed send
+          // whose completion bookkeeping hasn't landed yet. The chain
+          // cannot wait and sparse traffic may never enqueue again, so
+          // the session falls back to what CAN wait: its own writer
+          // thread, spawned once, delivering this queue with the blocking
+          // serialize-by-waiting semantics. A session that mixes direct
+          // sends with registry delivery pays one thread; pure chain
+          // sessions stay at zero.
+          entry->delivering = false;
+          if (!entry->stopping && !entry->writer.joinable()) {
+            entry->async_mode = false;
+            entry->writer = std::thread([entry] { WriterLoop(*entry); });
+          }
           return;
         } else {
           entry->stopping = true;  // delivery failed; the session is over

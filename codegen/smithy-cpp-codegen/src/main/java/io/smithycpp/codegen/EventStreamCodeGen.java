@@ -52,6 +52,14 @@ final class EventStreamCodeGen {
   }
 
   /**
+   * The input structure's event-stream member, or null when the operation models none — the member
+   * HTTP binding code must skip (the union is the session, not a parsed member).
+   */
+  static MemberShape inputStreamMember(Model model, OperationShape operation) {
+    return inputInfo(model, operation).map(EventStreamInfo::getEventStreamMember).orElse(null);
+  }
+
+  /**
    * Fails generation for models this slice does not carry (each diagnostic names the shape and the
    * fix): streaming on a refusing protocol, @eventHeader/@eventPayload event members,
    * initial-request members the upgrade request cannot carry, and initial-response members (the
@@ -173,6 +181,20 @@ final class EventStreamCodeGen {
     return info.getEventStreamTarget().asUnionShape().orElseThrow();
   }
 
+  /**
+   * The operation's declared error shapes, keyed by C++ type name (sorted, so emission order is
+   * deterministic) — the dispatch set the exception decode and the exception-message builder share.
+   */
+  private static Map<String, StructureShape> modeledErrors(
+      CppContext context, ServiceShape service, OperationShape operation) {
+    Map<String, StructureShape> errors = new TreeMap<>();
+    for (ShapeId errorId : operation.getErrors(service)) {
+      StructureShape shape = context.model().expectShape(errorId).asStructureShape().orElseThrow();
+      errors.put(context.cppSymbols().toSymbol(shape).getName(), shape);
+    }
+    return errors;
+  }
+
   private static String eventUnionType(CppContext context, Optional<EventStreamInfo> info) {
     return info.map(i -> context.cppSymbols().toSymbol(eventUnion(i)).getName())
         .orElse("smithy::eventstream::NoEvents");
@@ -196,8 +218,61 @@ final class EventStreamCodeGen {
         + ">";
   }
 
+  /** The generated header alias for {@link #clientStreamType}: {@code <Op>ClientStream}. */
+  static String clientStreamAlias(OperationShape operation) {
+    return opName(operation) + "ClientStream";
+  }
+
+  /** The generated header alias for {@link #serverStreamType}: {@code <Op>ServerStream}. */
+  static String serverStreamAlias(OperationShape operation) {
+    return opName(operation) + "ServerStream";
+  }
+
+  /**
+   * Emits one {@code using <Op>ClientStream = EventStream<...>} (or the server mirror) per
+   * streaming operation into a generated header, used by every signature that mentions the session
+   * — consumers name the alias instead of respelling the two-parameter template. Synthetic names
+   * beside the model's own types must fail loudly on collision (the error-listing precedent).
+   */
+  static void writeStreamAliases(
+      CppWriter w,
+      CppContext context,
+      ServiceShape service,
+      List<OperationShape> streamingOperations,
+      boolean serverSide) {
+    for (OperationShape operation : streamingOperations) {
+      String alias = serverSide ? serverStreamAlias(operation) : clientStreamAlias(operation);
+      TypeGenerators.requireNoModelCollision(context, service, operation, alias, "stream alias");
+      if (serverSide) {
+        w.write(
+            "/// The typed session a $L handler borrows (ADR-0016): Tx = what this",
+            opName(operation));
+        w.write("/// server sends, Rx = what the client sends.");
+      } else {
+        w.write(
+            "/// The typed session $L returns (ADR-0016): Tx = what this client",
+            opName(operation));
+        w.write("/// sends, Rx = what the server sends.");
+      }
+      w.write(
+          "using $L = $L;",
+          alias,
+          serverSide ? serverStreamType(context, operation) : clientStreamType(context, operation));
+    }
+    w.write("");
+  }
+
   private static String opName(OperationShape operation) {
     return CppReservedWords.escape(operation.getId().getName());
+  }
+
+  /**
+   * The encoder argument for an EventStream construction: the generated Encode&lt;Op&gt;Event for a
+   * modeled direction, an empty encoder for NoEvents — Send is uncallable there (a compile-time
+   * static_assert, event_stream.h), so the slot is never invoked and no stub is emitted.
+   */
+  private static String encoderArgument(Optional<EventStreamInfo> tx, OperationShape operation) {
+    return tx.isPresent() ? "Encode" + opName(operation) + "Event" : "{}";
   }
 
   /**
@@ -215,7 +290,7 @@ final class EventStreamCodeGen {
         "smithy::Outcome<smithy::Unit> $L(const $L& input, $L& stream, $L) override {",
         opName(operation),
         inputType,
-        serverStreamType(context, operation),
+        serverStreamAlias(operation),
         ProtocolSupport.REQUEST_CONTEXT_PARAM);
     w.write("(void)input;");
     w.write("stream.Close();");
@@ -313,13 +388,38 @@ final class EventStreamCodeGen {
     w.write("auto socket = DialStream(config_, std::move(request));");
     w.write("if (!socket) return std::move(socket).error();");
     w.write(
-        "return $L(*std::move(socket), Encode$LEvent, Decode$LEvent);",
-        clientStreamType(context, operation),
-        op,
+        "return $L(*std::move(socket), $L, Decode$LEvent);",
+        clientStreamAlias(operation),
+        encoderArgument(inputInfo(context.model(), operation), operation),
         op);
   }
 
-  /** Encode&lt;Op&gt;Event over the direction's union (or the never-called NoEvents slot). */
+  /**
+   * The shared tail of every streaming server route: construct the borrowed typed session over the
+   * operation's codec pair, block in the handler, send the one exception message a handler failure
+   * ends with, then close. {@code inputExpr} is how the route names the parsed input ("*input"
+   * behind a Parse outcome, "input" for a plain local).
+   */
+  static void writeServeAndClose(
+      CppWriter w, CppContext context, OperationShape operation, String inputExpr) {
+    String op = opName(operation);
+    w.write(
+        "$L stream(socket, $L, Decode$LEvent);",
+        serverStreamAlias(operation),
+        encoderArgument(outputInfo(context.model(), operation), operation),
+        op);
+    w.write("auto outcome = handler->$L($L, stream, context);", op, inputExpr);
+    w.openBlock("if (!outcome) {");
+    w.write("(void)socket.Send(Build$LExceptionMessage(outcome.error()));", op);
+    w.closeBlock("}");
+    w.write("stream.Close();");
+  }
+
+  /**
+   * Encode&lt;Op&gt;Event over the direction's union. A NoEvents direction emits nothing: its
+   * EventStream slot takes an empty encoder ({@link #encoderArgument}) because Send is uncallable
+   * there (compile-time, event_stream.h).
+   */
   private static void writeEncodeFunction(
       CppWriter w,
       CppContext context,
@@ -328,17 +428,6 @@ final class EventStreamCodeGen {
       Optional<EventStreamInfo> tx) {
     String op = opName(operation);
     if (tx.isEmpty()) {
-      w.write("// $L models no events in this direction; the codec slot is filled but", op);
-      w.write("// never invoked (nothing constructs a smithy::eventstream::NoEvents).");
-      w.openBlock(
-          "smithy::Outcome<smithy::eventstream::Message> Encode$LEvent("
-              + "const smithy::eventstream::NoEvents&) {",
-          op);
-      w.write(
-          "return smithy::Error::Validation($S);",
-          op + ": no events are modeled in this direction");
-      w.closeBlock("}");
-      w.write("");
       return;
     }
     UnionShape union = eventUnion(tx.get());
@@ -457,11 +546,7 @@ final class EventStreamCodeGen {
     w.write("const smithy::Document* text = parsed.doc.Find(\"message\");");
     w.write("if (text != nullptr && text->is_string()) parsed.message = text->as_string();");
     w.closeBlock("}");
-    Map<String, StructureShape> errors = new TreeMap<>();
-    for (ShapeId errorId : operation.getErrors(service)) {
-      StructureShape shape = context.model().expectShape(errorId).asStructureShape().orElseThrow();
-      errors.put(context.cppSymbols().toSymbol(shape).getName(), shape);
-    }
+    Map<String, StructureShape> errors = modeledErrors(context, service, operation);
     if (!errors.isEmpty()) {
       w.write("// Make<Error>Error's header-patch source; exception messages carry none.");
       w.write("smithy::http::HttpResponse response;");
@@ -488,11 +573,7 @@ final class EventStreamCodeGen {
       ProtocolGenerator protocol,
       OperationShape operation) {
     String op = opName(operation);
-    Map<String, StructureShape> errors = new TreeMap<>();
-    for (ShapeId errorId : operation.getErrors(service)) {
-      StructureShape shape = context.model().expectShape(errorId).asStructureShape().orElseThrow();
-      errors.put(context.cppSymbols().toSymbol(shape).getName(), shape);
-    }
+    Map<String, StructureShape> errors = modeledErrors(context, service, operation);
     w.write("// A handler failure ends the stream with one exception message before the");
     w.write("// close (ADR-0016).");
     w.openBlock(

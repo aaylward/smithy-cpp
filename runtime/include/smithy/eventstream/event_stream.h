@@ -4,6 +4,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <type_traits>
 #include <utility>
 
 #include "smithy/core/outcome.h"
@@ -14,10 +15,12 @@ namespace smithy::eventstream {
 
 // The vacant direction of a one-directional stream (ADR-0016): when an
 // operation models no event union for a direction, generated code
-// parameterizes that direction's EventStream slot with NoEvents. Nothing
-// ever constructs one, so the direction's encode function is never invoked;
-// a message received on a NoEvents direction is undecodable and therefore
-// terminal (the generated decoder rejects it).
+// parameterizes that direction's EventStream slot with NoEvents. A NoEvents
+// transmit direction makes Send uncallable (a static_assert catches the
+// misuse at compile time), so the encoder slot is never invoked and
+// generated code leaves it empty; a message received on a NoEvents
+// direction is undecodable and therefore terminal (the generated decoder
+// rejects it).
 struct NoEvents {
   friend bool operator==(const NoEvents&, const NoEvents&) = default;
 };
@@ -58,7 +61,12 @@ class EventStream {
   // Encodes and sends one event, blocking until its frame is on the wire.
   // An encoder failure surfaces as-is and leaves the session untouched;
   // wire failures are the WebSocket's (Error::Transport once closed).
+  // Uncallable when Tx is NoEvents — a direction that models no events has
+  // nothing to send, and the misuse is a compile error, not a runtime one.
   Outcome<Unit> Send(const Tx& event) {
+    static_assert(!std::is_same_v<Tx, NoEvents>,
+                  "this stream models no events in this direction: Send is not callable on a "
+                  "receive-only EventStream (use Receive/Close)");
     auto message = encode_(event);
     if (!message.ok()) return std::move(message).error();
     return socket_->Send(*message);

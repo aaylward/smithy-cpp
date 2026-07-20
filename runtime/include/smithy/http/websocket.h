@@ -56,14 +56,19 @@ class WebSocket {
   // Blocks until the message's frame is on the wire (natural backpressure —
   // nothing queues unboundedly). Fails with Error::Validation for a message
   // the codec refuses to encode (the session is untouched and stays
-  // usable), Error::Transport once the session is closed or broken.
+  // usable), Error::Transport once the session is closed or broken —
+  // including a Close() from another thread while this call is blocked.
   virtual Outcome<Unit> Send(const eventstream::Message& message) = 0;
 
   // Initiates the close handshake; idempotent, non-blocking, and safe
-  // from any thread — this is how another thread unblocks a Receive
-  // (which then returns nullopt, or an error if the close fails). The
-  // peer's acknowledging close surfaces the same way. To end a session,
-  // Close(); never use destruction as cross-thread cancellation.
+  // from any thread — this is how another thread unblocks a blocked
+  // Receive (which then returns nullopt, or an error if the close fails)
+  // OR a blocked Send (which fails with a transport error; its frame may
+  // be mid-wire, so the close aborts the connection rather than finishing
+  // the write, and the peer then observes an error instead of a clean
+  // end). The peer's acknowledging close surfaces through Receive the
+  // same way. To end a session, Close(); never use destruction as
+  // cross-thread cancellation.
   virtual void Close() = 0;
 };
 
@@ -85,6 +90,12 @@ struct WebSocketDialRequest {
   std::string target = "/";
   // Extra headers on the upgrade request — bearer tokens, api keys.
   Headers headers;
+  // The per-phase budget for the connect, TLS, and upgrade handshakes.
+  int handshake_timeout_ms = 30000;
+  // After the upgrade: how long a silent connection stays up. Keep-alive
+  // pings run underneath, so a healthy-but-quiet stream survives and a
+  // vanished peer is detected without any application ping protocol.
+  int idle_timeout_seconds = 300;
 };
 
 // The dialer a generated streaming client calls: one WebSocketDialRequest
@@ -136,8 +147,10 @@ class BeastWebSocketClient {
 
   // Dial in WebSocketDialer form — what a generated streaming client uses
   // when ClientConfig::websocket_dialer is unset (ADR-0016). Declared here,
-  // implemented in the Beast TU: linking the returned dialer is what pulls
-  // in Boost, so dep-light consumers that inject their own never pay for it.
+  // implemented in the Beast TU. The link reality: a generated streaming
+  // client names this fallback unconditionally, so its binaries ALWAYS
+  // link Boost, injected dialer or not — only hand-written wiring that
+  // injects a dialer and never mentions this class stays dep-light.
   static WebSocketDialer Dialer();
 };
 

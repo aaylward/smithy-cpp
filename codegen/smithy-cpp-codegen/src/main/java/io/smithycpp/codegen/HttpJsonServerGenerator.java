@@ -102,10 +102,7 @@ final class HttpJsonServerGenerator {
   private static boolean anyTopLevelRequired(CppContext context, List<OperationShape> operations) {
     HttpBindingIndex index = HttpBindingIndex.of(context.model());
     for (OperationShape operation : operations) {
-      MemberShape streamMember =
-          EventStreamCodeGen.inputInfo(context.model(), operation)
-              .map(software.amazon.smithy.model.knowledge.EventStreamInfo::getEventStreamMember)
-              .orElse(null);
+      MemberShape streamMember = EventStreamCodeGen.inputStreamMember(context.model(), operation);
       for (HttpBinding binding : index.getRequestBindings(operation).values()) {
         if (binding.getMember().equals(streamMember)) {
           // The event-stream union is the session, not a parsed member.
@@ -133,11 +130,7 @@ final class HttpJsonServerGenerator {
     String opName = CppReservedWords.escape(operation.getId().getName());
     HttpBindingCodeGen.RequestBindings req =
         HttpBindingCodeGen.RequestBindings.of(
-            index,
-            operation,
-            EventStreamCodeGen.inputInfo(context.model(), operation)
-                .map(software.amazon.smithy.model.knowledge.EventStreamInfo::getEventStreamMember)
-                .orElse(null));
+            index, operation, EventStreamCodeGen.inputStreamMember(context.model(), operation));
     Map<String, HttpBinding> labels = req.labels();
     Map<String, HttpBinding> queries = req.queries();
     Map<String, HttpBinding> headers = req.headers();
@@ -518,9 +511,26 @@ final class HttpJsonServerGenerator {
     w.write("socket.Close();");
     w.write("return;");
     w.closeBlock("}");
+    // The refusal checks mirror unary writeRoute's guards exactly: the
+    // parse-recorded check only when the service emits validation at all,
+    // the validator call + check only when this operation's input is
+    // constrained — a service that validates nothing gets no dead check.
+    if (emitsValidation) {
+      writeStreamValidationRefusal(w, opName);
+    }
     if (validation.validates(operation)) {
       w.write("$L(*input, \"\", &validation_failures);", validation.validatorNameFor(operation));
+      writeStreamValidationRefusal(w, opName);
     }
+    EventStreamCodeGen.writeServeAndClose(w, context, operation, "*input");
+    w.closeBlock("}, $S);", operation.getId().getName());
+  }
+
+  /**
+   * The streaming analog of ValidationErrorResponse: a refused upgrade answers over the session —
+   * one SerializationException exception message carrying the first failure, then the close.
+   */
+  private static void writeStreamValidationRefusal(CppWriter w, String opName) {
     w.openBlock("if (!validation_failures.empty()) {");
     w.write(
         "(void)socket.Send(Build$LExceptionMessage("
@@ -529,16 +539,5 @@ final class HttpJsonServerGenerator {
     w.write("socket.Close();");
     w.write("return;");
     w.closeBlock("}");
-    w.write(
-        "$L stream(socket, Encode$LEvent, Decode$LEvent);",
-        EventStreamCodeGen.serverStreamType(context, operation),
-        opName,
-        opName);
-    w.write("auto outcome = handler->$L(*input, stream, context);", opName);
-    w.openBlock("if (!outcome) {");
-    w.write("(void)socket.Send(Build$LExceptionMessage(outcome.error()));", opName);
-    w.closeBlock("}");
-    w.write("stream.Close();");
-    w.closeBlock("}, $S);", operation.getId().getName());
   }
 }

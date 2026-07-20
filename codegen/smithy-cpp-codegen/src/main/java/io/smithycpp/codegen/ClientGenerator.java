@@ -62,6 +62,10 @@ final class ClientGenerator {
       }
       w.write("");
     }
+    if (!streamingOperations().isEmpty()) {
+      EventStreamCodeGen.writeStreamAliases(
+          w, context, service, streamingOperations(), /* serverSide= */ false);
+    }
     w.write("/// $L client for $L.", protocol.name(), service.getId().toString());
     w.write("/// Modeled service errors surface as smithy::Error with kind kModeled,");
     w.write("/// code() set to the error shape name, and the deserialized error");
@@ -73,6 +77,7 @@ final class ClientGenerator {
     w.write("static smithy::Outcome<$L> Create(smithy::ClientConfig config);", name);
     w.write("");
     for (OperationShape operation : operations()) {
+      boolean documented = operation.hasTrait(DocumentationTrait.class);
       operation
           .getTrait(DocumentationTrait.class)
           .ifPresent(
@@ -89,13 +94,23 @@ final class ClientGenerator {
       if (EventStreamCodeGen.streaming(context.model(), operation)) {
         // Streaming operations (ADR-0016) return the typed session instead of
         // an output structure; the wire contract lives on the runtime type.
+        if (documented) {
+          w.write("///"); // blank separator: model docs above, boilerplate below
+        }
         w.write("/// Opens the operation's event stream over a WebSocket upgrade");
-        w.write("/// (ADR-0016). Send carries input events, Receive yields output events");
-        w.write("/// (nullopt on the peer's clean close), and a received exception");
-        w.write("/// surfaces through Receive() as a modeled error, the unary shape.");
+        if (EventStreamCodeGen.inputInfo(context.model(), operation).isEmpty()) {
+          w.write("/// (ADR-0016). This operation models no client-to-server events; only");
+          w.write("/// Receive is meaningful (nullopt on the peer's clean close — Send does");
+          w.write("/// not compile on a NoEvents direction), and a received exception");
+          w.write("/// surfaces through Receive() as a modeled error, the unary shape.");
+        } else {
+          w.write("/// (ADR-0016). Send carries input events, Receive yields output events");
+          w.write("/// (nullopt on the peer's clean close), and a received exception");
+          w.write("/// surfaces through Receive() as a modeled error, the unary shape.");
+        }
         w.write(
             "smithy::Outcome<$L> $L(const $L& input$L) const;",
-            EventStreamCodeGen.clientStreamType(context, operation),
+            EventStreamCodeGen.clientStreamAlias(operation),
             CppReservedWords.escape(operation.getId().getName()),
             inputType,
             defaulted);
@@ -248,32 +263,12 @@ final class ClientGenerator {
   /**
    * The listing's synthetic name lives beside the model's own types, so a modeled shape with the
    * same C++ name in this namespace must fail loudly (the plural already dodges the
-   * operation-named-error convention, e.g. DescribeSink vs DescribeSinkError).
+   * operation-named-error convention, e.g. DescribeSink vs DescribeSinkError). The shared check
+   * (TypeGenerators) also guards the generated stream aliases.
    */
   private void requireNoModelCollision(OperationShape operation, String listingName) {
-    String namespace = service.getId().getNamespace();
-    java.util.stream.Stream<software.amazon.smithy.model.shapes.Shape> named =
-        java.util.stream.Stream.of(
-                context.model().getStructureShapes().stream(),
-                context.model().getUnionShapes().stream(),
-                context.model().getEnumShapes().stream(),
-                context.model().getIntEnumShapes().stream())
-            .flatMap(s -> s.map(software.amazon.smithy.model.shapes.Shape.class::cast));
-    named
-        .filter(shape -> shape.getId().getNamespace().equals(namespace))
-        .filter(shape -> context.cppSymbols().toSymbol(shape).getName().equals(listingName))
-        .findAny()
-        .ifPresent(
-            shape -> {
-              throw new software.amazon.smithy.codegen.core.CodegenException(
-                  "cpp-codegen: operation "
-                      + operation.getId()
-                      + " generates the error listing '"
-                      + listingName
-                      + "', which collides with shape "
-                      + shape.getId()
-                      + "; rename the shape or the operation");
-            });
+    TypeGenerators.requireNoModelCollision(
+        context, service, operation, listingName, "error listing");
   }
 
   private String errorsName(OperationShape operation) {
@@ -433,7 +428,7 @@ final class ClientGenerator {
       boolean streaming = EventStreamCodeGen.streaming(context.model(), operation);
       String outputType =
           streaming
-              ? EventStreamCodeGen.clientStreamType(context, operation)
+              ? EventStreamCodeGen.clientStreamAlias(operation)
               : context
                   .cppSymbols()
                   .toSymbol(ProtocolSupport.outputShape(context, operation))

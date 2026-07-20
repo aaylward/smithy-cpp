@@ -114,20 +114,28 @@ cc_test(
     ],
 )
 
-# The streaming client halves: their operation bodies fall back to
-# BeastWebSocketClient::Dialer(), so this link pulls in Boost — it joins the
-# Beast targets behind the documented local exclusion list
-# (docs/development.md, "Machine-specific Bazel flags"); CI runs it.
+# The streaming halves, behaviorally: the clients' operation bodies fall
+# back to BeastWebSocketClient::Dialer(), so this link pulls in Boost — it
+# joins the Beast targets behind the documented local exclusion list
+# (docs/development.md, "Machine-specific Bazel flags"); CI runs it. The
+# server halves ride along for the flows nothing else drives (the cbor
+# streaming server, the REST validation-refusal arm); each service's client
+# and server libraries carry an identical serde.cc, deduplicated by archive
+# linking exactly like gauntlet_compile_test's pairs.
 cc_test(
     name = "streaming_compile_test",
     size = "small",
     srcs = ["streaming_compile_test.cc"],
     deps = [
         ":streaming_cbor_client",
+        ":streaming_cbor_server",
         ":streaming_rest_client",
+        ":streaming_rest_server",
+        "//runtime:cbor",
         "//runtime:client",
         "//runtime:http",
         "//runtime:http_beast",
+        "//runtime:server",
         "@googletest//:gtest_main",
     ],
 )

@@ -175,7 +175,11 @@ class WebSocketSessionBase : public WebSocket {
 // `close_requested_`). Once the close op starts it owns the read side too
 // (Beast's close drains frames itself until the peer's close arrives), so
 // the pump stops arming reads and a read it already had in flight
-// completes operation_aborted, which OnRead filters.
+// completes operation_aborted, which OnRead filters. A Close that finds a
+// message write in flight cannot wait for it (the peer may never drain
+// it): it cancels the socket's outstanding ops instead, so the write
+// completes operation_aborted, OnWrite fails the session, and the blocked
+// Send wakes with a transport error (RequestCloseLocked).
 template <typename WsStream>
 class WsSession final : public WebSocketSessionBase,
                         public std::enable_shared_from_this<WsSession<WsStream>> {
@@ -308,12 +312,13 @@ class WsSession final : public WebSocketSessionBase,
     }
     if (ec) {
       {
-        // Our own async_close displaces the outstanding read: Beast's
-        // close op takes over the read side to finish the closing
-        // handshake itself. That abort is not an outcome — the close
-        // completion below decides clean-versus-error.
+        // Our own close displaces the outstanding read: Beast's close op
+        // takes over the read side to finish the closing handshake itself,
+        // and a Close that escalated past an in-flight write cancelled the
+        // socket's ops outright (RequestCloseLocked). Neither abort is an
+        // outcome — the close/write completions decide clean-versus-error.
         const std::lock_guard<std::mutex> lock(mutex_);
-        if (close_started_ && ec == asio::error::operation_aborted) {
+        if (close_requested_ && ec == asio::error::operation_aborted) {
           return;
         }
       }
@@ -370,10 +375,15 @@ class WsSession final : public WebSocketSessionBase,
     wire_write_busy_ = false;
     write_complete_ = true;
     if (ec) {
-      write_error_ = ec.message();
+      // Close's escalation cancels an in-flight write (the peer may never
+      // drain it); name that for the Send caller instead of the raw
+      // operation_aborted text.
+      write_error_ = close_requested_ && ec == asio::error::operation_aborted
+                         ? "session closed while a send was in flight"
+                         : ec.message();
       if (!failed_ && !peer_closed_) {
         failed_ = true;  // a failed write means the wire is gone for both directions
-        error_ = ec.message();
+        error_ = write_error_;
       }
     }
     wake_.notify_all();
@@ -382,8 +392,17 @@ class WsSession final : public WebSocketSessionBase,
     }
   }
 
-  // Records the close request; defers behind an in-flight message write
-  // (close is a write-class op on this wire).
+  // Records the close request. On an idle wire the close op starts now
+  // (close is a write-class op on this wire). An in-flight message write
+  // cannot simply be deferred behind — the peer may have stopped reading
+  // and the write may never complete, and Close's contract is to unblock a
+  // blocked Send — so Close escalates: cancel the socket's outstanding ops,
+  // the write completes operation_aborted, and OnWrite fails the session
+  // and wakes the Send with a transport error. The receiver then observes
+  // an error rather than a clean nullopt — honest for a wire aborted
+  // mid-frame. When the write races the cancel and completes cleanly,
+  // OnWrite runs the deferred close instead and the session still ends
+  // with the normal close handshake.
   void RequestCloseLocked(std::unique_lock<std::mutex>& lock) {
     if (close_requested_ || failed_ || peer_closed_) {
       return;
@@ -391,7 +410,11 @@ class WsSession final : public WebSocketSessionBase,
     close_requested_ = true;
     if (!wire_write_busy_) {
       StartCloseLocked(lock);
+      return;
     }
+    lock.unlock();
+    beast::error_code ignored;
+    (void)beast::get_lowest_layer(ws_).socket().cancel(ignored);
   }
 
   void StartCloseLocked(std::unique_lock<std::mutex>& lock) {
@@ -1674,7 +1697,11 @@ Outcome<std::shared_ptr<WebSocket>> FinishDial(std::unique_ptr<DialedConnection>
                                       : options.host + ":" + std::to_string(options.port);
   beast::error_code upgrade_ec;
   bool handshake_done = false;
-  ws.async_handshake(host_header, options.target.empty() ? "/" : options.target,
+  // The response-capturing overload: on a refusal the server's actual HTTP
+  // answer is the diagnosis (401 vs 404 vs 503), not Beast's generic
+  // "upgrade declined" text.
+  bws::response_type refusal;
+  ws.async_handshake(refusal, host_header, options.target.empty() ? "/" : options.target,
                      [&upgrade_ec, &handshake_done](beast::error_code ec) {
                        upgrade_ec = ec;
                        handshake_done = true;
@@ -1693,9 +1720,20 @@ Outcome<std::shared_ptr<WebSocket>> FinishDial(std::unique_ptr<DialedConnection>
     session.reset();
     connection->Run();
     // A refused upgrade is the server's decision (auth, routing); a retry
-    // would only repeat it.
-    return Error::Transport("beast websocket: upgrade of " + options.host + options.target +
-                                " failed: " + upgrade_ec.message(),
+    // would only repeat it. Beast reports a non-101 answer as
+    // upgrade_declined with the response captured above — fold the status
+    // and reason into the error, the operator's first question.
+    std::string detail;
+    if (upgrade_ec == bws::error::upgrade_declined) {
+      detail = " refused: HTTP " + std::to_string(refusal.result_int());
+      const std::string reason(refusal.reason());
+      if (!reason.empty()) {
+        detail += " " + reason;
+      }
+    } else {
+      detail = " failed: " + upgrade_ec.message();
+    }
+    return Error::Transport("beast websocket: upgrade of " + options.host + options.target + detail,
                             /*retryable=*/false);
   }
   asio::post(connection->io, [session] { session->Start(); });
@@ -1789,6 +1827,8 @@ WebSocketDialer BeastWebSocketClient::Dialer() {
     options.tls_options = request.tls_options;
     options.target = request.target;
     options.headers = request.headers;
+    options.handshake_timeout_ms = request.handshake_timeout_ms;
+    options.idle_timeout_seconds = request.idle_timeout_seconds;
     return Dial(std::move(options));
   };
 }

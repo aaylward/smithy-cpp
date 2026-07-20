@@ -128,6 +128,16 @@ bool SameShape(const std::vector<Segment>& a, const std::vector<Segment>& b) {
   return true;
 }
 
+Outcome<http::RequestTarget> NormalizedTarget(const http::HttpRequest& request) {
+  auto target = http::ParseRequestTarget(request.target);
+  if (!target.ok()) return std::move(target).error();
+  // Drop a trailing empty segment so "/a/" matches "/a". The parse is ours
+  // to mutate — no per-request copy of the segment vector.
+  std::vector<std::string>& segments = target->path_segments;
+  if (!segments.empty() && segments.back().empty()) segments.pop_back();
+  return target;
+}
+
 }  // namespace internal
 
 Outcome<Unit> Router::Add(std::string_view method, std::string_view pattern, RouteHandler handler,
@@ -146,14 +156,11 @@ Outcome<Unit> Router::Add(std::string_view method, std::string_view pattern, Rou
 }
 
 http::HttpResponse Router::Route(const http::HttpRequest& request) const {
-  auto target = http::ParseRequestTarget(request.target);
+  auto target = internal::NormalizedTarget(request);
   if (!target) {
     return MakeErrorResponse(400, "BadRequest", "malformed request target");
   }
-  // Drop a trailing empty segment so "/a/" matches "/a". The parse is ours to
-  // mutate — no per-request copy of the segment vector.
   std::vector<std::string>& segments = target->path_segments;
-  if (!segments.empty() && segments.back().empty()) segments.pop_back();
 
   const RouteEntry* best = nullptr;
   if (const auto bucket = routes_.find(request.method); bucket != routes_.end()) {

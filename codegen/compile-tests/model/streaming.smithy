@@ -13,6 +13,12 @@ use smithy.protocols#rpcv2Cbor
 /// can carry. simpleRestJson resolves label/query/header initial members onto
 /// the upgrade GET; rpcv2Cbor upgrades on its fixed URI and rejects initial
 /// members at generation time, so its operations keep stream-only inputs.
+///
+/// The auth traits pull the client's auth wiring onto the upgrade dial
+/// (bearer here, api-key on Pipe), and the @length on Converse's room label
+/// exercises the streaming route's validation-refusal arm — both asserted
+/// behaviorally by streaming_compile_test.
+@httpBearerAuth
 @simpleRestJson
 service Relay {
     version: "2026-07-19"
@@ -21,6 +27,7 @@ service Relay {
 
 /// rpcv2Cbor face of the same streaming shapes; jsonRpc2 gets no binding —
 /// it refuses event streams with a generation-time diagnostic.
+@httpApiKeyAuth(name: "x-api-key", in: "header")
 @rpcv2Cbor
 service Pipe {
     version: "2026-07-19"
@@ -33,6 +40,7 @@ operation Converse {
     input := {
         @required
         @httpLabel
+        @length(max: 8)
         room: String
 
         @httpQuery("since")

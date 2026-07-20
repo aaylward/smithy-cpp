@@ -13,7 +13,10 @@ load("@rules_cc//cc:defs.bzl", "cc_test")
 cc_test(
     name = "chat_e2e_test",
     size = "small",
-    srcs = ["chat_e2e_test.cc"],
+    srcs = [
+        "chat_e2e_test.cc",
+        "room_handler.h",
+    ],
     deps = [
         "//examples/chat/generated:client",
         "//examples/chat/generated:server",
@@ -30,7 +33,10 @@ cc_test(
 cc_test(
     name = "chat_e2e_beast_test",
     size = "small",
-    srcs = ["chat_e2e_beast_test.cc"],
+    srcs = [
+        "chat_e2e_beast_test.cc",
+        "room_handler.h",
+    ],
     tags = ["requires-network"],
     deps = [
         "//examples/chat/generated:client",

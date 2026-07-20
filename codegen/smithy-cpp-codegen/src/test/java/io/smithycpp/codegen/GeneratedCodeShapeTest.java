@@ -476,15 +476,19 @@ class GeneratedCodeShapeTest {
     var manifest = PluginTestHarness.generate(model, "test.shape#Svc", "test::shape");
     String client = manifest.expectFileString("/include/test/shape/client.h");
     assertTrue(
-        client.contains(
-            "smithy::Outcome<smithy::eventstream::EventStream<In, Out>> Chat(const ChatInput&"
-                + " input) const;"),
+        client.contains("using ChatClientStream = smithy::eventstream::EventStream<In, Out>;"),
+        client);
+    assertTrue(
+        client.contains("smithy::Outcome<ChatClientStream> Chat(const ChatInput& input) const;"),
         client);
     String server = manifest.expectFileString("/include/test/shape/server.h");
     assertTrue(
+        server.contains("using ChatServerStream = smithy::eventstream::EventStream<Out, In>;"),
+        server);
+    assertTrue(
         server.contains(
             "virtual smithy::Outcome<smithy::Unit> Chat(const ChatInput& input,"
-                + " smithy::eventstream::EventStream<Out, In>& stream,"
+                + " ChatServerStream& stream,"
                 + " const smithy::server::RequestContext& context) = 0;"),
         server);
   }

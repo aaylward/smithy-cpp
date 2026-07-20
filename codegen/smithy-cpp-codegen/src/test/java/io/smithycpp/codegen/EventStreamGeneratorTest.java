@@ -121,18 +121,32 @@ class EventStreamGeneratorTest {
   void clientSignaturesCarryTheTypedSessionPerDirection() {
     String client = rest().expectFileString("/include/test/stream/client.h");
     assertTrue(client.contains("#include \"smithy/eventstream/event_stream.h\""), client);
+    // One named alias per streaming operation; the signatures use it, so
+    // consumers never respell the two-parameter template.
     assertTrue(
         client.contains(
-            "smithy::Outcome<smithy::eventstream::EventStream<ClientEvents, ServerEvents>>"
-                + " Converse(const ConverseInput& input) const;"),
+            "using ConverseClientStream ="
+                + " smithy::eventstream::EventStream<ClientEvents, ServerEvents>;"),
+        client);
+    assertTrue(
+        client.contains(
+            "smithy::Outcome<ConverseClientStream> Converse(const ConverseInput& input) const;"),
         client);
     // Detection is directional: no input stream parameterizes Tx with the
     // runtime's NoEvents (and the empty input still defaults).
     assertTrue(
         client.contains(
-            "smithy::Outcome<smithy::eventstream::EventStream<smithy::eventstream::NoEvents,"
-                + " ServerEvents>> Watch(const WatchInput& input = {}) const;"),
+            "using WatchClientStream ="
+                + " smithy::eventstream::EventStream<smithy::eventstream::NoEvents,"
+                + " ServerEvents>;"),
         client);
+    assertTrue(
+        client.contains(
+            "smithy::Outcome<WatchClientStream> Watch(const WatchInput& input = {}) const;"),
+        client);
+    // The NoEvents direction's doc-comment tells the truth: Send does not
+    // compile there, only Receive is meaningful.
+    assertTrue(client.contains("models no client-to-server events"), client);
   }
 
   @Test
@@ -170,6 +184,12 @@ class EventStreamGeneratorTest {
     // Streaming operations never parse an HTTP error response, so the unary
     // Parse<Op>Error dispatcher must not be emitted for them (dead code).
     assertFalse(client.contains("ParseConverseError"), client);
+    // The NoEvents transmit direction gets no encoder stub: Send is a
+    // compile error there (event_stream.h), so the slot rides empty.
+    assertFalse(client.contains("EncodeWatchEvent"), client);
+    assertTrue(
+        client.contains("return WatchClientStream(*std::move(socket), {}, DecodeWatchEvent);"),
+        client);
   }
 
   @Test
@@ -178,8 +198,13 @@ class EventStreamGeneratorTest {
     String header = manifest.expectFileString("/include/test/stream/server.h");
     assertTrue(
         header.contains(
+            "using ConverseServerStream ="
+                + " smithy::eventstream::EventStream<ServerEvents, ClientEvents>;"),
+        header);
+    assertTrue(
+        header.contains(
             "virtual smithy::Outcome<smithy::Unit> Converse(const ConverseInput& input,"
-                + " smithy::eventstream::EventStream<ServerEvents, ClientEvents>& stream,"
+                + " ConverseServerStream& stream,"
                 + " const smithy::server::RequestContext& context) = 0;"),
         header);
     assertTrue(
@@ -205,6 +230,39 @@ class EventStreamGeneratorTest {
     // Streaming operations answer over the session, never an HTTP response.
     assertFalse(server.contains("BuildConverseResponse"), server);
     assertFalse(server.contains("BuildWatchResponse"), server);
+    // Nothing in Svc is constrained, so the stream routes carry no
+    // validation refusal — the unary writeRoute guards, mirrored (dead
+    // emission stays dead; see streamRoutesGuardValidationLikeUnaryRoutes
+    // for the constrained flip side).
+    assertFalse(server.contains("if (!validation_failures.empty())"), server);
+    // The server's Watch receive direction is NoEvents: the decode stub
+    // stays (a message received there is a real, reachable protocol
+    // violation), while its transmit direction still encodes for real.
+    assertTrue(server.contains("Watch: no events are modeled in this direction"), server);
+    assertTrue(
+        server.contains("WatchServerStream stream(socket, EncodeWatchEvent, DecodeWatchEvent);"),
+        server);
+  }
+
+  @Test
+  void streamRoutesGuardValidationLikeUnaryRoutes() {
+    // The flip side of the absence pin above: with a constrained initial
+    // member, the constrained operation's route validates and refuses over
+    // the session (one SerializationException-shaped exception message,
+    // then the close); the unconstrained neighbor gets the parse-level
+    // check only, never a validator call — exactly writeRoute's guards.
+    String model = REST_MODEL.replace("@httpLabel\n", "@httpLabel\n        @length(max: 8)\n");
+    String server =
+        PluginTestHarness.generate(model, "test.stream#Svc", "test::stream")
+            .expectFileString("/src/server.cc");
+    assertTrue(
+        server.contains("ValidateConverseInput(*input, \"\", &validation_failures);"), server);
+    assertTrue(
+        server.contains(
+            "(void)socket.Send(BuildConverseExceptionMessage("
+                + "smithy::Error::Validation(validation_failures.front().message)));"),
+        server);
+    assertFalse(server.contains("ValidateWatchInput"), server);
   }
 
   @Test
@@ -398,10 +456,8 @@ class EventStreamGeneratorTest {
     assertFalse(smoke.contains("TEST(SvcSmokeTest, WatchRoundTrips)"), smoke);
     assertFalse(smoke.contains("MinimalConverseOutput"), smoke);
     // The handler subclass still implements the streaming interface, via the
-    // close-immediately stub.
-    assertTrue(
-        smoke.contains("smithy::eventstream::EventStream<ServerEvents, ClientEvents>& stream"),
-        smoke);
+    // close-immediately stub (spelled with the header's session alias).
+    assertTrue(smoke.contains("ConverseServerStream& stream"), smoke);
     assertTrue(smoke.contains("stream.Close();"), smoke);
   }
 
@@ -416,9 +472,7 @@ class EventStreamGeneratorTest {
     // implemented through the stub.
     assertFalse(tests.contains("lastConverse"), tests);
     assertFalse(tests.contains("RoomGoneMapsAcrossTheWire"), tests);
-    assertTrue(
-        tests.contains("smithy::eventstream::EventStream<ServerEvents, ClientEvents>& stream"),
-        tests);
+    assertTrue(tests.contains("ConverseServerStream& stream"), tests);
   }
 
   @Test

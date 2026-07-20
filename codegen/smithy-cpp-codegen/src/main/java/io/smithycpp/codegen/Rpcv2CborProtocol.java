@@ -179,7 +179,6 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
       CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
     StructureShape input = ProtocolSupport.inputShape(context, operation);
     String inputType = context.cppSymbols().toSymbol(input).getName();
-    String opName = CppReservedWords.escape(operation.getId().getName());
     w.openBlock(
         "(void)stream_router_->Add(\"GET\", \"/service/$L/operation/$L\", "
             + "[handler](const smithy::http::HttpRequest& request, "
@@ -191,16 +190,7 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
     w.write("// The fixed upgrade URI carries no initial members (ADR-0016): the input");
     w.write("// is empty beyond the stream itself.");
     w.write("$L input{};", inputType);
-    w.write(
-        "$L stream(socket, Encode$LEvent, Decode$LEvent);",
-        EventStreamCodeGen.serverStreamType(context, operation),
-        opName,
-        opName);
-    w.write("auto outcome = handler->$L(input, stream, context);", opName);
-    w.openBlock("if (!outcome) {");
-    w.write("(void)socket.Send(Build$LExceptionMessage(outcome.error()));", opName);
-    w.closeBlock("}");
-    w.write("stream.Close();");
+    EventStreamCodeGen.writeServeAndClose(w, context, operation, "input");
     w.closeBlock("}, $S);", operation.getId().getName());
   }
 

@@ -132,3 +132,19 @@ modeled errors — is slice 3's, deliberately not decided here.
 - The one-io-thread-per-dialed-connection cost is accepted and
   documented; revisiting it belongs to the coroutine-API decision, not
   to slice 3.
+- Two seams are deliberately reserved rather than built: a close-code
+  accessor on `WebSocket` (today the close code travels the wire —
+  peers can assert on it — but the local facade reports only
+  clean-versus-error; surfacing the code and reason is an additive
+  method when a consumer needs it), and an accept-decorator seam on the
+  server upgrade (subprotocol negotiation / extra 101 headers via
+  Beast's response decorator; the gate sees the request today, but
+  nothing can shape the acceptance response). Neither changes the
+  session contract.
+- The async-adapter pressure point, named: the serve callback's
+  borrow-until-return contract (`WebSocket&` valid only while
+  `on_websocket` runs) is what a future async/coroutine adapter will
+  strain against, since completion-driven code wants sessions that
+  outlive their callback. The internals are already
+  `shared_ptr`-owned, so lifting the borrow to shared ownership is an
+  additive API change, not a rework.

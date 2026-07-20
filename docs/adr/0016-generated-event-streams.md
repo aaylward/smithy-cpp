@@ -132,3 +132,9 @@ normative definition, with an in-repo suite):
 - The envelope helpers are the single place the header convention
   lives; slice-3 generated code, future `@eventHeader` support, and any
   future HTTP-chunked event-stream wire all go through them.
+- The handler's borrow-until-return contract (the `stream&` parameter is
+  valid only until the method returns) is the async adapter's pressure
+  point — the same seam ADR-0015 names for the raw session: the
+  underlying sessions are already `shared_ptr`-owned, so promoting the
+  borrow to shared ownership for a completion-driven handler shape is an
+  additive lift, not a rework of this API.

@@ -96,6 +96,44 @@ final class TypeGenerators {
   }
 
   /**
+   * Fails generation when an operation's synthetic generated name (an error listing, a stream
+   * alias) collides with a modeled shape's C++ name in the service namespace — the collision must
+   * be an attributed diagnostic naming the fix, never silent misgeneration.
+   */
+  static void requireNoModelCollision(
+      CppContext context,
+      software.amazon.smithy.model.shapes.ServiceShape service,
+      software.amazon.smithy.model.shapes.OperationShape operation,
+      String syntheticName,
+      String what) {
+    String namespace = service.getId().getNamespace();
+    java.util.stream.Stream<Shape> named =
+        java.util.stream.Stream.of(
+                context.model().getStructureShapes().stream(),
+                context.model().getUnionShapes().stream(),
+                context.model().getEnumShapes().stream(),
+                context.model().getIntEnumShapes().stream())
+            .flatMap(s -> s.map(Shape.class::cast));
+    named
+        .filter(shape -> shape.getId().getNamespace().equals(namespace))
+        .filter(shape -> context.cppSymbols().toSymbol(shape).getName().equals(syntheticName))
+        .findAny()
+        .ifPresent(
+            shape -> {
+              throw new software.amazon.smithy.codegen.core.CodegenException(
+                  "cpp-codegen: operation "
+                      + operation.getId()
+                      + " generates the "
+                      + what
+                      + " '"
+                      + syntheticName
+                      + "', which collides with shape "
+                      + shape.getId()
+                      + "; rename the shape or the operation");
+            });
+  }
+
+  /**
    * Forward declarations for recursive member targets: on a cycle, the target's definition may come
    * later in types.h. Boxed members and std::vector elements only need the name declared; duplicate
    * declarations are harmless.

@@ -169,7 +169,7 @@ class ScriptedHandler final : public ChatHandler {
   public:
     // Streaming operation (ADR-0016): no generated unary-shaped test drives
     // this; the stub closes the stream so the interface stays implemented.
-    smithy::Outcome<smithy::Unit> Converse(const ConverseInput& input, smithy::eventstream::EventStream<RoomEvents, ChatEvents>& stream, const smithy::server::RequestContext&) override {
+    smithy::Outcome<smithy::Unit> Converse(const ConverseInput& input, ConverseServerStream& stream, const smithy::server::RequestContext&) override {
       (void)input;
       stream.Close();
       return smithy::Unit{};
@@ -184,7 +184,7 @@ class ScriptedHandler final : public ChatHandler {
     std::optional<smithy::Error> nextListRoomsError;
     // Streaming operation (ADR-0016): no generated unary-shaped test drives
     // this; the stub closes the stream so the interface stays implemented.
-    smithy::Outcome<smithy::Unit> Watch(const WatchInput& input, smithy::eventstream::EventStream<RoomEvents, smithy::eventstream::NoEvents>& stream, const smithy::server::RequestContext&) override {
+    smithy::Outcome<smithy::Unit> Watch(const WatchInput& input, WatchServerStream& stream, const smithy::server::RequestContext&) override {
       (void)input;
       stream.Close();
       return smithy::Unit{};

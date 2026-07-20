@@ -104,6 +104,10 @@ final class ServerGenerator {
     }
 
     String name = serviceName();
+    if (hasStreaming) {
+      EventStreamCodeGen.writeStreamAliases(
+          w, context, service, streamingOperations(), /* serverSide= */ true);
+    }
     w.write("/// Implement one method per operation. Return a modeled error as");
     w.write("/// smithy::Error::Modeled(\"<ErrorShapeName>\", message), optionally with the");
     w.write("/// typed error structure attached via set_detail() so it serializes fully.");
@@ -116,6 +120,7 @@ final class ServerGenerator {
     w.write("virtual ~$LHandler() = default;", name);
     w.write("");
     for (OperationShape operation : operations) {
+      boolean documented = operation.hasTrait(DocumentationTrait.class);
       operation
           .getTrait(DocumentationTrait.class)
           .ifPresent(
@@ -129,11 +134,22 @@ final class ServerGenerator {
       if (EventStreamCodeGen.streaming(context.model(), operation)) {
         // Streaming operations (ADR-0016): input first, context last, the
         // ADR-0010 shape, with the borrowed session in between.
-        w.write("/// Streaming operation (ADR-0016): Send/Receive on `stream` until done,");
-        w.write("/// then return Unit for a clean close — or an error, which ends the");
-        w.write("/// stream with an exception message before the close (unless the");
-        w.write("/// stream already terminated: propagating a failed Receive() closes");
-        w.write("/// without a message — the peer already observed that failure).");
+        if (documented) {
+          w.write("///"); // blank separator: model docs above, boilerplate below
+        }
+        if (EventStreamCodeGen.inputInfo(context.model(), operation).isEmpty()) {
+          w.write("/// Streaming operation (ADR-0016): this operation models no");
+          w.write("/// client-to-server events, so drive the session with Send (a Receive");
+          w.write("/// only ever reports the client's close). Return Unit for a clean");
+          w.write("/// close — or an error, which ends the stream with an exception");
+          w.write("/// message before the close.");
+        } else {
+          w.write("/// Streaming operation (ADR-0016): Send/Receive on `stream` until done,");
+          w.write("/// then return Unit for a clean close — or an error, which ends the");
+          w.write("/// stream with an exception message before the close (unless the");
+          w.write("/// stream already terminated: propagating a failed Receive() closes");
+          w.write("/// without a message — the peer already observed that failure).");
+        }
         w.write("/// `stream` is valid only until this method returns; join any helper");
         w.write("/// thread still using it. Blocks the transport's handler thread for");
         w.write("/// the session's lifetime.");
@@ -142,7 +158,7 @@ final class ServerGenerator {
                 + " = 0;",
             CppReservedWords.escape(operation.getId().getName()),
             context.cppSymbols().toSymbol(input).getName(),
-            EventStreamCodeGen.serverStreamType(context, operation),
+            EventStreamCodeGen.serverStreamAlias(operation),
             ProtocolSupport.REQUEST_CONTEXT_PARAM);
         continue;
       }

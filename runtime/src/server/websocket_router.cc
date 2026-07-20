@@ -6,19 +6,6 @@
 #include "smithy/http/uri.h"
 
 namespace smithy::server {
-namespace {
-
-// Router::Route's target normalization: decoded segments with a trailing
-// empty segment dropped, so "/a/" matches "/a".
-Outcome<http::RequestTarget> NormalizedTarget(const http::HttpRequest& request) {
-  auto target = http::ParseRequestTarget(request.target);
-  if (!target.ok()) return std::move(target).error();
-  std::vector<std::string>& segments = target->path_segments;
-  if (!segments.empty() && segments.back().empty()) segments.pop_back();
-  return target;
-}
-
-}  // namespace
 
 Outcome<Unit> WebSocketRouter::Add(std::string_view method, std::string_view pattern,
                                    StreamServe serve, std::string_view operation) {
@@ -50,7 +37,7 @@ const WebSocketRouter::StreamRoute* WebSocketRouter::FindBest(
 std::function<std::optional<http::HttpResponse>(const http::HttpRequest&)> WebSocketRouter::Gate()
     const {
   return [this](const http::HttpRequest& request) -> std::optional<http::HttpResponse> {
-    auto target = NormalizedTarget(request);
+    auto target = internal::NormalizedTarget(request);
     if (!target.ok()) {
       return MakeErrorResponse(400, "BadRequest", "malformed request target");
     }
@@ -81,7 +68,7 @@ std::function<std::optional<http::HttpResponse>(const http::HttpRequest&)> WebSo
 
 std::function<void(const http::HttpRequest&, http::WebSocket&)> WebSocketRouter::Serve() const {
   return [this](const http::HttpRequest& request, http::WebSocket& socket) {
-    auto target = NormalizedTarget(request);
+    auto target = internal::NormalizedTarget(request);
     const StreamRoute* best =
         target.ok() ? FindBest(request.method, target->path_segments) : nullptr;
     if (best == nullptr) {

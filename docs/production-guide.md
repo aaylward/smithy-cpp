@@ -425,6 +425,41 @@ while (true) {
 stream->Close();                                 // idempotent; also the cancel path
 ```
 
+An operation that models no client-to-server events returns a receive-only
+stream: its `Send` does not compile (the `NoEvents` direction), so drive it
+with `Receive`/`Close` only.
+
+Not every `ClientConfig` knob reaches a streaming dial — the upgrade GET is
+not a unary request:
+
+| ClientConfig knob | Event-stream dial |
+|---|---|
+| `endpoint`, `tls` | **Applies.** Host, port, and wss-vs-ws derive from the one endpoint. |
+| `bearer_token` / `api_key` (the modeled auth traits) | **Applies.** Attached to the upgrade request like any unary request. |
+| `user_agent` | **Applies.** Rides the upgrade request's headers. |
+| `websocket_dialer` | **Applies.** Replaces the default Beast dial (the test seam). |
+| `http_client` | **Not used.** Streams never touch the unary transport. |
+| `interceptors` | **Not applied.** The upgrade bypasses the interceptor chain. |
+| `retry` | **Not applied.** A failed or refused dial surfaces once; refusals are terminal. |
+| `request_timeout_ms`, `max_idle_connections` | **Not applied.** Dial phases run under `WebSocketDialRequest::handshake_timeout_ms` (default 30 s); a live session idles under its `idle_timeout_seconds` (default 300, keep-alive pings underneath). |
+
+The interceptor row is the trap worth naming: auth implemented as an
+interceptor that stamps `authorization` onto unary requests never runs for
+streams, and the dial goes out anonymous. Use the modeled auth traits
+(`config.bearer_token` / `config.api_key`), or wrap the dialer to add
+headers to the upgrade request:
+
+```cpp
+config.websocket_dialer = [](smithy::http::WebSocketDialRequest request) {
+  request.headers.Set("authorization", "Bearer " + FetchToken());
+  return smithy::http::BeastWebSocketClient::Dialer()(request);
+};
+```
+
+The two dial-timeout knobs above live on `WebSocketDialRequest` with
+production defaults; a wrapping dialer like the one shown can tighten them
+per deployment the same way.
+
 Server-side, mount the generated `StreamRouter()` on the transport
 (`websocket_gate` = `Gate()`, `on_websocket` = `Serve()`; compose your own
 admission refusals around `Gate()` — see

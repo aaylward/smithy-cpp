@@ -20,6 +20,7 @@
 
 #include "example/chat/client.h"
 #include "example/chat/server.h"
+#include "room_handler.h"
 #include "smithy/client/config.h"
 #include "smithy/http/beast_transport.h"
 #include "smithy/http/websocket.h"
@@ -27,64 +28,6 @@
 
 namespace example::chat {
 namespace {
-
-constexpr char kModerator[] = "moderator";
-
-// The same reference handler chat_e2e_test drives through the in-memory
-// pair: greets joiners, echoes messages, kicks on request, announces leavers.
-class RoomHandler final : public ChatHandler {
- public:
-  smithy::Outcome<ListRoomsOutput> ListRooms(const ListRoomsInput&,
-                                             const smithy::server::RequestContext&) override {
-    ListRoomsOutput output;
-    output.rooms.push_back(RoomSummary{.name = "lobby", .members = 2});
-    return output;
-  }
-
-  smithy::Outcome<smithy::Unit> Converse(
-      const ConverseInput& input, smithy::eventstream::EventStream<RoomEvents, ChatEvents>& stream,
-      const smithy::server::RequestContext&) override {
-    MemberJoined joined;
-    joined.member = input.nickname.value_or("anonymous");
-    if (!stream.Send(RoomEvents::FromJoined(joined)).ok()) return smithy::Unit{};
-    while (true) {
-      auto event = stream.Receive();
-      if (!event.ok()) return smithy::Unit{};
-      if (!event->has_value()) return smithy::Unit{};
-      const ChatEvents& received = **event;
-      if (received.is_message()) {
-        const ChatMessage& message = received.as_message();
-        if (message.text == "kick me") {
-          smithy::Error kicked = smithy::Error::Modeled("Kicked", "kicked from " + input.room);
-          kicked.set_detail(Kicked{.message = "kicked from " + input.room, .by = kModerator});
-          return kicked;
-        }
-        ChatMessage broadcast;
-        broadcast.text = message.text;
-        broadcast.sender = message.sender.value_or(joined.member);
-        if (!stream.Send(RoomEvents::FromMessage(broadcast)).ok()) return smithy::Unit{};
-      } else if (received.is_leave()) {
-        MemberLeft left;
-        left.member = joined.member;
-        (void)stream.Send(RoomEvents::FromLeft(left));
-        return smithy::Unit{};
-      }
-    }
-  }
-
-  smithy::Outcome<smithy::Unit> Watch(
-      const WatchInput& input,
-      smithy::eventstream::EventStream<RoomEvents, smithy::eventstream::NoEvents>& stream,
-      const smithy::server::RequestContext&) override {
-    for (int i = 0; i < 3; ++i) {
-      ChatMessage message;
-      message.text = input.room + "-update-" + std::to_string(i);
-      message.sender = "room";
-      if (!stream.Send(RoomEvents::FromMessage(message)).ok()) return smithy::Unit{};
-    }
-    return smithy::Unit{};
-  }
-};
 
 class ChatBeastEndToEndTest : public testing::Test {
  protected:
@@ -245,10 +188,13 @@ TEST_F(ChatBeastEndToEndTest, ModeledMidStreamErrorSurfacesTypedOnTheClient) {
 TEST_F(ChatBeastEndToEndTest, GateRefusesAnUnknownStreamPathOnTheWire) {
   Start(/*tls=*/false);
   // No route matches /nope, so the gate answers 404 before any upgrade
-  // exists and the dial fails.
+  // exists, the dial fails, and the refusal error names the status the
+  // router actually sent.
   auto refused = smithy::http::BeastWebSocketClient::Dial(
       {.host = "127.0.0.1", .port = transport_->port(), .target = "/nope"});
-  EXPECT_FALSE(refused.ok());
+  ASSERT_FALSE(refused.ok());
+  EXPECT_NE(refused.error().message().find("refused: HTTP 404"), std::string::npos)
+      << refused.error().message();
 }
 
 TEST_F(ChatBeastEndToEndTest, TlsStreamsCarryChatEndToEnd) {

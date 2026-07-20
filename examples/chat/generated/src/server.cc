@@ -297,12 +297,7 @@ ChatServer::ChatServer(std::shared_ptr<ChatHandler> handler)
       socket.Close();
       return;
     }
-    if (!validation_failures.empty()) {
-      (void)socket.Send(BuildConverseExceptionMessage(smithy::Error::Validation(validation_failures.front().message)));
-      socket.Close();
-      return;
-    }
-    smithy::eventstream::EventStream<RoomEvents, ChatEvents> stream(socket, EncodeConverseEvent, DecodeConverseEvent);
+    ConverseServerStream stream(socket, EncodeConverseEvent, DecodeConverseEvent);
     auto outcome = handler->Converse(*input, stream, context);
     if (!outcome) {
       (void)socket.Send(BuildConverseExceptionMessage(outcome.error()));
@@ -317,12 +312,7 @@ ChatServer::ChatServer(std::shared_ptr<ChatHandler> handler)
       socket.Close();
       return;
     }
-    if (!validation_failures.empty()) {
-      (void)socket.Send(BuildWatchExceptionMessage(smithy::Error::Validation(validation_failures.front().message)));
-      socket.Close();
-      return;
-    }
-    smithy::eventstream::EventStream<RoomEvents, smithy::eventstream::NoEvents> stream(socket, EncodeWatchEvent, DecodeWatchEvent);
+    WatchServerStream stream(socket, EncodeWatchEvent, DecodeWatchEvent);
     auto outcome = handler->Watch(*input, stream, context);
     if (!outcome) {
       (void)socket.Send(BuildWatchExceptionMessage(outcome.error()));

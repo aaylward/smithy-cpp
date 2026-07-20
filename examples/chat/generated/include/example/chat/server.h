@@ -13,6 +13,13 @@
 
 namespace example::chat {
 
+/// The typed session a Converse handler borrows (ADR-0016): Tx = what this
+/// server sends, Rx = what the client sends.
+using ConverseServerStream = smithy::eventstream::EventStream<RoomEvents, ChatEvents>;
+/// The typed session a Watch handler borrows (ADR-0016): Tx = what this
+/// server sends, Rx = what the client sends.
+using WatchServerStream = smithy::eventstream::EventStream<RoomEvents, smithy::eventstream::NoEvents>;
+
 /// Implement one method per operation. Return a modeled error as
 /// smithy::Error::Modeled("<ErrorShapeName>", message), optionally with the
 /// typed error structure attached via set_detail() so it serializes fully.
@@ -30,6 +37,7 @@ class ChatHandler {
     /// modeled error: a handler returning it ends the stream with a typed
     /// exception message before the close (exceptions travel via the operation's
     /// errors list, not as event union members — ADR-0016's wire binding).
+    ///
     /// Streaming operation (ADR-0016): Send/Receive on `stream` until done,
     /// then return Unit for a clean close — or an error, which ends the
     /// stream with an exception message before the close (unless the
@@ -38,21 +46,22 @@ class ChatHandler {
     /// `stream` is valid only until this method returns; join any helper
     /// thread still using it. Blocks the transport's handler thread for
     /// the session's lifetime.
-    virtual smithy::Outcome<smithy::Unit> Converse(const ConverseInput& input, smithy::eventstream::EventStream<RoomEvents, ChatEvents>& stream, const smithy::server::RequestContext& context) = 0;
+    virtual smithy::Outcome<smithy::Unit> Converse(const ConverseInput& input, ConverseServerStream& stream, const smithy::server::RequestContext& context) = 0;
     /// Unary neighbor: an ordinary request/response on the same service, served
     /// by the same transport that upgrades the streaming operations.
     virtual smithy::Outcome<ListRoomsOutput> ListRooms(const ListRoomsInput& input, const smithy::server::RequestContext& context) = 0;
     /// Server-push: no input stream, so the client's transmit direction is the
     /// runtime's NoEvents — the client only listens to the room.
-    /// Streaming operation (ADR-0016): Send/Receive on `stream` until done,
-    /// then return Unit for a clean close — or an error, which ends the
-    /// stream with an exception message before the close (unless the
-    /// stream already terminated: propagating a failed Receive() closes
-    /// without a message — the peer already observed that failure).
+    ///
+    /// Streaming operation (ADR-0016): this operation models no
+    /// client-to-server events, so drive the session with Send (a Receive
+    /// only ever reports the client's close). Return Unit for a clean
+    /// close — or an error, which ends the stream with an exception
+    /// message before the close.
     /// `stream` is valid only until this method returns; join any helper
     /// thread still using it. Blocks the transport's handler thread for
     /// the session's lifetime.
-    virtual smithy::Outcome<smithy::Unit> Watch(const WatchInput& input, smithy::eventstream::EventStream<RoomEvents, smithy::eventstream::NoEvents>& stream, const smithy::server::RequestContext& context) = 0;
+    virtual smithy::Outcome<smithy::Unit> Watch(const WatchInput& input, WatchServerStream& stream, const smithy::server::RequestContext& context) = 0;
 };
 
 /// simpleRestJson server for example.chat#Chat: routing, deserialization, handler dispatch,

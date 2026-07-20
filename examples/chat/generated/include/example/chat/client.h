@@ -22,6 +22,13 @@
 
 namespace example::chat {
 
+/// The typed session Converse returns (ADR-0016): Tx = what this client
+/// sends, Rx = what the server sends.
+using ConverseClientStream = smithy::eventstream::EventStream<ChatEvents, RoomEvents>;
+/// The typed session Watch returns (ADR-0016): Tx = what this client
+/// sends, Rx = what the server sends.
+using WatchClientStream = smithy::eventstream::EventStream<smithy::eventstream::NoEvents, RoomEvents>;
+
 /// simpleRestJson client for example.chat#Chat.
 /// Modeled service errors surface as smithy::Error with kind kModeled,
 /// code() set to the error shape name, and the deserialized error
@@ -38,21 +45,24 @@ class ChatClient {
     /// modeled error: a handler returning it ends the stream with a typed
     /// exception message before the close (exceptions travel via the operation's
     /// errors list, not as event union members — ADR-0016's wire binding).
+    ///
     /// Opens the operation's event stream over a WebSocket upgrade
     /// (ADR-0016). Send carries input events, Receive yields output events
     /// (nullopt on the peer's clean close), and a received exception
     /// surfaces through Receive() as a modeled error, the unary shape.
-    smithy::Outcome<smithy::eventstream::EventStream<ChatEvents, RoomEvents>> Converse(const ConverseInput& input) const;
+    smithy::Outcome<ConverseClientStream> Converse(const ConverseInput& input) const;
     /// Unary neighbor: an ordinary request/response on the same service, served
     /// by the same transport that upgrades the streaming operations.
     smithy::Outcome<ListRoomsOutput> ListRooms(const ListRoomsInput& input = {}) const;
     /// Server-push: no input stream, so the client's transmit direction is the
     /// runtime's NoEvents — the client only listens to the room.
+    ///
     /// Opens the operation's event stream over a WebSocket upgrade
-    /// (ADR-0016). Send carries input events, Receive yields output events
-    /// (nullopt on the peer's clean close), and a received exception
+    /// (ADR-0016). This operation models no client-to-server events; only
+    /// Receive is meaningful (nullopt on the peer's clean close — Send does
+    /// not compile on a NoEvents direction), and a received exception
     /// surfaces through Receive() as a modeled error, the unary shape.
-    smithy::Outcome<smithy::eventstream::EventStream<smithy::eventstream::NoEvents, RoomEvents>> Watch(const WatchInput& input) const;
+    smithy::Outcome<WatchClientStream> Watch(const WatchInput& input) const;
 
   private:
     ChatClient(smithy::ClientConfig config, std::shared_ptr<smithy::http::HttpClient> transport, std::string path_prefix);

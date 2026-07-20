@@ -24,6 +24,7 @@
 
 #include "example/chat/client.h"
 #include "example/chat/server.h"
+#include "room_handler.h"
 #include "smithy/client/config.h"
 #include "smithy/core/blob.h"
 #include "smithy/eventstream/envelope.h"
@@ -34,66 +35,6 @@
 
 namespace example::chat {
 namespace {
-
-constexpr char kModerator[] = "moderator";
-
-// Reference handler: greets each joiner, echoes messages back to the room,
-// kicks anyone who asks, and announces leavers before closing its side.
-class RoomHandler final : public ChatHandler {
- public:
-  smithy::Outcome<ListRoomsOutput> ListRooms(const ListRoomsInput&,
-                                             const smithy::server::RequestContext&) override {
-    ListRoomsOutput output;
-    output.rooms.push_back(RoomSummary{.name = "lobby", .members = 2});
-    return output;
-  }
-
-  smithy::Outcome<smithy::Unit> Converse(
-      const ConverseInput& input, smithy::eventstream::EventStream<RoomEvents, ChatEvents>& stream,
-      const smithy::server::RequestContext&) override {
-    // The nickname rode the upgrade request's headers; announce the joiner.
-    MemberJoined joined;
-    joined.member = input.nickname.value_or("anonymous");
-    if (!stream.Send(RoomEvents::FromJoined(joined)).ok()) return smithy::Unit{};
-    while (true) {
-      auto event = stream.Receive();
-      if (!event.ok()) return smithy::Unit{};          // wire failed: nothing to add
-      if (!event->has_value()) return smithy::Unit{};  // client closed cleanly
-      const ChatEvents& received = **event;
-      if (received.is_message()) {
-        const ChatMessage& message = received.as_message();
-        if (message.text == "kick me") {
-          // The modeled mid-stream error: one exception message, then close.
-          smithy::Error kicked = smithy::Error::Modeled("Kicked", "kicked from " + input.room);
-          kicked.set_detail(Kicked{.message = "kicked from " + input.room, .by = kModerator});
-          return kicked;
-        }
-        ChatMessage broadcast;
-        broadcast.text = message.text;
-        broadcast.sender = message.sender.value_or(joined.member);
-        if (!stream.Send(RoomEvents::FromMessage(broadcast)).ok()) return smithy::Unit{};
-      } else if (received.is_leave()) {
-        MemberLeft left;
-        left.member = joined.member;
-        (void)stream.Send(RoomEvents::FromLeft(left));
-        return smithy::Unit{};  // the server's side of a clean close
-      }
-    }
-  }
-
-  smithy::Outcome<smithy::Unit> Watch(
-      const WatchInput& input,
-      smithy::eventstream::EventStream<RoomEvents, smithy::eventstream::NoEvents>& stream,
-      const smithy::server::RequestContext&) override {
-    for (int i = 0; i < 3; ++i) {
-      ChatMessage message;
-      message.text = input.room + "-update-" + std::to_string(i);
-      message.sender = "room";
-      if (!stream.Send(RoomEvents::FromMessage(message)).ok()) return smithy::Unit{};
-    }
-    return smithy::Unit{};  // push, then close
-  }
-};
 
 class ChatEndToEndTest : public testing::Test {
  protected:
@@ -303,6 +244,214 @@ TEST_F(ChatEndToEndTest, GateRefusesAnUnknownStreamPath) {
   // A routed upgrade is admitted (nullopt lets the transport upgrade).
   upgrade.target = "/rooms/lobby/converse";
   EXPECT_FALSE(gate(upgrade).has_value());
+}
+
+// ---------------------------------------------------------------------------
+// DialStream's failure branches through the generated client.
+// ---------------------------------------------------------------------------
+
+TEST(ChatStreamDialTest, StreamingWithoutEndpointOrDialerIsAValidationError) {
+  // A client wired for unary only (http_client, no endpoint, no dialer) has
+  // nowhere to dial a stream; the generated branch must name the fix.
+  smithy::ClientConfig config;
+  config.retry.max_attempts = 1;
+  config.http_client = std::make_shared<smithy::http::Loopback>();
+  auto client = ChatClient::Create(std::move(config));
+  ASSERT_TRUE(client.ok()) << client.error().message();
+
+  ConverseInput input;
+  input.room = "lobby";
+  auto stream = client->Converse(input);
+  ASSERT_FALSE(stream.ok());
+  EXPECT_EQ(stream.error().kind(), smithy::ErrorKind::kValidation);
+  EXPECT_NE(stream.error().message().find("endpoint or a websocket_dialer"), std::string::npos)
+      << stream.error().message();
+}
+
+TEST(ChatStreamDialTest, ADialerFailureSurfacesVerbatimFromTheStreamingOperation) {
+  smithy::ClientConfig config;
+  config.retry.max_attempts = 1;
+  config.http_client = std::make_shared<smithy::http::Loopback>();
+  config.websocket_dialer = [](const smithy::http::WebSocketDialRequest&)
+      -> smithy::Outcome<std::shared_ptr<smithy::http::WebSocket>> {
+    return smithy::Error::Transport("dial refused by probe");
+  };
+  auto client = ChatClient::Create(std::move(config));
+  ASSERT_TRUE(client.ok()) << client.error().message();
+
+  auto stream = client->Watch([] {
+    WatchInput input;
+    input.room = "lobby";
+    return input;
+  }());
+  ASSERT_FALSE(stream.ok());
+  EXPECT_EQ(stream.error().kind(), smithy::ErrorKind::kTransport);
+  EXPECT_EQ(stream.error().message(), "dial refused by probe");
+}
+
+// ---------------------------------------------------------------------------
+// The generated error paths a well-behaved handler never exercises: the
+// exception-message builder's non-Kicked arms and the encoder's refusals.
+// ---------------------------------------------------------------------------
+
+// Echoes messages; returns scripted handler errors on magic texts — the
+// error-path complement of RoomHandler (room_handler.h).
+class ErrorScriptHandler final : public ChatHandler {
+ public:
+  smithy::Outcome<ListRoomsOutput> ListRooms(const ListRoomsInput&,
+                                             const smithy::server::RequestContext&) override {
+    return ListRoomsOutput{};
+  }
+
+  smithy::Outcome<smithy::Unit> Converse(const ConverseInput&, ConverseServerStream& stream,
+                                         const smithy::server::RequestContext&) override {
+    while (true) {
+      auto event = stream.Receive();
+      if (!event.ok() || !event->has_value()) return smithy::Unit{};
+      if (!(**event).is_message()) continue;
+      const std::string& text = (**event).as_message().text;
+      if (text == "crash") return smithy::Error::Transport("secret-internal-detail");
+      if (text == "reject") return smithy::Error::Validation("bad input");
+      if (text == "roomfull") return smithy::Error::Modeled("RoomFull", "room is full");
+      ChatMessage echo;
+      echo.text = text;
+      if (!stream.Send(RoomEvents::FromMessage(echo)).ok()) return smithy::Unit{};
+    }
+  }
+
+  smithy::Outcome<smithy::Unit> Watch(const WatchInput&, WatchServerStream& stream,
+                                      const smithy::server::RequestContext&) override {
+    ChatMessage message;
+    message.text = "update";
+    (void)stream.Send(RoomEvents::FromMessage(message));
+    return smithy::Unit{};
+  }
+};
+
+// The same dialer seam as ChatEndToEndTest, with the handler injectable.
+class ScriptedChatTest : public testing::Test {
+ protected:
+  void StartWith(std::shared_ptr<ChatHandler> handler) {
+    server_ = std::make_unique<ChatServer>(std::move(handler));
+    smithy::ClientConfig config;
+    config.retry.max_attempts = 1;
+    config.http_client = std::make_shared<smithy::http::Loopback>();
+    config.websocket_dialer = [this](const smithy::http::WebSocketDialRequest& request)
+        -> smithy::Outcome<std::shared_ptr<smithy::http::WebSocket>> {
+      auto [near, far] = smithy::http::InMemoryWebSocketPair::Create();
+      smithy::http::HttpRequest upgrade;
+      upgrade.method = "GET";
+      upgrade.target = request.target;
+      upgrade.headers = request.headers;
+      sessions_.push_back(far);
+      threads_.emplace_back([serve = server_->StreamRouter()->Serve(), upgrade, session = far] {
+        serve(upgrade, *session);
+      });
+      return near;
+    };
+    auto client = ChatClient::Create(std::move(config));
+    ASSERT_TRUE(client.ok()) << client.error().message();
+    client_ = std::make_unique<ChatClient>(std::move(*client));
+  }
+
+  void TearDown() override {
+    for (auto& session : sessions_) session->Close();
+    for (std::thread& thread : threads_) thread.join();
+  }
+
+  std::unique_ptr<ChatServer> server_;
+  std::unique_ptr<ChatClient> client_;
+  std::vector<std::shared_ptr<smithy::http::WebSocket>> sessions_;
+  std::vector<std::thread> threads_;
+};
+
+TEST_F(ScriptedChatTest, SendingAnEmptyUnionFailsValidationAndSparesTheSession) {
+  // The generated encoder's tail: a union with no member engaged is refused
+  // before anything touches the wire. (Its NoEvents sibling — Send on a
+  // Watch stream — needs no test anymore: it stopped compiling when
+  // event_stream.h made Send a static_assert on NoEvents directions.)
+  StartWith(std::make_shared<ErrorScriptHandler>());
+  ConverseInput input;
+  input.room = "lobby";
+  auto stream = client_->Converse(input);
+  ASSERT_TRUE(stream.ok()) << stream.error().message();
+
+  const auto refused = stream->Send(ChatEvents{});  // no member engaged
+  ASSERT_FALSE(refused.ok());
+  EXPECT_EQ(refused.error().kind(), smithy::ErrorKind::kValidation);
+  EXPECT_NE(refused.error().message().find("no event member engaged"), std::string::npos)
+      << refused.error().message();
+
+  // The session was never touched: a real event still round-trips.
+  ChatMessage message;
+  message.text = "still-alive";
+  ASSERT_TRUE(stream->Send(ChatEvents::FromMessage(message)).ok());
+  auto echo = stream->Receive();
+  ASSERT_TRUE(echo.ok() && echo->has_value());
+  ASSERT_TRUE((**echo).is_message());
+  EXPECT_EQ((**echo).as_message().text, "still-alive");
+  stream->Close();
+}
+
+TEST_F(ScriptedChatTest, AnUnexpectedHandlerErrorNeverLeaksItsDetail) {
+  // The exception-message builder's never-leak default: an unexpected
+  // handler failure (here Transport-kinded) reaches the client as a generic
+  // InternalFailure — the internal detail must not cross the wire.
+  StartWith(std::make_shared<ErrorScriptHandler>());
+  ConverseInput input;
+  input.room = "lobby";
+  auto stream = client_->Converse(input);
+  ASSERT_TRUE(stream.ok()) << stream.error().message();
+
+  ChatMessage message;
+  message.text = "crash";
+  ASSERT_TRUE(stream->Send(ChatEvents::FromMessage(message)).ok());
+  auto outcome = stream->Receive();
+  ASSERT_FALSE(outcome.ok());
+  EXPECT_EQ(outcome.error().code(), "InternalFailure");
+  EXPECT_EQ(outcome.error().message(), "internal failure");
+  EXPECT_EQ(outcome.error().message().find("secret-internal-detail"), std::string::npos);
+}
+
+TEST_F(ScriptedChatTest, AHandlerValidationErrorMapsToSerializationException) {
+  // The kValidation/kSerialization arm: the identity flips to
+  // SerializationException and the message is preserved (it names the
+  // caller's mistake, not server internals).
+  StartWith(std::make_shared<ErrorScriptHandler>());
+  ConverseInput input;
+  input.room = "lobby";
+  auto stream = client_->Converse(input);
+  ASSERT_TRUE(stream.ok()) << stream.error().message();
+
+  ChatMessage message;
+  message.text = "reject";
+  ASSERT_TRUE(stream->Send(ChatEvents::FromMessage(message)).ok());
+  auto outcome = stream->Receive();
+  ASSERT_FALSE(outcome.ok());
+  EXPECT_EQ(outcome.error().code(), "SerializationException");
+  EXPECT_EQ(outcome.error().message(), "bad input");
+}
+
+TEST_F(ScriptedChatTest, AnUndeclaredModeledErrorFallsThroughAsGenericModeled) {
+  // A modeled error outside the operation's declared list (RoomFull is not
+  // in Converse's errors): the builder sends it without detail
+  // serialization, and the client decoder's fallthrough keeps it generic —
+  // kModeled with the claimed code, matched by no ConverseErrors member.
+  StartWith(std::make_shared<ErrorScriptHandler>());
+  ConverseInput input;
+  input.room = "lobby";
+  auto stream = client_->Converse(input);
+  ASSERT_TRUE(stream.ok()) << stream.error().message();
+
+  ChatMessage message;
+  message.text = "roomfull";
+  ASSERT_TRUE(stream->Send(ChatEvents::FromMessage(message)).ok());
+  auto outcome = stream->Receive();
+  ASSERT_FALSE(outcome.ok());
+  EXPECT_EQ(outcome.error().kind(), smithy::ErrorKind::kModeled);
+  EXPECT_EQ(outcome.error().code(), "RoomFull");
+  EXPECT_EQ(outcome.error().message(), "room is full");
+  EXPECT_FALSE(ConverseErrors::FromError(outcome.error()).is_kicked());
 }
 
 }  // namespace

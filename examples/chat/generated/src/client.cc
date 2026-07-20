@@ -188,12 +188,6 @@ smithy::Outcome<RoomEvents> DecodeConverseEvent(const smithy::eventstream::Messa
   return smithy::Error::Serialization("Converse: unknown event type: " + envelope->type);
 }
 
-// Watch models no events in this direction; the codec slot is filled but
-// never invoked (nothing constructs a smithy::eventstream::NoEvents).
-smithy::Outcome<smithy::eventstream::Message> EncodeWatchEvent(const smithy::eventstream::NoEvents&) {
-  return smithy::Error::Validation("Watch: no events are modeled in this direction");
-}
-
 smithy::Outcome<RoomEvents> DecodeWatchEvent(const smithy::eventstream::Message& message) {
   auto envelope = smithy::eventstream::ParseEnvelope(message);
   if (!envelope) return std::move(envelope).error();
@@ -273,7 +267,7 @@ smithy::Outcome<smithy::http::HttpResponse> ChatClient::Send(smithy::http::HttpR
   return smithy::SendWithRetries(*transport_, request, config_.retry, config_.interceptors);
 }
 
-smithy::Outcome<smithy::eventstream::EventStream<ChatEvents, RoomEvents>> ChatClient::Converse(const ConverseInput& input) const {
+smithy::Outcome<ConverseClientStream> ChatClient::Converse(const ConverseInput& input) const {
   std::string target = path_prefix_;
   target += "/rooms";
   target += "/";
@@ -287,7 +281,7 @@ smithy::Outcome<smithy::eventstream::EventStream<ChatEvents, RoomEvents>> ChatCl
   request.headers.Set("user-agent", config_.user_agent);
   auto socket = DialStream(config_, std::move(request));
   if (!socket) return std::move(socket).error();
-  return smithy::eventstream::EventStream<ChatEvents, RoomEvents>(*std::move(socket), EncodeConverseEvent, DecodeConverseEvent);
+  return ConverseClientStream(*std::move(socket), EncodeConverseEvent, DecodeConverseEvent);
 }
 
 smithy::Outcome<ListRoomsOutput> ChatClient::ListRooms(const ListRoomsInput& input) const {
@@ -305,7 +299,7 @@ smithy::Outcome<ListRoomsOutput> ChatClient::ListRooms(const ListRoomsInput& inp
   return DeserializeListRoomsOutput(*body_doc);
 }
 
-smithy::Outcome<smithy::eventstream::EventStream<smithy::eventstream::NoEvents, RoomEvents>> ChatClient::Watch(const WatchInput& input) const {
+smithy::Outcome<WatchClientStream> ChatClient::Watch(const WatchInput& input) const {
   std::string target = path_prefix_;
   target += "/rooms";
   target += "/";
@@ -316,7 +310,7 @@ smithy::Outcome<smithy::eventstream::EventStream<smithy::eventstream::NoEvents, 
   request.headers.Set("user-agent", config_.user_agent);
   auto socket = DialStream(config_, std::move(request));
   if (!socket) return std::move(socket).error();
-  return smithy::eventstream::EventStream<smithy::eventstream::NoEvents, RoomEvents>(*std::move(socket), EncodeWatchEvent, DecodeWatchEvent);
+  return WatchClientStream(*std::move(socket), {}, DecodeWatchEvent);
 }
 
 }  // namespace example::chat

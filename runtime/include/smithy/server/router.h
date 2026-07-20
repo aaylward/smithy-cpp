@@ -9,6 +9,7 @@
 
 #include "smithy/core/outcome.h"
 #include "smithy/http/message.h"
+#include "smithy/http/uri.h"
 
 namespace smithy::server {
 
@@ -64,6 +65,12 @@ bool MoreSpecific(const std::vector<Segment>& a, const std::vector<Segment>& b);
 // literal texts) and so would always match the same targets — the Add-time
 // conflict test.
 bool SameShape(const std::vector<Segment>& a, const std::vector<Segment>& b);
+
+// The request-target normalization Router::Route and WebSocketRouter share
+// (ADR-0016), so unary and streaming routing see the same segments: the
+// decoded target with one trailing empty segment dropped ("/a/" matches
+// "/a"). Fails on a malformed target (the routers' 400).
+Outcome<http::RequestTarget> NormalizedTarget(const http::HttpRequest& request);
 
 }  // namespace internal
 

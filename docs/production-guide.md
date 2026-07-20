@@ -540,6 +540,71 @@ of the ticket gate and the router's. The end-to-end reference for all
 three pieces — JSON wire, origin gate, and a native client beside them —
 is [examples/chat/chat_browser_e2e_test.cc](../examples/chat/chat_browser_e2e_test.cc).
 
+## Reconnect and resume
+
+**Reconnect is a resume ticket plus `SessionRegistry::Resume` plus a
+snapshot (ADR-0020)** — for every streaming client, not just browsers
+(the ticket mechanics are the [browser auth pattern](#browser-clients)
+above, which native clients may use too). Flaky mobile networks, page
+reloads, and laptop lids make reconnect table stakes for session apps,
+and the whole loop is made of pieces this guide already taught. Server
+side, enable grace on the registry and split the handler's exits:
+
+```cpp
+smithy::server::SessionRegistry<RoomEvents>::Options options;
+options.grace_period = std::chrono::seconds{300};
+options.on_expired = [&](const std::string& id) {
+  // The deferred cleanup: collect the game, tell the room. Runs exactly
+  // once, off the handler threads (the registry's expiry thread, or the
+  // Drain caller); mutually exclusive with a successful Resume.
+};
+...
+// The handler's exit, split the ADR-0020 way:
+if (left_deliberately) {
+  registry.Remove(id);    // immediate — cancels any grace, never expires
+} else if (!registry.Detach(id)) {
+  registry.Remove(id);    // grace disabled or entry gone: the immediate path
+}
+```
+
+The reconnect handshake is the ticket pattern again, aimed at resumption:
+mint a **resume ticket** with the same authenticated unary (bound to the
+session id this time), carry it on the reconnect upgrade's `@httpQuery`
+member, validate it in the gate before any 101 exists. The handler then
+tries `Resume(id, stream.Share())` — the identity-keyed atomic swap; it
+succeeds only on a detached session within grace, exactly once, mutually
+exclusive with `on_expired` — and on success sends the **current-state
+snapshot as its first events** before normal traffic. On failure it falls
+back to the fresh-join path (`Add`), because the session expired or never
+existed. A reconnect can beat the old wire's failure notice, so retry the
+resume briefly before refusing the id as a live duplicate.
+
+Say the posture out loud in your protocol docs, because it shapes client
+code: **recovery is snapshot replay, not message replay.** ADR-0016's
+"in-flight state is lost" stays true across reconnects — events sent
+while detached are dropped by default; `Options::queue_while_detached`
+retains a bounded tail if snapshots are expensive (bounded means bounded:
+a full retained queue drops the overflow outright, with no slow-consumer
+policy run), and applications needing stronger delivery own sequence
+numbers at the protocol level.
+
+Client side, redial is application logic at both ends — a browser writes
+it in page JS regardless — and the worked native shape is a loop, not a
+knob: back off with jitter and a cap; re-mint the resume ticket (the old
+one is spent — single-use); re-dial with it; on success, treat the first
+events as the snapshot and rebuild local state from scratch before
+resuming normal handling; on a refusal, fall back to the fresh-join
+handshake and tell the user their seat expired. `Drain` expires detached
+sessions immediately, so a deploying server is never waiting out ghosts —
+clients should treat a close during redial as "try the other host", not
+"give up". Two end-to-end references drive the loop — abrupt kill, resume
+with roster snapshot, grace expiry announcing the departure — as real
+processes:
+[examples/chat/async_hub_cli_test.sh](../examples/chat/async_hub_cli_test.sh)
+on the hand-mounted async hub, and
+[examples/bazel-consumer/chat_reconnect_cli_test.sh](../examples/bazel-consumer/chat_reconnect_cli_test.sh)
+on a fully generated server and clients through the module boundary.
+
 ## Server hardening
 
 The production server transport (`BeastServerTransport`, ADR-0006) enforces

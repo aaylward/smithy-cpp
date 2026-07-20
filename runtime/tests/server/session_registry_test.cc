@@ -6,6 +6,13 @@
 // step, and a destructor that always joins its writers — plus the stale-
 // handle case the shared view exists for: a session whose stream died stays
 // registered without dangling.
+//
+// The grace matrix (ADR-0020, issue #116): Detach parks, Resume swaps in
+// the new connection (waiting out a wedged writer or a parked chain and
+// joining what it displaced), expiry runs on_expired exactly once mutually
+// exclusive with Resume — raced right at the deadline — retention keeps
+// only the bounded post-detach tail, Remove cancels a pending expiry, and
+// Drain/destructor expire ghosts immediately.
 
 #include "smithy/server/session_registry.h"
 
@@ -15,7 +22,9 @@
 #include <chrono>
 #include <future>
 #include <memory>
+#include <mutex>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
@@ -73,6 +82,31 @@ std::optional<std::string> NextAt(Session& session) {
   auto message = session.client->Receive();
   if (!message.ok() || !message->has_value()) return std::nullopt;
   return (**message).payload.ToString();
+}
+
+// Forwards the blocking calls and hides the pair's async support — the
+// per-entry writer-thread fallback the mixed-fleet contract promises.
+class BlockingOnly final : public http::WebSocket {
+ public:
+  explicit BlockingOnly(std::shared_ptr<http::WebSocket> inner) : inner_(std::move(inner)) {}
+  Outcome<std::optional<Message>> Receive() override { return inner_->Receive(); }
+  Outcome<Unit> Send(const Message& message) override { return inner_->Send(message); }
+  void Close() override { inner_->Close(); }
+
+ private:
+  std::shared_ptr<http::WebSocket> inner_;
+};
+
+// MakeSession, but the server end advertises no async support, so an
+// async-delivery registry gives this session a writer thread.
+Session MakeBlockingOnlySession() {
+  auto [client_end, server_end] = http::InMemoryWebSocketPair::Create();
+  Session session;
+  session.client = client_end;
+  session.stream = std::make_unique<ServerStream>(std::make_shared<BlockingOnly>(server_end),
+                                                  EncodeNote, nullptr);
+  session.handle = session.stream->Share();
+  return session;
 }
 
 // Polls SendTo until the registry refuses — the moment the writer notices a
@@ -504,33 +538,16 @@ TEST(SessionRegistryAsyncTest, ASlowConsumerIsStillClosedNotWaitedFor) {
 }
 
 TEST(SessionRegistryAsyncTest, ABlockingOnlySocketFallsBackToAWriterThread) {
-  // Forwards the blocking calls and hides the pair's async support — the
-  // per-entry fallback the mixed-fleet contract promises.
-  class BlockingOnly final : public http::WebSocket {
-   public:
-    explicit BlockingOnly(std::shared_ptr<http::WebSocket> inner) : inner_(std::move(inner)) {}
-    Outcome<std::optional<Message>> Receive() override { return inner_->Receive(); }
-    Outcome<Unit> Send(const Message& message) override { return inner_->Send(message); }
-    void Close() override { inner_->Close(); }
-
-   private:
-    std::shared_ptr<http::WebSocket> inner_;
-  };
-
   Registry registry = AsyncRegistry();
-  auto [client_end, server_end] = http::InMemoryWebSocketPair::Create();
-  auto wrapped = std::make_shared<BlockingOnly>(server_end);
-  ServerStream stream(wrapped, EncodeNote, nullptr);
-  ASSERT_FALSE(stream.Share().SupportsAsync());
-  ASSERT_TRUE(registry.Add("ada", stream.Share()));
+  Session session = MakeBlockingOnlySession();
+  ASSERT_FALSE(session.handle->SupportsAsync());
+  ASSERT_TRUE(registry.Add("ada", *session.handle));
 
   for (int i = 0; i < 3; ++i) {
     EXPECT_TRUE(registry.SendTo("ada", Note{"fallback-" + std::to_string(i)}));
   }
-  Session observe;
-  observe.client = client_end;
   for (int i = 0; i < 3; ++i) {
-    EXPECT_EQ(NextAt(observe), "fallback-" + std::to_string(i));
+    EXPECT_EQ(NextAt(session), "fallback-" + std::to_string(i));
   }
   EXPECT_TRUE(registry.Remove("ada"));
 }
@@ -572,6 +589,577 @@ TEST(SessionRegistryAsyncTest, ChurnUnderBroadcastStaysSafe) {
   churner.join();
   broadcaster.join();
   SUCCEED();
+}
+
+// ---------------------------------------------------------------------------
+// Reconnect grace (ADR-0020): Detach/Resume, expiry, and their races.
+// ---------------------------------------------------------------------------
+
+// A grace-enabled registry whose on_expired records into the caller's
+// atomics. One-second grace: the smallest the seconds-granularity option
+// expresses, so expiry tests wait ~1s, bounded by the poll deadlines.
+Registry GraceRegistry(std::atomic<int>* expired_count, std::string* expired_id = nullptr,
+                       bool async_delivery = false, bool queue_while_detached = false,
+                       std::size_t queue_capacity = 2 * kWireDepth) {
+  Registry::Options options;
+  options.queue_capacity = queue_capacity;
+  options.async_delivery = async_delivery;
+  options.queue_while_detached = queue_while_detached;
+  options.grace_period = std::chrono::seconds{1};
+  options.on_expired = [expired_count, expired_id](const std::string& id) {
+    if (expired_id != nullptr) *expired_id = id;
+    ++*expired_count;
+  };
+  return Registry(std::move(options));
+}
+
+bool ExpiredEventually(const std::atomic<int>& count, int at_least) {
+  for (int i = 0; i < 500; ++i) {
+    if (count.load() >= at_least) return true;
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return false;
+}
+
+TEST(SessionRegistryGraceTest, DetachAndResumeRequireAGracePeriod) {
+  Registry registry;  // grace disabled (the default): prior behavior verbatim
+  Session session = MakeSession();
+  ASSERT_TRUE(registry.Add("ada", *session.handle));
+  EXPECT_FALSE(registry.Detach("ada"));
+  Session fresh = MakeSession();
+  EXPECT_FALSE(registry.Resume("ada", *fresh.handle));
+  EXPECT_TRUE(registry.SendTo("ada", Note{"still-live"}));
+  EXPECT_EQ(NextAt(session), "still-live");
+}
+
+TEST(SessionRegistryGraceTest, DetachParksAndResumeSwapsInTheNewConnection) {
+  std::atomic<int> expired{0};
+  // Long grace: expiry can never race the assertions below.
+  Registry::Options options;
+  options.on_expired = [&expired](const std::string&) { ++expired; };
+  options.grace_period = std::chrono::seconds{300};
+  Registry slow(std::move(options));
+  Session session = MakeSession();
+  ASSERT_TRUE(slow.Add("ada", *session.handle));
+  ASSERT_TRUE(slow.SendTo("ada", Note{"before"}));
+  EXPECT_EQ(NextAt(session), "before");
+
+  ASSERT_TRUE(slow.Detach("ada"));
+  EXPECT_FALSE(slow.Detach("ada"));  // already detached
+  // The old connection was closed by the detach; the entry stays counted.
+  EXPECT_EQ(NextAt(session), std::nullopt);
+  EXPECT_EQ(slow.size(), 1U);
+  EXPECT_EQ(slow.Ids(), (std::vector<std::string>{"ada"}));  // still registered
+  // Default posture: events to a detached id are dropped, reported unqueued.
+  EXPECT_FALSE(slow.SendTo("ada", Note{"lost"}));
+  EXPECT_EQ(slow.Broadcast(Note{"lost-too"}), 0U);  // detached ids count as unqueued
+
+  // The identity-keyed swap: the new connection takes over the entry.
+  Session fresh = MakeSession();
+  ASSERT_TRUE(slow.Resume("ada", *fresh.handle));
+  EXPECT_TRUE(slow.SendTo("ada", Note{"after"}));
+  EXPECT_EQ(NextAt(fresh), "after");
+  EXPECT_EQ(slow.size(), 1U);
+  EXPECT_TRUE(slow.Remove("ada"));
+  EXPECT_EQ(expired.load(), 0);
+}
+
+TEST(SessionRegistryGraceTest, ResumeRefusesLiveAndUnknownIds) {
+  std::atomic<int> expired{0};
+  Registry registry = GraceRegistry(&expired);
+  Session session = MakeSession();
+  ASSERT_TRUE(registry.Add("ada", *session.handle));
+  Session fresh = MakeSession();
+  EXPECT_FALSE(registry.Resume("ada", *fresh.handle));    // live: the app decides
+  EXPECT_FALSE(registry.Resume("ghost", *fresh.handle));  // unknown
+  EXPECT_TRUE(registry.SendTo("ada", Note{"untouched"}));
+  EXPECT_EQ(NextAt(session), "untouched");
+}
+
+TEST(SessionRegistryGraceTest, ExpiryRunsOnExpiredExactlyOnceAndRemoves) {
+  std::atomic<int> expired{0};
+  std::string expired_id;
+  Registry registry = GraceRegistry(&expired, &expired_id);
+  Session session = MakeSession();
+  ASSERT_TRUE(registry.Add("ada", *session.handle));
+  ASSERT_TRUE(registry.Detach("ada"));
+
+  ASSERT_TRUE(ExpiredEventually(expired, 1));
+  EXPECT_EQ(expired.load(), 1);
+  EXPECT_EQ(expired_id, "ada");
+  EXPECT_EQ(registry.size(), 0U);
+  Session fresh = MakeSession();
+  EXPECT_FALSE(registry.Resume("ada", *fresh.handle));  // expiry claimed it
+}
+
+TEST(SessionRegistryGraceTest, ResumeAndExpiryAreMutuallyExclusive) {
+  // The race the Go hub got wrong, run right at the deadline: whatever
+  // the interleaving, exactly one of {successful resume, on_expired}
+  // happens per detach.
+  for (int i = 0; i < 6; ++i) {
+    std::atomic<int> expired{0};
+    Registry registry = GraceRegistry(&expired);
+    Session session = MakeSession();
+    ASSERT_TRUE(registry.Add("ada", *session.handle));
+    ASSERT_TRUE(registry.Detach("ada"));
+
+    // Land the resume attempt around the 1s deadline, sweeping the window.
+    std::this_thread::sleep_for(std::chrono::milliseconds(900 + 40 * i));
+    Session fresh = MakeSession();
+    const bool resumed = registry.Resume("ada", *fresh.handle);
+    if (resumed) {
+      // Expiry must never also fire: wait past any pending deadline.
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      EXPECT_EQ(expired.load(), 0) << "iteration " << i;
+      EXPECT_TRUE(registry.SendTo("ada", Note{"resumed"}));
+      EXPECT_EQ(NextAt(fresh), "resumed");
+    } else {
+      ASSERT_TRUE(ExpiredEventually(expired, 1)) << "iteration " << i;
+      EXPECT_EQ(expired.load(), 1) << "iteration " << i;
+      EXPECT_EQ(registry.size(), 0U);
+    }
+  }
+}
+
+TEST(SessionRegistryGraceTest, ConcurrentResumesExactlyOneWins) {
+  Registry::Options options;
+  options.grace_period = std::chrono::seconds{300};
+  Registry registry(std::move(options));
+  Session session = MakeSession();
+  ASSERT_TRUE(registry.Add("ada", *session.handle));
+  ASSERT_TRUE(registry.Detach("ada"));
+
+  // Two dials claim the same id at once — the second-device race.
+  Session first = MakeSession();
+  Session second = MakeSession();
+  std::atomic<int> wins{0};
+  std::thread a([&] {
+    if (registry.Resume("ada", *first.handle)) ++wins;
+  });
+  std::thread b([&] {
+    if (registry.Resume("ada", *second.handle)) ++wins;
+  });
+  a.join();
+  b.join();
+  EXPECT_EQ(wins.load(), 1);
+  // The winner's wire delivers; exactly one of the two clients gets it.
+  // (CloseAll only reaches the registered winner, so the loser's receive
+  // is unblocked by closing the client ends once the delivery landed.)
+  EXPECT_TRUE(registry.SendTo("ada", Note{"winner"}));
+  auto at_first = std::async(std::launch::async, [&] { return NextAt(first); });
+  auto at_second = std::async(std::launch::async, [&] { return NextAt(second); });
+  std::optional<std::string> delivered;
+  bool first_taken = false;
+  for (int i = 0; i < 500 && !delivered.has_value(); ++i) {
+    if (at_first.wait_for(std::chrono::milliseconds(5)) == std::future_status::ready) {
+      delivered = at_first.get();
+      first_taken = true;
+      break;
+    }
+    if (at_second.wait_for(std::chrono::milliseconds(5)) == std::future_status::ready) {
+      delivered = at_second.get();
+      break;
+    }
+  }
+  EXPECT_EQ(delivered, "winner");
+  first.client->Close();
+  second.client->Close();
+  EXPECT_EQ((first_taken ? at_second : at_first).get(), std::nullopt);  // the loser saw nothing
+}
+
+TEST(SessionRegistryGraceTest, RemoveOnDetachedIsImmediateAndNeverExpires) {
+  std::atomic<int> expired{0};
+  Registry registry = GraceRegistry(&expired);
+  Session session = MakeSession();
+  ASSERT_TRUE(registry.Add("ada", *session.handle));
+  ASSERT_TRUE(registry.Detach("ada"));
+  EXPECT_TRUE(registry.Remove("ada"));  // leave/kick during grace
+  EXPECT_EQ(registry.size(), 0U);
+  // The claim was Remove's; the expiry thread finds nothing to take.
+  std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+  EXPECT_EQ(expired.load(), 0);
+}
+
+TEST(SessionRegistryGraceTest, DrainExpiresDetachedImmediately) {
+  std::atomic<int> expired{0};
+  Registry::Options options;
+  options.grace_period = std::chrono::seconds{300};  // Drain must not wait this out
+  options.on_expired = [&expired](const std::string&) { ++expired; };
+  Registry registry(std::move(options));
+  Session session = MakeSession();
+  ASSERT_TRUE(registry.Add("ada", *session.handle));
+  ASSERT_TRUE(registry.Detach("ada"));
+
+  const auto start = std::chrono::steady_clock::now();
+  EXPECT_TRUE(registry.Drain(std::chrono::milliseconds(5000)));
+  EXPECT_LT(std::chrono::steady_clock::now() - start, std::chrono::seconds(2));
+  EXPECT_EQ(expired.load(), 1);
+  EXPECT_EQ(registry.size(), 0U);
+}
+
+TEST(SessionRegistryGraceTest, OptInRetentionDeliversTheBoundedTailOnResume) {
+  // Long grace so expiry cannot race the retention checks.
+  Registry::Options options;
+  options.grace_period = std::chrono::seconds{300};
+  options.queue_while_detached = true;
+  options.queue_capacity = 3;
+  Registry retaining(std::move(options));
+  Session session = MakeSession();
+  ASSERT_TRUE(retaining.Add("ada", *session.handle));
+  ASSERT_TRUE(retaining.Detach("ada"));
+
+  // Three fit the bounded queue; the rest drop outright (no policy — no
+  // live session to act on).
+  EXPECT_TRUE(retaining.SendTo("ada", Note{"tail-0"}));
+  EXPECT_TRUE(retaining.SendTo("ada", Note{"tail-1"}));
+  EXPECT_TRUE(retaining.SendTo("ada", Note{"tail-2"}));
+  EXPECT_FALSE(retaining.SendTo("ada", Note{"overflow"}));
+
+  Session fresh = MakeSession();
+  ASSERT_TRUE(retaining.Resume("ada", *fresh.handle));
+  EXPECT_EQ(NextAt(fresh), "tail-0");
+  EXPECT_EQ(NextAt(fresh), "tail-1");
+  EXPECT_EQ(NextAt(fresh), "tail-2");
+}
+
+TEST(SessionRegistryGraceTest, AsyncChainDetachesAndResumesWithTheRetainedTail) {
+  std::atomic<int> expired{0};
+  Registry::Options options;
+  options.grace_period = std::chrono::seconds{300};
+  options.async_delivery = true;
+  options.queue_while_detached = true;
+  options.queue_capacity = 2 * kWireDepth;
+  options.on_expired = [&expired](const std::string&) { ++expired; };
+  Registry registry(std::move(options));
+  Session session = MakeSession();
+  ASSERT_TRUE(registry.Add("ada", *session.handle));
+  ASSERT_TRUE(registry.SendTo("ada", Note{"chained"}));
+  EXPECT_EQ(NextAt(session), "chained");
+
+  ASSERT_TRUE(registry.Detach("ada"));
+  EXPECT_TRUE(registry.SendTo("ada", Note{"tail"}));  // retained, not kicked
+
+  Session fresh = MakeSession();
+  ASSERT_TRUE(registry.Resume("ada", *fresh.handle));  // re-kicks the chain
+  EXPECT_EQ(NextAt(fresh), "tail");
+  EXPECT_TRUE(registry.SendTo("ada", Note{"flowing"}));
+  EXPECT_EQ(NextAt(fresh), "flowing");
+  EXPECT_EQ(expired.load(), 0);
+}
+
+TEST(SessionRegistryGraceTest, DestructorExpiresDetachedEntries) {
+  std::atomic<int> expired{0};
+  {
+    Registry::Options options;
+    options.grace_period = std::chrono::seconds{300};
+    options.on_expired = [&expired](const std::string&) { ++expired; };
+    Registry registry(std::move(options));
+    Session session = MakeSession();
+    ASSERT_TRUE(registry.Add("ada", *session.handle));
+    ASSERT_TRUE(registry.Detach("ada"));
+  }  // ~SessionRegistry: no five-minute wait, cleanup still promised
+  EXPECT_EQ(expired.load(), 1);
+}
+
+TEST(SessionRegistryGraceTest, AThrowingOnExpiredIsSwallowedAndExpiryCompletes) {
+  // on_expired runs on the registry's expiry thread (or a Drain caller),
+  // where an escaping exception has no caller to land in — it must be
+  // swallowed, and the batch must keep going. Pre-guard this test dies in
+  // std::terminate.
+  std::atomic<int> expired{0};
+  Registry::Options options;
+  options.grace_period = std::chrono::seconds{1};
+  options.on_expired = [&expired](const std::string&) {
+    ++expired;
+    throw std::runtime_error("policy bug");
+  };
+  Registry registry(std::move(options));
+  Session ada = MakeSession();
+  Session bob = MakeSession();
+  ASSERT_TRUE(registry.Add("ada", *ada.handle));
+  ASSERT_TRUE(registry.Add("bob", *bob.handle));
+  ASSERT_TRUE(registry.Detach("ada"));
+  ASSERT_TRUE(registry.Detach("bob"));
+  ASSERT_TRUE(ExpiredEventually(expired, 2));  // the first throw killed nothing
+  EXPECT_EQ(registry.size(), 0U);
+}
+
+TEST(SessionRegistryGraceTest, DetachResumeChurnUnderBroadcastAndCloseStaysSafe) {
+  // The handle-mutability race Resume introduced: Enqueue's close-on-full
+  // default and CloseAll both close entry->handle from foreign threads
+  // while Resume swaps it. Meaningful under TSan (the sanitizer run), a
+  // crash/hang smoke test elsewhere.
+  std::vector<Session> keep_alive;  // outlives the registry below
+  keep_alive.reserve(240);
+  Registry::Options options;
+  options.grace_period = std::chrono::seconds{300};
+  options.queue_capacity = 1;  // every broadcast burst hits close-on-full
+  Registry registry(std::move(options));
+
+  std::atomic<bool> stop{false};
+  std::atomic<int> choreography_failures{0};
+  std::thread churner([&] {
+    for (int round = 0; round < 30; ++round) {
+      for (int i = 0; i < 4; ++i) {
+        const std::string id = "p" + std::to_string(i);
+        Session joined = MakeSession();
+        if (!registry.Add(id, *joined.handle)) ++choreography_failures;
+        keep_alive.push_back(std::move(joined));
+        if (!registry.Detach(id)) ++choreography_failures;
+        Session back = MakeSession();
+        if (!registry.Resume(id, *back.handle)) ++choreography_failures;
+        keep_alive.push_back(std::move(back));
+        if (!registry.Remove(id)) ++choreography_failures;
+      }
+    }
+    stop = true;
+  });
+  std::thread broadcaster([&] {
+    while (!stop) registry.Broadcast(Note{"tick"});
+  });
+  std::thread closer([&] {
+    while (!stop) {
+      registry.CloseAll();
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+  });
+  churner.join();
+  broadcaster.join();
+  closer.join();
+  EXPECT_EQ(choreography_failures.load(), 0);
+}
+
+TEST(SessionRegistryGraceTest, ResumeWaitsOutAWedgedWriterAndDeliversTheRetainedTail) {
+  // The non-trivial quiescence wait: Detach lands while the writer is
+  // blocked inside Send on a full wire. Resume must wait out the failing
+  // send, join the writer, and hand the retained tail to the new
+  // connection — minus the mid-send event, which died with the old wire
+  // (by design: pinned here).
+  Registry::Options options;
+  options.grace_period = std::chrono::seconds{300};
+  options.queue_while_detached = true;
+  options.queue_capacity = 2 * kWireDepth;
+  Registry registry(std::move(options));
+  Session session = MakeSession();  // never reads: the wire will fill
+  ASSERT_TRUE(registry.Add("ada", *session.handle));
+  for (std::size_t i = 0; i < kWireDepth + 4; ++i) {
+    ASSERT_TRUE(registry.SendTo("ada", Note{"n-" + std::to_string(i)}));
+  }
+  // The in-memory pair delivers in microseconds; by now the writer has
+  // filled the wire and sits blocked inside Send on event kWireDepth.
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  ASSERT_TRUE(registry.Detach("ada"));  // fails the blocked send out
+  Session fresh = MakeSession();
+  ASSERT_TRUE(registry.Resume("ada", *fresh.handle));
+  for (std::size_t i = kWireDepth + 1; i < kWireDepth + 4; ++i) {
+    EXPECT_EQ(NextAt(fresh), "n-" + std::to_string(i));
+  }
+  EXPECT_TRUE(registry.SendTo("ada", Note{"flowing"}));
+  EXPECT_EQ(NextAt(fresh), "flowing");
+}
+
+TEST(SessionRegistryGraceTest, RepeatedDetachResumeCyclesJoinEachWriter) {
+  // Resume resets stopping/done for the writer it spawns; a regression
+  // there would let a later cycle's wait pass while the previous writer
+  // still delivers, swapping the handle under an active Send. Every cycle
+  // after the first exercises the reset state; the destructor closes out
+  // whatever a leak would leave behind.
+  Registry::Options options;
+  options.grace_period = std::chrono::seconds{300};
+  options.queue_while_detached = true;
+  options.queue_capacity = 2 * kWireDepth;
+  Registry registry(std::move(options));
+  Session current = MakeSession();
+  ASSERT_TRUE(registry.Add("ada", *current.handle));
+  for (int cycle = 0; cycle < 3; ++cycle) {
+    const std::string tag = std::to_string(cycle);
+    for (std::size_t i = 0; i < kWireDepth + 2; ++i) {
+      ASSERT_TRUE(registry.SendTo("ada", Note{"c" + tag + "-" + std::to_string(i)}));
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));  // writer wedges mid-Send
+    ASSERT_TRUE(registry.Detach("ada"));
+    Session fresh = MakeSession();
+    ASSERT_TRUE(registry.Resume("ada", *fresh.handle));
+    // The tail behind the mid-send casualty survives into the new session.
+    EXPECT_EQ(NextAt(fresh), "c" + tag + "-" + std::to_string(kWireDepth + 1));
+    current = std::move(fresh);
+  }
+  EXPECT_TRUE(registry.SendTo("ada", Note{"alive"}));
+  EXPECT_EQ(NextAt(current), "alive");
+}
+
+TEST(SessionRegistryGraceTest, AsyncDetachWithAParkedChainRetainsAndResumesTheTail) {
+  // The chain-mode counterpart of the wedged writer: Detach lands while
+  // the chain is parked inside SendAsync on a full wire. The asymmetry
+  // with the writer is deliberate and pinned here: the in-flight event
+  // stays at the queue front (popped only on success), so nothing is lost
+  // — the whole tail arrives after Resume.
+  std::atomic<int> expired{0};
+  Registry::Options options;
+  options.grace_period = std::chrono::seconds{300};
+  options.async_delivery = true;
+  options.queue_while_detached = true;
+  options.queue_capacity = 2 * kWireDepth;
+  options.on_expired = [&expired](const std::string&) { ++expired; };
+  Registry registry(std::move(options));
+  Session session = MakeSession();  // never reads: the chain will park
+  ASSERT_TRUE(registry.Add("ada", *session.handle));
+  // The pair's ready path completes inline, so these sends deliver as they
+  // enqueue until the wire fills; the chain then parks in flight on event
+  // kWireDepth with the rest queued behind it. Deterministic — no settle.
+  for (std::size_t i = 0; i < kWireDepth + 3; ++i) {
+    ASSERT_TRUE(registry.SendTo("ada", Note{"n-" + std::to_string(i)}));
+  }
+
+  ASSERT_TRUE(registry.Detach("ada"));  // fails the parked completion out
+  Session fresh = MakeSession();
+  ASSERT_TRUE(registry.Resume("ada", *fresh.handle));  // waits out `delivering`
+  for (std::size_t i = kWireDepth; i < kWireDepth + 3; ++i) {
+    EXPECT_EQ(NextAt(fresh), "n-" + std::to_string(i));
+  }
+  EXPECT_TRUE(registry.SendTo("ada", Note{"flowing"}));
+  EXPECT_EQ(NextAt(fresh), "flowing");
+  EXPECT_EQ(expired.load(), 0);
+}
+
+TEST(SessionRegistryGraceTest, AConvertedWritersWedgeIsJoinedByResume) {
+  // Collision fallback meets grace: a direct send holds the socket's slot,
+  // the chain's kick is refused and converts the session to a writer,
+  // that writer wedges behind the direct send — and Detach/Resume must
+  // wait out and join the CONVERTED writer, then re-arm per the new
+  // handle's capability (back to a chain here).
+  Registry::Options options;
+  options.grace_period = std::chrono::seconds{300};
+  options.async_delivery = true;
+  options.queue_while_detached = true;
+  options.queue_capacity = 2 * kWireDepth;
+  Registry registry(std::move(options));
+  Session session = MakeSession();
+  ASSERT_TRUE(registry.Add("ada", *session.handle));
+  for (std::size_t i = 0; i < kWireDepth; ++i) {
+    session.handle->SendAsync(Note{"fill"}, [](const Outcome<Unit>&) {});
+  }
+  std::atomic<bool> parked_failed{false};
+  session.handle->SendAsync(Note{"parked"},
+                            [&](const Outcome<Unit>& sent) { parked_failed = !sent.ok(); });
+
+  ASSERT_TRUE(registry.SendTo("ada", Note{"tail-0"}));          // refused → converts
+  ASSERT_TRUE(registry.SendTo("ada", Note{"tail-1"}));          // queued behind the wedge
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));  // the writer wedges
+
+  ASSERT_TRUE(registry.Detach("ada"));  // fails the direct send and the writer out
+  EXPECT_TRUE(parked_failed.load());
+  Session fresh = MakeSession();
+  ASSERT_TRUE(registry.Resume("ada", *fresh.handle));
+  // tail-0 was the converted writer's mid-send casualty; tail-1 survives.
+  EXPECT_EQ(NextAt(fresh), "tail-1");
+  EXPECT_TRUE(registry.SendTo("ada", Note{"flowing"}));
+  EXPECT_EQ(NextAt(fresh), "flowing");
+}
+
+TEST(SessionRegistryGraceTest, ResumeRearmsDeliveryPerTheNewHandlesCapability) {
+  // Resume recomputes the delivery mode from the NEW handle: a writer-mode
+  // entry resumed with an async-capable connection goes chain (no writer
+  // spawned, the retained tail kicked), and the reverse spawns a writer
+  // for an entry that never had one.
+  Registry::Options options;
+  options.grace_period = std::chrono::seconds{300};
+  options.async_delivery = true;
+  options.queue_while_detached = true;
+  Registry registry(std::move(options));
+  Session blocking = MakeBlockingOnlySession();  // writer mode under async delivery
+  ASSERT_TRUE(registry.Add("ada", *blocking.handle));
+  ASSERT_TRUE(registry.SendTo("ada", Note{"writer-mode"}));
+  EXPECT_EQ(NextAt(blocking), "writer-mode");
+
+  ASSERT_TRUE(registry.Detach("ada"));
+  ASSERT_TRUE(registry.SendTo("ada", Note{"tail-0"}));
+  Session chained = MakeSession();  // async-capable
+  ASSERT_TRUE(registry.Resume("ada", *chained.handle));
+  EXPECT_EQ(NextAt(chained), "tail-0");
+  ASSERT_TRUE(registry.SendTo("ada", Note{"chain-mode"}));
+  EXPECT_EQ(NextAt(chained), "chain-mode");
+
+  ASSERT_TRUE(registry.Detach("ada"));
+  ASSERT_TRUE(registry.SendTo("ada", Note{"tail-1"}));
+  Session writer_again = MakeBlockingOnlySession();
+  ASSERT_TRUE(registry.Resume("ada", *writer_again.handle));
+  EXPECT_EQ(NextAt(writer_again), "tail-1");
+  ASSERT_TRUE(registry.SendTo("ada", Note{"writer-again"}));
+  EXPECT_EQ(NextAt(writer_again), "writer-again");
+}
+
+TEST(SessionRegistryGraceTest, StaggeredDetachesExpireInDeadlineOrder) {
+  // Two detached entries at once: the expiry thread re-derives the nearest
+  // deadline each wake, so B's later Detach must neither delay A past its
+  // deadline nor ride along with it.
+  std::atomic<int> expired{0};
+  std::mutex order_mutex;
+  std::vector<std::string> order;
+  Registry::Options options;
+  options.grace_period = std::chrono::seconds{1};
+  options.on_expired = [&](const std::string& id) {
+    const std::lock_guard<std::mutex> lock(order_mutex);
+    order.push_back(id);
+    ++expired;
+  };
+  Registry registry(std::move(options));
+  Session ada = MakeSession();
+  Session bob = MakeSession();
+  ASSERT_TRUE(registry.Add("ada", *ada.handle));
+  ASSERT_TRUE(registry.Add("bob", *bob.handle));
+  ASSERT_TRUE(registry.Detach("ada"));
+  std::this_thread::sleep_for(std::chrono::milliseconds(400));
+  ASSERT_TRUE(registry.Detach("bob"));
+
+  ASSERT_TRUE(ExpiredEventually(expired, 1));
+  {
+    const std::lock_guard<std::mutex> lock(order_mutex);
+    EXPECT_EQ(order, (std::vector<std::string>{"ada"}));  // bob still has 400ms
+  }
+  EXPECT_EQ(registry.size(), 1U);
+  ASSERT_TRUE(ExpiredEventually(expired, 2));
+  {
+    const std::lock_guard<std::mutex> lock(order_mutex);
+    EXPECT_EQ(order, (std::vector<std::string>{"ada", "bob"}));
+  }
+  EXPECT_EQ(registry.size(), 0U);
+}
+
+TEST(SessionRegistryGraceTest, RetentionSkipsThePreLossBacklogAndThePolicy) {
+  // Two retention edges: a queue the old wire's failure already cleared is
+  // NOT resurrected (pre-loss backlog stays lost — snapshot replay covers
+  // it), and overflow while detached never runs the slow-consumer policy.
+  std::atomic<int> policy_runs{0};
+  Registry::Options options;
+  options.grace_period = std::chrono::seconds{300};
+  options.queue_while_detached = true;
+  options.queue_capacity = 2;
+  options.on_slow_consumer = [&policy_runs](const std::string&) { ++policy_runs; };
+  Registry registry(std::move(options));
+  Session session = MakeSession();
+  ASSERT_TRUE(registry.Add("ada", *session.handle));
+  ASSERT_TRUE(registry.SendTo("ada", Note{"delivered"}));
+  EXPECT_EQ(NextAt(session), "delivered");
+
+  session.client->Close();  // the wire dies mid-session
+  ASSERT_TRUE(registry.SendTo("ada", Note{"pre-loss"}));
+  ASSERT_TRUE(RefusedEventually(registry, "ada"));  // the writer noticed; queue cleared
+  const int policy_before = policy_runs.load();
+
+  ASSERT_TRUE(registry.Detach("ada"));
+  ASSERT_TRUE(registry.SendTo("ada", Note{"post-0"}));
+  ASSERT_TRUE(registry.SendTo("ada", Note{"post-1"}));
+  EXPECT_FALSE(registry.SendTo("ada", Note{"overflow"}));  // full: dropped outright
+  EXPECT_EQ(policy_runs.load(), policy_before);            // no policy while detached
+
+  Session fresh = MakeSession();
+  ASSERT_TRUE(registry.Resume("ada", *fresh.handle));
+  EXPECT_EQ(NextAt(fresh), "post-0");  // pre-loss backlog stayed lost
+  EXPECT_EQ(NextAt(fresh), "post-1");
+  EXPECT_TRUE(registry.SendTo("ada", Note{"flowing"}));
+  EXPECT_EQ(NextAt(fresh), "flowing");
 }
 
 }  // namespace

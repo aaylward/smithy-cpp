@@ -158,7 +158,7 @@ cc_binary(
 # server-side.
 sh_test(
     name = "async_hub_cli_test",
-    size = "small",
+    size = "medium",  # a real 3s grace expiry, and slow-runner headroom for the wait_for gates
     srcs = ["async_hub_cli_test.sh"],
     args = [
         "$(rootpath :async_hub_server)",

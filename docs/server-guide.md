@@ -150,6 +150,14 @@ the default disconnects the client (its handler observes the close and unwinds);
 construction exists because broadcast-identical-bytes is the wrong primitive for
 per-viewer state — the callback runs once per recipient, outside all registry locks.
 
+Reconnects get a grace window on the same registry (ADR-0020): set
+`Options::grace_period`, call `Detach(id)` on abrupt loss instead of `Remove`,
+and `Resume(id, handle)` swaps a reconnecting connection into the parked entry
+— `Options::on_expired` runs the deferred cleanup exactly once when nobody
+comes back. The full handshake (resume ticket → gate → `Resume` → snapshot
+replay) and the client redial shape live in the
+[production guide's reconnect section](production-guide.md#reconnect-and-resume).
+
 ### Serving without a thread per session (ADR-0019)
 
 Every session served through `on_websocket` parks one handler-pool thread for its

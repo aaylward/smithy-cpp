@@ -36,6 +36,14 @@ build:ubsan --linkopt=-fsanitize=undefined
 build:ubsan --linkopt=-fno-sanitize-recover=all
 build:ubsan --linkopt=-fsanitize-link-c++-runtime
 
+# ThreadSanitizer (incompatible with asan — separate invocation):
+# CC=clang bazel test //runtime:session_registry_test --config=tsan
+build:tsan --strip=never
+build:tsan --copt=-fsanitize=thread
+build:tsan --copt=-fno-omit-frame-pointer
+build:tsan --copt=-g
+build:tsan --linkopt=-fsanitize=thread
+
 # libFuzzer: CC=clang bazel build --config=fuzz //fuzz:json_decode_fuzz
 build:fuzz --copt=-fsanitize=fuzzer,address
 build:fuzz --linkopt=-fsanitize=fuzzer,address

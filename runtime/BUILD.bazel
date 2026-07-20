@@ -562,7 +562,7 @@ cc_test(
 
 cc_test(
     name = "session_registry_test",
-    size = "small",
+    size = "medium",  # the ADR-0020 grace matrix waits out real 1s deadlines
     srcs = ["tests/server/session_registry_test.cc"],
     copts = COPTS,
     deps = [

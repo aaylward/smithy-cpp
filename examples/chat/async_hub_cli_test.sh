@@ -10,8 +10,12 @@
 set -euo pipefail
 
 # Whatever path ends this script — a fail(), set -e, or the sandbox's
-# timeout SIGTERM — no server or client process outlives it.
+# timeout SIGTERM — no server or client process outlives it. An EXIT trap
+# alone misses untrapped signals (bash skips it when killed), so route
+# TERM/INT through exit.
 trap 'kill $(jobs -p) 2>/dev/null || true' EXIT
+trap 'exit 143' TERM
+trap 'exit 130' INT
 
 step() { echo "async-hub: $*" >&2; }
 fail() {
@@ -40,7 +44,7 @@ log="${TEST_TMPDIR}/server.log"
 cd "${TEST_TMPDIR}"
 
 step "starting ${server}"
-"$server" 0 2> "$log" &
+"$server" 0 3 2> "$log" &  # 3s grace: resumable in-test, expirable in-test
 server_pid=$!
 port=""
 for _ in $(seq 1 100); do
@@ -83,16 +87,52 @@ wait "$grace_pid" || fail "grace's client exited non-zero"
 exec 4>&-
 wait_for ada.out '^left grace$' "grace's departure at ada"
 
-step "abrupt quit frees the nickname"
+step "abrupt quit detaches; grace expiry announces the departure"
 mkfifo grace2.in
 "$client" "$port" lobby grace < grace2.in > grace2.out &
 grace2_pid=$!
 exec 4> grace2.in
 wait_for grace2.out '^joined grace$' "grace rejoined after leaving"
 echo "/quit" >&4
-wait_for_count ada.out '^left grace$' 2 "the vanish still announced"
+# No immediate announcement: the session is detached, awaiting a resume.
+# Pinned one second in (safely inside the 3s grace) — a regression to the
+# immediate announce path fails here, not just "announces sooner". The
+# count is 1: grace's earlier clean /leave.
+sleep 1
+[ "$(grep -c '^left grace$' ada.out || true)" -eq 1 ] \
+  || fail "the departure was announced before grace expired"
+# The 3s grace runs out, on_expired fires, and the room finally hears it.
+wait_for_count ada.out '^left grace$' 2 "the deferred departure at expiry"
 exec 4>&-
 wait "$grace2_pid" || fail "quitting client exited non-zero"
+
+step "an abrupt drop resumes within grace with a roster snapshot"
+mkfifo dora.in dora2.in
+"$client" "$port" lobby dora < dora.in > dora.out &
+dora_pid=$!
+exec 5> dora.in
+wait_for dora.out '^joined dora$' "dora's join"
+wait_for ada.out '^joined dora$' "dora's arrival at ada"
+kill -9 "$dora_pid" 2>/dev/null || true
+wait "$dora_pid" 2>/dev/null || true
+exec 5>&-
+# Reconnect under the same nickname inside the grace window: the hub
+# resumes the parked session and replays the roster — no Kicked, and no
+# duplicate join announced to the room.
+"$client" "$port" lobby dora < dora2.in > dora2.out &
+dora2_pid=$!
+exec 5> dora2.in
+wait_for dora2.out '^joined ada$' "the roster snapshot at the resumed dora"
+wait_for dora2.out '^joined dora$' "dora herself in the snapshot"
+echo "back" >&5
+wait_for ada.out '^message dora back$' "the resumed session speaks"
+wait_for dora2.out '^message you back$' "and hears itself"
+[ "$(grep -c '^joined dora$' ada.out)" -eq 1 ] || fail "resume must not re-announce the join"
+echo "/leave" >&5
+wait_for dora2.out '^closed$' "dora's clean close"
+exec 5>&-
+wait "$dora2_pid" || fail "dora's resumed client exited non-zero"
+wait_for ada.out '^left dora$' "dora's deliberate leave announced"
 
 step "SIGTERM: the hub drains, the client sees a clean close, exit 0 all around"
 kill -TERM "$server_pid"

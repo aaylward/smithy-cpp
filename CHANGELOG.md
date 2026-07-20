@@ -116,6 +116,25 @@ via `git_override` until then.
   the production guide now names the blessed browser auth pattern
   (short-lived single-use tickets in an `@httpQuery` member, validated by
   the gate before the 101) with its caveats said out loud.
+- Completion-driven event streams (ADR-0019) — the async adapter ADR-0014
+  through ADR-0017 name as future work, runtime slice: `WebSocket` grows
+  `ReceiveAsync`/`SendAsync`/`SupportsAsync` (one outstanding per class,
+  completions on the transport's completion context; native on the Beast
+  sessions and the in-memory pair, polite refusals by default so custom
+  sockets keep working). `BeastServerTransport::Options::on_websocket_session`
+  is the shared-session sibling of `on_websocket`: the callback owns the
+  session and returns immediately, so a stream no longer parks a
+  handler-pool thread — `handler_threads` returns to sizing unary work.
+  `smithy::eventstream::AsyncEventStream<Tx, Rx>` + `Detached` put
+  `co_await` where the blocking facade parks a thread (same terminal
+  semantics as `EventStream`, same `Share()` handles), and
+  `SessionRegistry Options::async_delivery` drains each session's queue
+  through `EventStreamHandle::SendAsync` completion chains instead of
+  writer threads (per-session fallback for blocking-only sockets). The
+  thread-free chat hub (`examples/chat/async_hub_*`) serves the same
+  generated wire through the new seam, driven as real shell-commanded
+  processes. Generated handler/client surfaces stay blocking — the
+  coroutine lift for generated code is the follow-up ADR-0019 gates.
 - Event-stream session handles and fan-out (ADR-0017, issue #112):
   `stream.Share()` mints an `EventStreamHandle<Out>` — an owning cheap-copy
   value handle safe to hold beyond the handler's borrow (copies are how a

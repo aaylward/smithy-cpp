@@ -29,6 +29,7 @@
 #include <thread>
 #include <vector>
 
+#include "smithy/eventstream/async_event_stream.h"
 #include "smithy/eventstream/envelope.h"
 #include "smithy/eventstream/json_frame.h"
 #include "smithy/http/beast_transport.h"
@@ -1290,6 +1291,125 @@ TEST(BeastWebSocketTest, TheGateRefusesOverTlsToo) {
   ASSERT_TRUE(echo.ok() && echo->has_value());
   EXPECT_EQ((**echo).payload.ToString(), "echo:hi");
   server.Stop();
+}
+
+// ---------------------------------------------------------------------------
+// ADR-0019: the completion-driven primitives and the shared-session seam,
+// over real WebSockets. The pair-based halves of the same contracts live in
+// async_event_stream_test.cc.
+// ---------------------------------------------------------------------------
+
+TEST(BeastWebSocketTest, AsyncSendAndReceiveRoundTripOverTheWire) {
+  BeastServerTransport server(EchoOptions());
+  ASSERT_TRUE(server.Start(NotFoundHandler()).ok());
+  auto dialed = BeastWebSocketClient::Dial({.host = "127.0.0.1", .port = server.port()});
+  ASSERT_TRUE(dialed.ok()) << dialed.error().message();
+  const std::shared_ptr<WebSocket>& socket = *dialed;
+  ASSERT_TRUE(socket->SupportsAsync());
+
+  for (int i = 0; i < 5; ++i) {
+    std::promise<Outcome<Unit>> sent;
+    socket->SendAsync(Text("chat", "async-" + std::to_string(i)),
+                      [&sent](Outcome<Unit> outcome) { sent.set_value(std::move(outcome)); });
+    ASSERT_TRUE(sent.get_future().get().ok());
+
+    std::promise<Outcome<std::optional<eventstream::Message>>> received;
+    socket->ReceiveAsync([&received](Outcome<std::optional<eventstream::Message>> message) {
+      received.set_value(std::move(message));
+    });
+    auto echo = received.get_future().get();
+    ASSERT_TRUE(echo.ok()) << echo.error().message();
+    ASSERT_TRUE(echo->has_value());
+    EXPECT_EQ((**echo).payload.ToString(), "echo:async-" + std::to_string(i));
+  }
+
+  // A second outstanding receive is refused inline while the first parks.
+  std::promise<Outcome<std::optional<eventstream::Message>>> parked;
+  socket->ReceiveAsync([&parked](Outcome<std::optional<eventstream::Message>> message) {
+    parked.set_value(std::move(message));
+  });
+  std::promise<Outcome<std::optional<eventstream::Message>>> refused;
+  socket->ReceiveAsync([&refused](Outcome<std::optional<eventstream::Message>> message) {
+    refused.set_value(std::move(message));
+  });
+  auto refusal = refused.get_future().get();
+  ASSERT_FALSE(refusal.ok());
+  EXPECT_EQ(refusal.error().kind(), ErrorKind::kValidation);
+
+  // Close completes the parked receive with the terminal outcome.
+  socket->Close();
+  auto end = parked.get_future().get();
+  ASSERT_TRUE(end.ok()) << end.error().message();
+  EXPECT_FALSE(end->has_value());
+  server.Stop();
+}
+
+TEST(BeastWebSocketTest, TheSharedSessionSeamServesWithoutParkingAHandlerThread) {
+  // One handler thread, many sessions: with the borrowed seam this would
+  // deadlock past the first session; the shared seam launches a Detached
+  // echo loop per session and returns immediately (ADR-0019).
+  BeastServerTransport::Options options;
+  options.handler_threads = 1;
+  std::atomic<int> launched{0};
+  options.on_websocket_session = [&launched](const HttpRequest&,
+                                             std::shared_ptr<WebSocket> socket) {
+    ++launched;
+    [](std::shared_ptr<WebSocket> session) -> eventstream::Detached {
+      eventstream::AsyncEventStream<eventstream::Message, eventstream::Message> stream(
+          std::move(session), [](const eventstream::Message& message) { return message; },
+          [](const eventstream::Message& message) { return message; });
+      while (true) {
+        auto message = co_await stream.Receive();
+        if (!message.ok() || !message->has_value()) break;
+        eventstream::Message reply = **message;
+        reply.payload = Blob::FromString("echo:" + (*message)->payload.ToString());
+        auto sent = co_await stream.Send(reply);
+        if (!sent.ok()) break;
+      }
+    }(std::move(socket));
+  };
+  BeastServerTransport server(options);
+  ASSERT_TRUE(server.Start(NotFoundHandler()).ok());
+
+  // Three concurrent sessions on the one-thread pool, interleaved.
+  std::vector<std::shared_ptr<WebSocket>> clients;
+  for (int i = 0; i < 3; ++i) {
+    auto dialed = BeastWebSocketClient::Dial({.host = "127.0.0.1", .port = server.port()});
+    ASSERT_TRUE(dialed.ok()) << dialed.error().message();
+    clients.push_back(*dialed);
+  }
+  for (int round = 0; round < 3; ++round) {
+    for (std::size_t i = 0; i < clients.size(); ++i) {
+      const std::string body = "s" + std::to_string(i) + "-r" + std::to_string(round);
+      ASSERT_TRUE(clients[i]->Send(Text("chat", body)).ok());
+      auto echo = clients[i]->Receive();
+      ASSERT_TRUE(echo.ok() && echo->has_value());
+      EXPECT_EQ((**echo).payload.ToString(), "echo:" + body);
+    }
+  }
+  EXPECT_EQ(launched.load(), 3);
+
+  // A client close ends its loop; the others keep serving.
+  clients[0]->Close();
+  ASSERT_TRUE(clients[1]->Send(Text("chat", "still-here")).ok());
+  auto still = clients[1]->Receive();
+  ASSERT_TRUE(still.ok() && still->has_value());
+
+  // Stop() aborts the shared sessions through the same sweep as borrowed
+  // ones; the remaining clients observe their sessions ending.
+  server.Stop();
+  auto after_stop = clients[2]->Receive();
+  EXPECT_TRUE(!after_stop.ok() || !after_stop->has_value());
+}
+
+TEST(BeastWebSocketTest, BothServeSeamsSetIsRefusedAtStart) {
+  BeastServerTransport::Options options = EchoOptions();
+  options.on_websocket_session = [](const HttpRequest&, std::shared_ptr<WebSocket>) {};
+  BeastServerTransport server(options);
+  auto started = server.Start(NotFoundHandler());
+  ASSERT_FALSE(started.ok());
+  EXPECT_EQ(started.error().kind(), ErrorKind::kValidation);
+  EXPECT_NE(started.error().message().find("exactly one"), std::string::npos);
 }
 
 }  // namespace

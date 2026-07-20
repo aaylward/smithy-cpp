@@ -352,5 +352,119 @@ TEST(SessionRegistryTest, ConcurrentBroadcastsAddsAndRemovesStaySafe) {
   SUCCEED();  // the registry destructor closes and joins whatever remains
 }
 
+// ---------------------------------------------------------------------------
+// Async delivery (ADR-0019): the same contracts, zero registry threads.
+// ---------------------------------------------------------------------------
+
+Registry AsyncRegistry(std::size_t queue_capacity = 2 * kWireDepth) {
+  Registry::Options options;
+  options.queue_capacity = queue_capacity;
+  options.async_delivery = true;
+  return Registry(std::move(options));
+}
+
+TEST(SessionRegistryAsyncTest, DeliversFifoThroughCompletionChains) {
+  Registry registry = AsyncRegistry();
+  Session session = MakeSession();
+  ASSERT_TRUE(registry.Add("ada", *session.handle));
+
+  for (int i = 0; i < 5; ++i) {
+    EXPECT_TRUE(registry.SendTo("ada", Note{"note-" + std::to_string(i)}));
+  }
+  for (int i = 0; i < 5; ++i) {
+    EXPECT_EQ(NextAt(session), "note-" + std::to_string(i));
+  }
+  EXPECT_TRUE(registry.Remove("ada"));
+}
+
+TEST(SessionRegistryAsyncTest, ASlowConsumerIsStillClosedNotWaitedFor) {
+  Registry registry = AsyncRegistry(/*queue_capacity=*/2);
+  Session ada = MakeSession();
+  Session grace = MakeSession();  // never reads
+  ASSERT_TRUE(registry.Add("ada", *ada.handle));
+  ASSERT_TRUE(registry.Add("grace", *grace.handle));
+
+  constexpr int kBursts = 4 * kWireDepth;
+  for (int i = 0; i < kBursts; ++i) {
+    registry.Broadcast({"ada", "grace"}, Note{"burst-" + std::to_string(i)});
+    EXPECT_EQ(NextAt(ada), "burst-" + std::to_string(i));  // never stalled
+  }
+  int delivered = 0;
+  while (NextAt(grace).has_value()) ++delivered;
+  EXPECT_LT(delivered, kBursts);
+  EXPECT_TRUE(RefusedEventually(registry, "grace"));
+}
+
+TEST(SessionRegistryAsyncTest, ABlockingOnlySocketFallsBackToAWriterThread) {
+  // Forwards the blocking calls and hides the pair's async support — the
+  // per-entry fallback the mixed-fleet contract promises.
+  class BlockingOnly final : public http::WebSocket {
+   public:
+    explicit BlockingOnly(std::shared_ptr<http::WebSocket> inner) : inner_(std::move(inner)) {}
+    Outcome<std::optional<Message>> Receive() override { return inner_->Receive(); }
+    Outcome<Unit> Send(const Message& message) override { return inner_->Send(message); }
+    void Close() override { inner_->Close(); }
+
+   private:
+    std::shared_ptr<http::WebSocket> inner_;
+  };
+
+  Registry registry = AsyncRegistry();
+  auto [client_end, server_end] = http::InMemoryWebSocketPair::Create();
+  auto wrapped = std::make_shared<BlockingOnly>(server_end);
+  ServerStream stream(wrapped, EncodeNote, nullptr);
+  ASSERT_FALSE(stream.Share().SupportsAsync());
+  ASSERT_TRUE(registry.Add("ada", stream.Share()));
+
+  for (int i = 0; i < 3; ++i) {
+    EXPECT_TRUE(registry.SendTo("ada", Note{"fallback-" + std::to_string(i)}));
+  }
+  Session observe;
+  observe.client = client_end;
+  for (int i = 0; i < 3; ++i) {
+    EXPECT_EQ(NextAt(observe), "fallback-" + std::to_string(i));
+  }
+  EXPECT_TRUE(registry.Remove("ada"));
+}
+
+TEST(SessionRegistryAsyncTest, TeardownWithAParkedChainNeverHangs) {
+  // The wire fills, the chain parks inside the socket's SendAsync, and the
+  // registry is destroyed: its close fails the parked delivery, the chain
+  // stops, and — with no writer threads — there is nothing to join. This
+  // test hanging or crashing is the failure mode.
+  Session stalled = MakeSession();
+  {
+    Registry registry = AsyncRegistry();
+    ASSERT_TRUE(registry.Add("stalled", *stalled.handle));
+    for (std::size_t i = 0; i < 2 * kWireDepth; ++i) {
+      registry.SendTo("stalled", Note{"pile-up"});
+    }
+  }
+  while (NextAt(stalled).has_value()) {
+  }
+  SUCCEED();
+}
+
+TEST(SessionRegistryAsyncTest, ChurnUnderBroadcastStaysSafe) {
+  Registry registry = AsyncRegistry(/*queue_capacity=*/2);
+  std::atomic<bool> stop{false};
+  std::vector<Session> sessions(8);
+  for (int i = 0; i < 8; ++i) sessions[i] = MakeSession();
+
+  std::thread churner([&] {
+    for (int round = 0; round < 50; ++round) {
+      for (int i = 0; i < 8; ++i) registry.Add("p" + std::to_string(i), *sessions[i].handle);
+      for (int i = 0; i < 8; ++i) registry.Remove("p" + std::to_string(i));
+    }
+    stop = true;
+  });
+  std::thread broadcaster([&] {
+    while (!stop) registry.Broadcast([](const std::string& id) { return Note{"tick-" + id}; });
+  });
+  churner.join();
+  broadcaster.join();
+  SUCCEED();
+}
+
 }  // namespace
 }  // namespace smithy::server

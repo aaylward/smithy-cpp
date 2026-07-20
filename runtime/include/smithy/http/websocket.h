@@ -72,8 +72,46 @@ class WebSocket {
   // the write, and the peer then observes an error instead of a clean
   // end). The peer's acknowledging close surfaces through Receive the
   // same way. To end a session, Close(); never use destruction as
-  // cross-thread cancellation.
+  // cross-thread cancellation. Close also completes any outstanding async
+  // operation (below) the way it unblocks the blocking calls.
   virtual void Close() = 0;
+
+  // --- Completion-driven twins (ADR-0019) ------------------------------
+  //
+  // Same outcomes as the blocking calls, delivered to a callback that
+  // fires exactly once, on an unspecified thread — the transport's
+  // completion context (a Beast io thread; for the in-memory pair,
+  // whichever peer thread completed the operation) — or inline on the
+  // caller's thread for immediate refusals. At most ONE receive-class and
+  // ONE send-class operation may be outstanding per session across the
+  // blocking and async APIs together: a second async call completes inline
+  // with Error::Validation, while blocking callers keep their
+  // serialize-by-waiting behavior. Callback code runs on the wire's
+  // threads: never block there.
+  //
+  // The base-class defaults keep every existing implementor compiling:
+  // they refuse with Error::Validation and report SupportsAsync() false,
+  // so layers above (SessionRegistry's async delivery, the coroutine
+  // adapter) can fall back honestly. Overriding them is accepting the
+  // contracts above; both in-repo transports do.
+
+  using ReceiveCallback = std::function<void(Outcome<std::optional<eventstream::Message>>)>;
+  using SendCallback = std::function<void(Outcome<Unit>)>;
+
+  // The by-value callbacks are the overriders' contract (they park and
+  // later move them); the defaults only refuse.
+  // NOLINTBEGIN(performance-unnecessary-value-param)
+  virtual void ReceiveAsync(ReceiveCallback callback) {
+    callback(Error::Validation("this WebSocket does not implement async operations"));
+  }
+
+  virtual void SendAsync(const eventstream::Message& message, SendCallback callback) {
+    (void)message;
+    callback(Error::Validation("this WebSocket does not implement async operations"));
+  }
+  // NOLINTEND(performance-unnecessary-value-param)
+
+  virtual bool SupportsAsync() const { return false; }
 };
 
 // One streaming dial as generated clients describe it (ADR-0016): where to

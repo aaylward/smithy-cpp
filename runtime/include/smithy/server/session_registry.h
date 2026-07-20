@@ -75,6 +75,16 @@ class SessionRegistry {
     // Runs instead of the default close-on-full when a session's queue is
     // full (the event is dropped either way). No registry locks are held.
     std::function<void(const Id&)> on_slow_consumer;
+    // Completion-driven delivery (ADR-0019): instead of one writer thread
+    // per session, each session's queue drains through a chain of
+    // EventStreamHandle::SendAsync completions on the transport's own
+    // threads — same FIFO order, same slow-consumer policy, same
+    // Remove/Drain/teardown contracts, zero registry threads. Applies per
+    // session: one whose socket reports SupportsAsync() false falls back
+    // to a writer thread, so mixed fleets keep working at yesterday's
+    // cost. Chain steps run on completion contexts — a Beast io thread —
+    // so on_slow_consumer stays quick there too.
+    bool async_delivery = false;
   };
 
   SessionRegistry() : SessionRegistry(Options{}) {}
@@ -97,7 +107,9 @@ class SessionRegistry {
       entry->handle.Close();  // unblocks a writer mid-Send
       RequestStop(*entry);
     }
-    for (const auto& entry : all) entry->writer.join();
+    for (const auto& entry : all) {
+      if (entry->writer.joinable()) entry->writer.join();
+    }
   }
 
   SessionRegistry(const SessionRegistry&) = delete;
@@ -108,13 +120,18 @@ class SessionRegistry {
   // registered; a reconnect under the same id wants Remove first, which is
   // the application's call to make.
   bool Add(Id id, Handle handle) {
+    const bool async_mode = options_.async_delivery && handle.SupportsAsync();
     auto entry = std::make_shared<Entry>(std::move(handle));
+    entry->async_mode = async_mode;
     const std::lock_guard<std::mutex> lock(mutex_);
     ReapLocked();
     if (!sessions_.emplace(std::move(id), entry).second) return false;
-    // Under the lock, so nothing can observe (or retire) an entry whose
-    // writer member is not yet set.
-    entry->writer = std::thread([entry] { WriterLoop(*entry); });
+    // Async entries drain through completion chains and hold no thread;
+    // the writer starts under the lock, so nothing can observe (or retire)
+    // an entry whose writer member is not yet set.
+    if (!async_mode) {
+      entry->writer = std::thread([entry] { WriterLoop(*entry); });
+    }
     return true;
   }
 
@@ -151,7 +168,7 @@ class SessionRegistry {
       if (it == sessions_.end()) return false;
       entry = it->second;
     }
-    return Enqueue(id, *entry, std::move(event));
+    return Enqueue(id, entry, std::move(event));
   }
 
   // Queues make(id)'s event for each registered id in ids (unknown ids are
@@ -171,7 +188,7 @@ class SessionRegistry {
     }
     std::size_t queued = 0;
     for (auto& [id, entry] : targets) {
-      if (Enqueue(*id, *entry, make(*id))) ++queued;
+      if (Enqueue(*id, entry, make(*id))) ++queued;
     }
     return queued;
   }
@@ -192,7 +209,7 @@ class SessionRegistry {
     }
     std::size_t queued = 0;
     for (auto& [id, entry] : targets) {
-      if (Enqueue(id, *entry, make(id))) ++queued;
+      if (Enqueue(id, entry, make(id))) ++queued;
     }
     return queued;
   }
@@ -244,10 +261,14 @@ class SessionRegistry {
     std::mutex mutex;
     std::condition_variable wake;
     std::deque<Tx> queue;
-    bool stopping = false;  // the writer must exit: Remove/teardown asked,
+    bool stopping = false;  // delivery must end: Remove/teardown asked,
                             // or its own delivery failed (queue discarded)
     bool done = false;      // the writer exited; join is now instant
-    std::thread writer;     // started by Add, joined by Reap/destructor
+    // Set once in Add, before the entry is visible; immutable after.
+    bool async_mode = false;
+    bool delivering = false;  // an async send chain is in flight
+    std::thread writer;       // sync mode only: started by Add, joined by
+                              // Reap/destructor (async entries hold none)
   };
 
   static Options Normalize(Options options) {
@@ -291,18 +312,27 @@ class SessionRegistry {
     entry.wake.notify_all();
   }
 
-  bool Enqueue(const Id& id, Entry& entry, Tx event) {
+  bool Enqueue(const Id& id, const std::shared_ptr<Entry>& entry, Tx event) {
     bool queued = false;
+    bool kick = false;
     {
-      const std::lock_guard<std::mutex> lock(entry.mutex);
-      if (entry.stopping) return false;
-      if (entry.queue.size() < options_.queue_capacity) {
-        entry.queue.push_back(std::move(event));
+      const std::lock_guard<std::mutex> lock(entry->mutex);
+      if (entry->stopping) return false;
+      if (entry->queue.size() < options_.queue_capacity) {
+        entry->queue.push_back(std::move(event));
         queued = true;
+        if (entry->async_mode && !entry->delivering) {
+          entry->delivering = true;
+          kick = true;
+        }
       }
     }
     if (queued) {
-      entry.wake.notify_one();  // outside the lock: the writer wakes runnable
+      if (kick) {
+        PumpAsync(entry);  // outside the entry lock, like every send
+      } else if (!entry->async_mode) {
+        entry->wake.notify_one();  // outside the lock: the writer wakes runnable
+      }
       return true;
     }
     // Full queue: drop the event, let policy decide the session's fate —
@@ -310,9 +340,37 @@ class SessionRegistry {
     if (options_.on_slow_consumer) {
       options_.on_slow_consumer(id);
     } else {
-      entry.handle.Close();
+      entry->handle.Close();
     }
     return false;
+  }
+
+  // The async delivery chain (ADR-0019): one event in flight per session,
+  // each completion sending the next — FIFO like the writer it replaces. A
+  // failed delivery is terminal exactly as in WriterLoop. Runs on the
+  // transport's completion context (inline on the enqueuer for the
+  // in-memory pair's ready path, recursion bounded by queue_capacity).
+  static void PumpAsync(const std::shared_ptr<Entry>& entry) {
+    Tx event;
+    {
+      const std::lock_guard<std::mutex> lock(entry->mutex);
+      if (entry->stopping || entry->queue.empty()) {
+        entry->delivering = false;
+        return;
+      }
+      event = std::move(entry->queue.front());
+      entry->queue.pop_front();
+    }
+    entry->handle.SendAsync(event, [entry](const Outcome<Unit>& sent) {
+      if (!sent.ok()) {
+        const std::lock_guard<std::mutex> lock(entry->mutex);
+        entry->stopping = true;  // delivery failed; the session is over
+        entry->queue.clear();
+        entry->delivering = false;
+        return;
+      }
+      PumpAsync(entry);
+    });
   }
 
   // Joins retired writers that have finished (done == true, so the join is
@@ -322,6 +380,12 @@ class SessionRegistry {
   void ReapLocked() {
     auto it = retired_.begin();
     while (it != retired_.end()) {
+      if (!(*it)->writer.joinable()) {
+        // An async entry: no thread to wait for. A chain still in flight
+        // owns its own shared_ptr, so dropping the retired slot is safe.
+        it = retired_.erase(it);
+        continue;
+      }
       bool done = false;
       {
         const std::lock_guard<std::mutex> lock((*it)->mutex);

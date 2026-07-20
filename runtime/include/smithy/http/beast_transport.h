@@ -150,6 +150,17 @@ class BeastServerTransport : public HttpServerTransport {
     // composable from the same middleware pieces the HTTP chain uses.
     std::function<std::optional<HttpResponse>(const HttpRequest&)> websocket_gate;
     std::function<void(const HttpRequest&, WebSocket&)> on_websocket;
+    // The shared-session sibling of on_websocket (ADR-0019): receives the
+    // accepted session as an owner and may return immediately — the
+    // session lives until a Close (any holder or the peer), the idle
+    // timeout, or Stop()'s abort, so serving it costs no parked handler
+    // thread (the completion-driven receive and the coroutine adapter in
+    // smithy/eventstream/async_event_stream.h are the intended loop).
+    // Exactly one of on_websocket / on_websocket_session may be set; the
+    // gate and the JSON-frames negotiation apply to both. Runs contained
+    // on the handler pool, and should return quickly — it is a launch
+    // point, not a serve loop.
+    std::function<void(const HttpRequest&, std::shared_ptr<WebSocket>)> on_websocket_session;
     // Negotiated JSON-text event-stream frames (ADR-0018): set, a client
     // that offers the `smithy.eventstream.v1+json` subprotocol on the
     // upgrade gets the token echoed in the 101 and a session whose

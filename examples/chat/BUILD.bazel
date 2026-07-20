@@ -131,6 +131,46 @@ cc_binary(
     ],
 )
 
+# The thread-free hub (ADR-0019): the same Converse wire served through the
+# shared-session seam — a Detached coroutine per connection over
+# AsyncEventStream, fan-out through an async-delivery registry, no parked
+# thread per session. Route matching and serde are hand-mounted on the
+# public envelope helpers (the generated streaming serve path stays
+# blocking in this slice).
+cc_binary(
+    name = "async_hub_server",
+    srcs = ["async_hub_server_main.cc"],
+    deps = [
+        "//examples/chat/generated:serde",
+        "//examples/chat/generated:types",
+        "//runtime:core",
+        "//runtime:eventstream",
+        "//runtime:http",
+        "//runtime:http_beast",
+        "//runtime:json",
+        "//runtime:server",
+    ],
+)
+
+# The async hub as real processes, driven by the same shell-commanded
+# hub_client as the sync suite: fan-out, redaction, the typed refusal,
+# departures, SIGTERM → drain → exit 0 — with zero per-session threads
+# server-side.
+sh_test(
+    name = "async_hub_cli_test",
+    size = "small",
+    srcs = ["async_hub_cli_test.sh"],
+    args = [
+        "$(rootpath :async_hub_server)",
+        "$(rootpath :hub_client)",
+    ],
+    data = [
+        ":async_hub_server",
+        ":hub_client",
+    ],
+    tags = ["requires-network"],
+)
+
 # Executes the hub as real processes over real WebSockets: one server, four
 # clients (two talkers, a watcher, an impostor) driven by shell commands
 # through their stdin — fan-out, redaction, the typed refusal, clean and

@@ -44,7 +44,7 @@ step "starting ${server}"
 server_pid=$!
 port=""
 for _ in $(seq 1 100); do
-  port=$(sed -n 's/.*serving on :\([0-9][0-9]*\).*/\1/p' "$log")
+  port=$(sed -n 's/.*serving on :\([0-9][0-9]*\).*/\1/p' "$log" 2>/dev/null || true)
   [ -n "$port" ] && break
   sleep 0.2
 done

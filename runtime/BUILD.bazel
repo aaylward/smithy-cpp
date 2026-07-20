@@ -144,6 +144,18 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "async_event_stream_test",
+    size = "small",
+    srcs = ["tests/eventstream/async_event_stream_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":eventstream",
+        ":http",
+        "@googletest//:gtest_main",
+    ],
+)
+
 # Includes the transport-neutral WebSocket seam (ADR-0016): the WebSocket
 # interface, the typed EventStream over it, and the in-memory pair (the
 # Loopback analog), so streams run and test without Boost; the Beast
@@ -161,6 +173,7 @@ cc_library(
         "src/http/websocket_pair.cc",
     ],
     hdrs = [
+        "include/smithy/eventstream/async_event_stream.h",
         "include/smithy/eventstream/event_stream.h",
         "include/smithy/http/forwarded.h",
         "include/smithy/http/headers.h",

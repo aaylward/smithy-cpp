@@ -207,8 +207,15 @@ class WsSession final : public WebSocketSessionBase,
 
   Outcome<std::optional<eventstream::Message>> Receive() override {
     std::unique_lock<std::mutex> lock(mutex_);
-    wake_.wait(lock, [this] { return !received_.empty() || peer_closed_ || failed_; });
-    if (!received_.empty()) {
+    // A parked async receive owns the next arrival (Deliver hands it over
+    // directly), so a concurrent blocking receiver waits behind it — the
+    // serialize-by-waiting half of the ADR-0019 one-outstanding contract.
+    ++blocked_receivers_;
+    wake_.wait(lock, [this] {
+      return (!received_.empty() && !pending_receive_) || peer_closed_ || failed_;
+    });
+    --blocked_receivers_;
+    if (!received_.empty() && !pending_receive_) {
       // Messages that arrived before a close or failure still belong to
       // the application, in order.
       eventstream::Message message = std::move(received_.front());
@@ -222,6 +229,55 @@ class WsSession final : public WebSocketSessionBase,
     return Error::Transport("websocket: " + error_);
   }
 
+  // The completion-driven twin (ADR-0019): one outstanding receive-class
+  // operation per session, completion on the connection's executor.
+  void ReceiveAsync(WebSocket::ReceiveCallback callback) override {
+    Outcome<std::optional<eventstream::Message>> immediate = std::optional<eventstream::Message>();
+    bool ready_message = false;
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      if (pending_receive_ || blocked_receivers_ > 0) {
+        lock.unlock();
+        callback(Error::Validation("websocket: a receive is already outstanding"));
+        return;
+      }
+      if (!received_.empty()) {
+        eventstream::Message message = std::move(received_.front());
+        received_.pop_front();
+        ResumeReadsIfPaused();
+        immediate = std::optional<eventstream::Message>(std::move(message));
+        ready_message = true;
+      } else if (peer_closed_) {
+        immediate = std::optional<eventstream::Message>();
+      } else if (failed_) {
+        immediate = Error::Transport("websocket: " + error_);
+      } else {
+        pending_receive_ = std::move(callback);
+        return;  // Deliver / the terminal transitions complete it
+      }
+    }
+    if (!ready_message) {
+      // Terminal outcomes fire inline — the documented immediate path. A
+      // post here could race Stop(): a stopped executor destroys queued
+      // handlers unexecuted, which would strand the caller's continuation
+      // (a Detached loop's frame) forever.
+      callback(std::move(immediate));
+      return;
+    }
+    // Ready results complete on the connection's executor, so a callback
+    // that immediately re-arms cannot recurse into the session. The lambda
+    // copies the callback (no move): if post throws, the catch still owns
+    // a live one to refuse with.
+    auto self = this->shared_from_this();
+    try {
+      asio::post(ws_.get_executor(), [self, callback, immediate = std::move(immediate)]() mutable {
+        callback(std::move(immediate));
+      });
+    } catch (...) {
+      callback(Error::Transport("websocket: cannot schedule the completion"));
+    }
+  }
+
   Outcome<Unit> Send(const eventstream::Message& message) override {
     auto frame =
         json_frames_ ? eventstream::EncodeJsonFrame(message) : eventstream::EncodeMessage(message);
@@ -231,6 +287,11 @@ class WsSession final : public WebSocketSessionBase,
     // Serializes concurrent senders; the wire itself allows one write op.
     const std::lock_guard<std::mutex> send_turn(send_mutex_);
     std::unique_lock<std::mutex> lock(mutex_);
+    // An async send may be in flight (send_mutex_ only serializes blocking
+    // callers); wait it out — serialize-by-waiting, per ADR-0019.
+    wake_.wait(lock, [this] {
+      return (write_complete_ && !pending_send_) || failed_ || peer_closed_ || close_requested_;
+    });
     if (failed_ || peer_closed_ || close_requested_) {
       return Error::Transport("websocket: " +
                               (failed_ ? error_ : std::string("session is closed")));
@@ -254,6 +315,54 @@ class WsSession final : public WebSocketSessionBase,
     return Error::Transport("websocket: " + (write_error_.empty() ? error_ : write_error_));
   }
 
+  // The completion-driven twin (ADR-0019): one outstanding send-class
+  // operation per session; OnWrite fires the completion on the
+  // connection's executor.
+  void SendAsync(const eventstream::Message& message, WebSocket::SendCallback callback) override {
+    auto frame =
+        json_frames_ ? eventstream::EncodeJsonFrame(message) : eventstream::EncodeMessage(message);
+    if (!frame.ok()) {
+      callback(std::move(frame).error());  // the codec's Validation, inline
+      return;
+    }
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      if (failed_ || peer_closed_ || close_requested_) {
+        const std::string why = failed_ ? error_ : std::string("session is closed");
+        lock.unlock();
+        callback(Error::Transport("websocket: " + why));
+        return;
+      }
+      if (!write_complete_ || pending_send_) {
+        lock.unlock();
+        callback(Error::Validation("websocket: a send is already in flight"));
+        return;
+      }
+      pending_send_ = std::move(callback);
+      write_complete_ = false;
+      write_error_.clear();
+    }
+    auto self = this->shared_from_this();
+    try {
+      asio::post(ws_.get_executor(), [self, frame = std::move(*frame)]() mutable {
+        self->StartWrite(std::move(frame));
+      });
+    } catch (...) {
+      WebSocket::SendCallback cb;
+      {
+        const std::lock_guard<std::mutex> lock(mutex_);
+        cb = std::exchange(pending_send_, nullptr);
+        write_complete_ = true;
+        wake_.notify_all();
+      }
+      if (cb) {
+        cb(Error::Transport("websocket: cannot schedule the write"));
+      }
+    }
+  }
+
+  bool SupportsAsync() const override { return true; }
+
   void Close() override {
     auto self = this->shared_from_this();
     try {
@@ -269,15 +378,10 @@ class WsSession final : public WebSocketSessionBase,
   // Fails both facade calls immediately and closes the socket out from
   // under any outstanding op — Stop()-time and client-teardown semantics,
   // safe from any thread even when the io context is already stopped.
+  // Fail() is the whole failure story (an already-terminal session has no
+  // parked waiters to complete); Abort adds only the socket close.
   void Abort(std::string reason) override {
-    {
-      const std::lock_guard<std::mutex> lock(mutex_);
-      if (!failed_ && !peer_closed_) {
-        failed_ = true;
-        error_ = std::move(reason);
-      }
-      wake_.notify_all();
-    }
+    Fail(std::move(reason));
     auto self = this->shared_from_this();
     try {
       asio::post(ws_.get_executor(), [self] {
@@ -314,9 +418,14 @@ class WsSession final : public WebSocketSessionBase,
 
   void OnRead(beast::error_code ec, std::size_t n) {
     if (ec == bws::error::closed) {
-      const std::lock_guard<std::mutex> lock(mutex_);
-      peer_closed_ = true;
-      wake_.notify_all();
+      AsyncWaiters waiters;
+      {
+        const std::lock_guard<std::mutex> lock(mutex_);
+        peer_closed_ = true;
+        waiters = TakeAsyncWaitersLocked();
+        wake_.notify_all();
+      }
+      CompleteAsyncWaiters(std::move(waiters), /*clean=*/true, "");
       return;
     }
     if (ec) {
@@ -372,15 +481,56 @@ class WsSession final : public WebSocketSessionBase,
     Deliver(std::move(frame->message), n);
   }
 
-  // Queues one decoded message for Receive and re-arms the pump.
+  // Hands one decoded message to a parked async receive, else queues it
+  // for the blocking facade, and re-arms the pump.
   void Deliver(eventstream::Message message, std::size_t bytes_read) {
     read_buffer_.consume(bytes_read);
+    WebSocket::ReceiveCallback receive;
+    std::optional<eventstream::Message> handoff;
     {
       const std::lock_guard<std::mutex> lock(mutex_);
-      received_.push_back(std::move(message));
-      wake_.notify_all();
+      if (pending_receive_) {
+        receive = std::exchange(pending_receive_, nullptr);
+        handoff.emplace(std::move(message));
+      } else {
+        received_.push_back(std::move(message));
+        wake_.notify_all();
+      }
+    }
+    if (receive) {
+      // The pump runs on the connection's executor — this IS the
+      // completion context.
+      receive(std::move(handoff));
     }
     PumpRead();
+  }
+
+  // Takes the parked async completions; called with mutex_ held on every
+  // terminal transition, fired by the caller after unlocking. std::exchange
+  // (never a bare std::move: libc++'s small-buffer std::function move
+  // leaves the source still engaged) empties the slots, so a completion
+  // can never fire twice and the slots' emptiness stays the busy signal.
+  struct AsyncWaiters {
+    WebSocket::ReceiveCallback receive;
+    WebSocket::SendCallback send;
+  };
+  AsyncWaiters TakeAsyncWaitersLocked() {
+    return {std::exchange(pending_receive_, nullptr), std::exchange(pending_send_, nullptr)};
+  }
+
+  // Fires the taken completions with the session's terminal outcome:
+  // nullopt for a clean end, the recorded error otherwise.
+  void CompleteAsyncWaiters(const AsyncWaiters& waiters, bool clean, const std::string& reason) {
+    if (waiters.receive) {
+      if (clean) {
+        waiters.receive(std::optional<eventstream::Message>());
+      } else {
+        waiters.receive(Error::Transport("websocket: " + reason));
+      }
+    }
+    if (waiters.send) {
+      waiters.send(Error::Transport("websocket: " + (clean ? "session is closed" : reason)));
+    }
   }
 
   void StartWrite(std::string frame) {
@@ -388,7 +538,13 @@ class WsSession final : public WebSocketSessionBase,
     if (failed_ || peer_closed_ || close_requested_) {
       write_complete_ = true;
       write_error_ = failed_ ? error_ : "session is closed";
+      WebSocket::SendCallback send = std::exchange(pending_send_, nullptr);
+      const std::string why = write_error_;
       wake_.notify_all();
+      lock.unlock();
+      if (send) {
+        send(Error::Transport("websocket: " + why));
+      }
       return;
     }
     wire_write_busy_ = true;
@@ -401,24 +557,38 @@ class WsSession final : public WebSocketSessionBase,
   }
 
   void OnWrite(beast::error_code ec) {
-    std::unique_lock<std::mutex> lock(mutex_);
-    wire_write_busy_ = false;
-    write_complete_ = true;
-    if (ec) {
-      // Close's escalation cancels an in-flight write (the peer may never
-      // drain it); name that for the Send caller instead of the raw
-      // operation_aborted text.
-      write_error_ = close_requested_ && ec == asio::error::operation_aborted
-                         ? "session closed while a send was in flight"
-                         : ec.message();
-      if (!failed_ && !peer_closed_) {
-        failed_ = true;  // a failed write means the wire is gone for both directions
-        error_ = write_error_;
+    WebSocket::SendCallback send;
+    std::string send_error;
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      wire_write_busy_ = false;
+      write_complete_ = true;
+      if (ec) {
+        // Close's escalation cancels an in-flight write (the peer may never
+        // drain it); name that for the Send caller instead of the raw
+        // operation_aborted text.
+        write_error_ = close_requested_ && ec == asio::error::operation_aborted
+                           ? "session closed while a send was in flight"
+                           : ec.message();
+        if (!failed_ && !peer_closed_) {
+          failed_ = true;  // a failed write means the wire is gone for both directions
+          error_ = write_error_;
+        }
+      }
+      send = std::exchange(pending_send_, nullptr);
+      send_error = write_error_;
+      wake_.notify_all();
+      if (!ec && close_requested_ && !close_started_) {
+        StartCloseLocked(lock);  // leaves the lock released
       }
     }
-    wake_.notify_all();
-    if (!ec && close_requested_ && !close_started_) {
-      StartCloseLocked(lock);
+    if (send) {
+      // On the connection's executor — the completion context.
+      if (send_error.empty()) {
+        send(Unit{});
+      } else {
+        send(Error::Transport("websocket: " + send_error));
+      }
     }
   }
 
@@ -456,43 +626,66 @@ class WsSession final : public WebSocketSessionBase,
     // until the peer's close arrives, then tears down): its success IS
     // the session's clean end.
     ws_.async_close(code, [self](beast::error_code ec) {
-      const std::lock_guard<std::mutex> lock(self->mutex_);
-      if (!self->failed_ && !self->peer_closed_) {
-        if (ec) {
-          self->failed_ = true;
-          self->error_ = ec.message();
-        } else {
-          self->peer_closed_ = true;
+      AsyncWaiters waiters;
+      bool clean = false;
+      std::string why;
+      {
+        const std::lock_guard<std::mutex> lock(self->mutex_);
+        if (!self->failed_ && !self->peer_closed_) {
+          if (ec) {
+            self->failed_ = true;
+            self->error_ = ec.message();
+          } else {
+            self->peer_closed_ = true;
+          }
         }
+        waiters = self->TakeAsyncWaitersLocked();
+        clean = !self->failed_;
+        why = self->error_;
+        self->wake_.notify_all();
       }
-      self->wake_.notify_all();
+      self->CompleteAsyncWaiters(std::move(waiters), clean, why);
     });
   }
 
   void Fail(std::string reason) {
-    const std::lock_guard<std::mutex> lock(mutex_);
-    if (!failed_ && !peer_closed_) {
-      failed_ = true;
-      error_ = std::move(reason);
+    AsyncWaiters waiters;
+    std::string why;
+    {
+      const std::lock_guard<std::mutex> lock(mutex_);
+      if (!failed_ && !peer_closed_) {
+        failed_ = true;
+        error_ = std::move(reason);
+      }
+      waiters = TakeAsyncWaitersLocked();
+      why = error_;
+      wake_.notify_all();
     }
-    wake_.notify_all();
+    CompleteAsyncWaiters(std::move(waiters), /*clean=*/false, why);
   }
 
   // A protocol violation by the peer: fail the session for the
   // application, and tell the peer why — as a protocol_error close frame,
   // deferred behind any in-flight write (OnWrite runs the deferred close).
   void FailAndClose(std::string reason) {
-    std::unique_lock<std::mutex> lock(mutex_);
-    if (!failed_ && !peer_closed_) {
-      failed_ = true;
-      error_ = std::move(reason);
+    AsyncWaiters waiters;
+    std::string why;
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      if (!failed_ && !peer_closed_) {
+        failed_ = true;
+        error_ = std::move(reason);
+      }
+      waiters = TakeAsyncWaitersLocked();
+      why = error_;
+      wake_.notify_all();
+      close_code_ = bws::close_code::protocol_error;
+      close_requested_ = true;
+      if (!close_started_ && !wire_write_busy_) {
+        StartCloseLocked(lock);  // leaves the lock released
+      }
     }
-    wake_.notify_all();
-    close_code_ = bws::close_code::protocol_error;
-    close_requested_ = true;
-    if (!close_started_ && !wire_write_busy_) {
-      StartCloseLocked(lock);
-    }
+    CompleteAsyncWaiters(std::move(waiters), /*clean=*/false, why);
   }
 
   // Called with mutex_ held, from the facade side.
@@ -524,6 +717,11 @@ class WsSession final : public WebSocketSessionBase,
   std::mutex mutex_;
   std::condition_variable wake_;
   std::deque<eventstream::Message> received_;
+  // The ADR-0019 parked completions: at most one of each; every terminal
+  // transition takes and fires them exactly once (TakeAsyncWaitersLocked).
+  WebSocket::ReceiveCallback pending_receive_;
+  WebSocket::SendCallback pending_send_;
+  int blocked_receivers_ = 0;
   bool read_paused_ = false;
   bool peer_closed_ = false;  // clean close: Receive's nullopt
   bool failed_ = false;       // broken/violated/aborted: Receive's error
@@ -566,6 +764,18 @@ void InvokeServeGuarded(const std::function<void(const HttpRequest&, WebSocket&)
     std::clog << "smithy: on_websocket threw: " << e.what() << "\n";
   } catch (...) {
     std::clog << "smithy: on_websocket threw a non-std exception\n";
+  }
+}
+
+void InvokeServeSessionGuarded(
+    const std::function<void(const HttpRequest&, std::shared_ptr<WebSocket>)>& serve,
+    const HttpRequest& request, std::shared_ptr<WebSocket> socket) {
+  try {
+    serve(request, std::move(socket));
+  } catch (const std::exception& e) {
+    std::clog << "smithy: on_websocket_session threw: " << e.what() << "\n";
+  } catch (...) {
+    std::clog << "smithy: on_websocket_session threw a non-std exception\n";
   }
 }
 
@@ -964,7 +1174,8 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
                           CloseStream(*stream);
                           return;
                         }
-                        if (self->opts.on_websocket && bws::is_upgrade(parser->get())) {
+                        if ((self->opts.on_websocket || self->opts.on_websocket_session) &&
+                            bws::is_upgrade(parser->get())) {
                           if (self->stopping) {
                             // No new streams during the drain (the normal
                             // path folds stopping into keep_alive the same
@@ -1167,6 +1378,15 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
               session->Abort("websocket: server torn down");
               return;
             }
+            if (self->opts.on_websocket_session) {
+              // The shared seam (ADR-0019): the callback owns the session
+              // from here and its return ends nothing — the session lives
+              // until a Close, the idle timeout, or Stop()'s abort sweep
+              // (it registered above like every session).
+              InvokeServeSessionGuarded(self->opts.on_websocket_session, request,
+                                        std::move(session));
+              return;
+            }
             InvokeServeGuarded(self->opts.on_websocket, request, *session);
             // Serve returned: the session ends with a close handshake; the
             // pumps wind down and the connection slot frees with the
@@ -1188,20 +1408,30 @@ Outcome<Unit> BeastServerTransport::Start(RequestHandler handler) {
   auto state = std::make_shared<State>(options_);
   state->handler = std::move(handler);
 
-  if (options_.on_websocket && options_.handler_threads <= 0) {
-    // The serve callback blocks by design (its Receive/Send are blocking);
-    // inline-on-io would wedge the wire it serves.
-    return Error::Validation("beast: on_websocket needs handler_threads > 0");
+  if (options_.on_websocket && options_.on_websocket_session) {
+    return Error::Validation(
+        "beast: on_websocket and on_websocket_session cannot both be set (the borrowed and "
+        "shared serve seams cannot both claim an upgrade)");
   }
-  if (options_.websocket_gate && !options_.on_websocket) {
+  const bool serves_websockets = options_.on_websocket || options_.on_websocket_session;
+  if (serves_websockets && options_.handler_threads <= 0) {
+    // The borrowed serve callback blocks by design, and even the shared
+    // launch callback is application code; inline-on-io would wedge the
+    // wire it serves.
+    return Error::Validation(
+        "beast: on_websocket / on_websocket_session needs handler_threads > 0");
+  }
+  if (options_.websocket_gate && !serves_websockets) {
     // The gate only guards the upgrade path, which exists only with a
     // serve callback — a gate alone would be silently dead config.
-    return Error::Validation("beast: websocket_gate without on_websocket never runs");
+    return Error::Validation(
+        "beast: websocket_gate without on_websocket / on_websocket_session never runs");
   }
-  if (options_.websocket_accept_json_frames && !options_.on_websocket) {
+  if (options_.websocket_accept_json_frames && !serves_websockets) {
     // Same dead-config shape: negotiation happens on the upgrade path.
     return Error::Validation(
-        "beast: websocket_accept_json_frames without on_websocket never negotiates");
+        "beast: websocket_accept_json_frames without on_websocket / on_websocket_session never "
+        "negotiates");
   }
 
   const bool has_cert = !options_.tls_certificate_chain_pem.empty();
@@ -1718,6 +1948,13 @@ class DialedWebSocket final : public WebSocket {
     return session_->Send(message);
   }
   void Close() override { session_->Close(); }
+  void ReceiveAsync(WebSocket::ReceiveCallback callback) override {
+    session_->ReceiveAsync(std::move(callback));
+  }
+  void SendAsync(const eventstream::Message& message, WebSocket::SendCallback callback) override {
+    session_->SendAsync(message, std::move(callback));
+  }
+  bool SupportsAsync() const override { return session_->SupportsAsync(); }
 
  private:
   // Declaration order is load-bearing: members destroy in reverse, so the

@@ -27,6 +27,9 @@ struct NoEvents {
   friend bool operator==(const NoEvents&, const NoEvents&) = default;
 };
 
+template <typename Tx, typename Rx>
+class AsyncEventStream;  // the coroutine adapter (ADR-0019) also mints handles
+
 namespace internal {
 
 // The seam between a stream and its handles (issue #112): a revocable view
@@ -42,6 +45,13 @@ struct SharedSessionState {
   http::WebSocket* socket = nullptr;  // null once the stream ended
   int active = 0;                     // handle operations inside socket calls
 };
+
+// Drops one pin; the revoking stream's drain wait wakes at zero. Free so
+// async completions can release with only the state in hand (ADR-0019).
+inline void ReleasePin(SharedSessionState& state) {
+  const std::lock_guard<std::mutex> lock(state.mutex);
+  if (--state.active == 0) state.idle.notify_all();
+}
 
 // The stream-side end of the shared view: owns revocation, so EventStream's
 // destructor and move operations stay defaulted (no member list to forget
@@ -147,9 +157,49 @@ class EventStreamHandle {
     Release();
   }
 
+  // The completion-driven send (ADR-0019): the socket's SendAsync contract
+  // verbatim — one outstanding send-class operation per session, completion
+  // on the transport's completion context (or inline for refusals). The
+  // revocation pin spans issue to completion, so the ADR-0017 safety story
+  // holds: revoking closes the session, the in-flight operation completes
+  // with its error, and only then does the socket die.
+  void SendAsync(const Tx& event, std::function<void(Outcome<Unit>)> callback) const {
+    static_assert(!std::is_same_v<Tx, NoEvents>,
+                  "this stream models no events in this direction: SendAsync is not callable on "
+                  "a receive-only stream's handle (use Close)");
+    auto message = encode_(event);
+    if (!message.ok()) {
+      callback(std::move(message).error());
+      return;
+    }
+    http::WebSocket* socket = Acquire();
+    if (socket == nullptr) {
+      callback(Error::Transport("event stream ended"));
+      return;
+    }
+    socket->SendAsync(*message,
+                      [state = state_, callback = std::move(callback)](Outcome<Unit> sent) {
+                        internal::ReleasePin(*state);
+                        callback(std::move(sent));
+                      });
+  }
+
+  // Whether the underlying session implements the async operations —
+  // false for a session that already ended (a stale handle can deliver
+  // nothing either way).
+  bool SupportsAsync() const {
+    http::WebSocket* socket = Acquire();
+    if (socket == nullptr) return false;
+    const bool supported = socket->SupportsAsync();
+    Release();
+    return supported;
+  }
+
  private:
   template <typename T, typename R>
   friend class EventStream;
+  template <typename T, typename R>
+  friend class AsyncEventStream;
 
   EventStreamHandle(std::shared_ptr<internal::SharedSessionState> state,
                     std::function<Outcome<Message>(const Tx&)> encode)
@@ -165,10 +215,7 @@ class EventStreamHandle {
     return state_->socket;
   }
 
-  void Release() const {
-    const std::lock_guard<std::mutex> lock(state_->mutex);
-    if (--state_->active == 0) state_->idle.notify_all();
-  }
+  void Release() const { internal::ReleasePin(*state_); }
 
   std::shared_ptr<internal::SharedSessionState> state_;
   std::function<Outcome<Message>(const Tx&)> encode_;

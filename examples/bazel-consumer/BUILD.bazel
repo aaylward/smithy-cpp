@@ -138,6 +138,25 @@ cc_test(
     ],
 )
 
+# Completion-driven streams acceptance (ADR-0019): the async socket
+# primitives, the shared-session serve seam, the coroutine adapter, and
+# async-delivery fan-out, all through the module boundary. Beast-backed;
+# behind a download-blocking proxy exclude it with the other Beast targets:
+# bazel test //... -- -//:todo_beast_acceptance_test
+# -//:websocket_acceptance_test -//:async_acceptance_test
+cc_test(
+    name = "async_acceptance_test",
+    size = "small",
+    srcs = ["async_acceptance_test.cc"],
+    deps = [
+        "@googletest//:gtest_main",
+        "@smithy_cpp//runtime:eventstream",
+        "@smithy_cpp//runtime:http",
+        "@smithy_cpp//runtime:http_beast",
+        "@smithy_cpp//runtime:server",
+    ],
+)
+
 # Generated streaming API acceptance (ADR-0016, slice 3's consumer e2e): the
 # smallest bidirectional event-stream service, client and server both
 # generated inside this module's build graph.

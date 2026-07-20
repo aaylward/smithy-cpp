@@ -150,6 +150,54 @@ the default disconnects the client (its handler observes the close and unwinds);
 construction exists because broadcast-identical-bytes is the wrong primitive for
 per-viewer state — the callback runs once per recipient, outside all registry locks.
 
+### Serving without a thread per session (ADR-0019)
+
+Every session served through `on_websocket` parks one handler-pool thread for its
+lifetime, so `handler_threads` caps concurrent streams. The completion-driven seam removes
+that: set `Options::on_websocket_session` instead (exactly one of the two), receive the
+session as a `std::shared_ptr<WebSocket>`, launch a
+`smithy::eventstream::Detached` coroutine over
+`smithy::eventstream::AsyncEventStream<Out, In>`, and return — the session lives until a
+`Close`, the idle timeout, or `Stop()`:
+
+```cpp
+smithy::eventstream::Detached Serve(Hub& hub, std::string id,
+                                    std::shared_ptr<smithy::http::WebSocket> socket) {
+  smithy::eventstream::AsyncEventStream<Out, In> stream(std::move(socket), Encode, Decode);
+  hub.registry().Add(id, stream.Share());              // the same handle, unchanged
+  while (true) {
+    auto event = co_await stream.Receive();            // parks no thread
+    if (!event.ok() || !event->has_value()) break;
+    hub.registry().Broadcast(...);                     // pushes go through the registry
+  }
+  hub.registry().Remove(id);
+}  // stream destroyed here: closes the session and revokes its handles
+
+options.on_websocket_session = [&hub](const smithy::http::HttpRequest& request,
+                                      std::shared_ptr<smithy::http::WebSocket> socket) {
+  Serve(hub, IdFor(request), std::move(socket));  // a Detached coroutine; returns immediately
+};
+```
+
+Resumption runs on the transport's completion context (a Beast io thread): never block
+there — blocking work belongs on your own threads, reached through `Share()`. The
+coroutines reference the hub from io threads long after the launch callback returned, so
+declare hub state (the registry included) before the transport and `Drain` before either
+dies. Pair this with `SessionRegistry Options::async_delivery = true` and fan-out sheds
+its writer threads too: each session's queue drains through
+`EventStreamHandle::SendAsync` completion chains, same FIFO/policy/drain contracts, zero
+registry threads (sessions on sockets without async support fall back to a writer thread
+automatically). One interplay to know: the chain and a direct send (`co_await
+stream.Send`, a raw handle send) share the socket's one send slot, and on the first
+collision that session falls back to writer-thread delivery — nothing lost, but that
+session thereafter costs the one thread async mode exists to avoid. So steady-state
+pushes to a registered session belong in the registry, and direct sends in its serve
+loop are for request/reply moments. The generated streaming serve path
+stays blocking in this slice — route matching and serde for an async mount are
+hand-written on the public envelope helpers, as the thread-free hub shows
+([examples/chat/async_hub_server_main.cc](../examples/chat/async_hub_server_main.cc),
+driven as real shell-commanded processes by `async_hub_cli_test.sh`).
+
 Note `Stop()`'s semantics from ADR-0015: it *aborts* live stream sessions rather than
 draining them, so a graceful rollout drains application-side first — now one line:
 `registry.Drain(grace)` closes every session (each blocked handler wakes, returns, and

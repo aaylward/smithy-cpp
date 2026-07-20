@@ -13,6 +13,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <future>
 #include <memory>
 #include <optional>
 #include <string>
@@ -350,6 +351,227 @@ TEST(SessionRegistryTest, ConcurrentBroadcastsAddsAndRemovesStaySafe) {
   churner.join();
   broadcaster.join();
   SUCCEED();  // the registry destructor closes and joins whatever remains
+}
+
+// ---------------------------------------------------------------------------
+// Async delivery (ADR-0019): the same contracts, zero registry threads.
+// ---------------------------------------------------------------------------
+
+Registry AsyncRegistry(std::size_t queue_capacity = 2 * kWireDepth) {
+  Registry::Options options;
+  options.queue_capacity = queue_capacity;
+  options.async_delivery = true;
+  return Registry(std::move(options));
+}
+
+TEST(SessionRegistryAsyncTest, DeliversFifoThroughCompletionChains) {
+  Registry registry = AsyncRegistry();
+  Session session = MakeSession();
+  ASSERT_TRUE(registry.Add("ada", *session.handle));
+
+  // Past the wire bound on purpose: the chain crosses its parked-send leg
+  // (park on the full wire, absorb on drain), and FIFO must hold across it.
+  constexpr int kEvents = static_cast<int>(2 * kWireDepth);
+  for (int i = 0; i < kEvents; ++i) {
+    EXPECT_TRUE(registry.SendTo("ada", Note{"note-" + std::to_string(i)}));
+  }
+  for (int i = 0; i < kEvents; ++i) {
+    EXPECT_EQ(NextAt(session), "note-" + std::to_string(i));
+  }
+  EXPECT_TRUE(registry.Remove("ada"));
+}
+
+TEST(SessionRegistryAsyncTest, AChainCollisionWithADirectSendFallsBackToAWriterNotAStall) {
+  Registry registry = AsyncRegistry();
+  Session session = MakeSession();
+  ASSERT_TRUE(registry.Add("ada", *session.handle));
+
+  // An application-side send owns the socket's send slot: fill the wire so
+  // the next direct SendAsync parks in flight.
+  for (std::size_t i = 0; i < kWireDepth; ++i) {
+    bool inline_ok = false;
+    session.handle->SendAsync(Note{"fill"}, [&](const Outcome<Unit>& sent) {
+      inline_ok = sent.ok();  // the pair completes inline while the wire has room
+    });
+    ASSERT_TRUE(inline_ok);
+  }
+  std::atomic<bool> parked_completed{false};
+  session.handle->SendAsync(Note{"parked"}, [&](const Outcome<Unit>&) { parked_completed = true; });
+  ASSERT_FALSE(parked_completed.load());  // in flight: the send slot is busy
+
+  // The chain's kick collides with the in-flight send and is refused with
+  // Validation. The collision must not kill delivery — and it must not
+  // merely pause it either: nothing may depend on a rescuing later
+  // enqueue, because sparse traffic never sends one (the session falls
+  // back to a writer thread, which serializes by waiting).
+  EXPECT_TRUE(registry.SendTo("ada", Note{"note-0"}));
+
+  // Drain the wire: the fills, then the parked direct send completes.
+  for (std::size_t i = 0; i < kWireDepth; ++i) {
+    EXPECT_EQ(NextAt(session), "fill");
+  }
+  EXPECT_EQ(NextAt(session), "parked");
+  EXPECT_TRUE(parked_completed.load());
+
+  // note-0 arrives with NO further registry activity. Deadlined receive:
+  // a regression to pause-until-next-enqueue fails here instead of
+  // hanging. The promise lives on the heap, owned by the callback, so an
+  // early exit cannot dangle it.
+  auto note0 = std::make_shared<std::promise<std::optional<std::string>>>();
+  auto note0_future = note0->get_future();
+  session.client->ReceiveAsync([note0](Outcome<std::optional<Message>> message) {
+    if (message.ok() && message->has_value()) {
+      note0->set_value((**message).payload.ToString());
+    } else {
+      note0->set_value(std::nullopt);
+    }
+  });
+  ASSERT_EQ(note0_future.wait_for(std::chrono::seconds(5)), std::future_status::ready)
+      << "the collision stalled delivery: note-0 never arrived without a second enqueue";
+  EXPECT_EQ(note0_future.get(), "note-0");
+
+  // And the queue keeps flowing afterwards.
+  EXPECT_TRUE(registry.SendTo("ada", Note{"note-1"}));
+  EXPECT_EQ(NextAt(session), "note-1");
+  EXPECT_TRUE(registry.Remove("ada"));
+}
+
+TEST(SessionRegistryAsyncTest, TheSlowConsumerCallbackReplacesTheCloseDefaultInAsyncMode) {
+  std::atomic<int> slow_reports{0};
+  Registry::Options options;
+  options.queue_capacity = 1;
+  options.async_delivery = true;
+  options.on_slow_consumer = [&slow_reports](const std::string& id) {
+    EXPECT_EQ(id, "grace");
+    ++slow_reports;
+  };
+  Registry registry(std::move(options));
+  Session grace = MakeSession();  // never reads
+  ASSERT_TRUE(registry.Add("grace", *grace.handle));
+
+  int dropped = 0;
+  for (std::size_t i = 0; i < 2 * kWireDepth; ++i) {
+    if (!registry.SendTo("grace", Note{"n"})) ++dropped;
+  }
+  EXPECT_GT(dropped, 0);
+  EXPECT_EQ(slow_reports.load(), dropped);
+
+  // The session is still open — the application kept the policy.
+  EXPECT_EQ(NextAt(grace), "n");
+}
+
+TEST(SessionRegistryAsyncTest, CloseAllEndsEverySessionAndDrainWaitsForRemoves) {
+  // The sync Drain contract, chain-delivered: CloseAll wakes each handler
+  // through its closed session; each removes itself; Drain reports empty.
+  Registry registry = AsyncRegistry();
+  constexpr int kSessions = 4;
+  std::vector<std::thread> handlers;
+  std::vector<Session> sessions(kSessions);
+  for (int i = 0; i < kSessions; ++i) {
+    sessions[i] = MakeSession();
+    const std::string id = "player-" + std::to_string(i);
+    ASSERT_TRUE(registry.Add(id, *sessions[i].handle));
+    handlers.emplace_back([&registry, &session = sessions[i], id] {
+      auto end = session.client->Receive();
+      EXPECT_TRUE(end.ok());
+      EXPECT_FALSE(end->has_value());
+      registry.Remove(id);
+    });
+  }
+
+  EXPECT_EQ(registry.size(), static_cast<std::size_t>(kSessions));
+  EXPECT_TRUE(registry.Drain(std::chrono::milliseconds(5000)));
+  EXPECT_EQ(registry.size(), 0U);
+  for (std::thread& handler : handlers) handler.join();
+}
+
+TEST(SessionRegistryAsyncTest, ASlowConsumerIsStillClosedNotWaitedFor) {
+  Registry registry = AsyncRegistry(/*queue_capacity=*/2);
+  Session ada = MakeSession();
+  Session grace = MakeSession();  // never reads
+  ASSERT_TRUE(registry.Add("ada", *ada.handle));
+  ASSERT_TRUE(registry.Add("grace", *grace.handle));
+
+  constexpr int kBursts = 4 * kWireDepth;
+  for (int i = 0; i < kBursts; ++i) {
+    registry.Broadcast({"ada", "grace"}, Note{"burst-" + std::to_string(i)});
+    EXPECT_EQ(NextAt(ada), "burst-" + std::to_string(i));  // never stalled
+  }
+  int delivered = 0;
+  while (NextAt(grace).has_value()) ++delivered;
+  EXPECT_LT(delivered, kBursts);
+  EXPECT_TRUE(RefusedEventually(registry, "grace"));
+}
+
+TEST(SessionRegistryAsyncTest, ABlockingOnlySocketFallsBackToAWriterThread) {
+  // Forwards the blocking calls and hides the pair's async support — the
+  // per-entry fallback the mixed-fleet contract promises.
+  class BlockingOnly final : public http::WebSocket {
+   public:
+    explicit BlockingOnly(std::shared_ptr<http::WebSocket> inner) : inner_(std::move(inner)) {}
+    Outcome<std::optional<Message>> Receive() override { return inner_->Receive(); }
+    Outcome<Unit> Send(const Message& message) override { return inner_->Send(message); }
+    void Close() override { inner_->Close(); }
+
+   private:
+    std::shared_ptr<http::WebSocket> inner_;
+  };
+
+  Registry registry = AsyncRegistry();
+  auto [client_end, server_end] = http::InMemoryWebSocketPair::Create();
+  auto wrapped = std::make_shared<BlockingOnly>(server_end);
+  ServerStream stream(wrapped, EncodeNote, nullptr);
+  ASSERT_FALSE(stream.Share().SupportsAsync());
+  ASSERT_TRUE(registry.Add("ada", stream.Share()));
+
+  for (int i = 0; i < 3; ++i) {
+    EXPECT_TRUE(registry.SendTo("ada", Note{"fallback-" + std::to_string(i)}));
+  }
+  Session observe;
+  observe.client = client_end;
+  for (int i = 0; i < 3; ++i) {
+    EXPECT_EQ(NextAt(observe), "fallback-" + std::to_string(i));
+  }
+  EXPECT_TRUE(registry.Remove("ada"));
+}
+
+TEST(SessionRegistryAsyncTest, TeardownWithAParkedChainNeverHangs) {
+  // The wire fills, the chain parks inside the socket's SendAsync, and the
+  // registry is destroyed: its close fails the parked delivery, the chain
+  // stops, and — with no writer threads — there is nothing to join. This
+  // test hanging or crashing is the failure mode.
+  Session stalled = MakeSession();
+  {
+    Registry registry = AsyncRegistry();
+    ASSERT_TRUE(registry.Add("stalled", *stalled.handle));
+    for (std::size_t i = 0; i < 2 * kWireDepth; ++i) {
+      registry.SendTo("stalled", Note{"pile-up"});
+    }
+  }
+  while (NextAt(stalled).has_value()) {
+  }
+  SUCCEED();
+}
+
+TEST(SessionRegistryAsyncTest, ChurnUnderBroadcastStaysSafe) {
+  Registry registry = AsyncRegistry(/*queue_capacity=*/2);
+  std::atomic<bool> stop{false};
+  std::vector<Session> sessions(8);
+  for (int i = 0; i < 8; ++i) sessions[i] = MakeSession();
+
+  std::thread churner([&] {
+    for (int round = 0; round < 50; ++round) {
+      for (int i = 0; i < 8; ++i) registry.Add("p" + std::to_string(i), *sessions[i].handle);
+      for (int i = 0; i < 8; ++i) registry.Remove("p" + std::to_string(i));
+    }
+    stop = true;
+  });
+  std::thread broadcaster([&] {
+    while (!stop) registry.Broadcast([](const std::string& id) { return Note{"tick-" + id}; });
+  });
+  churner.join();
+  broadcaster.join();
+  SUCCEED();
 }
 
 }  // namespace

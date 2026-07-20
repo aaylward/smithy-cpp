@@ -27,7 +27,9 @@ CC=clang CXX=clang++ bazel build --config=fuzz //fuzz:json_decode_fuzz
 ## Invariants the harnesses enforce
 
 - Decoders never crash and never throw on any input; whatever they accept
-  must re-encode cleanly (`json`/`cbor` round-trip).
+  must re-encode cleanly (`json`/`cbor` round-trip; the ADR-0018
+  `eventstream_json_frame` envelope additionally pins that its canonical
+  re-encoding is a decode fixed point).
 - `PercentDecode` accepts or rejects without crashing; accepted values
   survive an encode → decode round trip; the encoders accept arbitrary bytes.
 - Server dispatch always returns a response with a valid HTTP status for any

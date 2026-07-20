@@ -473,6 +473,73 @@ size `handler_threads` at expected concurrent sessions plus unary
 headroom — sixteen idle streams on the default pool starve everything
 else.
 
+## Browser clients
+
+Browsers get their own wire and their own auth path (ADR-0018, issue
+#113), because the `WebSocket` API constrains both: a page cannot produce
+binary event-stream frames without a hand-written codec, and it cannot set
+headers on the upgrade request at all.
+
+**The wire** is the negotiated JSON-text mode: set
+`BeastServerTransport::Options::websocket_accept_json_frames` on a
+`simpleRestJson` service and a page that passes the subprotocol to the
+constructor speaks the stream with `JSON.parse` alone — text frames
+carrying `{"event": "<member>", "payload": {...}}`, `"exception"` in place
+of `"event"` for the terminal error arm. Native clients are untouched
+(no offer, binary wire, byte-identical 101). The
+[server guide](server-guide.md#browser-clients) has the two-line mount and
+the JS loop.
+
+**The blessed auth pattern is a short-lived, single-use ticket in an
+`@httpQuery`-bound initial-request member.** The browser `WebSocket`
+constructor cannot attach headers, so `@httpHeader`-bound members and the
+`bearer_token`/`api_key` dial traits silently never reach a browser-dialed
+upgrade — do not model browser-facing streaming auth as headers. Model it
+as query:
+
+```smithy
+operation Converse {
+    input := {
+        @required @httpLabel room: String
+        @required @httpQuery("ticket") ticket: String   // browser-reachable
+    }
+    ...
+}
+```
+
+Mint the ticket with an authenticated *unary* operation over HTTPS (the
+page can send `Authorization` headers on `fetch`), give it a lifetime of
+seconds and one use, and validate it in a gate composed ahead of the
+router's — admission control stays ahead of the 101, exactly like header
+auth for native clients. The caveat, out loud: **query strings land in
+access logs** — the transport's own, and every proxy's on the path (a
+Caddy or nginx in front logs the full target of the upgrade GET). A
+short-lived single-use ticket bounds that exposure to a token that is
+worthless by the time it is written; a long-lived credential in a query
+string is an incident, not a pattern — never put `bearer_token`-grade
+secrets there. Cookies are the workable alternative when the page and the
+service share a site (same-site topology; cross-origin needs deliberate
+`SameSite=None; Secure` and pairs with the origin gate below against
+cross-site WebSocket hijacking). First-message auth — an `authenticate`
+event as the first stream message — is deliberately *not* blessed: it
+moves auth past the gate, so admission control can no longer refuse before
+the upgrade exists and every unauthenticated dial costs a live session and
+a handler-pool thread. And do not smuggle tokens through
+`Sec-WebSocket-Protocol`: that header is a negotiation channel (ADR-0018
+now actively uses it), it is echoed into the 101, and proxies log it like
+any other header — a token there is neither modeled, nor validated, nor
+private.
+
+**Browser-facing endpoints need an Origin allowlist.**
+`smithy::server::RequireOrigin({"https://muchq.com"})` returns a
+`websocket_gate` that refuses (403) upgrades whose `Origin` is present and
+not listed — scheme + host + port exact — and admits requests with no
+Origin header at all (non-browser clients don't send one; the attack this
+stops cannot omit it). It is hijacking defense, not auth: compose it ahead
+of the ticket gate and the router's. The end-to-end reference for all
+three pieces — JSON wire, origin gate, and a native client beside them —
+is [examples/chat/chat_browser_e2e_test.cc](../examples/chat/chat_browser_e2e_test.cc).
+
 ## Server hardening
 
 The production server transport (`BeastServerTransport`, ADR-0006) enforces

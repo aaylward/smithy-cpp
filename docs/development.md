@@ -153,15 +153,19 @@ cd codegen && gradle spotlessApply
 
   ```sh
   g++ -std=c++20 -O1 -pthread -Iruntime/include -Iruntime/testing/include \
+    -I<nlohmann-json>/single_include \
     runtime/tests/http/beast_transport_test.cc \
     runtime/src/http/{beast_transport,socket_transport,headers,http1,server_dispatch,uri,trace_context}.cc \
-    runtime/src/core/{uuid,text}.cc runtime/src/eventstream/frame.cc \
+    runtime/src/core/{uuid,text,base64,document_serde,regex,timestamp,version}.cc \
+    runtime/src/eventstream/{frame,envelope,json_frame}.cc runtime/src/json/json.cc \
     -lgtest -lgtest_main -lssl -lcrypto -o /tmp/beast_test && /tmp/beast_test
   ```
 
   The same recipe runs `beast_client_test.cc` and `beast_websocket_test.cc` (swap the test
-  file); the eventstream codec source rides along because the transport now carries
-  event-stream messages over WebSocket (ADR-0015).
+  file); the eventstream codec sources and the JSON stack ride along because the transport
+  carries event-stream messages over WebSocket (ADR-0015) and negotiates the JSON-text
+  wire for browser peers (ADR-0018) — nlohmann comes from `libnlohmann-json3-dev` (then
+  drop the `-I`) or any checkout's `single_include/`.
 
   The chat example's e2e suites (Phase 8's exit criterion, CI-only under Bazel behind a
   proxy) run the same way with the generated sources and the JSON stack added — nlohmann
@@ -174,13 +178,14 @@ cd codegen && gradle spotlessApply
     runtime/src/core/{base64,document_serde,regex,text,timestamp,uuid,version}.cc \
     runtime/src/json/json.cc runtime/src/client/{retry,observability}.cc \
     runtime/src/http/{beast_transport,socket_transport,headers,http1,server_dispatch,uri,trace_context,websocket_pair,forwarded}.cc \
-    runtime/src/eventstream/{frame,envelope}.cc \
-    runtime/src/server/{router,websocket_router,middleware}.cc \
+    runtime/src/eventstream/{frame,envelope,json_frame}.cc \
+    runtime/src/server/{router,websocket_router,middleware,origin_gate}.cc \
     -lgtest -lgtest_main -lssl -lcrypto -o /tmp/chat_e2e && /tmp/chat_e2e
   ```
 
   Swap in `chat_e2e_test.cc` (or the fixture's generated `tests/*.cc`) for the in-memory
-  suites — same source list; Beast is only a link-time passenger there.
+  suites — same source list; Beast is only a link-time passenger there. The browser-wire
+  suite (`chat_browser_e2e_test.cc`, ADR-0018) runs with the same list too.
 
   Add `-g -fsanitize=thread` for a TSan pass — worth running on any change to the
   transport's threading (system Boost is header-only here, so no beast_src.cc and no

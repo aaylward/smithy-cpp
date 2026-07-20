@@ -81,6 +81,35 @@ cc_library(
     deps = [":core"],
 )
 
+# The negotiated JSON-text wire encoding (ADR-0018): the envelope a browser
+# speaks with JSON.parse alone. Separate from :eventstream so the binary
+# codec stays a leaf on :core — only the transports that negotiate the mode
+# (and consumers who want the codec directly) pull in :json.
+cc_library(
+    name = "eventstream_json",
+    srcs = ["src/eventstream/json_frame.cc"],
+    hdrs = ["include/smithy/eventstream/json_frame.h"],
+    copts = COPTS,
+    includes = ["include"],
+    deps = [
+        ":core",
+        ":eventstream",
+        ":json",
+    ],
+)
+
+cc_test(
+    name = "json_frame_test",
+    size = "small",
+    srcs = ["tests/eventstream/json_frame_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":eventstream",
+        ":eventstream_json",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_test(
     name = "eventstream_frame_test",
     size = "small",
@@ -306,6 +335,7 @@ cc_library(
         ":client",
         ":core",
         ":eventstream",
+        ":eventstream_json",
         ":http",
         "@boost.asio",
         "@boost.beast",
@@ -336,6 +366,7 @@ cc_test(
     deps = [
         ":connection_event_recorder",
         ":eventstream",
+        ":eventstream_json",
         ":http",
         ":http_beast",
         ":test_tls_identity",
@@ -450,11 +481,13 @@ cc_library(
     name = "server",
     srcs = [
         "src/server/middleware.cc",
+        "src/server/origin_gate.cc",
         "src/server/router.cc",
         "src/server/websocket_router.cc",
     ],
     hdrs = [
         "include/smithy/server/middleware.h",
+        "include/smithy/server/origin_gate.h",
         "include/smithy/server/router.h",
         "include/smithy/server/session_registry.h",
         "include/smithy/server/websocket_router.h",
@@ -485,6 +518,18 @@ cc_test(
     copts = COPTS,
     deps = [
         ":eventstream",
+        ":http",
+        ":server",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "origin_gate_test",
+    size = "small",
+    srcs = ["tests/server/origin_gate_test.cc"],
+    copts = COPTS,
+    deps = [
         ":http",
         ":server",
         "@googletest//:gtest_main",

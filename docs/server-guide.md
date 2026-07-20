@@ -186,6 +186,55 @@ example ([examples/chat/](../examples/chat/)) is the working reference:
 a generated client and server streaming both directions over real WebSockets, plus this
 in-memory wiring for Boost-free tests.
 
+### Browser clients
+
+A browser cannot speak the binary event-stream framing without a hand-written JS codec —
+so for `simpleRestJson` services there is a negotiated JSON-text wire (ADR-0018,
+issue #113). Two additions to the mount above make a service browser-ready:
+
+```cpp
+options.websocket_accept_json_frames = true;                     // negotiate the JSON wire
+options.websocket_gate = [origin = smithy::server::RequireOrigin({"https://muchq.com"}),
+                          router = server.StreamRouter()->Gate()](
+                             const smithy::http::HttpRequest& request)
+    -> std::optional<smithy::http::HttpResponse> {
+  if (auto refusal = origin(request)) return refusal;            // hijacking defense first
+  return router(request);                                        // then 404/405 routing
+};
+```
+
+A page then needs zero codec — the subprotocol offer selects text frames carrying
+`{"event": "<member>", "payload": {...}}` (`"exception"` in place of `"event"` for the
+terminal error arm), same closed-union semantics, one event per message:
+
+```js
+const ws = new WebSocket("wss://example.com/rooms/lobby/converse?ticket=" + ticket,
+                         "smithy.eventstream.v1+json");
+ws.onmessage = (m) => { const { event, exception, payload } = JSON.parse(m.data); ... };
+ws.send(JSON.stringify({ event: "message", payload: { text: "hi" } }));
+```
+
+Native clients are untouched: they offer nothing, get a headerless 101, and keep the
+binary wire — the handler and everything above the socket speak `eventstream::Message`
+either way and never learn which wire a session negotiated. Fail-closed transposes: on a
+JSON session, *binary* frames and envelopes with unknown members fail the session exactly
+as text frames fail a binary one. Only enable the flag for `simpleRestJson` services —
+an rpcv2Cbor event cannot ride a text frame, and a negotiated session refuses it on the
+first `Send`.
+
+`RequireOrigin` compares scheme + host + port exactly (default ports resolved) and admits
+requests with *no* Origin header — non-browser clients don't send one, and the attack it
+stops (a hostile page driving a victim's browser) cannot omit it. It is
+cross-site-WebSocket-hijacking defense, not authentication: browsers cannot set upgrade
+headers, so `@httpHeader`-bound members and the header auth traits never reach a
+browser-dialed upgrade — model browser-facing auth as an `@httpQuery` member and see the
+[production guide](production-guide.md#browser-clients) for the blessed ticket pattern
+and its caveats. The working reference is
+[examples/chat/chat_browser_e2e_test.cc](../examples/chat/chat_browser_e2e_test.cc): a
+browser-fidelity peer conversing in JSON text beside a binary generated client, the
+origin gate refusing a foreign page, and the modeled `Kicked` error arriving as an
+`"exception"` envelope.
+
 ## Generated smoke tests
 
 Every generated module ships `tests/smoke_test.cc` (target `:smoke_test` in the module's

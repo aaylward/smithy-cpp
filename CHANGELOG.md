@@ -95,6 +95,27 @@ via `git_override` until then.
   callback for in-flight gauges with guaranteed start/complete pairing.
   **Breaking:** `Observe(callback, now)` call sites become
   `Observe(callback, nullptr, now)`.
+- The browser wire for event streams (ADR-0018, issue #113): a client
+  that offers the `smithy.eventstream.v1+json` WebSocket subprotocol on a
+  server with `Options::websocket_accept_json_frames` set gets text
+  frames carrying a JSON envelope — `{"event": "<member>",
+  "payload": {...}}`, `"exception"` for the error arm — so a page speaks
+  a generated simpleRestJson stream with `JSON.parse` alone: no codec, no
+  build step. Native clients keep the binary wire (no offer, headerless
+  101, byte-identical to before); the translation is transport-internal
+  (`//runtime:eventstream_json`, `EncodeJsonFrame`/`DecodeJsonFrame`), so
+  `EventStream`, the routers, `SessionRegistry`, and generated code are
+  untouched; and the fail-closed posture transposes — binary frames and
+  unknown envelope members fail a JSON session the way text fails a
+  binary one. `BeastWebSocketClient::Options::offer_json_frames` offers
+  the mode client-side for parity and tests (silent binary fallback when
+  not accepted; a server selecting an unoffered subprotocol fails the
+  dial). `smithy::server::RequireOrigin({...})` is the composable
+  Origin-allowlist gate browser-facing endpoints need (scheme + host +
+  port exact; absent Origin admitted — hijacking defense, not auth), and
+  the production guide now names the blessed browser auth pattern
+  (short-lived single-use tickets in an `@httpQuery` member, validated by
+  the gate before the 101) with its caveats said out loud.
 - Event-stream session handles and fan-out (ADR-0017, issue #112):
   `stream.Share()` mints an `EventStreamHandle<Out>` — an owning cheap-copy
   value handle safe to hold beyond the handler's borrow (copies are how a

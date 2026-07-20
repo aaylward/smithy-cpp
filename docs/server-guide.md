@@ -202,7 +202,9 @@ options.websocket_gate = router.Gate();
 options.on_websocket_session = router.ServeSession();
 ```
 
-(one router serves one seam; `Add` and `AddSession` refuse to mix). The generated
+(one router serves one seam; `Add` and `AddSession` refuse to mix — a process that wants
+both seams serves them from two transports, since a transport itself mounts at most one
+dispatcher). The generated
 streaming serve path stays blocking in this slice — serde for an async mount is
 hand-written on the public envelope helpers, as the thread-free hub shows
 ([examples/chat/async_hub_server_main.cc](../examples/chat/async_hub_server_main.cc),

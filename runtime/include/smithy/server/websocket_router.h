@@ -46,8 +46,9 @@ using StreamServeSession = std::function<void(const http::HttpRequest&, const Re
 //   options.websocket_gate = server.StreamRouter()->Gate();
 //   options.on_websocket = server.StreamRouter()->Serve();
 //
-// The shared-session seam (ADR-0019) mounts the same way — AddSession
-// routes, then:
+// The shared-session seam (ADR-0019) mounts a hand-built router the same
+// way (the generated streaming path stays blocking this slice) —
+// AddSession routes, then:
 //
 //   options.websocket_gate = router.Gate();
 //   options.on_websocket_session = router.ServeSession();
@@ -56,7 +57,11 @@ using StreamServeSession = std::function<void(const http::HttpRequest&, const Re
 // on_websocket / on_websocket_session, so a route added for the other
 // seam could never be dispatched — Add and AddSession therefore refuse to
 // mix, failing loud at wiring time instead of deadening routes silently.
-// Gate() is seam-agnostic either way.
+// (A process that wants both seams serves them from two transports — the
+// transport itself mounts only one dispatcher — or moves everything onto
+// one seam.) Gate() is seam-agnostic either way; the dispatchers close a
+// wrong-seam upgrade with a log line naming the right mount instead of
+// throwing on a transport thread.
 //
 // Application admission policy (auth, rate limits) composes by wrapping
 // Gate(): run the application's refusal first, then defer to the router's.
@@ -85,8 +90,8 @@ class WebSocketRouter {
   // serve; refusals are shaped exactly like Router's dispatch failures —
   // 404 (no pattern match), 405 with an Allow header (pattern match, wrong
   // method), 400 (malformed target). The returned callable refers to this
-  // router: keep the router alive, and complete Add calls, before the
-  // transport starts.
+  // router: keep the router alive, and complete Add/AddSession calls,
+  // before the transport starts.
   std::function<std::optional<http::HttpResponse>(const http::HttpRequest&)> Gate() const;
 
   // The on_websocket dispatcher: re-matches the upgrade request, builds the
@@ -113,17 +118,28 @@ class WebSocketRouter {
     std::string operation;
   };
 
-  // Which seam this router's routes serve; set by the first successful
-  // Add/AddSession, refused across by the other.
   enum class Seam { kNone, kBorrowed, kShared };
+
+  // The shared tail of Add/AddSession: parse, conflict-check, commit the
+  // filled route (its callback slot already engaged), latch the seam. The
+  // public methods run their seam refusal first.
+  Outcome<Unit> AddRoute(std::string_view method, std::string_view pattern, StreamRoute route,
+                         Seam seam);
 
   // The best (most specific) matching route for the method, or nullptr.
   const StreamRoute* FindBest(const std::string& method,
                               const std::vector<std::string>& segments) const;
 
+  // The dispatchers' shared core: normalize, find the best route, and on a
+  // hit fill `context` exactly the way Router::Route does. Null on a miss
+  // (malformed target or no matching route).
+  const StreamRoute* MatchForServe(const http::HttpRequest& request, RequestContext& context) const;
+
   // Keyed by HTTP method, like Router's index: a request scans only its own
   // method's routes, and map order makes the 405 Allow list deterministic.
   std::map<std::string, std::vector<StreamRoute>> routes_;
+  // Set by the first successful Add/AddSession; the other method then
+  // refuses. A failed add latches nothing.
   Seam seam_ = Seam::kNone;
 };
 

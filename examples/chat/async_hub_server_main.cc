@@ -199,20 +199,18 @@ int main(int argc, char** argv) {
   // mounted on the shared seam in the same two lines as the borrowed one.
   // Declared before the transport; the returned callables refer into it.
   smithy::server::WebSocketRouter router;
-  {
-    auto added = router.AddSession(
-        "GET", "/rooms/{room}/converse",
-        [&hub](const smithy::http::HttpRequest& request,
-               const smithy::server::RequestContext& context,
-               std::shared_ptr<smithy::http::WebSocket> socket) {
-          const std::string name = request.headers.Get("x-chat-nickname").value_or("anonymous");
-          Serve(hub, context.labels.at("room"), name, std::move(socket));  // returns immediately
-        },
-        "Converse");
-    if (!added.ok()) {
-      std::fprintf(stderr, "async-hub: route: %s\n", added.error().message().c_str());
-      return 1;
-    }
+  if (auto added = router.AddSession(
+          "GET", "/rooms/{room}/converse",
+          [&hub](const smithy::http::HttpRequest& request,
+                 const smithy::server::RequestContext& context,
+                 std::shared_ptr<smithy::http::WebSocket> socket) {
+            const std::string name = request.headers.Get("x-chat-nickname").value_or("anonymous");
+            Serve(hub, context.labels.at("room"), name, std::move(socket));  // returns immediately
+          },
+          "Converse");
+      !added.ok()) {
+    std::fprintf(stderr, "async-hub: route: %s\n", added.error().message().c_str());
+    return 1;
   }
 
   smithy::http::BeastServerTransport::Options options;

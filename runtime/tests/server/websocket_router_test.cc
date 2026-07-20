@@ -141,6 +141,116 @@ TEST(WebSocketRouterTest, ServeClosesTheSessionWhenNothingMatches) {
   EXPECT_FALSE(at_peer2->has_value());
 }
 
+// The shared-seam recorder: SessionRecorder mirrors Recorder, and keeps
+// the owned session so tests can prove it outlives the dispatch.
+struct SessionRecord {
+  std::string tag;
+  RequestContext context;
+  std::shared_ptr<http::WebSocket> session;
+};
+
+StreamServeSession SessionRecorder(std::shared_ptr<SessionRecord> record, const std::string& tag) {
+  return [record = std::move(record), tag](const http::HttpRequest&, const RequestContext& context,
+                                           std::shared_ptr<http::WebSocket> socket) {
+    if (record == nullptr) return;
+    record->tag = tag;
+    record->context = context;
+    record->session = std::move(socket);
+  };
+}
+
+TEST(WebSocketRouterTest, ServeSessionExtractsContextAndHandsOverTheOwnedSession) {
+  auto record = std::make_shared<SessionRecord>();
+  WebSocketRouter router;
+  ASSERT_TRUE(
+      router.AddSession("GET", "/rooms/{roomId}/stream", SessionRecorder(record, "chat"), "Chat")
+          .ok());
+
+  const http::HttpRequest request = Request("GET", "/rooms/a%20b/stream?since=10");
+  auto [socket, peer] = http::InMemoryWebSocketPair::Create();
+  router.ServeSession()(request, socket);
+
+  EXPECT_EQ(record->tag, "chat");
+  ASSERT_EQ(record->context.labels.size(), 1U);
+  EXPECT_EQ(record->context.labels.at("roomId"), "a b");  // labels arrive decoded
+  EXPECT_EQ(record->context.request, &request);
+
+  // Launch-point semantics: the callback returned, and the session it kept
+  // is alive and usable — that is the whole point of the shared seam.
+  ASSERT_NE(record->session, nullptr);
+  ASSERT_TRUE(record->session->Send({.headers = {{":event-type", "late"}}}).ok());
+  auto at_peer = peer->Receive();
+  ASSERT_TRUE(at_peer.ok() && at_peer->has_value());
+}
+
+TEST(WebSocketRouterTest, ServeSessionDispatchesTheMostSpecificRoute) {
+  auto general = std::make_shared<SessionRecord>();
+  auto specific = std::make_shared<SessionRecord>();
+  WebSocketRouter router;
+  ASSERT_TRUE(router.AddSession("GET", "/rooms/{roomId}", SessionRecorder(general, "label")).ok());
+  ASSERT_TRUE(router.AddSession("GET", "/rooms/lobby", SessionRecorder(specific, "literal")).ok());
+  const auto serve = router.ServeSession();
+
+  auto [socket, peer] = http::InMemoryWebSocketPair::Create();
+  serve(Request("GET", "/rooms/lobby"), socket);
+  EXPECT_EQ(specific->tag, "literal");
+  EXPECT_TRUE(general->tag.empty());
+
+  auto [socket2, peer2] = http::InMemoryWebSocketPair::Create();
+  serve(Request("GET", "/rooms/attic"), socket2);
+  EXPECT_EQ(general->tag, "label");
+}
+
+TEST(WebSocketRouterTest, ServeSessionClosesTheSessionWhenNothingMatches) {
+  WebSocketRouter router;
+  ASSERT_TRUE(router.AddSession("GET", "/rooms/{roomId}", SessionRecorder(nullptr, "")).ok());
+  const auto serve = router.ServeSession();
+
+  auto [socket, peer] = http::InMemoryWebSocketPair::Create();
+  serve(Request("GET", "/nowhere"), socket);
+  auto at_peer = peer->Receive();
+  ASSERT_TRUE(at_peer.ok());
+  EXPECT_FALSE(at_peer->has_value());
+
+  auto [socket2, peer2] = http::InMemoryWebSocketPair::Create();
+  serve(Request("GET", "/bad%2"), socket2);
+  auto at_peer2 = peer2->Receive();
+  ASSERT_TRUE(at_peer2.ok());
+  EXPECT_FALSE(at_peer2->has_value());
+}
+
+TEST(WebSocketRouterTest, TheGateSpeaksForSessionRoutesToo) {
+  WebSocketRouter router;
+  ASSERT_TRUE(router.AddSession("GET", "/rooms/{roomId}", SessionRecorder(nullptr, "")).ok());
+  const auto gate = router.Gate();
+
+  EXPECT_EQ(gate(Request("GET", "/rooms/lobby")), std::nullopt);  // admitted
+  auto miss = gate(Request("GET", "/nowhere"));
+  ASSERT_TRUE(miss.has_value());
+  EXPECT_EQ(miss->status, 404);
+  auto wrong_method = gate(Request("PUT", "/rooms/lobby"));
+  ASSERT_TRUE(wrong_method.has_value());
+  EXPECT_EQ(wrong_method->status, 405);
+}
+
+TEST(WebSocketRouterTest, TheSeamsRefuseToMix) {
+  // The transport mounts at most one dispatcher, so mixed routes could
+  // never all be served — the router fails loud at wiring time instead.
+  WebSocketRouter borrowed_first;
+  ASSERT_TRUE(borrowed_first.Add("GET", "/a", Recorder(nullptr, "")).ok());
+  const auto mixed_in = borrowed_first.AddSession("GET", "/b", SessionRecorder(nullptr, ""));
+  ASSERT_FALSE(mixed_in.ok());
+  EXPECT_EQ(mixed_in.error().kind(), ErrorKind::kValidation);
+  EXPECT_NE(mixed_in.error().message().find("one seam"), std::string::npos);
+
+  WebSocketRouter shared_first;
+  ASSERT_TRUE(shared_first.AddSession("GET", "/a", SessionRecorder(nullptr, "")).ok());
+  const auto mixed_back = shared_first.Add("GET", "/b", Recorder(nullptr, ""));
+  ASSERT_FALSE(mixed_back.ok());
+  EXPECT_EQ(mixed_back.error().kind(), ErrorKind::kValidation);
+  EXPECT_NE(mixed_back.error().message().find("one seam"), std::string::npos);
+}
+
 TEST(WebSocketRouterTest, AddRejectsBadPatternsAndConflictsLikeRouter) {
   WebSocketRouter router;
   EXPECT_FALSE(router.Add("GET", "no-slash", Recorder(nullptr, "")).ok());

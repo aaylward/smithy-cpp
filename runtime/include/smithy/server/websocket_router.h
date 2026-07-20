@@ -3,6 +3,7 @@
 
 #include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -25,6 +26,16 @@ namespace smithy::server {
 using StreamServe =
     std::function<void(const http::HttpRequest&, const RequestContext&, http::WebSocket&)>;
 
+// A streaming operation's shared-session launch callback (ADR-0019): the
+// same request and routing context as StreamServe, but the session arrives
+// as an owner and the callback returns immediately — it is a launch point
+// (typically starting a Detached coroutine over AsyncEventStream), not a
+// serve loop. The session lives until a Close, the idle timeout, or the
+// transport Stop()'s abort sweep, exactly as on_websocket_session
+// documents (beast_transport.h).
+using StreamServeSession = std::function<void(const http::HttpRequest&, const RequestContext&,
+                                              std::shared_ptr<http::WebSocket>)>;
+
 // Method + URI-pattern dispatch for WebSocket upgrades (ADR-0016): the
 // unary Router's streaming parallel, sharing its pattern grammar and
 // matching precedence (internal:: in router.h) so routing behavior cannot
@@ -34,6 +45,18 @@ using StreamServe =
 //
 //   options.websocket_gate = server.StreamRouter()->Gate();
 //   options.on_websocket = server.StreamRouter()->Serve();
+//
+// The shared-session seam (ADR-0019) mounts the same way — AddSession
+// routes, then:
+//
+//   options.websocket_gate = router.Gate();
+//   options.on_websocket_session = router.ServeSession();
+//
+// One router serves ONE seam: the transport mounts at most one of
+// on_websocket / on_websocket_session, so a route added for the other
+// seam could never be dispatched — Add and AddSession therefore refuse to
+// mix, failing loud at wiring time instead of deadening routes silently.
+// Gate() is seam-agnostic either way.
 //
 // Application admission policy (auth, rate limits) composes by wrapping
 // Gate(): run the application's refusal first, then defer to the router's.
@@ -47,11 +70,16 @@ using StreamServe =
 class WebSocketRouter {
  public:
   // Fails on invalid patterns and on route conflicts (same method + pattern
-  // shape), like Router::Add. The operation name is recorded for the
-  // observability wiring streaming dispatch grows later; today it only
-  // documents the route.
+  // shape), like Router::Add — and on mixing seams (see above). The
+  // operation name is recorded for the observability wiring streaming
+  // dispatch grows later; today it only documents the route.
   Outcome<Unit> Add(std::string_view method, std::string_view pattern, StreamServe serve,
                     std::string_view operation = "");
+
+  // The shared-seam sibling of Add: same grammar, precedence, conflict and
+  // seam rules; the winning route receives the session as an owner.
+  Outcome<Unit> AddSession(std::string_view method, std::string_view pattern,
+                           StreamServeSession serve, std::string_view operation = "");
 
   // The websocket_gate decision: nullopt admits an upgrade some route will
   // serve; refusals are shaped exactly like Router's dispatch failures —
@@ -68,12 +96,26 @@ class WebSocketRouter {
   // rule as Gate().
   std::function<void(const http::HttpRequest&, http::WebSocket&)> Serve() const;
 
+  // The on_websocket_session dispatcher: identical matching and context
+  // construction, handing the winning AddSession route the owned session.
+  // The no-match fallthrough closes the session the same way. Same
+  // lifetime rule as Gate().
+  std::function<void(const http::HttpRequest&, std::shared_ptr<http::WebSocket>)> ServeSession()
+      const;
+
  private:
   struct StreamRoute {
     std::vector<internal::Segment> segments;
+    // Exactly one is engaged, by the seam rule: serve for Add routes,
+    // serve_session for AddSession routes.
     StreamServe serve;
+    StreamServeSession serve_session;
     std::string operation;
   };
+
+  // Which seam this router's routes serve; set by the first successful
+  // Add/AddSession, refused across by the other.
+  enum class Seam { kNone, kBorrowed, kShared };
 
   // The best (most specific) matching route for the method, or nullptr.
   const StreamRoute* FindBest(const std::string& method,
@@ -82,6 +124,7 @@ class WebSocketRouter {
   // Keyed by HTTP method, like Router's index: a request scans only its own
   // method's routes, and map order makes the 405 Allow list deterministic.
   std::map<std::string, std::vector<StreamRoute>> routes_;
+  Seam seam_ = Seam::kNone;
 };
 
 }  // namespace smithy::server

@@ -116,6 +116,15 @@ via `git_override` until then.
   the production guide now names the blessed browser auth pattern
   (short-lived single-use tickets in an `@httpQuery` member, validated by
   the gate before the 101) with its caveats said out loud.
+- Streaming routes on the shared seam (issue #118): `WebSocketRouter` grows
+  `AddSession`/`ServeSession()`, the `on_websocket_session` parallel of
+  `Add`/`Serve()` — same pattern grammar, precedence, conflict rules, and
+  seam-agnostic `Gate()`, with the winning route receiving the session as
+  an owner (a launch point, not a serve loop). One router serves one seam:
+  the transport mounts at most one dispatcher, so `Add` and `AddSession`
+  refuse to mix rather than deaden routes silently. The thread-free chat
+  hub now mounts its Converse route through the router instead of a
+  hand-rolled target parser.
 - Completion-driven event streams (ADR-0019) — the async adapter ADR-0014
   through ADR-0017 name as future work, runtime slice: `WebSocket` grows
   `ReceiveAsync`/`SendAsync`/`SupportsAsync` (one outstanding per class,

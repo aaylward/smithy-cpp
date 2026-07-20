@@ -192,8 +192,18 @@ stream.Send`, a raw handle send) share the socket's one send slot, and on the fi
 collision that session falls back to writer-thread delivery — nothing lost, but that
 session thereafter costs the one thread async mode exists to avoid. So steady-state
 pushes to a registered session belong in the registry, and direct sends in its serve
-loop are for request/reply moments. The generated streaming serve path
-stays blocking in this slice — route matching and serde for an async mount are
+loop are for request/reply moments.
+
+Multi-route servers mount the shared seam through `WebSocketRouter` exactly like the
+borrowed one — `AddSession` routes with the same pattern grammar, then:
+
+```cpp
+options.websocket_gate = router.Gate();
+options.on_websocket_session = router.ServeSession();
+```
+
+(one router serves one seam; `Add` and `AddSession` refuse to mix). The generated
+streaming serve path stays blocking in this slice — serde for an async mount is
 hand-written on the public envelope helpers, as the thread-free hub shows
 ([examples/chat/async_hub_server_main.cc](../examples/chat/async_hub_server_main.cc),
 driven as real shell-commanded processes by `async_hub_cli_test.sh`).

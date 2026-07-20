@@ -1,6 +1,7 @@
 #include "smithy/server/websocket_router.h"
 
 #include <algorithm>
+#include <memory>
 #include <utility>
 
 #include "smithy/http/uri.h"
@@ -9,6 +10,11 @@ namespace smithy::server {
 
 Outcome<Unit> WebSocketRouter::Add(std::string_view method, std::string_view pattern,
                                    StreamServe serve, std::string_view operation) {
+  if (seam_ == Seam::kShared) {
+    return Error::Validation(
+        "router: this router already serves the shared seam (AddSession/on_websocket_session); "
+        "one router mounts one dispatcher, so its routes serve one seam");
+  }
   auto segments = internal::ParsePattern(pattern);
   if (!segments) return std::move(segments).error();
   std::vector<StreamRoute>& bucket = routes_.try_emplace(std::string(method)).first->second;
@@ -18,7 +24,37 @@ Outcome<Unit> WebSocketRouter::Add(std::string_view method, std::string_view pat
                                std::string(pattern));
     }
   }
-  bucket.push_back(StreamRoute{std::move(*segments), std::move(serve), std::string(operation)});
+  StreamRoute route;
+  route.segments = std::move(*segments);
+  route.serve = std::move(serve);
+  route.operation = std::string(operation);
+  bucket.push_back(std::move(route));
+  seam_ = Seam::kBorrowed;
+  return Unit{};
+}
+
+Outcome<Unit> WebSocketRouter::AddSession(std::string_view method, std::string_view pattern,
+                                          StreamServeSession serve, std::string_view operation) {
+  if (seam_ == Seam::kBorrowed) {
+    return Error::Validation(
+        "router: this router already serves the borrowed seam (Add/on_websocket); one router "
+        "mounts one dispatcher, so its routes serve one seam");
+  }
+  auto segments = internal::ParsePattern(pattern);
+  if (!segments) return std::move(segments).error();
+  std::vector<StreamRoute>& bucket = routes_.try_emplace(std::string(method)).first->second;
+  for (const StreamRoute& existing : bucket) {
+    if (internal::SameShape(existing.segments, *segments)) {
+      return Error::Validation("router: conflicting route: " + std::string(method) + " " +
+                               std::string(pattern));
+    }
+  }
+  StreamRoute route;
+  route.segments = std::move(*segments);
+  route.serve_session = std::move(serve);
+  route.operation = std::string(operation);
+  bucket.push_back(std::move(route));
+  seam_ = Seam::kShared;
   return Unit{};
 }
 
@@ -80,6 +116,24 @@ std::function<void(const http::HttpRequest&, http::WebSocket&)> WebSocketRouter:
     context.query_params = std::move(target->query_params);
     context.request = &request;
     best->serve(request, context, socket);
+  };
+}
+
+std::function<void(const http::HttpRequest&, std::shared_ptr<http::WebSocket>)>
+WebSocketRouter::ServeSession() const {
+  return [this](const http::HttpRequest& request, std::shared_ptr<http::WebSocket> socket) {
+    auto target = internal::NormalizedTarget(request);
+    const StreamRoute* best =
+        target.ok() ? FindBest(request.method, target->path_segments) : nullptr;
+    if (best == nullptr) {
+      socket->Close();  // reachable only when Gate() did not screen the upgrade
+      return;
+    }
+    RequestContext context;
+    internal::MatchSegments(best->segments, target->path_segments, &context.labels);
+    context.query_params = std::move(target->query_params);
+    context.request = &request;
+    best->serve_session(request, context, std::move(socket));
   };
 }
 

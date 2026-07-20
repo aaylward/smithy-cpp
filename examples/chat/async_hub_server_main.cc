@@ -6,11 +6,11 @@
 // (and hub_client) speaks to it unchanged; async_hub_cli_test.sh drives it
 // as real processes.
 //
-// Route matching and serde calls are hand-written here on the public
-// envelope helpers and the generated serde functions: the generated
-// streaming serve path stays blocking by design in this slice (ADR-0019's
-// non-goals) — this main is what a hand-written async mount looks like
-// until the generated one lands.
+// Serde calls are hand-written here on the public envelope helpers and
+// the generated serde functions (the generated streaming serve path stays
+// blocking by design in this slice, ADR-0019's non-goals); route matching
+// rides WebSocketRouter's shared seam (issue #118) — this main is what a
+// hand-written async mount looks like until the generated one lands.
 //
 //   bazel run //examples/chat:async_hub_server
 //   bazel run //examples/chat:hub_client -- 8080 lobby ada    # per terminal
@@ -37,6 +37,7 @@
 #include "smithy/http/websocket.h"
 #include "smithy/json/json.h"
 #include "smithy/server/session_registry.h"
+#include "smithy/server/websocket_router.h"
 
 namespace {
 
@@ -87,16 +88,6 @@ smithy::Outcome<ChatEvents> DecodeChatEvent(const smithy::eventstream::Message& 
     return ChatEvents::FromLeave(*std::move(event));
   }
   return smithy::Error::Serialization("Converse: unknown event type: " + envelope->type);
-}
-
-// "/rooms/<room>/converse" → room; anything else is not ours.
-std::optional<std::string> MatchConverse(const std::string& target) {
-  const std::string prefix = "/rooms/";
-  const std::string suffix = "/converse";
-  if (!target.starts_with(prefix) || !target.ends_with(suffix)) return std::nullopt;
-  std::string room = target.substr(prefix.size(), target.size() - prefix.size() - suffix.size());
-  if (room.empty() || room.find('/') != std::string::npos) return std::nullopt;
-  return room;
 }
 
 using AsyncStream = smithy::eventstream::AsyncEventStream<RoomEvents, ChatEvents>;
@@ -203,27 +194,33 @@ int main(int argc, char** argv) {
   pthread_sigmask(SIG_BLOCK, &shutdown_signals, nullptr);
 
   AsyncHub hub;
+  // Route matching through the streaming router (issue #118): the same
+  // pattern grammar and refusal shapes as every other route in the repo,
+  // mounted on the shared seam in the same two lines as the borrowed one.
+  // Declared before the transport; the returned callables refer into it.
+  smithy::server::WebSocketRouter router;
+  {
+    auto added = router.AddSession(
+        "GET", "/rooms/{room}/converse",
+        [&hub](const smithy::http::HttpRequest& request,
+               const smithy::server::RequestContext& context,
+               std::shared_ptr<smithy::http::WebSocket> socket) {
+          const std::string name = request.headers.Get("x-chat-nickname").value_or("anonymous");
+          Serve(hub, context.labels.at("room"), name, std::move(socket));  // returns immediately
+        },
+        "Converse");
+    if (!added.ok()) {
+      std::fprintf(stderr, "async-hub: route: %s\n", added.error().message().c_str());
+      return 1;
+    }
+  }
+
   smithy::http::BeastServerTransport::Options options;
   options.address = "0.0.0.0";
   options.port = argc > 1 ? std::atoi(argv[1]) : 8080;  // 0 binds an ephemeral port
   options.handler_threads = 2;                          // launches only — sessions hold no thread
-  options.websocket_gate =
-      [](const smithy::http::HttpRequest& request) -> std::optional<smithy::http::HttpResponse> {
-    if (MatchConverse(request.target).has_value()) return std::nullopt;
-    smithy::http::HttpResponse refusal;
-    refusal.status = 404;
-    return refusal;
-  };
-  options.on_websocket_session = [&hub](const smithy::http::HttpRequest& request,
-                                        std::shared_ptr<smithy::http::WebSocket> socket) {
-    const std::optional<std::string> room = MatchConverse(request.target);
-    if (!room.has_value()) {  // unreachable behind the gate
-      socket->Close();
-      return;
-    }
-    const std::string name = request.headers.Get("x-chat-nickname").value_or("anonymous");
-    Serve(hub, *room, name, std::move(socket));  // returns immediately
-  };
+  options.websocket_gate = router.Gate();
+  options.on_websocket_session = router.ServeSession();
   smithy::http::BeastServerTransport transport(options);
   smithy::Outcome<smithy::Unit> started = transport.Start([](const smithy::http::HttpRequest&) {
     smithy::http::HttpResponse response;

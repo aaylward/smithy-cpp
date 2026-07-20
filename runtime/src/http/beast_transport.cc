@@ -486,10 +486,12 @@ class WsSession final : public WebSocketSessionBase,
   void Deliver(eventstream::Message message, std::size_t bytes_read) {
     read_buffer_.consume(bytes_read);
     WebSocket::ReceiveCallback receive;
+    std::optional<eventstream::Message> handoff;
     {
       const std::lock_guard<std::mutex> lock(mutex_);
       if (pending_receive_) {
         receive = std::move(pending_receive_);
+        handoff.emplace(std::move(message));
       } else {
         received_.push_back(std::move(message));
         wake_.notify_all();
@@ -498,7 +500,7 @@ class WsSession final : public WebSocketSessionBase,
     if (receive) {
       // The pump runs on the connection's executor — this IS the
       // completion context.
-      receive(std::optional<eventstream::Message>(std::move(message)));
+      receive(std::move(handoff));
     }
     PumpRead();
   }

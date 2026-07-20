@@ -1,6 +1,7 @@
 #ifndef SMITHY_EVENTSTREAM_ASYNC_EVENT_STREAM_H_
 #define SMITHY_EVENTSTREAM_ASYNC_EVENT_STREAM_H_
 
+#include <atomic>
 #include <coroutine>
 #include <exception>
 #include <functional>
@@ -95,14 +96,20 @@ class AsyncEventStream {
    public:
     explicit ReceiveAwaitable(AsyncEventStream* stream) : stream_(stream) {}
     bool await_ready() const noexcept { return false; }
-    void await_suspend(std::coroutine_handle<> coroutine) {
-      // The completion may run inline (immediate refusals, the in-memory
-      // pair): resuming inside is safe — nothing here runs after it.
+    bool await_suspend(std::coroutine_handle<> coroutine) {
+      // The completion may fire before this returns (immediate refusals,
+      // the in-memory pair, a ready queue whose post beats us): whichever
+      // side arrives second owns the resume. A synchronous completion
+      // resumes by returning false — flattening would-be recursion into
+      // iteration and never touching the frame from two threads at once —
+      // and only a truly asynchronous completion resumes from the callback.
+      auto race = std::make_shared<std::atomic<bool>>(false);
       stream_->socket_->ReceiveAsync(
-          [this, coroutine](Outcome<std::optional<Message>> message) mutable {
+          [this, coroutine, race](Outcome<std::optional<Message>> message) {
             raw_ = std::move(message);
-            coroutine.resume();
+            if (race->exchange(true)) coroutine.resume();
           });
+      return !race->exchange(true);  // suspend iff the callback has not run
     }
     Outcome<std::optional<Rx>> await_resume() {
       if (!raw_.ok()) return std::move(raw_).error();
@@ -134,11 +141,14 @@ class AsyncEventStream {
     SendAwaitable(AsyncEventStream* stream, Outcome<Message> message)
         : stream_(stream), message_(std::move(message)) {}
     bool await_ready() const noexcept { return !message_.ok(); }
-    void await_suspend(std::coroutine_handle<> coroutine) {
-      stream_->socket_->SendAsync(*message_, [this, coroutine](Outcome<Unit> sent) mutable {
+    bool await_suspend(std::coroutine_handle<> coroutine) {
+      // Same second-arrival-resumes race as ReceiveAwaitable.
+      auto race = std::make_shared<std::atomic<bool>>(false);
+      stream_->socket_->SendAsync(*message_, [this, coroutine, race](Outcome<Unit> sent) {
         sent_ = std::move(sent);
-        coroutine.resume();
+        if (race->exchange(true)) coroutine.resume();
       });
+      return !race->exchange(true);  // suspend iff the callback has not run
     }
     Outcome<Unit> await_resume() {
       if (!message_.ok()) return std::move(message_).error();

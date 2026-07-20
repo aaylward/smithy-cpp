@@ -197,9 +197,9 @@ TEST(EventStreamHandleTest, HandleSendsThroughTheLiveStream) {
   const auto handle = client.Share();
 
   // Handle sends and stream sends interleave on one session, in order.
-  ASSERT_TRUE(handle->Send(Ping{1}).ok());
+  ASSERT_TRUE(handle.Send(Ping{1}).ok());
   ASSERT_TRUE(client.Send(Ping{2}).ok());
-  ASSERT_TRUE(handle->Send(Ping{3}).ok());
+  ASSERT_TRUE(handle.Send(Ping{3}).ok());
   for (int expected = 1; expected <= 3; ++expected) {
     auto at_peer = server_socket->Receive();
     ASSERT_TRUE(at_peer.ok() && at_peer->has_value());
@@ -209,7 +209,7 @@ TEST(EventStreamHandleTest, HandleSendsThroughTheLiveStream) {
 
 TEST(EventStreamHandleTest, HandleOutlivesTheStreamAndFailsSoftly) {
   auto [client_socket, server_socket] = http::InMemoryWebSocketPair::Create();
-  std::shared_ptr<EventStreamHandle<Ping>> handle;
+  std::optional<EventStreamHandle<Ping>> handle;
   {
     ClientStream client(client_socket, EncodePing, DecodePong);
     handle = client.Share();
@@ -234,8 +234,8 @@ TEST(EventStreamHandleTest, HandleOutlivesTheStreamAndFailsSoftly) {
 
 TEST(EventStreamHandleTest, EveryHandleSharesOneRevocableView) {
   auto [client_socket, server_socket] = http::InMemoryWebSocketPair::Create();
-  std::shared_ptr<EventStreamHandle<Ping>> first;
-  std::shared_ptr<EventStreamHandle<Ping>> second;
+  std::optional<EventStreamHandle<Ping>> first;
+  std::optional<EventStreamHandle<Ping>> second;
   {
     ClientStream client(client_socket, EncodePing, DecodePong);
     first = client.Share();
@@ -251,7 +251,7 @@ TEST(EventStreamHandleTest, HandleWorksOnTheBorrowedServerPath) {
   // The issue-#112 shape: the server path borrows a WebSocket&, and the
   // handle must outlive that borrow safely.
   auto [client_socket, server_socket] = http::InMemoryWebSocketPair::Create();
-  std::shared_ptr<EventStreamHandle<Pong>> handle;
+  std::optional<EventStreamHandle<Pong>> handle;
   {
     ServerStream server(*server_socket, EncodePong, DecodePing);
     handle = server.Share();
@@ -272,7 +272,7 @@ TEST(EventStreamHandleTest, HandleCloseEndsTheSessionForTheStreamOwner) {
   ClientStream client(client_socket, EncodePing, DecodePong);
   const auto handle = client.Share();
 
-  std::thread closer([&handle] { handle->Close(); });
+  std::thread closer([&handle] { handle.Close(); });
   auto end = client.Receive();
   closer.join();
   ASSERT_TRUE(end.ok());
@@ -286,7 +286,7 @@ TEST(EventStreamHandleTest, HandleSendAfterSessionCloseIsATransportError) {
   client.Close();
 
   // The stream still exists; the session is what died. Same error shape.
-  const auto outcome = handle->Send(Ping{1});
+  const auto outcome = handle.Send(Ping{1});
   ASSERT_FALSE(outcome.ok());
   EXPECT_EQ(outcome.error().kind(), ErrorKind::kTransport);
 }
@@ -302,10 +302,10 @@ TEST(EventStreamHandleTest, AnEncoderFailureThroughTheHandleSparesTheSession) {
       DecodePong);
   const auto handle = failing.Share();
 
-  const auto refused = handle->Send(Ping{-1});
+  const auto refused = handle.Send(Ping{-1});
   ASSERT_FALSE(refused.ok());
   EXPECT_EQ(refused.error().kind(), ErrorKind::kValidation);
-  ASSERT_TRUE(handle->Send(Ping{5}).ok());
+  ASSERT_TRUE(handle.Send(Ping{5}).ok());
   auto at_peer = server_socket->Receive();
   ASSERT_TRUE(at_peer.ok() && at_peer->has_value());
   EXPECT_EQ((*at_peer)->payload.ToString(), "5");
@@ -328,7 +328,7 @@ TEST(EventStreamHandleTest, DestructionWaitsOutABlockedHandleSend) {
       ASSERT_TRUE(client.Send(Ping{static_cast<int>(i)}).ok());
     }
     sender = std::thread([handle, &send_returned, &blocked_outcome] {
-      blocked_outcome = handle->Send(Ping{99});
+      blocked_outcome = handle.Send(Ping{99});
       send_returned = true;
     });
     // Bias the race toward the interesting interleaving (sender blocked
@@ -345,7 +345,7 @@ TEST(EventStreamHandleTest, DestructionWaitsOutABlockedHandleSend) {
 
 TEST(EventStreamHandleTest, TheSharedViewSurvivesAMove) {
   auto [client_socket, server_socket] = http::InMemoryWebSocketPair::Create();
-  std::shared_ptr<EventStreamHandle<Ping>> handle;
+  std::optional<EventStreamHandle<Ping>> handle;
   {
     ClientStream original(client_socket, EncodePing, DecodePong);
     handle = original.Share();
@@ -364,7 +364,7 @@ TEST(EventStreamHandleTest, AReceiveOnlyStreamStillSharesForClose) {
   auto [client_socket, server_socket] = http::InMemoryWebSocketPair::Create();
   EventStream<NoEvents, Pong> watcher(client_socket, nullptr, DecodePong);
   const auto handle = watcher.Share();
-  handle->Close();
+  handle.Close();
   auto end = watcher.Receive();
   ASSERT_TRUE(end.ok());
   EXPECT_FALSE(end->has_value());

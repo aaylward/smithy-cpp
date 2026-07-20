@@ -100,17 +100,20 @@ class SharedViewOwner {
 }  // namespace internal
 
 // The owning session handle (issue #112): what EventStream::Share() mints.
-// Safe to hold beyond the handler borrow that produced it — a hub's registry
-// becomes a map of these instead of borrowed references with manual
-// remove-before-every-return discipline. The handle never extends the
-// session: once the stream that minted it is gone (for a server handler,
-// when the handler machinery returns), Send fails with Error::Transport —
-// exactly what a closed stream returns today — and Close is a no-op, so a
-// stale handle has no new failure modes, it just misses.
+// A cheap-copy value — copies are how a session fans out, and every copy
+// shares the one revocable view of the session — safe to hold beyond the
+// handler borrow that produced it: a hub's registry becomes a map of these
+// instead of borrowed references with manual remove-before-every-return
+// discipline. The handle never extends the session: once the stream that
+// minted it is gone (for a server handler, when the handler machinery
+// returns), Send fails with Error::Transport — exactly what a closed stream
+// returns today — and Close is a no-op, so a stale handle has no new
+// failure modes, it just misses. (A moved-from handle behaves like a stale
+// one.)
 //
-// Send and Close are safe from any thread; concurrent handle Sends
-// serialize on the socket like concurrent stream Sends, and Send blocks
-// until its frame is on the wire (fan-out wants queues on top: see
+// Send and Close are const and safe from any thread; concurrent handle
+// Sends serialize on the socket like concurrent stream Sends, and Send
+// blocks until its frame is on the wire (fan-out wants queues on top: see
 // smithy/server/session_registry.h). The one-receiver rule is unchanged —
 // a handle exposes no Receive; receiving stays with the stream's owner.
 template <typename Tx>
@@ -120,7 +123,7 @@ class EventStreamHandle {
   // (the stream Send contract verbatim, encoder failures included).
   // Error::Transport once the session ended: closed, broken, or the stream
   // object destroyed.
-  Outcome<Unit> Send(const Tx& event) {
+  Outcome<Unit> Send(const Tx& event) const {
     static_assert(!std::is_same_v<Tx, NoEvents>,
                   "this stream models no events in this direction: Send is not callable on a "
                   "receive-only stream's handle (use Close)");
@@ -137,7 +140,7 @@ class EventStreamHandle {
   // thread, and a no-op once the session ended. This is how a hub ends a
   // session from outside the handler (the slow-consumer policy): the
   // owner's blocked Receive/Send unblock exactly as for any other close.
-  void Close() {
+  void Close() const {
     http::WebSocket* socket = Acquire();
     if (socket == nullptr) return;
     socket->Close();
@@ -153,15 +156,16 @@ class EventStreamHandle {
       : state_(std::move(state)), encode_(std::move(encode)) {}
 
   // The socket, pinned against revocation until Release — or null once the
-  // session ended.
-  http::WebSocket* Acquire() {
+  // session ended (or this handle was moved from).
+  http::WebSocket* Acquire() const {
+    if (state_ == nullptr) return nullptr;
     const std::lock_guard<std::mutex> lock(state_->mutex);
     if (state_->socket == nullptr) return nullptr;
     ++state_->active;
     return state_->socket;
   }
 
-  void Release() {
+  void Release() const {
     const std::lock_guard<std::mutex> lock(state_->mutex);
     if (--state_->active == 0) state_->idle.notify_all();
   }
@@ -260,24 +264,18 @@ class EventStream {
   // A handle safe to hold beyond this stream's lifetime (issue #112) — the
   // hub seam: a handler passes Share() to a registry
   // (smithy::server::SessionRegistry) instead of parking its borrowed
-  // `stream&` in one. Every call returns the same handle, and all of a
-  // stream's handles see one revocable view of the session; destroying the
+  // `stream&` in one. A cheap-copy value: all of a stream's handles (and
+  // their copies) see one revocable view of the session; destroying the
   // stream closes the session and leaves them failing softly with
   // Error::Transport. Call from the thread that owns the stream (it mutates
   // the stream), as many times as you like.
-  std::shared_ptr<EventStreamHandle<Tx>> Share() {
-    if (handle_ == nullptr) {
-      handle_.reset(new EventStreamHandle<Tx>(view_.Ensure(socket_), encode_));
-    }
-    return handle_;
-  }
+  EventStreamHandle<Tx> Share() { return EventStreamHandle<Tx>(view_.Ensure(socket_), encode_); }
 
  private:
   std::shared_ptr<http::WebSocket> owned_;  // null on the borrowed path
   http::WebSocket* socket_;
   Encoder encode_;
   Decoder decode_;
-  std::shared_ptr<EventStreamHandle<Tx>> handle_;  // null until Share()
   // Last member on purpose: its teardown (End) runs first and needs the
   // socket members above still alive.
   internal::SharedViewOwner view_;

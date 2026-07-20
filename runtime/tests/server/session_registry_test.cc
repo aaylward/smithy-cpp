@@ -54,7 +54,7 @@ constexpr std::size_t kWireDepth = http::InMemoryWebSocketPair::kQueueDepth;
 struct Session {
   std::shared_ptr<http::WebSocket> client;
   std::unique_ptr<ServerStream> stream;
-  std::shared_ptr<EventStreamHandle<Note>> handle;
+  std::optional<EventStreamHandle<Note>> handle;
 };
 
 Session MakeSession() {
@@ -87,7 +87,7 @@ bool RefusedEventually(Registry& registry, const std::string& id) {
 TEST(SessionRegistryTest, SendToQueuesAndTheWriterDeliversInOrder) {
   Registry registry;
   Session session = MakeSession();
-  ASSERT_TRUE(registry.Add("ada", session.handle));
+  ASSERT_TRUE(registry.Add("ada", *session.handle));
 
   for (int i = 0; i < 5; ++i) {
     EXPECT_TRUE(registry.SendTo("ada", Note{"note-" + std::to_string(i)}));
@@ -109,9 +109,8 @@ TEST(SessionRegistryTest, ADuplicateAddIsRefusedAndHarmless) {
   Registry registry;
   Session first = MakeSession();
   Session second = MakeSession();
-  ASSERT_TRUE(registry.Add("ada", first.handle));
-  EXPECT_FALSE(registry.Add("ada", second.handle));
-  EXPECT_FALSE(registry.Add("null", nullptr));
+  ASSERT_TRUE(registry.Add("ada", *first.handle));
+  EXPECT_FALSE(registry.Add("ada", *second.handle));
   EXPECT_EQ(registry.size(), 1U);
 
   // The id kept its original session, and the refused handle was not
@@ -127,8 +126,8 @@ TEST(SessionRegistryTest, BroadcastConstructsPerRecipient) {
   Registry registry;
   Session ada = MakeSession();
   Session grace = MakeSession();
-  ASSERT_TRUE(registry.Add("ada", ada.handle));
-  ASSERT_TRUE(registry.Add("grace", grace.handle));
+  ASSERT_TRUE(registry.Add("ada", *ada.handle));
+  ASSERT_TRUE(registry.Add("grace", *grace.handle));
 
   const std::size_t queued = registry.Broadcast(
       {"ada", "grace", "ghost"}, [](const std::string& id) { return Note{"state-for-" + id}; });
@@ -141,8 +140,8 @@ TEST(SessionRegistryTest, BroadcastToEveryoneAndIdenticalBytesOverloads) {
   Registry registry;
   Session ada = MakeSession();
   Session grace = MakeSession();
-  ASSERT_TRUE(registry.Add("ada", ada.handle));
-  ASSERT_TRUE(registry.Add("grace", grace.handle));
+  ASSERT_TRUE(registry.Add("ada", *ada.handle));
+  ASSERT_TRUE(registry.Add("grace", *grace.handle));
 
   EXPECT_EQ(registry.Broadcast(Note{"same-for-all"}), 2U);
   EXPECT_EQ(NextAt(ada), "same-for-all");
@@ -165,8 +164,8 @@ TEST(SessionRegistryTest, ASlowConsumerNeverBlocksTheBroadcasterAndIsClosed) {
   Registry registry(std::move(options));
   Session ada = MakeSession();
   Session grace = MakeSession();
-  ASSERT_TRUE(registry.Add("ada", ada.handle));
-  ASSERT_TRUE(registry.Add("grace", grace.handle));
+  ASSERT_TRUE(registry.Add("ada", *ada.handle));
+  ASSERT_TRUE(registry.Add("grace", *grace.handle));
 
   constexpr int kBursts = 4 * kWireDepth;  // > wire bound + queue, with margin
   for (int i = 0; i < kBursts; ++i) {
@@ -198,7 +197,7 @@ TEST(SessionRegistryTest, TheSlowConsumerCallbackReplacesTheCloseDefault) {
   };
   Registry registry(std::move(options));
   Session grace = MakeSession();  // never reads
-  ASSERT_TRUE(registry.Add("grace", grace.handle));
+  ASSERT_TRUE(registry.Add("grace", *grace.handle));
 
   // Fill the wire + the queue (1); everything past that drops into the
   // callback instead of closing.
@@ -218,7 +217,7 @@ TEST(SessionRegistryTest, RemoveDiscardsUndeliveredButNeverCloses) {
   options.queue_capacity = 2 * kWireDepth;
   Registry registry(std::move(options));
   Session session = MakeSession();
-  ASSERT_TRUE(registry.Add("ada", session.handle));
+  ASSERT_TRUE(registry.Add("ada", *session.handle));
 
   // Stall the wire so events pile up: the writer can pop at most the wire
   // bound plus one blocked mid-Send before the client drains, and Remove
@@ -262,7 +261,7 @@ TEST(SessionRegistryTest, CloseAllEndsEverySessionAndDrainWaitsForRemoves) {
   for (int i = 0; i < kSessions; ++i) {
     sessions[i] = MakeSession();
     const std::string id = "player-" + std::to_string(i);
-    ASSERT_TRUE(registry.Add(id, sessions[i].handle));
+    ASSERT_TRUE(registry.Add(id, *sessions[i].handle));
     handlers.emplace_back([&registry, &session = sessions[i], id] {
       // The handler shape from the server guide: block serving until the
       // stream ends, then deregister on the way out.
@@ -282,7 +281,7 @@ TEST(SessionRegistryTest, CloseAllEndsEverySessionAndDrainWaitsForRemoves) {
 TEST(SessionRegistryTest, DrainReportsFalseWhenAHandlerForgetsRemove) {
   Registry registry;
   Session session = MakeSession();
-  ASSERT_TRUE(registry.Add("forgetful", session.handle));
+  ASSERT_TRUE(registry.Add("forgetful", *session.handle));
   EXPECT_FALSE(registry.Drain(std::chrono::milliseconds(50)));
   EXPECT_EQ(registry.size(), 1U);  // still there for Stop() to abort
 }
@@ -293,7 +292,7 @@ TEST(SessionRegistryTest, AStaleHandleStaysRegisteredWithoutDanger) {
   // replaces. Here it is a soft bug: delivery fails, nothing dangles.
   Registry registry;
   Session session = MakeSession();
-  ASSERT_TRUE(registry.Add("ghost", session.handle));
+  ASSERT_TRUE(registry.Add("ghost", *session.handle));
   session.stream.reset();  // the borrow ends; the shared view is revoked
 
   EXPECT_TRUE(RefusedEventually(registry, "ghost"));
@@ -312,8 +311,8 @@ TEST(SessionRegistryTest, TheDestructorClosesSessionsAndJoinsBlockedWriters) {
     Registry::Options options;
     options.queue_capacity = 4;
     Registry registry(std::move(options));
-    ASSERT_TRUE(registry.Add("stalled", stalled.handle));
-    ASSERT_TRUE(registry.Add("healthy", healthy.handle));
+    ASSERT_TRUE(registry.Add("stalled", *stalled.handle));
+    ASSERT_TRUE(registry.Add("healthy", *healthy.handle));
     for (std::size_t i = 0; i < 2 * kWireDepth; ++i) registry.SendTo("stalled", Note{"pile-up"});
     registry.SendTo("healthy", Note{"one"});
     EXPECT_EQ(NextAt(healthy), "one");
@@ -339,7 +338,7 @@ TEST(SessionRegistryTest, ConcurrentBroadcastsAddsAndRemovesStaySafe) {
 
   std::thread churner([&] {
     for (int round = 0; round < 50; ++round) {
-      for (int i = 0; i < 8; ++i) registry.Add("p" + std::to_string(i), sessions[i].handle);
+      for (int i = 0; i < 8; ++i) registry.Add("p" + std::to_string(i), *sessions[i].handle);
       for (int i = 0; i < 8; ++i) registry.Remove("p" + std::to_string(i));
     }
     stop = true;

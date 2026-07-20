@@ -96,10 +96,11 @@ via `git_override` until then.
   **Breaking:** `Observe(callback, now)` call sites become
   `Observe(callback, nullptr, now)`.
 - Event-stream session handles and fan-out (ADR-0017, issue #112):
-  `stream.Share()` mints `std::shared_ptr<EventStreamHandle<Out>>` — an
-  owning handle safe to hold beyond the handler's borrow, sending and
-  closing from any thread while the session lives and failing softly with
-  `Error::Transport` (never a dangle) once it is gone.
+  `stream.Share()` mints an `EventStreamHandle<Out>` — an owning cheap-copy
+  value handle safe to hold beyond the handler's borrow (copies are how a
+  session fans out), sending and closing from any thread while the session
+  lives and failing softly with `Error::Transport` (never a dangle) once
+  it is gone.
   `smithy::server::SessionRegistry<Out>` builds the multi-client hub on
   top: a thread-safe map of handles with a bounded outbound queue and
   writer thread per session, so `SendTo`/`Broadcast` never block on a slow

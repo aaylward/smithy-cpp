@@ -119,17 +119,17 @@ int Run(int argc, char** argv) {
     while (std::getline(std::cin, line)) {
       if (line.empty()) continue;
       if (line == "/quit") {
-        handle->Close();
+        handle.Close();
         return;
       }
       if (line == "/leave") break;
       example::chat::ChatMessage message;
       message.text = line;
-      if (!handle->Send(example::chat::ChatEvents::FromMessage(message)).ok()) return;
+      if (!handle.Send(example::chat::ChatEvents::FromMessage(message)).ok()) return;
     }
     // /leave or stdin closed: say goodbye; the hub answers with its own
     // goodbye and the close.
-    (void)handle->Send(example::chat::ChatEvents::FromLeave(example::chat::LeaveNotice{}));
+    (void)handle.Send(example::chat::ChatEvents::FromLeave(example::chat::LeaveNotice{}));
   }).detach();
 
   return Serve(*stream);

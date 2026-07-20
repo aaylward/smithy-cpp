@@ -102,11 +102,12 @@ the stream with one typed exception message before the close (a `Modeled` error 
 stream already terminated: propagating a failed `Receive()` closes without a message,
 which that peer already observed. The `stream&` is valid only until the handler returns,
 so join any helper thread still using it before returning — or hand such threads an
-*owning handle* instead: `stream.Share()` returns a
-`std::shared_ptr<EventStreamHandle<Out>>` (issue #112, ADR-0017) that is safe to hold
-beyond the return. A handle sends and closes from any thread while the session lives;
-once the handler has returned it fails softly with `Error::Transport` — exactly what a
-closed stream reports — so nothing dangles and nothing new can go wrong. The generated
+*owning handle* instead: `stream.Share()` returns an `EventStreamHandle<Out>` (issue
+#112, ADR-0017), a cheap-copy value safe to hold beyond the return — copies are how a
+session fans out, and all of them share one view of it. A handle sends and closes from
+any thread while the session lives; once the handler has returned it fails softly with
+`Error::Transport` — exactly what a closed stream reports — so nothing dangles and
+nothing new can go wrong. The generated
 server exposes `StreamRouter()`, a `smithy::server::WebSocketRouter` with every streaming
 route registered; mount it on the transport in two lines — the upgrade path deliberately
 bypasses the HTTP middleware chain (ADR-0015), so unary dispatch beside it is untouched:

@@ -65,7 +65,8 @@ namespace smithy::server {
 template <typename Tx, typename Id = std::string>
 class SessionRegistry {
  public:
-  using Handle = std::shared_ptr<eventstream::EventStreamHandle<Tx>>;
+  // The value handle (EventStream::Share); the registry keeps its own copy.
+  using Handle = eventstream::EventStreamHandle<Tx>;
 
   struct Options {
     // Bound of each session's outbound queue — the burst a client may fall
@@ -93,7 +94,7 @@ class SessionRegistry {
       retired_.clear();
     }
     for (const auto& entry : all) {
-      entry->handle->Close();  // unblocks a writer mid-Send
+      entry->handle.Close();  // unblocks a writer mid-Send
       RequestStop(*entry);
     }
     for (const auto& entry : all) entry->writer.join();
@@ -104,10 +105,9 @@ class SessionRegistry {
 
   // Registers a session under id and starts its writer. False (and nothing
   // changes — in particular the handle is not closed) when id is already
-  // registered or handle is null; a reconnect under the same id wants
-  // Remove first, which is the application's call to make.
+  // registered; a reconnect under the same id wants Remove first, which is
+  // the application's call to make.
   bool Add(Id id, Handle handle) {
-    if (handle == nullptr) return false;
     auto entry = std::make_shared<Entry>(std::move(handle));
     const std::lock_guard<std::mutex> lock(mutex_);
     ReapLocked();
@@ -209,7 +209,7 @@ class SessionRegistry {
       snapshot.reserve(sessions_.size());
       for (const auto& [id, entry] : sessions_) snapshot.push_back(entry);
     }
-    for (const auto& entry : snapshot) entry->handle->Close();
+    for (const auto& entry : snapshot) entry->handle.Close();
   }
 
   // The graceful-shutdown step (issue #112 proposal 3): CloseAll, then wait
@@ -269,7 +269,7 @@ class SessionRegistry {
         event = std::move(entry.queue.front());
         entry.queue.pop_front();
       }
-      if (!entry.handle->Send(event).ok()) {
+      if (!entry.handle.Send(event).ok()) {
         const std::lock_guard<std::mutex> lock(entry.mutex);
         entry.stopping = true;
         entry.queue.clear();
@@ -310,7 +310,7 @@ class SessionRegistry {
     if (options_.on_slow_consumer) {
       options_.on_slow_consumer(id);
     } else {
-      entry.handle->Close();
+      entry.handle.Close();
     }
     return false;
   }

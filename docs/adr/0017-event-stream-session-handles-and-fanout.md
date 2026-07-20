@@ -27,20 +27,24 @@ provides it once.
 ## Decision
 
 **A revocable owning handle, minted by the stream.** `stream.Share()`
-returns `std::shared_ptr<EventStreamHandle<Tx>>` — `Send` and `Close` from
-any thread, no `Receive` (the one-receiver rule stays with the stream's
-owner). All handles share one revocable view of the socket: handle
-operations pin it around each socket call; when the stream object dies, its
-destructor closes the session (unblocking any operation mid-call), waits
-for pinned operations to drain, then revokes the pointer. After that a
-handle fails softly — `Send` reports `Error::Transport`, exactly what a
-closed stream reports; `Close` is a no-op. The handle therefore **never
-extends the session** and adds no new failure modes; it only makes holding
-one safe. This works identically on the borrowed (server) and owned
-(client) construction paths, costs nothing until the first `Share()`
-(state is allocated lazily), and leaves a never-shared stream's teardown
-byte-for-byte what it was. `EventStream` becomes move-only: two owners
-would each claim the teardown, and handles are how a session fans out.
+returns `EventStreamHandle<Tx>` by value — a cheap-copy token (one shared
+pointer plus an encoder) whose copies are how a session fans out: `Send`
+and `Close` from any thread, no `Receive` (the one-receiver rule stays
+with the stream's owner). All of a stream's handles and their copies share
+one revocable view of the socket: handle operations pin it around each
+socket call; when the stream object dies, its destructor closes the
+session (unblocking any operation mid-call), waits for pinned operations
+to drain, then revokes the pointer. After that a handle fails softly —
+`Send` reports `Error::Transport`, exactly what a closed stream reports;
+`Close` is a no-op. The handle therefore **never extends the session** and
+adds no new failure modes; it only makes holding one safe — and because a
+handle is a value that always references a view, there is no null handle
+for an API to defend against. This works identically on the borrowed
+(server) and owned (client) construction paths, costs nothing until the
+first `Share()` (state is allocated lazily), and leaves a never-shared
+stream's teardown byte-for-byte what it was. `EventStream` becomes
+move-only: two owners would each claim the teardown, and handles are how a
+session fans out.
 
 **A fan-out registry over handles.** `smithy::server::SessionRegistry<Tx,
 Id = std::string>` maps ids to handles with a bounded outbound queue and
@@ -82,6 +86,13 @@ runs the receive loop).
 
 ## Alternatives rejected
 
+- **`Share()` returning `std::shared_ptr<EventStreamHandle<Tx>>`** (the
+  issue's sketch, and this ADR's first shipped shape). The handle is
+  already internally a shared reference, so the wrapper double-layered
+  ownership: an extra allocation per share, a `->` at every call site, and
+  a null state every consumer had to defend (the registry grew a
+  `handle == nullptr` branch for it). The value handle keeps the exact
+  semantics — copies share the one revocable view — with none of that.
 - **Promote `on_websocket` to hand out `shared_ptr<WebSocket>`.** True
   shared ownership of the session would let handles extend it past the
   handler — but it reworks the ADR-0015 transport seam and the generated

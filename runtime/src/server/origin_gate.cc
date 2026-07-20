@@ -27,7 +27,10 @@ std::optional<std::string> NormalizeOrigin(const std::string& text) {
     return lowered;
   }
   auto endpoint = http::ParseEndpoint(lowered);
-  if (!endpoint.ok() || !endpoint->path_prefix.empty()) {
+  if (!endpoint.ok() || !endpoint->path_prefix.empty() ||
+      endpoint->host.find('@') != std::string::npos) {
+    // An origin is scheme://host[:port] and nothing else: a path or
+    // userinfo means this is a URL, not an origin.
     return std::nullopt;
   }
   return endpoint->scheme + "://" + endpoint->host + ":" + std::to_string(endpoint->port);

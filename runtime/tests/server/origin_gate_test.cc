@@ -94,6 +94,9 @@ TEST(OriginGateTest, MalformedAndDuplicateOriginsAre403) {
   ExpectRefused(gate, UpgradeFrom("ftp://muchq.com"), "unsupported scheme");
   ExpectRefused(gate, UpgradeFrom("https://"), "missing host");
   ExpectRefused(gate, UpgradeFrom("https://muchq.com:notaport"), "bad port");
+  // The classic parser-confusion shape: the allowed host as userinfo on a
+  // hostile authority. Userinfo is a URL feature, not an origin one.
+  ExpectRefused(gate, UpgradeFrom("https://muchq.com@evil.example"), "userinfo spoof");
 
   http::HttpRequest doubled = UpgradeFrom("https://muchq.com");
   doubled.headers.Add("origin", "https://muchq.com");
@@ -114,6 +117,13 @@ TEST(OriginGateTest, RefusalIsTheStandardErrorShape) {
   EXPECT_EQ(refusal->status, 403);
   EXPECT_EQ(refusal->headers.Get("content-type"), std::optional<std::string>("application/json"));
   EXPECT_NE(refusal->body.find("Forbidden"), std::string::npos);
+}
+
+TEST(OriginGateDeathTest, AMalformedAllowlistFailsFastAtConstruction) {
+  // A typo'd entry would silently refuse every browser — that must not
+  // survive first boot (ADR-0009), so construction dies with the entry.
+  EXPECT_DEATH((void)RequireOrigin({"muchq.com"}), "RequireOrigin.*muchq.com");
+  EXPECT_DEATH((void)RequireOrigin({"https://muchq.com/app"}), "RequireOrigin");
 }
 
 TEST(OriginGateTest, AnEmptyAllowlistRefusesEveryBrowser) {

@@ -88,11 +88,6 @@ class BrowserPeer {
     return ec == boost::beast::websocket::error::closed ? ws_.reason().code : 0u;
   }
 
-  void Close() {
-    boost::beast::error_code ignored;
-    ws_.close(boost::beast::websocket::close_code::normal, ignored);
-  }
-
  private:
   boost::asio::io_context io_;
   boost::beast::websocket::stream<boost::asio::ip::tcp::socket> ws_;

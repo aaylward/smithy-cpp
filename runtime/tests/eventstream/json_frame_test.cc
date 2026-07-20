@@ -93,10 +93,20 @@ TEST(JsonFrameTest, NonJsonContentTypesCannotRideTheTextWire) {
 
 TEST(JsonFrameTest, HeadersBeyondTheEnvelopeCannotRideTheTextWire) {
   // The JSON envelope has no header channel; encode refuses what the wire
-  // cannot represent rather than dropping it (ADR-0014's rule).
-  Message message = MakeEventMessage("ping", "application/json", Blob::FromString("{}"));
-  message.headers.push_back({"x-app-extra", std::string("boom")});
-  ExpectEncodeRefusal(message, "extra header");
+  // cannot represent rather than dropping it (ADR-0014's rule). That
+  // includes duplicated envelope headers and a :content-type holding the
+  // empty string — decode can reproduce neither, so neither round-trips.
+  Message extra = MakeEventMessage("ping", "application/json", Blob::FromString("{}"));
+  extra.headers.push_back({"x-app-extra", std::string("boom")});
+  ExpectEncodeRefusal(extra, "extra header");
+
+  Message duplicated = MakeEventMessage("ping", "application/json", Blob::FromString("{}"));
+  duplicated.headers.push_back({":event-type", std::string("pong")});
+  ExpectEncodeRefusal(duplicated, "duplicated envelope header");
+
+  Message empty_content_type = MakeEventMessage("ping", "", Blob::FromString("{}"));
+  empty_content_type.headers.push_back({":content-type", std::string()});
+  ExpectEncodeRefusal(empty_content_type, "empty :content-type header");
 }
 
 TEST(JsonFrameTest, NonObjectAndNonJsonPayloadsAreRefused) {
@@ -141,6 +151,22 @@ TEST(JsonFrameTest, DecodeNormalizesThePayloadDialect) {
   EXPECT_EQ(message.payload.ToString(), R"({"a":2,"b":1})");
 }
 
+TEST(JsonFrameTest, RichPayloadsSurviveTheWire) {
+  // What real events carry: non-ASCII text (a chat message), nested
+  // structures, lists with mixed member types, null members. The decoded
+  // Message normalizes to the runtime's dialect — raw UTF-8, escapes
+  // resolved — and that canonical form is a round-trip fixed point.
+  const Message message =
+      DecodeOrDie(R"({"event":"chat","payload":)"
+                  R"({"text":"héllo 👋","tags":["a",1,true,null],"nested":{"n":1.5}}})");
+  EXPECT_NE(message.payload.ToString().find("héllo 👋"), std::string::npos)
+      << message.payload.ToString();
+  EXPECT_EQ(DecodeOrDie(EncodeOrDie(message)), message);
+  // JSON escapes are one more spelling of the same payload.
+  EXPECT_EQ(DecodeOrDie(R"({"event":"chat","payload":{"text":"h\u00e9llo"}})"),
+            DecodeOrDie(R"({"event":"chat","payload":{"text":"héllo"}})"));
+}
+
 TEST(JsonFrameTest, UnknownEventTypesAreTheGeneratedDecodersCall) {
   // The closed-union rule keeps its existing owner: this layer decodes any
   // member name; the generated decoder rejects unknown ones terminally,
@@ -160,10 +186,14 @@ TEST(JsonFrameTest, TheInitialResponseReservationTransposes) {
 
 TEST(JsonFrameTest, TheFailClosedBankRefusesEveryMalformedEnvelope) {
   ExpectDecodeRefusal("not json at all", "not JSON");
+  ExpectDecodeRefusal("", "empty text");
+  ExpectDecodeRefusal("null", "null envelope");
+  ExpectDecodeRefusal("true", "boolean envelope");
   ExpectDecodeRefusal("[]", "array envelope");
   ExpectDecodeRefusal("42", "number envelope");
   ExpectDecodeRefusal("\"event\"", "string envelope");
   ExpectDecodeRefusal("{}", "empty envelope");
+  ExpectDecodeRefusal(R"({"event":"x","payload":{}} trailing)", "trailing content");
   ExpectDecodeRefusal(R"({"event":"x","payload":{},"id":7})", "unknown member");
   ExpectDecodeRefusal(R"({"event":"x","exception":"y","payload":{}})", "both discriminators");
   ExpectDecodeRefusal(R"({"payload":{}})", "neither discriminator");
@@ -185,6 +215,19 @@ TEST(JsonFrameTest, TheSizeCeilingHoldsInBothDirections) {
   const std::string huge_frame =
       R"({"event":"big","payload":{"blob":")" + std::string(kMaxMessageBytes, 'a') + R"("}})";
   ExpectDecodeRefusal(huge_frame, "oversized decode");
+}
+
+TEST(JsonFrameTest, AFrameExactlyAtTheCeilingIsLegal) {
+  // The bound is a ceiling, not a cliff short of it: a frame of exactly
+  // kMaxMessageBytes decodes, and its canonical re-encoding — same sorted
+  // compact text — is exactly at the ceiling too.
+  const std::string prefix = R"({"event":"big","payload":{"blob":")";
+  const std::string suffix = R"("}})";
+  const std::string frame =
+      prefix + std::string(kMaxMessageBytes - prefix.size() - suffix.size(), 'a') + suffix;
+  ASSERT_EQ(frame.size(), kMaxMessageBytes);
+  const std::string reencoded = EncodeOrDie(DecodeOrDie(frame));
+  EXPECT_EQ(reencoded, frame);
 }
 
 }  // namespace

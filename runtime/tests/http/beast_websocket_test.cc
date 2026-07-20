@@ -580,6 +580,60 @@ TEST(BeastWebSocketTest, ClientsThatDoNotOfferAreUntouchedByTheServerFlag) {
   server.Stop();
 }
 
+TEST(BeastWebSocketTest, TheOfferIsFoundAmongMultipleSubprotocols) {
+  // Real pages offer lists — new WebSocket(url, ["chat.v2", token]) — and
+  // RFC 6455 lets the whole list ride one comma-separated header. The
+  // token is found wherever it sits; only the token is echoed.
+  BeastServerTransport server(VerbatimEchoOptions());
+  ASSERT_TRUE(server.Start(NotFoundHandler()).ok());
+
+  RawWsPeer peer(server.port(), "chat.v2, " + kJsonToken + ", chat.v1");
+  EXPECT_EQ(peer.selected_subprotocol(), kJsonToken);
+  peer.SendText(R"({"event":"chat","payload":{"n":1}})");
+  EXPECT_EQ(peer.ReadText(), R"({"event":"chat","payload":{"n":1}})");
+  server.Stop();
+}
+
+TEST(BeastWebSocketTest, UnknownSubprotocolOffersAreNotSelected) {
+  // Tokens are case-sensitive and never fuzzy-matched: an unrecognized
+  // offer gets a headerless 101 (the peer may then fail the connection
+  // itself, as browsers do) and the session stays binary.
+  BeastServerTransport server(VerbatimEchoOptions());
+  ASSERT_TRUE(server.Start(NotFoundHandler()).ok());
+
+  RawWsPeer peer(server.port(), "chat.v2, SMITHY.EVENTSTREAM.V1+JSON");
+  EXPECT_EQ(peer.selected_subprotocol(), "");
+  auto frame = eventstream::EncodeMessage(Text("chat", "still binary"));
+  ASSERT_TRUE(frame.ok());
+  peer.SendBinary(*frame);
+  EXPECT_EQ(peer.ReadBinary(), *frame);
+  server.Stop();
+}
+
+TEST(BeastWebSocketTest, AJsonSendRefusalLeavesTheSessionUsable) {
+  // The Send contract holds per wire mode: a message the JSON encoder
+  // refuses (here: no envelope headers) is Error::Validation with nothing
+  // written, and the session then carries the next, well-formed event.
+  BeastServerTransport server(VerbatimEchoOptions());
+  ASSERT_TRUE(server.Start(NotFoundHandler()).ok());
+  auto dialed = BeastWebSocketClient::Dial(
+      {.host = "127.0.0.1", .port = server.port(), .offer_json_frames = true});
+  ASSERT_TRUE(dialed.ok()) << dialed.error().message();
+
+  auto refused = (*dialed)->Send(Text("chat", "no envelope"));
+  ASSERT_FALSE(refused.ok());
+  EXPECT_EQ(refused.error().kind(), ErrorKind::kValidation);
+
+  const Message valid = eventstream::MakeEventMessage("chat", "application/json",
+                                                      Blob::FromString(R"({"text":"next"})"));
+  ASSERT_TRUE((*dialed)->Send(valid).ok());
+  auto received = (*dialed)->Receive();
+  ASSERT_TRUE(received.ok() && received->has_value());
+  EXPECT_EQ(**received, valid);
+  (*dialed)->Close();
+  server.Stop();
+}
+
 TEST(BeastWebSocketTest, ABinaryFrameOnAJsonSessionFailsTheSession) {
   // The fail-closed transpose: in JSON mode, *binary* is the protocol
   // violation — the exact mirror of binary mode's posture on text.

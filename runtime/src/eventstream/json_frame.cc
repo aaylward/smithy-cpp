@@ -58,17 +58,15 @@ Outcome<std::string> EncodeJsonFrame(const Message& message) {
     // failure at the encode kind the Send contract promises.
     return CannotEncode(envelope.error().message());
   }
-  // The JSON envelope has no header channel: refuse a message whose headers
-  // go beyond the envelope's own, instead of dropping them on the floor —
-  // encode must refuse what the wire cannot represent (ADR-0014's rule).
-  const std::string_view type_header = envelope->kind == EventEnvelope::Kind::kEvent
-                                           ? std::string_view(":event-type")
-                                           : std::string_view(":exception-type");
-  for (const Header& header : message.headers) {
-    if (header.name != ":message-type" && header.name != type_header &&
-        header.name != ":content-type") {
-      return CannotEncode("header does not fit the JSON envelope: " + header.name);
-    }
+  // The JSON envelope has no header channel: the only headers this wire can
+  // carry are the envelope's own, and ParseEnvelope just proved those are
+  // present — so a count beyond them means an extra (or duplicated) header
+  // that must be refused rather than dropped: encode refuses what the wire
+  // cannot represent (ADR-0014's rule). Counting also keeps the header
+  // names spelled in envelope.cc alone.
+  const std::size_t envelope_headers = envelope->content_type.empty() ? 2 : 3;
+  if (message.headers.size() != envelope_headers) {
+    return CannotEncode("message carries headers beyond the envelope's own");
   }
   if (!envelope->content_type.empty() && MediaType(envelope->content_type) != kJsonContentType) {
     return CannotEncode("content type is not application/json: " + envelope->content_type);

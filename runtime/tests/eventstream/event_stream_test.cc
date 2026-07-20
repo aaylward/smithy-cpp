@@ -323,9 +323,10 @@ TEST(EventStreamHandleTest, DestructionWaitsOutABlockedHandleSend) {
   {
     ClientStream client(client_socket, EncodePing, DecodePong);
     const auto handle = client.Share();
-    // Fill the pair's send bound (kQueueDepth in websocket_pair.cc) so the
-    // next Send blocks on the wire.
-    for (int i = 0; i < 8; ++i) ASSERT_TRUE(client.Send(Ping{i}).ok());
+    // Fill the pair's send bound so the next Send blocks on the wire.
+    for (std::size_t i = 0; i < http::InMemoryWebSocketPair::kQueueDepth; ++i) {
+      ASSERT_TRUE(client.Send(Ping{static_cast<int>(i)}).ok());
+    }
     sender = std::thread([handle, &send_returned, &blocked_outcome] {
       blocked_outcome = handle->Send(Ping{99});
       send_returned = true;

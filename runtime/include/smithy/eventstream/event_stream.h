@@ -43,6 +43,60 @@ struct SharedSessionState {
   int active = 0;                     // handle operations inside socket calls
 };
 
+// The stream-side end of the shared view: owns revocation, so EventStream's
+// destructor and move operations stay defaulted (no member list to forget
+// when the class grows). Move-only; declared as EventStream's last member,
+// so it revokes before the socket members it guards are torn down.
+class SharedViewOwner {
+ public:
+  SharedViewOwner() = default;
+  ~SharedViewOwner() { End(); }
+  SharedViewOwner(SharedViewOwner&& other) noexcept
+      : state_(std::move(other.state_)), socket_(std::exchange(other.socket_, nullptr)) {}
+  SharedViewOwner& operator=(SharedViewOwner&& other) noexcept {
+    if (this != &other) {
+      End();
+      state_ = std::move(other.state_);
+      socket_ = std::exchange(other.socket_, nullptr);
+    }
+    return *this;
+  }
+  SharedViewOwner(const SharedViewOwner&) = delete;
+  SharedViewOwner& operator=(const SharedViewOwner&) = delete;
+
+  // The state handles share, created on first use (a stream that never
+  // shares carries none and End() is a no-op).
+  std::shared_ptr<SharedSessionState> Ensure(http::WebSocket* socket) {
+    if (state_ == nullptr) {
+      state_ = std::make_shared<SharedSessionState>();
+      state_->socket = socket;
+      socket_ = socket;
+    }
+    return state_;
+  }
+
+  // Revoke-then-drain: null the pointer so no new handle operation starts,
+  // close the socket so any operation already inside a call unblocks, wait
+  // for the in-flight count to drain. After this returns no handle can
+  // reach the socket again, so the borrow (or owned socket) may die.
+  void End() {
+    if (state_ == nullptr) return;
+    const std::shared_ptr<SharedSessionState> state = std::move(state_);
+    {
+      const std::lock_guard<std::mutex> lock(state->mutex);
+      state->socket = nullptr;
+    }
+    socket_->Close();
+    std::unique_lock<std::mutex> lock(state->mutex);
+    state->idle.wait(lock, [&state] { return state->active == 0; });
+    socket_ = nullptr;
+  }
+
+ private:
+  std::shared_ptr<SharedSessionState> state_;
+  http::WebSocket* socket_ = nullptr;  // set iff state_ exists
+};
+
 }  // namespace internal
 
 // The owning session handle (issue #112): what EventStream::Share() mints.
@@ -152,30 +206,20 @@ class EventStream {
   EventStream(http::WebSocket& socket, Encoder encode, Decoder decode)
       : socket_(&socket), encode_(std::move(encode)), decode_(std::move(decode)) {}
 
-  // Ends the shared view, if Share() ever minted one: closes the session
-  // (unblocking any handle operation mid-call), waits for those operations
-  // to drain, and revokes the socket from every handle. A stream that never
-  // called Share() destructs exactly as before — nothing happens; in
-  // particular an owned client stream still ends its session by Close() or
-  // by dropping the socket's last reference.
-  ~EventStream() { EndSharedView(); }
-
-  EventStream(EventStream&& other) noexcept = default;
-  EventStream& operator=(EventStream&& other) noexcept {
-    if (this != &other) {
-      EndSharedView();
-      owned_ = std::move(other.owned_);
-      socket_ = other.socket_;
-      encode_ = std::move(other.encode_);
-      decode_ = std::move(other.decode_);
-      state_ = std::move(other.state_);
-    }
-    return *this;
-  }
-  // Two copies would each claim the teardown above; handles (Share) are how
-  // a session fans out, so the stream itself stays single-owner.
-  EventStream(const EventStream&) = delete;
-  EventStream& operator=(const EventStream&) = delete;
+  // Destruction (and move-assignment over a live stream) ends the shared
+  // view, if Share() ever minted one: view_ closes the session (unblocking
+  // any handle operation mid-call), waits those operations out, and revokes
+  // the socket from every handle. A stream that never called Share()
+  // destructs exactly as before — nothing happens; in particular an owned
+  // client stream still ends its session by Close() or by dropping the
+  // socket's last reference. Copying is deleted (via the move-only view):
+  // two copies would each claim that teardown; handles (Share) are how a
+  // session fans out, so the stream itself stays single-owner.
+  ~EventStream() = default;
+  EventStream(EventStream&&) noexcept = default;
+  // No explicit noexcept: the computed one depends on std::function's
+  // move-assignment, which the standard leaves unspecified.
+  EventStream& operator=(EventStream&&) = default;
 
   // Encodes and sends one event, blocking until its frame is on the wire.
   // An encoder failure surfaces as-is and leaves the session untouched;
@@ -216,38 +260,27 @@ class EventStream {
   // A handle safe to hold beyond this stream's lifetime (issue #112) — the
   // hub seam: a handler passes Share() to a registry
   // (smithy::server::SessionRegistry) instead of parking its borrowed
-  // `stream&` in one. All handles share one revocable view of the session;
-  // destroying the stream closes the session and leaves them failing softly
-  // with Error::Transport. Call from the thread that owns the stream (it
-  // mutates the stream), as many times as you like.
+  // `stream&` in one. Every call returns the same handle, and all of a
+  // stream's handles see one revocable view of the session; destroying the
+  // stream closes the session and leaves them failing softly with
+  // Error::Transport. Call from the thread that owns the stream (it mutates
+  // the stream), as many times as you like.
   std::shared_ptr<EventStreamHandle<Tx>> Share() {
-    if (state_ == nullptr) {
-      state_ = std::make_shared<internal::SharedSessionState>();
-      state_->socket = socket_;
+    if (handle_ == nullptr) {
+      handle_.reset(new EventStreamHandle<Tx>(view_.Ensure(socket_), encode_));
     }
-    return std::shared_ptr<EventStreamHandle<Tx>>(new EventStreamHandle<Tx>(state_, encode_));
+    return handle_;
   }
 
  private:
-  // Revoke-then-drain (see SharedSessionState): after this returns, no
-  // handle can reach the socket again, so the borrow (or owned_) may die.
-  void EndSharedView() {
-    if (state_ == nullptr) return;
-    const std::shared_ptr<internal::SharedSessionState> state = std::move(state_);
-    {
-      const std::lock_guard<std::mutex> lock(state->mutex);
-      state->socket = nullptr;  // no new handle operation starts
-    }
-    socket_->Close();  // unblocks any operation already inside a socket call
-    std::unique_lock<std::mutex> lock(state->mutex);
-    state->idle.wait(lock, [&state] { return state->active == 0; });
-  }
-
   std::shared_ptr<http::WebSocket> owned_;  // null on the borrowed path
   http::WebSocket* socket_;
   Encoder encode_;
   Decoder decode_;
-  std::shared_ptr<internal::SharedSessionState> state_;  // null until Share()
+  std::shared_ptr<EventStreamHandle<Tx>> handle_;  // null until Share()
+  // Last member on purpose: its teardown (End) runs first and needs the
+  // socket members above still alive.
+  internal::SharedViewOwner view_;
 };
 
 }  // namespace smithy::eventstream

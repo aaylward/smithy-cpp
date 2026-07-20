@@ -1,6 +1,7 @@
 #ifndef SMITHY_HTTP_WEBSOCKET_PAIR_H_
 #define SMITHY_HTTP_WEBSOCKET_PAIR_H_
 
+#include <cstddef>
 #include <memory>
 #include <utility>
 
@@ -29,6 +30,12 @@ namespace smithy::http {
 //   thread. There is no idle timeout — nothing here can vanish.
 class InMemoryWebSocketPair {
  public:
+  // Each direction's queue bound (the Beast session's receive-buffer
+  // analog): a stalled receiver blocks its sender after this many queued
+  // messages. Exported so tests provoking backpressure can derive their
+  // fill counts and margins from the real value instead of restating it.
+  static constexpr std::size_t kQueueDepth = 8;
+
   // The two connected ends; each keeps the shared session alive.
   static std::pair<std::shared_ptr<WebSocket>, std::shared_ptr<WebSocket>> Create();
 };

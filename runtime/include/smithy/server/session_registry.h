@@ -77,9 +77,7 @@ class SessionRegistry {
   };
 
   SessionRegistry() : SessionRegistry(Options{}) {}
-  explicit SessionRegistry(Options options)
-      : options_(std::move(options)),
-        capacity_(options_.queue_capacity < 1 ? 1 : options_.queue_capacity) {}
+  explicit SessionRegistry(Options options) : options_(Normalize(std::move(options))) {}
 
   // Closes every remaining session and joins every writer thread. Sessions
   // still registered here were leaked by their handlers (Remove-on-exit);
@@ -96,11 +94,7 @@ class SessionRegistry {
     }
     for (const auto& entry : all) {
       entry->handle->Close();  // unblocks a writer mid-Send
-      {
-        const std::lock_guard<std::mutex> lock(entry->mutex);
-        entry->stopping = true;
-      }
-      entry->wake.notify_all();
+      RequestStop(*entry);
     }
     for (const auto& entry : all) entry->writer.join();
   }
@@ -115,14 +109,13 @@ class SessionRegistry {
   bool Add(Id id, Handle handle) {
     if (handle == nullptr) return false;
     auto entry = std::make_shared<Entry>(std::move(handle));
+    const std::lock_guard<std::mutex> lock(mutex_);
+    ReapLocked();
+    if (!sessions_.emplace(std::move(id), entry).second) return false;
+    // Under the lock, so nothing can observe (or retire) an entry whose
+    // writer member is not yet set.
     entry->writer = std::thread([entry] { WriterLoop(*entry); });
-    {
-      const std::lock_guard<std::mutex> lock(mutex_);
-      ReapLocked();
-      if (sessions_.emplace(std::move(id), entry).second) return true;
-    }
-    StopWriter(*entry);
-    return false;
+    return true;
   }
 
   // Deregisters id: its undelivered events are discarded and its writer
@@ -141,12 +134,7 @@ class SessionRegistry {
       retired_.push_back(entry);
       ReapLocked();
     }
-    {
-      const std::lock_guard<std::mutex> lock(entry->mutex);
-      entry->stopping = true;
-      entry->queue.clear();
-    }
-    entry->wake.notify_all();
+    RequestStop(*entry);
     drained_.notify_all();
     return true;
   }
@@ -170,19 +158,20 @@ class SessionRegistry {
   // skipped; make runs only for registered ones, outside all registry
   // locks). Returns how many were queued.
   std::size_t Broadcast(const std::vector<Id>& ids, const std::function<Tx(const Id&)>& make) {
-    std::vector<std::pair<Id, std::shared_ptr<Entry>>> targets;
+    // Borrow the caller's ids rather than copying them; they outlive the call.
+    std::vector<std::pair<const Id*, std::shared_ptr<Entry>>> targets;
     targets.reserve(ids.size());
     {
       const std::lock_guard<std::mutex> lock(mutex_);
       for (const Id& id : ids) {
         if (const auto it = sessions_.find(id); it != sessions_.end()) {
-          targets.emplace_back(id, it->second);
+          targets.emplace_back(&id, it->second);
         }
       }
     }
     std::size_t queued = 0;
     for (auto& [id, entry] : targets) {
-      if (Enqueue(id, *entry, make(id))) ++queued;
+      if (Enqueue(*id, *entry, make(*id))) ++queued;
     }
     return queued;
   }
@@ -192,9 +181,24 @@ class SessionRegistry {
     return Broadcast(ids, [&event](const Id&) { return event; });
   }
 
-  // Broadcast to every currently registered session.
-  std::size_t Broadcast(const std::function<Tx(const Id&)>& make) { return Broadcast(Ids(), make); }
-  std::size_t Broadcast(const Tx& event) { return Broadcast(Ids(), event); }
+  // Broadcast to every currently registered session (one registry pass, no
+  // intermediate Ids() snapshot).
+  std::size_t Broadcast(const std::function<Tx(const Id&)>& make) {
+    std::vector<std::pair<Id, std::shared_ptr<Entry>>> targets;
+    {
+      const std::lock_guard<std::mutex> lock(mutex_);
+      targets.reserve(sessions_.size());
+      for (const auto& [id, entry] : sessions_) targets.emplace_back(id, entry);
+    }
+    std::size_t queued = 0;
+    for (auto& [id, entry] : targets) {
+      if (Enqueue(id, *entry, make(id))) ++queued;
+    }
+    return queued;
+  }
+  std::size_t Broadcast(const Tx& event) {
+    return Broadcast([&event](const Id&) { return event; });
+  }
 
   // Closes every registered session (idempotent, non-blocking): each
   // blocked handler wakes and returns, unregistering itself on the way out.
@@ -240,11 +244,16 @@ class SessionRegistry {
     std::mutex mutex;
     std::condition_variable wake;
     std::deque<Tx> queue;
-    bool stopping = false;  // Remove/teardown asked the writer to exit
-    bool broken = false;    // delivery failed; the session is over
+    bool stopping = false;  // the writer must exit: Remove/teardown asked,
+                            // or its own delivery failed (queue discarded)
     bool done = false;      // the writer exited; join is now instant
-    std::thread writer;
+    std::thread writer;     // started by Add, joined by Reap/destructor
   };
+
+  static Options Normalize(Options options) {
+    if (options.queue_capacity < 1) options.queue_capacity = 1;
+    return options;
+  }
 
   // The per-session delivery loop: FIFO off the queue, one blocking Send at
   // a time. A failed Send is terminal for delivery (the session is closed
@@ -262,7 +271,7 @@ class SessionRegistry {
       }
       if (!entry.handle->Send(event).ok()) {
         const std::lock_guard<std::mutex> lock(entry.mutex);
-        entry.broken = true;
+        entry.stopping = true;
         entry.queue.clear();
         break;
       }
@@ -271,15 +280,30 @@ class SessionRegistry {
     entry.done = true;
   }
 
-  bool Enqueue(const Id& id, Entry& entry, Tx event) {
+  // Ask the writer to exit, discarding undelivered events. (The writer's
+  // own failure path sets the same state inline, under its held lock.)
+  static void RequestStop(Entry& entry) {
     {
       const std::lock_guard<std::mutex> lock(entry.mutex);
-      if (entry.stopping || entry.broken) return false;
-      if (entry.queue.size() < capacity_) {
+      entry.stopping = true;
+      entry.queue.clear();
+    }
+    entry.wake.notify_all();
+  }
+
+  bool Enqueue(const Id& id, Entry& entry, Tx event) {
+    bool queued = false;
+    {
+      const std::lock_guard<std::mutex> lock(entry.mutex);
+      if (entry.stopping) return false;
+      if (entry.queue.size() < options_.queue_capacity) {
         entry.queue.push_back(std::move(event));
-        entry.wake.notify_one();
-        return true;
+        queued = true;
       }
+    }
+    if (queued) {
+      entry.wake.notify_one();  // outside the lock: the writer wakes runnable
+      return true;
     }
     // Full queue: drop the event, let policy decide the session's fate —
     // with no locks held, so the callback may call back into the registry.
@@ -312,17 +336,7 @@ class SessionRegistry {
     }
   }
 
-  static void StopWriter(Entry& entry) {
-    {
-      const std::lock_guard<std::mutex> lock(entry.mutex);
-      entry.stopping = true;
-    }
-    entry.wake.notify_all();
-    entry.writer.join();
-  }
-
   const Options options_;
-  const std::size_t capacity_;
   mutable std::mutex mutex_;
   std::condition_variable drained_;
   std::map<Id, std::shared_ptr<Entry>> sessions_;

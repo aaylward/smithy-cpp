@@ -19,24 +19,20 @@ fail() {
   exit 1
 }
 
-# Polls until the file contains a line matching the pattern — how the test
-# waits out event-stream delivery without racing it.
-wait_for() { # <file> <grep -E pattern> <description>
-  for _ in $(seq 1 150); do
-    grep -E -q "$2" "$1" 2>/dev/null && return 0
-    sleep 0.2
-  done
-  fail "timed out waiting for '$3' in $1"
-}
-
-# Same, but for the Nth occurrence — for events whose first occurrence is
-# already in the file (a second departure by the same nickname).
+# Polls until the file contains the Nth line matching the pattern — how the
+# test waits out event-stream delivery without racing it. Counted matches
+# exist for events whose first occurrence is already in the file (a second
+# departure by the same nickname).
 wait_for_count() { # <file> <grep -E pattern> <count> <description>
   for _ in $(seq 1 150); do
     [ "$(grep -E -c "$2" "$1" 2>/dev/null || true)" -ge "$3" ] && return 0
     sleep 0.2
   done
   fail "timed out waiting for occurrence $3 of '$4' in $1"
+}
+
+wait_for() { # <file> <grep -E pattern> <description>
+  wait_for_count "$1" "$2" 1 "$3"
 }
 
 # Absolute paths: the fifos live in TEST_TMPDIR, so the script cd's away

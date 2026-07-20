@@ -122,15 +122,13 @@ int Run(int argc, char** argv) {
         handle->Close();
         return;
       }
-      if (line == "/leave") {
-        (void)handle->Send(example::chat::ChatEvents::FromLeave(example::chat::LeaveNotice{}));
-        return;  // the hub answers with the goodbye and the close
-      }
+      if (line == "/leave") break;
       example::chat::ChatMessage message;
       message.text = line;
       if (!handle->Send(example::chat::ChatEvents::FromMessage(message)).ok()) return;
     }
-    // stdin closed: say goodbye like /leave.
+    // /leave or stdin closed: say goodbye; the hub answers with its own
+    // goodbye and the close.
     (void)handle->Send(example::chat::ChatEvents::FromLeave(example::chat::LeaveNotice{}));
   }).detach();
 

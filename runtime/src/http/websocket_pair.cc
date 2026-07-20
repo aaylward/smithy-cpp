@@ -12,9 +12,9 @@
 namespace smithy::http {
 namespace {
 
-// The Beast session's receive-side buffer bound (beast_transport.cc): a
-// stalled receiver blocks its sender after this many queued messages.
-constexpr std::size_t kQueueDepth = 8;
+// The Beast session's receive-side buffer bound (beast_transport.cc),
+// published on the class so backpressure tests derive from it.
+constexpr std::size_t kQueueDepth = InMemoryWebSocketPair::kQueueDepth;
 
 // The session both ends share: one queue per direction, one session-wide
 // closed flag (either end's Close ends the session for both), one mutex and

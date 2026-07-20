@@ -45,6 +45,10 @@ Outcome<Message> EncodeNote(const Note& note) {
 using ServerStream = EventStream<Note, NoEvents>;
 using Registry = SessionRegistry<Note>;
 
+// The pair's per-direction bound, from the class: fill counts and margins
+// derive from it so retuning the pair cannot silently invalidate them.
+constexpr std::size_t kWireDepth = http::InMemoryWebSocketPair::kQueueDepth;
+
 // One hub-side session: the server's stream (whose Share() feeds the
 // registry) plus the client's raw end for observing what was delivered.
 struct Session {
@@ -68,6 +72,16 @@ std::optional<std::string> NextAt(Session& session) {
   auto message = session.client->Receive();
   if (!message.ok() || !message->has_value()) return std::nullopt;
   return (**message).payload.ToString();
+}
+
+// Polls SendTo until the registry refuses — the moment the writer notices a
+// dead session is asynchronous; the deadline only bounds a failing test.
+bool RefusedEventually(Registry& registry, const std::string& id) {
+  for (int i = 0; i < 500; ++i) {
+    if (!registry.SendTo(id, Note{"probe"})) return true;
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return false;
 }
 
 TEST(SessionRegistryTest, SendToQueuesAndTheWriterDeliversInOrder) {
@@ -142,10 +156,10 @@ TEST(SessionRegistryTest, BroadcastToEveryoneAndIdenticalBytesOverloads) {
 }
 
 TEST(SessionRegistryTest, ASlowConsumerNeverBlocksTheBroadcasterAndIsClosed) {
-  // ada reads; grace never does. The pair's wire bound (8) plus the
-  // registry queue (2) both fill, after which enqueueing to grace drops and
-  // the default policy closes her session — while ada keeps receiving and
-  // no Broadcast call ever blocks.
+  // ada reads; grace never does. Her wire bound and registry queue both
+  // fill, after which enqueueing to grace drops and the default policy
+  // closes her session — while ada keeps receiving and no Broadcast call
+  // ever blocks.
   Registry::Options options;
   options.queue_capacity = 2;
   Registry registry(std::move(options));
@@ -154,7 +168,7 @@ TEST(SessionRegistryTest, ASlowConsumerNeverBlocksTheBroadcasterAndIsClosed) {
   ASSERT_TRUE(registry.Add("ada", ada.handle));
   ASSERT_TRUE(registry.Add("grace", grace.handle));
 
-  constexpr int kBursts = 32;  // > wire bound + queue capacity, with margin
+  constexpr int kBursts = 4 * kWireDepth;  // > wire bound + queue, with margin
   for (int i = 0; i < kBursts; ++i) {
     registry.Broadcast({"ada", "grace"}, Note{"burst-" + std::to_string(i)});
     EXPECT_EQ(NextAt(ada), "burst-" + std::to_string(i));  // never stalled
@@ -166,14 +180,10 @@ TEST(SessionRegistryTest, ASlowConsumerNeverBlocksTheBroadcasterAndIsClosed) {
   while (NextAt(grace).has_value()) ++delivered;
   EXPECT_LT(delivered, kBursts);
 
-  // Her writer observed the failure; later sends to her report false.
-  // (Delivery failure marks the entry broken; the id stays registered until
-  // its handler removes it — bookkeeping is the application's.)
-  bool accepted = true;
-  for (int i = 0; i < 500 && (accepted = registry.SendTo("grace", Note{"post"})); ++i) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  EXPECT_FALSE(accepted);
+  // Her writer observed the failure; later sends to her report false. (The
+  // id stays registered until its handler removes it — bookkeeping is the
+  // application's.)
+  EXPECT_TRUE(RefusedEventually(registry, "grace"));
   EXPECT_TRUE(registry.SendTo("ada", Note{"still-here"}));
   EXPECT_EQ(NextAt(ada), "still-here");
 }
@@ -190,10 +200,10 @@ TEST(SessionRegistryTest, TheSlowConsumerCallbackReplacesTheCloseDefault) {
   Session grace = MakeSession();  // never reads
   ASSERT_TRUE(registry.Add("grace", grace.handle));
 
-  // Fill the wire (8) + the queue (1); everything past that drops into the
+  // Fill the wire + the queue (1); everything past that drops into the
   // callback instead of closing.
   int dropped = 0;
-  for (int i = 0; i < 16; ++i) {
+  for (std::size_t i = 0; i < 2 * kWireDepth; ++i) {
     if (!registry.SendTo("grace", Note{"n"})) ++dropped;
   }
   EXPECT_GT(dropped, 0);
@@ -205,15 +215,16 @@ TEST(SessionRegistryTest, TheSlowConsumerCallbackReplacesTheCloseDefault) {
 
 TEST(SessionRegistryTest, RemoveDiscardsUndeliveredButNeverCloses) {
   Registry::Options options;
-  options.queue_capacity = 16;
+  options.queue_capacity = 2 * kWireDepth;
   Registry registry(std::move(options));
   Session session = MakeSession();
   ASSERT_TRUE(registry.Add("ada", session.handle));
 
-  // Stall the wire (bound 8) so events pile up: the writer can pop at most
-  // nine (eight delivered, one blocked mid-Send) before the client drains,
-  // and Remove discards the rest outright.
-  for (int i = 0; i < 12; ++i) {
+  // Stall the wire so events pile up: the writer can pop at most the wire
+  // bound plus one blocked mid-Send before the client drains, and Remove
+  // discards the rest outright.
+  constexpr int kQueuedUp = kWireDepth + 4;
+  for (int i = 0; i < kQueuedUp; ++i) {
     ASSERT_TRUE(registry.SendTo("ada", Note{"queued-" + std::to_string(i)}));
   }
   ASSERT_TRUE(registry.Remove("ada"));
@@ -234,7 +245,7 @@ TEST(SessionRegistryTest, RemoveDiscardsUndeliveredButNeverCloses) {
   direct.join();
 
   // What arrived is a FIFO prefix; the tail Remove discarded never does.
-  EXPECT_LT(received.size(), 12U);
+  EXPECT_LT(received.size(), static_cast<std::size_t>(kQueuedUp));
   for (std::size_t i = 0; i < received.size(); ++i) {
     EXPECT_EQ(received[i], "queued-" + std::to_string(i));
   }
@@ -285,11 +296,7 @@ TEST(SessionRegistryTest, AStaleHandleStaysRegisteredWithoutDanger) {
   ASSERT_TRUE(registry.Add("ghost", session.handle));
   session.stream.reset();  // the borrow ends; the shared view is revoked
 
-  bool accepted = true;
-  for (int i = 0; i < 500 && (accepted = registry.SendTo("ghost", Note{"into-the-void"})); ++i) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  EXPECT_FALSE(accepted);
+  EXPECT_TRUE(RefusedEventually(registry, "ghost"));
   EXPECT_EQ(registry.size(), 1U);
   EXPECT_TRUE(registry.Remove("ghost"));
 }
@@ -307,7 +314,7 @@ TEST(SessionRegistryTest, TheDestructorClosesSessionsAndJoinsBlockedWriters) {
     Registry registry(std::move(options));
     ASSERT_TRUE(registry.Add("stalled", stalled.handle));
     ASSERT_TRUE(registry.Add("healthy", healthy.handle));
-    for (int i = 0; i < 16; ++i) registry.SendTo("stalled", Note{"pile-up"});
+    for (std::size_t i = 0; i < 2 * kWireDepth; ++i) registry.SendTo("stalled", Note{"pile-up"});
     registry.SendTo("healthy", Note{"one"});
     EXPECT_EQ(NextAt(healthy), "one");
   }

@@ -5,7 +5,7 @@
 // WebSocket hub hand-rolls, built on the two runtime primitives that make
 // it safe and short — owning session handles (EventStream::Share) and the
 // queued fan-out registry (smithy::server::SessionRegistry). Every session
-// registers its handle under "<room>/<name>"; room traffic fans out through
+// registers its handle under a SessionKey id; room traffic fans out through
 // the registry's bounded per-session queues, so one slow client never
 // stalls a room (the default policy disconnects it instead); and shutdown
 // is Drain(): close every session, wait for the handlers to unwind.
@@ -15,9 +15,10 @@
 // (hub_server_main.cc + hub_client_main.cc driven by shell commands).
 //
 // Room membership stays application-level on purpose (the issue's
-// non-goals): it is exactly the id scheme, nothing more. A production
-// service would validate names (a nickname containing '/' or a leading '#'
-// would confuse this toy scheme) the way it validates any input.
+// non-goals): it is exactly the SessionKey scheme, nothing more. A
+// production service would validate names (a nickname containing '/' or a
+// leading '#' would confuse this toy scheme) the way it validates any
+// input.
 
 #include <atomic>
 #include <chrono>
@@ -34,6 +35,24 @@
 
 namespace example::chat {
 
+// The app-level session-id scheme, in one place: "<room>/<name>", with
+// watcher names spelled "#watch-<n>" so occupancy can tell them apart.
+struct SessionKey {
+  std::string room;
+  std::string name;
+
+  bool watcher() const { return name.starts_with('#'); }
+  std::string Id() const { return room + "/" + name; }
+  // Everything in this key's room, watchers included.
+  std::string RoomPrefix() const { return room + "/"; }
+
+  static SessionKey Parse(const std::string& id) {
+    const std::size_t slash = id.find('/');
+    if (slash == std::string::npos) return {.room = id, .name = ""};
+    return {.room = id.substr(0, slash), .name = id.substr(slash + 1)};
+  }
+};
+
 class HubHandler final : public ChatHandler {
  public:
   using Registry = smithy::server::SessionRegistry<RoomEvents>;
@@ -42,14 +61,13 @@ class HubHandler final : public ChatHandler {
   explicit HubHandler(Registry::Options options) : registry_(std::move(options)) {}
 
   // The unary neighbor reports live occupancy straight from the registry:
-  // one converse member per "<room>/<name>" id (watchers, "#watch-<n>",
-  // observe without counting).
+  // one converse member per id (watchers observe without counting).
   smithy::Outcome<ListRoomsOutput> ListRooms(const ListRoomsInput&,
                                              const smithy::server::RequestContext&) override {
     std::map<std::string, int> occupancy;
     for (const std::string& id : registry_.Ids()) {
-      const auto [room, name] = SplitId(id);
-      if (!name.starts_with('#')) ++occupancy[room];
+      const SessionKey key = SessionKey::Parse(id);
+      if (!key.watcher()) ++occupancy[key.room];
     }
     ListRoomsOutput output;
     for (const auto& [room, members] : occupancy) {
@@ -60,20 +78,19 @@ class HubHandler final : public ChatHandler {
 
   smithy::Outcome<smithy::Unit> Converse(const ConverseInput& input, ConverseServerStream& stream,
                                          const smithy::server::RequestContext&) override {
-    const std::string name = input.nickname.value_or("anonymous");
-    const std::string id = input.room + "/" + name;
+    const SessionKey key{.room = input.room, .name = input.nickname.value_or("anonymous")};
+    const std::string id = key.Id();
 
     // The owning handle replaces the borrowed `stream&` in the registry —
     // Add's atomicity doubles as the nickname reservation.
     if (!registry_.Add(id, stream.Share())) {
-      smithy::Error taken =
-          smithy::Error::Modeled("Kicked", "nickname '" + name + "' is already in " + input.room);
-      taken.set_detail(
-          Kicked{.message = "nickname '" + name + "' is already in " + input.room, .by = "hub"});
+      const std::string reason = "nickname '" + key.name + "' is already in " + key.room;
+      smithy::Error taken = smithy::Error::Modeled("Kicked", reason);
+      taken.set_detail(Kicked{.message = reason, .by = "hub"});
       return taken;  // one typed exception message, then the close
     }
 
-    registry_.Broadcast(RoomIds(input.room), RoomEvents::FromJoined(MemberJoined{.member = name}));
+    registry_.Broadcast(RoomIds(key), RoomEvents::FromJoined(MemberJoined{.member = key.name}));
 
     bool left_cleanly = false;
     while (true) {
@@ -87,10 +104,10 @@ class HubHandler final : public ChatHandler {
       // Per-recipient construction — the redaction seam: the author reads
       // "you", everyone else reads the author's name.
       const std::string text = (*event)->as_message().text;
-      registry_.Broadcast(RoomIds(input.room), [&](const std::string& member) {
+      registry_.Broadcast(RoomIds(key), [&](const std::string& member) {
         ChatMessage view;
         view.text = text;
-        view.sender = member == id ? "you" : name;
+        view.sender = member == id ? "you" : key.name;
         return RoomEvents::FromMessage(view);
       });
     }
@@ -99,8 +116,8 @@ class HubHandler final : public ChatHandler {
     // only (Remove would discard this session's own copy anyway); the clean
     // leaver still gets its goodbye directly, on the stream it is draining.
     registry_.Remove(id);
-    registry_.Broadcast(RoomIds(input.room), RoomEvents::FromLeft(MemberLeft{.member = name}));
-    if (left_cleanly) (void)stream.Send(RoomEvents::FromLeft(MemberLeft{.member = name}));
+    registry_.Broadcast(RoomIds(key), RoomEvents::FromLeft(MemberLeft{.member = key.name}));
+    if (left_cleanly) (void)stream.Send(RoomEvents::FromLeft(MemberLeft{.member = key.name}));
     return smithy::Unit{};  // the generated caller closes the session
   }
 
@@ -108,12 +125,12 @@ class HubHandler final : public ChatHandler {
                                       const smithy::server::RequestContext&) override {
     // Watchers hold the same handle type as conversers (both directions
     // transmit RoomEvents), so one registry fans out to both.
-    const std::string id = input.room + "/#watch-" + std::to_string(next_watcher_.fetch_add(1) + 1);
-    (void)registry_.Add(id, stream.Share());
+    const SessionKey key{.room = input.room, .name = "#watch-" + std::to_string(++next_watcher_)};
+    (void)registry_.Add(key.Id(), stream.Share());
     // Watchers only listen: this returns at the client's close (nullopt), a
     // wire failure, or the hub closing the session (drain / slow-consumer).
     (void)stream.Receive();
-    registry_.Remove(id);
+    registry_.Remove(key.Id());
     return smithy::Unit{};
   }
 
@@ -124,13 +141,11 @@ class HubHandler final : public ChatHandler {
   std::size_t sessions() const { return registry_.size(); }
 
  private:
-  static std::pair<std::string, std::string> SplitId(const std::string& id) {
-    const std::size_t slash = id.find('/');
-    return {id.substr(0, slash), slash == std::string::npos ? "" : id.substr(slash + 1)};
-  }
-
-  std::vector<std::string> RoomIds(const std::string& room) const {
-    const std::string prefix = room + "/";
+  // A prefix scan of the whole registry keeps the example honest about what
+  // the registry provides; a hub with many busy rooms would keep its own
+  // room → members index beside it and skip the scan.
+  std::vector<std::string> RoomIds(const SessionKey& key) const {
+    const std::string prefix = key.RoomPrefix();
     std::vector<std::string> ids;
     for (std::string& id : registry_.Ids()) {
       if (id.starts_with(prefix)) ids.push_back(std::move(id));

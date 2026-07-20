@@ -17,6 +17,7 @@ cc_test(
     srcs = [
         "chat_e2e_test.cc",
         "room_handler.h",
+        "stream_test_fixture.h",
     ],
     deps = [
         "//examples/chat/generated:client",
@@ -61,6 +62,7 @@ cc_test(
     srcs = [
         "hub_e2e_test.cc",
         "hub_handler.h",
+        "stream_test_fixture.h",
     ],
     deps = [
         "//examples/chat/generated:client",

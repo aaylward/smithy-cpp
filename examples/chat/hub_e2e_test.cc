@@ -24,6 +24,7 @@
 #include "smithy/http/message.h"
 #include "smithy/http/websocket.h"
 #include "smithy/http/websocket_pair.h"
+#include "stream_test_fixture.h"
 
 namespace example::chat {
 namespace {
@@ -37,39 +38,24 @@ std::optional<RoomEvents> Next(Stream& stream) {
   return **event;
 }
 
-class HubEndToEndTest : public testing::Test {
+class HubEndToEndTest : public StreamTestFixture {
  protected:
-  void SetUp() override { StartWith({}); }
+  void SetUp() override { StartHub({}); }
 
-  void StartWith(HubHandler::Registry::Options options) {
+  // The shared fixture (stream_test_fixture.h) around a fresh HubHandler.
+  void StartHub(HubHandler::Registry::Options options) {
     handler_ = std::make_shared<HubHandler>(std::move(options));
-    server_ = std::make_unique<ChatServer>(handler_);
-    auto loopback = std::make_shared<smithy::http::Loopback>();
-    ASSERT_TRUE(loopback->Start(server_->Handler()).ok());
-    smithy::ClientConfig config;
-    config.retry.max_attempts = 1;
-    config.http_client = loopback;  // the unary neighbor's transport
-    config.websocket_dialer = [this](const smithy::http::WebSocketDialRequest& request)
-        -> smithy::Outcome<std::shared_ptr<smithy::http::WebSocket>> {
-      auto [near, far] = smithy::http::InMemoryWebSocketPair::Create();
-      smithy::http::HttpRequest upgrade;
-      upgrade.method = "GET";
-      upgrade.target = request.target;
-      upgrade.headers = request.headers;
-      sessions_.push_back(far);
-      threads_.emplace_back([serve = server_->StreamRouter()->Serve(), upgrade, session = far] {
-        serve(upgrade, *session);
-      });
-      return near;
-    };
-    auto client = ChatClient::Create(std::move(config));
-    ASSERT_TRUE(client.ok()) << client.error().message();
-    client_ = std::make_unique<ChatClient>(std::move(*client));
+    StartWith(handler_);
   }
 
-  void TearDown() override {
-    for (auto& session : sessions_) session->Close();
-    for (std::thread& thread : threads_) thread.join();
+  // Sessions register a beat after their dial returns (the serve thread
+  // races the caller), so tests wait for the hub's count before acting on
+  // membership.
+  void WaitForSessions(std::size_t count) {
+    for (int i = 0; i < 100 && handler_->sessions() < count; ++i) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    ASSERT_EQ(handler_->sessions(), count);
   }
 
   // Dials Converse for name into room and drains the join echo every member
@@ -93,10 +79,6 @@ class HubEndToEndTest : public testing::Test {
   }
 
   std::shared_ptr<HubHandler> handler_;
-  std::unique_ptr<ChatServer> server_;
-  std::unique_ptr<ChatClient> client_;
-  std::vector<std::shared_ptr<smithy::http::WebSocket>> sessions_;
-  std::vector<std::thread> threads_;
 };
 
 TEST_F(HubEndToEndTest, MessagesFanOutWithPerViewerRedaction) {
@@ -139,12 +121,7 @@ TEST_F(HubEndToEndTest, AWatcherObservesTheRoomThroughTheSameRegistry) {
   auto watcher = client_->Watch(input);
   ASSERT_TRUE(watcher.ok()) << watcher.error().message();
 
-  // The watcher registers asynchronously (its serve thread races this
-  // send), so wait until the hub reports both sessions.
-  for (int i = 0; i < 100 && handler_->sessions() < 2; ++i) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  ASSERT_EQ(handler_->sessions(), 2U);
+  WaitForSessions(2);
 
   ASSERT_TRUE(ada.Send(Say("for the record")).ok());
   const auto observed = Next(*watcher);
@@ -257,7 +234,7 @@ TEST_F(HubEndToEndTest, ASlowConsumerIsDisconnectedNotWaitedFor) {
   // it. This is the hub's answer to the slowest client's TCP window.
   HubHandler::Registry::Options options;
   options.queue_capacity = 2;
-  StartWith(std::move(options));
+  StartHub(std::move(options));
 
   ConverseClientStream ada = Join("lobby", "ada");
   ConverseClientStream sloth = Join("lobby", "sloth");
@@ -266,7 +243,7 @@ TEST_F(HubEndToEndTest, ASlowConsumerIsDisconnectedNotWaitedFor) {
   // ada floods; sloth never reads. Reading each round's own echo asserts
   // liveness and keeps ada's wire drained; the hub's left-announcement for
   // the disconnected sloth interleaves whenever the policy fires.
-  constexpr int kFlood = 40;  // > wire bound (8) + queue (2), with margin
+  constexpr int kFlood = 5 * smithy::http::InMemoryWebSocketPair::kQueueDepth;
   bool sloth_left = false;
   for (int i = 0; i < kFlood; ++i) {
     ASSERT_TRUE(ada.Send(Say("tick-" + std::to_string(i))).ok());
@@ -306,10 +283,7 @@ TEST_F(HubEndToEndTest, DrainClosesEverySessionAndEmptiesTheHub) {
   input.room = "lobby";
   auto watcher = client_->Watch(input);
   ASSERT_TRUE(watcher.ok()) << watcher.error().message();
-  for (int i = 0; i < 100 && handler_->sessions() < 3; ++i) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  ASSERT_EQ(handler_->sessions(), 3U);
+  WaitForSessions(3);
 
   // Proposal 3, end to end: every handler wakes, unwinds, deregisters.
   EXPECT_TRUE(handler_->Drain(std::chrono::milliseconds(5000)));

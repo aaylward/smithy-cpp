@@ -32,58 +32,16 @@
 #include "smithy/http/message.h"
 #include "smithy/http/websocket.h"
 #include "smithy/http/websocket_pair.h"
+#include "stream_test_fixture.h"
 
 namespace example::chat {
 namespace {
 
-class ChatEndToEndTest : public testing::Test {
+// The shared in-memory fixture (stream_test_fixture.h), seeded with the
+// reference RoomHandler.
+class ChatEndToEndTest : public StreamTestFixture {
  protected:
-  void SetUp() override {
-    server_ = std::make_unique<ChatServer>(std::make_shared<RoomHandler>());
-    auto loopback = std::make_shared<smithy::http::Loopback>();
-    ASSERT_TRUE(loopback->Start(server_->Handler()).ok());
-    smithy::ClientConfig config;
-    config.retry.max_attempts = 1;
-    config.http_client = loopback;  // the unary neighbor's transport
-    // The streaming seam (ADR-0016): hand the client one end of an in-memory
-    // pair and serve the other end through the generated StreamRouter,
-    // synthesizing the upgrade request a real transport would deliver.
-    config.websocket_dialer = [this](const smithy::http::WebSocketDialRequest& request)
-        -> smithy::Outcome<std::shared_ptr<smithy::http::WebSocket>> {
-      last_dialed_target_ = request.target;
-      auto [near, far] = smithy::http::InMemoryWebSocketPair::Create();
-      smithy::http::HttpRequest upgrade;
-      upgrade.method = "GET";
-      upgrade.target = request.target;
-      upgrade.headers = request.headers;
-      server_sessions_.push_back(far);
-      if (serve_far_end_) {
-        serve_threads_.emplace_back([serve = server_->StreamRouter()->Serve(), upgrade,
-                                     session = far] { serve(upgrade, *session); });
-      }
-      return near;
-    };
-    auto client = ChatClient::Create(std::move(config));
-    ASSERT_TRUE(client.ok()) << client.error().message();
-    client_ = std::make_unique<ChatClient>(std::move(*client));
-  }
-
-  void TearDown() override {
-    // Close is idempotent; this unblocks any serve loop a failed test body
-    // left mid-Receive, so the joins below cannot hang.
-    for (auto& session : server_sessions_) session->Close();
-    for (std::thread& thread : serve_threads_) thread.join();
-  }
-
-  std::unique_ptr<ChatServer> server_;
-  std::unique_ptr<ChatClient> client_;
-  std::vector<std::shared_ptr<smithy::http::WebSocket>> server_sessions_;
-  std::vector<std::thread> serve_threads_;
-  std::string last_dialed_target_;
-  // Cleared by a test that wants the dialed pair's far end raw — held in
-  // server_sessions_ (so TearDown still closes it) but not served through
-  // the router, leaving the test free to speak the wire itself.
-  bool serve_far_end_ = true;
+  void SetUp() override { StartWith(std::make_shared<RoomHandler>()); }
 };
 
 TEST_F(ChatEndToEndTest, BidiEventsRoundTripThroughTheGeneratedPair) {
@@ -208,8 +166,8 @@ TEST_F(ChatEndToEndTest, UnknownEventTypeIsATerminalSerializationError) {
   input.nickname = "eve";
   auto stream = client_->Converse(input);
   ASSERT_TRUE(stream.ok()) << stream.error().message();
-  ASSERT_EQ(server_sessions_.size(), 1U);
-  const std::shared_ptr<smithy::http::WebSocket> far = server_sessions_.back();
+  ASSERT_EQ(sessions_.size(), 1U);
+  const std::shared_ptr<smithy::http::WebSocket> far = sessions_.back();
 
   // A well-formed event message whose :event-type matches no RoomEvents
   // member — a newer peer's event, or a corrupted one.
@@ -328,42 +286,8 @@ class ErrorScriptHandler final : public ChatHandler {
   }
 };
 
-// The same dialer seam as ChatEndToEndTest, with the handler injectable.
-class ScriptedChatTest : public testing::Test {
- protected:
-  void StartWith(std::shared_ptr<ChatHandler> handler) {
-    server_ = std::make_unique<ChatServer>(std::move(handler));
-    smithy::ClientConfig config;
-    config.retry.max_attempts = 1;
-    config.http_client = std::make_shared<smithy::http::Loopback>();
-    config.websocket_dialer = [this](const smithy::http::WebSocketDialRequest& request)
-        -> smithy::Outcome<std::shared_ptr<smithy::http::WebSocket>> {
-      auto [near, far] = smithy::http::InMemoryWebSocketPair::Create();
-      smithy::http::HttpRequest upgrade;
-      upgrade.method = "GET";
-      upgrade.target = request.target;
-      upgrade.headers = request.headers;
-      sessions_.push_back(far);
-      threads_.emplace_back([serve = server_->StreamRouter()->Serve(), upgrade, session = far] {
-        serve(upgrade, *session);
-      });
-      return near;
-    };
-    auto client = ChatClient::Create(std::move(config));
-    ASSERT_TRUE(client.ok()) << client.error().message();
-    client_ = std::make_unique<ChatClient>(std::move(*client));
-  }
-
-  void TearDown() override {
-    for (auto& session : sessions_) session->Close();
-    for (std::thread& thread : threads_) thread.join();
-  }
-
-  std::unique_ptr<ChatServer> server_;
-  std::unique_ptr<ChatClient> client_;
-  std::vector<std::shared_ptr<smithy::http::WebSocket>> sessions_;
-  std::vector<std::thread> threads_;
-};
+// The same shared fixture, with each test injecting its handler.
+class ScriptedChatTest : public StreamTestFixture {};
 
 TEST_F(ScriptedChatTest, SendingAnEmptyUnionFailsValidationAndSparesTheSession) {
   // The generated encoder's tail: a union with no member engaged is refused

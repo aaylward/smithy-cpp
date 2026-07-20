@@ -1,0 +1,356 @@
+// Pins the SessionRegistry contract (issue #112): owning handles in, queued
+// non-blocking fan-out out. The load-bearing behaviors: SendTo/Broadcast
+// never block on a slow client's wire, per-recipient event construction,
+// the slow-consumer policy (close-on-full by default, callback override),
+// Remove-without-close bookkeeping, CloseAll/Drain as the graceful-shutdown
+// step, and a destructor that always joins its writers — plus the stale-
+// handle case the shared view exists for: a session whose stream died stays
+// registered without dangling.
+
+#include "smithy/server/session_registry.h"
+
+#include <gtest/gtest.h>
+
+#include <atomic>
+#include <chrono>
+#include <memory>
+#include <optional>
+#include <string>
+#include <thread>
+#include <utility>
+#include <vector>
+
+#include "smithy/eventstream/event_stream.h"
+#include "smithy/eventstream/frame.h"
+#include "smithy/http/websocket.h"
+#include "smithy/http/websocket_pair.h"
+
+namespace smithy::server {
+namespace {
+
+using eventstream::EventStream;
+using eventstream::EventStreamHandle;
+using eventstream::Message;
+using eventstream::NoEvents;
+
+// The hub's outbound event: what a game server pushes to each player.
+struct Note {
+  std::string text;
+};
+
+Outcome<Message> EncodeNote(const Note& note) {
+  return Message{.headers = {{":event-type", "note"}}, .payload = Blob::FromString(note.text)};
+}
+
+using ServerStream = EventStream<Note, NoEvents>;
+using Registry = SessionRegistry<Note>;
+
+// The pair's per-direction bound, from the class: fill counts and margins
+// derive from it so retuning the pair cannot silently invalidate them.
+constexpr std::size_t kWireDepth = http::InMemoryWebSocketPair::kQueueDepth;
+
+// One hub-side session: the server's stream (whose Share() feeds the
+// registry) plus the client's raw end for observing what was delivered.
+struct Session {
+  std::shared_ptr<http::WebSocket> client;
+  std::unique_ptr<ServerStream> stream;
+  std::optional<EventStreamHandle<Note>> handle;
+};
+
+Session MakeSession() {
+  auto [client_end, server_end] = http::InMemoryWebSocketPair::Create();
+  Session session;
+  session.client = client_end;
+  session.stream = std::make_unique<ServerStream>(server_end, EncodeNote, nullptr);
+  session.handle = session.stream->Share();
+  return session;
+}
+
+// Drains one delivered event's payload at the client, or nullopt on the
+// session's clean end.
+std::optional<std::string> NextAt(Session& session) {
+  auto message = session.client->Receive();
+  if (!message.ok() || !message->has_value()) return std::nullopt;
+  return (**message).payload.ToString();
+}
+
+// Polls SendTo until the registry refuses — the moment the writer notices a
+// dead session is asynchronous; the deadline only bounds a failing test.
+bool RefusedEventually(Registry& registry, const std::string& id) {
+  for (int i = 0; i < 500; ++i) {
+    if (!registry.SendTo(id, Note{"probe"})) return true;
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return false;
+}
+
+TEST(SessionRegistryTest, SendToQueuesAndTheWriterDeliversInOrder) {
+  Registry registry;
+  Session session = MakeSession();
+  ASSERT_TRUE(registry.Add("ada", *session.handle));
+
+  for (int i = 0; i < 5; ++i) {
+    EXPECT_TRUE(registry.SendTo("ada", Note{"note-" + std::to_string(i)}));
+  }
+  for (int i = 0; i < 5; ++i) {
+    EXPECT_EQ(NextAt(session), "note-" + std::to_string(i));
+  }
+  EXPECT_EQ(registry.size(), 1U);
+  EXPECT_TRUE(registry.Remove("ada"));
+}
+
+TEST(SessionRegistryTest, SendToAnUnknownIdReportsFalse) {
+  Registry registry;
+  EXPECT_FALSE(registry.SendTo("nobody", Note{"lost"}));
+  EXPECT_EQ(registry.size(), 0U);
+}
+
+TEST(SessionRegistryTest, ADuplicateAddIsRefusedAndHarmless) {
+  Registry registry;
+  Session first = MakeSession();
+  Session second = MakeSession();
+  ASSERT_TRUE(registry.Add("ada", *first.handle));
+  EXPECT_FALSE(registry.Add("ada", *second.handle));
+  EXPECT_EQ(registry.size(), 1U);
+
+  // The id kept its original session, and the refused handle was not
+  // touched — its session still works directly.
+  EXPECT_TRUE(registry.SendTo("ada", Note{"kept"}));
+  EXPECT_EQ(NextAt(first), "kept");
+  EXPECT_TRUE(second.handle->Send(Note{"untouched"}).ok());
+  EXPECT_EQ(NextAt(second), "untouched");
+}
+
+TEST(SessionRegistryTest, BroadcastConstructsPerRecipient) {
+  // The game-hub primitive: per-viewer redaction, not identical bytes.
+  Registry registry;
+  Session ada = MakeSession();
+  Session grace = MakeSession();
+  ASSERT_TRUE(registry.Add("ada", *ada.handle));
+  ASSERT_TRUE(registry.Add("grace", *grace.handle));
+
+  const std::size_t queued = registry.Broadcast(
+      {"ada", "grace", "ghost"}, [](const std::string& id) { return Note{"state-for-" + id}; });
+  EXPECT_EQ(queued, 2U);  // the unknown id was skipped, not constructed for
+  EXPECT_EQ(NextAt(ada), "state-for-ada");
+  EXPECT_EQ(NextAt(grace), "state-for-grace");
+}
+
+TEST(SessionRegistryTest, BroadcastToEveryoneAndIdenticalBytesOverloads) {
+  Registry registry;
+  Session ada = MakeSession();
+  Session grace = MakeSession();
+  ASSERT_TRUE(registry.Add("ada", *ada.handle));
+  ASSERT_TRUE(registry.Add("grace", *grace.handle));
+
+  EXPECT_EQ(registry.Broadcast(Note{"same-for-all"}), 2U);
+  EXPECT_EQ(NextAt(ada), "same-for-all");
+  EXPECT_EQ(NextAt(grace), "same-for-all");
+
+  EXPECT_EQ(registry.Broadcast({"grace"}, Note{"targeted"}), 1U);
+  EXPECT_EQ(NextAt(grace), "targeted");
+
+  const auto ids = registry.Ids();
+  EXPECT_EQ(ids, (std::vector<std::string>{"ada", "grace"}));
+}
+
+TEST(SessionRegistryTest, ASlowConsumerNeverBlocksTheBroadcasterAndIsClosed) {
+  // ada reads; grace never does. Her wire bound and registry queue both
+  // fill, after which enqueueing to grace drops and the default policy
+  // closes her session — while ada keeps receiving and no Broadcast call
+  // ever blocks.
+  Registry::Options options;
+  options.queue_capacity = 2;
+  Registry registry(std::move(options));
+  Session ada = MakeSession();
+  Session grace = MakeSession();
+  ASSERT_TRUE(registry.Add("ada", *ada.handle));
+  ASSERT_TRUE(registry.Add("grace", *grace.handle));
+
+  constexpr int kBursts = 4 * kWireDepth;  // > wire bound + queue, with margin
+  for (int i = 0; i < kBursts; ++i) {
+    registry.Broadcast({"ada", "grace"}, Note{"burst-" + std::to_string(i)});
+    EXPECT_EQ(NextAt(ada), "burst-" + std::to_string(i));  // never stalled
+  }
+
+  // grace's session was closed by the policy: her client drains what made
+  // it onto the wire, then sees the close — not a stall.
+  int delivered = 0;
+  while (NextAt(grace).has_value()) ++delivered;
+  EXPECT_LT(delivered, kBursts);
+
+  // Her writer observed the failure; later sends to her report false. (The
+  // id stays registered until its handler removes it — bookkeeping is the
+  // application's.)
+  EXPECT_TRUE(RefusedEventually(registry, "grace"));
+  EXPECT_TRUE(registry.SendTo("ada", Note{"still-here"}));
+  EXPECT_EQ(NextAt(ada), "still-here");
+}
+
+TEST(SessionRegistryTest, TheSlowConsumerCallbackReplacesTheCloseDefault) {
+  std::atomic<int> slow_reports{0};
+  Registry::Options options;
+  options.queue_capacity = 1;
+  options.on_slow_consumer = [&slow_reports](const std::string& id) {
+    EXPECT_EQ(id, "grace");
+    ++slow_reports;
+  };
+  Registry registry(std::move(options));
+  Session grace = MakeSession();  // never reads
+  ASSERT_TRUE(registry.Add("grace", *grace.handle));
+
+  // Fill the wire + the queue (1); everything past that drops into the
+  // callback instead of closing.
+  int dropped = 0;
+  for (std::size_t i = 0; i < 2 * kWireDepth; ++i) {
+    if (!registry.SendTo("grace", Note{"n"})) ++dropped;
+  }
+  EXPECT_GT(dropped, 0);
+  EXPECT_EQ(slow_reports.load(), dropped);
+
+  // The session is still open — the application kept the policy.
+  EXPECT_EQ(NextAt(grace), "n");
+}
+
+TEST(SessionRegistryTest, RemoveDiscardsUndeliveredButNeverCloses) {
+  Registry::Options options;
+  options.queue_capacity = 2 * kWireDepth;
+  Registry registry(std::move(options));
+  Session session = MakeSession();
+  ASSERT_TRUE(registry.Add("ada", *session.handle));
+
+  // Stall the wire so events pile up: the writer can pop at most the wire
+  // bound plus one blocked mid-Send before the client drains, and Remove
+  // discards the rest outright.
+  constexpr int kQueuedUp = kWireDepth + 4;
+  for (int i = 0; i < kQueuedUp; ++i) {
+    ASSERT_TRUE(registry.SendTo("ada", Note{"queued-" + std::to_string(i)}));
+  }
+  ASSERT_TRUE(registry.Remove("ada"));
+  EXPECT_FALSE(registry.Remove("ada"));  // idempotence reports false
+  EXPECT_FALSE(registry.SendTo("ada", Note{"after"}));
+
+  // Remove is bookkeeping, not a close: the stream still works. The direct
+  // send blocks behind the stalled wire, so it runs on the side while the
+  // main thread drains the client.
+  std::thread direct([&session] { EXPECT_TRUE(session.stream->Send(Note{"direct"}).ok()); });
+  std::vector<std::string> received;
+  for (;;) {
+    const std::optional<std::string> note = NextAt(session);
+    ASSERT_TRUE(note.has_value());  // a close before "direct" would be a bug
+    if (*note == "direct") break;
+    received.push_back(*note);
+  }
+  direct.join();
+
+  // What arrived is a FIFO prefix; the tail Remove discarded never does.
+  EXPECT_LT(received.size(), static_cast<std::size_t>(kQueuedUp));
+  for (std::size_t i = 0; i < received.size(); ++i) {
+    EXPECT_EQ(received[i], "queued-" + std::to_string(i));
+  }
+}
+
+TEST(SessionRegistryTest, CloseAllEndsEverySessionAndDrainWaitsForRemoves) {
+  // The drain recipe, once (issue #112 proposal 3): handlers block in
+  // Receive; CloseAll wakes each, which removes itself and exits; Drain
+  // reports the registry empty before the transport's abort-flavored Stop.
+  Registry registry;
+  constexpr int kSessions = 4;
+  std::vector<std::thread> handlers;
+  std::vector<Session> sessions(kSessions);
+  for (int i = 0; i < kSessions; ++i) {
+    sessions[i] = MakeSession();
+    const std::string id = "player-" + std::to_string(i);
+    ASSERT_TRUE(registry.Add(id, *sessions[i].handle));
+    handlers.emplace_back([&registry, &session = sessions[i], id] {
+      // The handler shape from the server guide: block serving until the
+      // stream ends, then deregister on the way out.
+      auto end = session.client->Receive();
+      EXPECT_TRUE(end.ok());
+      EXPECT_FALSE(end->has_value());
+      registry.Remove(id);
+    });
+  }
+
+  EXPECT_EQ(registry.size(), static_cast<std::size_t>(kSessions));
+  EXPECT_TRUE(registry.Drain(std::chrono::milliseconds(5000)));
+  EXPECT_EQ(registry.size(), 0U);
+  for (std::thread& handler : handlers) handler.join();
+}
+
+TEST(SessionRegistryTest, DrainReportsFalseWhenAHandlerForgetsRemove) {
+  Registry registry;
+  Session session = MakeSession();
+  ASSERT_TRUE(registry.Add("forgetful", *session.handle));
+  EXPECT_FALSE(registry.Drain(std::chrono::milliseconds(50)));
+  EXPECT_EQ(registry.size(), 1U);  // still there for Stop() to abort
+}
+
+TEST(SessionRegistryTest, AStaleHandleStaysRegisteredWithoutDanger) {
+  // The handler returned (stream destroyed) but forgot Remove — the exact
+  // dangling-reference hazard of the borrowed-registry pattern this
+  // replaces. Here it is a soft bug: delivery fails, nothing dangles.
+  Registry registry;
+  Session session = MakeSession();
+  ASSERT_TRUE(registry.Add("ghost", *session.handle));
+  session.stream.reset();  // the borrow ends; the shared view is revoked
+
+  EXPECT_TRUE(RefusedEventually(registry, "ghost"));
+  EXPECT_EQ(registry.size(), 1U);
+  EXPECT_TRUE(registry.Remove("ghost"));
+}
+
+TEST(SessionRegistryTest, TheDestructorClosesSessionsAndJoinsBlockedWriters) {
+  // A registry destroyed mid-delivery: one writer is blocked on a stalled
+  // wire, another has a full queue. The destructor must close both sessions
+  // (unblocking the writers) and join every thread — this test hanging or
+  // crashing is the failure mode.
+  Session stalled = MakeSession();
+  Session healthy = MakeSession();
+  {
+    Registry::Options options;
+    options.queue_capacity = 4;
+    Registry registry(std::move(options));
+    ASSERT_TRUE(registry.Add("stalled", *stalled.handle));
+    ASSERT_TRUE(registry.Add("healthy", *healthy.handle));
+    for (std::size_t i = 0; i < 2 * kWireDepth; ++i) registry.SendTo("stalled", Note{"pile-up"});
+    registry.SendTo("healthy", Note{"one"});
+    EXPECT_EQ(NextAt(healthy), "one");
+  }
+  // Both clients observe their sessions' ends, proving the destructor
+  // closed rather than abandoned them.
+  while (NextAt(stalled).has_value()) {
+  }
+  EXPECT_FALSE(NextAt(healthy).has_value());
+}
+
+TEST(SessionRegistryTest, ConcurrentBroadcastsAddsAndRemovesStaySafe) {
+  // Churn smoke: broadcasters race joins and leaves, wires stall, the
+  // close-on-full default fires, stale handles get re-Added. Nothing here
+  // asserts ordering — the test's job is to crash, hang, or trip TSan (the
+  // sanitizer matrix runs it) if the registry's locking is wrong.
+  Registry::Options options;
+  options.queue_capacity = 2;
+  Registry registry(std::move(options));
+  std::atomic<bool> stop{false};
+  std::vector<Session> sessions(8);
+  for (int i = 0; i < 8; ++i) sessions[i] = MakeSession();
+
+  std::thread churner([&] {
+    for (int round = 0; round < 50; ++round) {
+      for (int i = 0; i < 8; ++i) registry.Add("p" + std::to_string(i), *sessions[i].handle);
+      for (int i = 0; i < 8; ++i) registry.Remove("p" + std::to_string(i));
+    }
+    stop = true;
+  });
+  std::thread broadcaster([&] {
+    while (!stop) registry.Broadcast([](const std::string& id) { return Note{"tick-" + id}; });
+  });
+
+  churner.join();
+  broadcaster.join();
+  SUCCEED();  // the registry destructor closes and joins whatever remains
+}
+
+}  // namespace
+}  // namespace smithy::server

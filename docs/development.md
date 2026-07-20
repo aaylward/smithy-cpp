@@ -10,7 +10,7 @@ Two build trees live in this repository (see PLAN §3.1):
 ## Prerequisites
 
 - [bazelisk](https://github.com/bazelbuild/bazelisk) (reads `.bazelversion`, currently `9.x`)
-- JDK 17+ and Gradle 8.14+ (or use `gradle/actions/setup-gradle` versions in CI)
+- JDK 17+ and Gradle 9.6+ (or use `gradle/actions/setup-gradle` versions in CI)
 - `clang-format` / `clang-tidy` (LLVM 18+) and `buildifier` for linting
 
 ## Building and testing

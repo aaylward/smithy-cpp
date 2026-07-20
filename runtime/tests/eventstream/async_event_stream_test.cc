@@ -295,7 +295,9 @@ TEST(PairAsyncTest, AnUnencodableSendAsyncRefusesInlineAndSparesTheSession) {
   // A header value past the codec's bound: EncodeMessage refuses, so the
   // message never enters the session.
   Message hostile = RawPing(1);
-  hostile.headers.emplace_back(":poison", std::string(1 << 16, 'x'));
+  // Brace-init, not emplace_back: Header is an aggregate, and Apple clang
+  // lacks C++20 parenthesized aggregate initialization (P0960).
+  hostile.headers.push_back({":poison", std::string(1 << 16, 'x')});
   Mailbox<Outcome<Unit>> sent;
   a->SendAsync(hostile, [&](Outcome<Unit> outcome) { sent.Post(std::move(outcome)); });
   auto refused = sent.Wait();

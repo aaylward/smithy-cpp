@@ -368,13 +368,102 @@ TEST(SessionRegistryAsyncTest, DeliversFifoThroughCompletionChains) {
   Session session = MakeSession();
   ASSERT_TRUE(registry.Add("ada", *session.handle));
 
-  for (int i = 0; i < 5; ++i) {
+  // Past the wire bound on purpose: the chain crosses its parked-send leg
+  // (park on the full wire, absorb on drain), and FIFO must hold across it.
+  constexpr int kEvents = static_cast<int>(2 * kWireDepth);
+  for (int i = 0; i < kEvents; ++i) {
     EXPECT_TRUE(registry.SendTo("ada", Note{"note-" + std::to_string(i)}));
   }
-  for (int i = 0; i < 5; ++i) {
+  for (int i = 0; i < kEvents; ++i) {
     EXPECT_EQ(NextAt(session), "note-" + std::to_string(i));
   }
   EXPECT_TRUE(registry.Remove("ada"));
+}
+
+TEST(SessionRegistryAsyncTest, AChainCollisionWithADirectSendPausesDeliveryNotKillsIt) {
+  Registry registry = AsyncRegistry();
+  Session session = MakeSession();
+  ASSERT_TRUE(registry.Add("ada", *session.handle));
+
+  // An application-side send owns the socket's send slot: fill the wire so
+  // the next direct SendAsync parks in flight.
+  for (std::size_t i = 0; i < kWireDepth; ++i) {
+    bool inline_ok = false;
+    session.handle->SendAsync(Note{"fill"}, [&](const Outcome<Unit>& sent) {
+      inline_ok = sent.ok();  // the pair completes inline while the wire has room
+    });
+    ASSERT_TRUE(inline_ok);
+  }
+  std::atomic<bool> parked_completed{false};
+  session.handle->SendAsync(Note{"parked"}, [&](const Outcome<Unit>&) { parked_completed = true; });
+  ASSERT_FALSE(parked_completed.load());  // in flight: the send slot is busy
+
+  // The chain's kick collides with the in-flight send and is refused with
+  // Validation. The collision is transient — it must pause this session's
+  // delivery, not kill it.
+  EXPECT_TRUE(registry.SendTo("ada", Note{"note-0"}));
+
+  // Drain the wire: the fills, then the parked direct send completes.
+  for (std::size_t i = 0; i < kWireDepth; ++i) {
+    EXPECT_EQ(NextAt(session), "fill");
+  }
+  EXPECT_EQ(NextAt(session), "parked");
+  EXPECT_TRUE(parked_completed.load());
+
+  // Delivery resumes on the next enqueue: both events arrive, in order.
+  EXPECT_TRUE(registry.SendTo("ada", Note{"note-1"}));
+  EXPECT_EQ(NextAt(session), "note-0");
+  EXPECT_EQ(NextAt(session), "note-1");
+  EXPECT_TRUE(registry.Remove("ada"));
+}
+
+TEST(SessionRegistryAsyncTest, TheSlowConsumerCallbackReplacesTheCloseDefaultInAsyncMode) {
+  std::atomic<int> slow_reports{0};
+  Registry::Options options;
+  options.queue_capacity = 1;
+  options.async_delivery = true;
+  options.on_slow_consumer = [&slow_reports](const std::string& id) {
+    EXPECT_EQ(id, "grace");
+    ++slow_reports;
+  };
+  Registry registry(std::move(options));
+  Session grace = MakeSession();  // never reads
+  ASSERT_TRUE(registry.Add("grace", *grace.handle));
+
+  int dropped = 0;
+  for (std::size_t i = 0; i < 2 * kWireDepth; ++i) {
+    if (!registry.SendTo("grace", Note{"n"})) ++dropped;
+  }
+  EXPECT_GT(dropped, 0);
+  EXPECT_EQ(slow_reports.load(), dropped);
+
+  // The session is still open — the application kept the policy.
+  EXPECT_EQ(NextAt(grace), "n");
+}
+
+TEST(SessionRegistryAsyncTest, CloseAllEndsEverySessionAndDrainWaitsForRemoves) {
+  // The sync Drain contract, chain-delivered: CloseAll wakes each handler
+  // through its closed session; each removes itself; Drain reports empty.
+  Registry registry = AsyncRegistry();
+  constexpr int kSessions = 4;
+  std::vector<std::thread> handlers;
+  std::vector<Session> sessions(kSessions);
+  for (int i = 0; i < kSessions; ++i) {
+    sessions[i] = MakeSession();
+    const std::string id = "player-" + std::to_string(i);
+    ASSERT_TRUE(registry.Add(id, *sessions[i].handle));
+    handlers.emplace_back([&registry, &session = sessions[i], id] {
+      auto end = session.client->Receive();
+      EXPECT_TRUE(end.ok());
+      EXPECT_FALSE(end->has_value());
+      registry.Remove(id);
+    });
+  }
+
+  EXPECT_EQ(registry.size(), static_cast<std::size_t>(kSessions));
+  EXPECT_TRUE(registry.Drain(std::chrono::milliseconds(5000)));
+  EXPECT_EQ(registry.size(), 0U);
+  for (std::thread& handler : handlers) handler.join();
 }
 
 TEST(SessionRegistryAsyncTest, ASlowConsumerIsStillClosedNotWaitedFor) {

@@ -37,8 +37,10 @@ after all internal locks are released). At most one receive-class and one
 send-class operation may be outstanding per session, across the blocking
 and async APIs together: a second async call is refused inline with
 `Error::Validation`, while blocking callers keep their serialize-by-waiting
-behavior. `Close()` (any thread) completes outstanding operations with
-`Error::Transport` — cancellation stays "close the session", unchanged.
+behavior. `Close()` (any thread) completes outstanding operations the way
+it unblocks the blocking calls: a parked receive gets the clean-end
+`nullopt`, a parked send `Error::Transport` — cancellation stays "close
+the session", unchanged.
 `SupportsAsync()` reports capability; the base-class defaults refuse with
 `Error::Validation` and report false, so custom test sockets keep compiling
 and every layer above can fall back honestly. Both in-repo transports
@@ -53,7 +55,7 @@ operation or close.
 immediately: the session lives until a `Close` (stream, handle, or peer),
 the idle timeout, or `Stop()` — which aborts these sessions through the
 same weak-registry sweep as borrowed ones (ADR-0015 semantics, unchanged).
-Exactly one of `on_websocket` / `on_websocket_session` may be set;
+At most one of `on_websocket` / `on_websocket_session` may be set;
 `websocket_gate` and the ADR-0018 JSON-frames negotiation apply to both.
 The callback runs contained on the handler pool, like everything
 application-authored. The borrowed seam and the generated serve path are

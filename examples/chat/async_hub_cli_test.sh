@@ -9,6 +9,10 @@
 # sync sibling: no `timeout`, BSD-sed-safe.
 set -euo pipefail
 
+# Whatever path ends this script — a fail(), set -e, or the sandbox's
+# timeout SIGTERM — no server or client process outlives it.
+trap 'kill $(jobs -p) 2>/dev/null || true' EXIT
+
 step() { echo "async-hub: $*" >&2; }
 fail() {
   step "FAIL: $*"

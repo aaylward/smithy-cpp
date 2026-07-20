@@ -71,6 +71,15 @@ struct Detached {
 // coroutine satisfies by construction. Close() from any thread completes
 // an outstanding await with the stream's terminal outcome — cancellation
 // stays "close the session".
+//
+// Two lifetime rules for the Detached pattern: (1) everything the
+// coroutine references (registry, hub state) must outlive the transport —
+// the loops resume on io threads long after the launch callback returned.
+// (2) This destructor revokes Share() handles and WAITS for any pinned
+// handle operation to drain (ADR-0017); at the end of a Detached loop
+// that wait runs on the completion context, and the completion it waits
+// for needs an io thread — so leave transports that mix Detached sessions
+// with handle traffic more than one io thread (the Beast default is 4).
 template <typename Tx, typename Rx>
 class AsyncEventStream {
  public:
@@ -84,6 +93,8 @@ class AsyncEventStream {
   // handles minted by Share() fail softly once the stream is gone.
   ~AsyncEventStream() = default;
   AsyncEventStream(AsyncEventStream&&) noexcept = default;
+  // No explicit noexcept: the computed one depends on std::function's
+  // move-assignment, which the standard does not make noexcept.
   AsyncEventStream& operator=(AsyncEventStream&&) = default;
   AsyncEventStream(const AsyncEventStream&) = delete;
   AsyncEventStream& operator=(const AsyncEventStream&) = delete;
@@ -103,13 +114,13 @@ class AsyncEventStream {
       // resumes by returning false — flattening would-be recursion into
       // iteration and never touching the frame from two threads at once —
       // and only a truly asynchronous completion resumes from the callback.
-      auto race = std::make_shared<std::atomic<bool>>(false);
-      stream_->socket_->ReceiveAsync(
-          [this, coroutine, race](Outcome<std::optional<Message>> message) {
-            raw_ = std::move(message);
-            if (race->exchange(true)) coroutine.resume();
-          });
-      return !race->exchange(true);  // suspend iff the callback has not run
+      // The flag can live in the awaitable: the frame dies only after a
+      // resume, and every resume is sequenced after both exchanges.
+      stream_->socket_->ReceiveAsync([this, coroutine](Outcome<std::optional<Message>> message) {
+        raw_ = std::move(message);
+        if (arrived_.exchange(true)) coroutine.resume();
+      });
+      return !arrived_.exchange(true);  // suspend iff the callback has not run
     }
     Outcome<std::optional<Rx>> await_resume() {
       if (!raw_.ok()) return std::move(raw_).error();
@@ -125,6 +136,7 @@ class AsyncEventStream {
 
    private:
     AsyncEventStream* stream_;
+    std::atomic<bool> arrived_{false};
     // Outcome has no default constructor; the placeholder is overwritten
     // before any resume. NOLINT(readability-redundant-member-init)
     Outcome<std::optional<Message>> raw_ = std::optional<Message>();  // NOLINT
@@ -143,12 +155,11 @@ class AsyncEventStream {
     bool await_ready() const noexcept { return !message_.ok(); }
     bool await_suspend(std::coroutine_handle<> coroutine) {
       // Same second-arrival-resumes race as ReceiveAwaitable.
-      auto race = std::make_shared<std::atomic<bool>>(false);
-      stream_->socket_->SendAsync(*message_, [this, coroutine, race](Outcome<Unit> sent) {
+      stream_->socket_->SendAsync(*message_, [this, coroutine](Outcome<Unit> sent) {
         sent_ = std::move(sent);
-        if (race->exchange(true)) coroutine.resume();
+        if (arrived_.exchange(true)) coroutine.resume();
       });
-      return !race->exchange(true);  // suspend iff the callback has not run
+      return !arrived_.exchange(true);  // suspend iff the callback has not run
     }
     Outcome<Unit> await_resume() {
       if (!message_.ok()) return std::move(message_).error();
@@ -157,6 +168,7 @@ class AsyncEventStream {
 
    private:
     AsyncEventStream* stream_;
+    std::atomic<bool> arrived_{false};
     Outcome<Message> message_;
     Outcome<Unit> sent_ = Unit{};
   };
@@ -171,6 +183,12 @@ class AsyncEventStream {
   // Initiates the close handshake; idempotent and safe from any thread.
   // An outstanding await completes with the terminal outcome.
   void Close() { socket_->Close(); }
+
+  // Whether the wrapped session implements the async primitives — false
+  // means every co_await completes immediately with the base default's
+  // polite refusal (websocket.h); check before adopting a socket of
+  // unknown provenance.
+  bool SupportsAsync() const { return socket_->SupportsAsync(); }
 
   // The same owning handle EventStream mints (ADR-0017), over the same
   // revocable view: blocking or async sends from any thread, safe to hold

@@ -233,6 +233,7 @@ class WsSession final : public WebSocketSessionBase,
   // operation per session, completion on the connection's executor.
   void ReceiveAsync(WebSocket::ReceiveCallback callback) override {
     Outcome<std::optional<eventstream::Message>> immediate = std::optional<eventstream::Message>();
+    bool ready_message = false;
     {
       std::unique_lock<std::mutex> lock(mutex_);
       if (pending_receive_ || blocked_receivers_ > 0) {
@@ -245,6 +246,7 @@ class WsSession final : public WebSocketSessionBase,
         received_.pop_front();
         ResumeReadsIfPaused();
         immediate = std::optional<eventstream::Message>(std::move(message));
+        ready_message = true;
       } else if (peer_closed_) {
         immediate = std::optional<eventstream::Message>();
       } else if (failed_) {
@@ -254,13 +256,23 @@ class WsSession final : public WebSocketSessionBase,
         return;  // Deliver / the terminal transitions complete it
       }
     }
-    // Even ready results complete on the connection's executor, so a
-    // callback that immediately re-arms cannot recurse into the session.
+    if (!ready_message) {
+      // Terminal outcomes fire inline — the documented immediate path. A
+      // post here could race Stop(): a stopped executor destroys queued
+      // handlers unexecuted, which would strand the caller's continuation
+      // (a Detached loop's frame) forever.
+      callback(std::move(immediate));
+      return;
+    }
+    // Ready results complete on the connection's executor, so a callback
+    // that immediately re-arms cannot recurse into the session. The lambda
+    // copies the callback (no move): if post throws, the catch still owns
+    // a live one to refuse with.
     auto self = this->shared_from_this();
     try {
-      asio::post(ws_.get_executor(),
-                 [self, callback = std::move(callback),
-                  immediate = std::move(immediate)]() mutable { callback(std::move(immediate)); });
+      asio::post(ws_.get_executor(), [self, callback, immediate = std::move(immediate)]() mutable {
+        callback(std::move(immediate));
+      });
     } catch (...) {
       callback(Error::Transport("websocket: cannot schedule the completion"));
     }
@@ -366,22 +378,10 @@ class WsSession final : public WebSocketSessionBase,
   // Fails both facade calls immediately and closes the socket out from
   // under any outstanding op — Stop()-time and client-teardown semantics,
   // safe from any thread even when the io context is already stopped.
+  // Fail() is the whole failure story (an already-terminal session has no
+  // parked waiters to complete); Abort adds only the socket close.
   void Abort(std::string reason) override {
-    AsyncWaiters waiters;
-    std::string why;
-    bool clean = false;
-    {
-      const std::lock_guard<std::mutex> lock(mutex_);
-      if (!failed_ && !peer_closed_) {
-        failed_ = true;
-        error_ = std::move(reason);
-      }
-      waiters = TakeAsyncWaitersLocked();
-      clean = !failed_;
-      why = failed_ ? error_ : std::string("session is closed");
-      wake_.notify_all();
-    }
-    CompleteAsyncWaiters(std::move(waiters), clean, why);
+    Fail(std::move(reason));
     auto self = this->shared_from_this();
     try {
       asio::post(ws_.get_executor(), [self] {
@@ -1410,8 +1410,8 @@ Outcome<Unit> BeastServerTransport::Start(RequestHandler handler) {
 
   if (options_.on_websocket && options_.on_websocket_session) {
     return Error::Validation(
-        "beast: set exactly one of on_websocket / on_websocket_session (the borrowed and shared "
-        "serve seams cannot both claim an upgrade)");
+        "beast: on_websocket and on_websocket_session cannot both be set (the borrowed and "
+        "shared serve seams cannot both claim an upgrade)");
   }
   const bool serves_websockets = options_.on_websocket || options_.on_websocket_session;
   if (serves_websockets && options_.handler_threads <= 0) {

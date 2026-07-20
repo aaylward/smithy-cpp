@@ -20,7 +20,8 @@ namespace smithy::http {
 // binary messages fail — but this facade is unchanged: the transport
 // translates, and both modes carry the same Messages.) Both ends of the
 // wire speak this type: the server side arrives in
-// BeastServerTransport::Options::on_websocket, the client side from
+// BeastServerTransport::Options::on_websocket (borrowed) or
+// on_websocket_session (shared, ADR-0019), the client side from
 // BeastWebSocketClient::Dial.
 //
 // Full duplex means one receiving thread and one sending thread may block
@@ -102,12 +103,16 @@ class WebSocket {
   // later move them); the defaults only refuse.
   // NOLINTBEGIN(performance-unnecessary-value-param)
   virtual void ReceiveAsync(ReceiveCallback callback) {
-    callback(Error::Validation("this WebSocket does not implement async operations"));
+    callback(Error::Validation(
+        "websocket: this implementation has no async operations (SupportsAsync() is the "
+        "check; the blocking Receive/Send still work)"));
   }
 
   virtual void SendAsync(const eventstream::Message& message, SendCallback callback) {
     (void)message;
-    callback(Error::Validation("this WebSocket does not implement async operations"));
+    callback(Error::Validation(
+        "websocket: this implementation has no async operations (SupportsAsync() is the "
+        "check; the blocking Receive/Send still work)"));
   }
   // NOLINTEND(performance-unnecessary-value-param)
 

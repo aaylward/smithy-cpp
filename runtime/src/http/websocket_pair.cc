@@ -17,6 +17,12 @@ namespace {
 // published on the class so backpressure tests derive from it.
 constexpr std::size_t kQueueDepth = InMemoryWebSocketPair::kQueueDepth;
 
+// A parked SendAsync: the message it will queue and the completion to fire.
+struct PendingSend {
+  eventstream::Message message;
+  WebSocket::SendCallback callback;
+};
+
 // The session both ends share: one queue per direction, one session-wide
 // closed flag (either end's Close ends the session for both), one mutex and
 // condition variable for all four blocking call sites — contention is
@@ -26,20 +32,18 @@ constexpr std::size_t kQueueDepth = InMemoryWebSocketPair::kQueueDepth;
 // operation (the pair has no executor to post to — unlike the wire
 // transports, a synchronous ping-pong of inline completions recurses, so
 // keep coroutine test volleys modest).
-struct PendingSend {
-  eventstream::Message message;
-  WebSocket::SendCallback callback;
-};
-
 struct PairState {
   std::mutex mutex;
   std::condition_variable changed;
   std::array<std::deque<eventstream::Message>, 2> queues;
   // Indexed by the owning end's send index: an end's parked receive, its
-  // parked send, and its count of senders blocked in the blocking call
-  // (SendAsync refuses while one waits — the one-outstanding contract).
+  // parked send, and its counts of receivers/senders blocked in the
+  // blocking calls (the async twin refuses while one waits, and a blocking
+  // call waits behind a parked async op — the one-outstanding contract's
+  // two halves, same shape as the Beast session).
   std::array<WebSocket::ReceiveCallback, 2> pending_receive;
   std::array<std::optional<PendingSend>, 2> pending_send;
+  std::array<int, 2> blocked_receivers{};
   std::array<int, 2> blocked_senders{};
   bool closed = false;
 };
@@ -54,11 +58,15 @@ class PairEnd final : public WebSocket {
     Outcome<std::optional<eventstream::Message>> result = std::optional<eventstream::Message>();
     {
       std::unique_lock<std::mutex> lock(state_->mutex);
-      if (state_->pending_receive[send_index_]) {
-        return Error::Validation("websocket pair: a receive is already outstanding");
-      }
       std::deque<eventstream::Message>& inbound = state_->queues[1 - send_index_];
-      state_->changed.wait(lock, [&] { return !inbound.empty() || state_->closed; });
+      // A parked async receive owns the next arrival (the peer's send hands
+      // it over directly), so a blocking receiver waits behind it — the
+      // serialize-by-waiting half of the one-outstanding contract.
+      ++state_->blocked_receivers[send_index_];
+      state_->changed.wait(lock, [&] {
+        return (!inbound.empty() && !state_->pending_receive[send_index_]) || state_->closed;
+      });
+      --state_->blocked_receivers[send_index_];
       if (inbound.empty()) {
         return std::optional<eventstream::Message>();  // the stream's clean end
       }
@@ -141,7 +149,7 @@ class PairEnd final : public WebSocket {
     Outcome<std::optional<eventstream::Message>> immediate = std::optional<eventstream::Message>();
     {
       const std::lock_guard<std::mutex> lock(state_->mutex);
-      if (state_->pending_receive[send_index_]) {
+      if (state_->pending_receive[send_index_] || state_->blocked_receivers[send_index_] > 0) {
         callback(Error::Validation("websocket pair: a receive is already outstanding"));
         return;
       }

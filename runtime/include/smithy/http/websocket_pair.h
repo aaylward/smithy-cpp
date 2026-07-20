@@ -28,6 +28,12 @@ namespace smithy::http {
 // - Thread safety is the WebSocket contract's: one sender plus one
 //   receiver per end may block concurrently, and Close is safe from any
 //   thread. There is no idle timeout — nothing here can vanish.
+// - The async twins (ADR-0019) complete ready results INLINE on the
+//   calling or peer thread — the pair has no executor to post to, unlike
+//   the wire transports. A callback that re-arms in its own completion
+//   therefore recurses; keep such volleys modest, or use the coroutine
+//   adapter, whose suspend race flattens synchronous completions into
+//   iteration.
 class InMemoryWebSocketPair {
  public:
   // Each direction's queue bound (the Beast session's receive-buffer

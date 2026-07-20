@@ -50,24 +50,20 @@ using example::chat::RoomEvents;
 
 // The Converse wire, hand-mounted: the same envelope convention the
 // generated codecs speak (ADR-0016), over the exported serde functions.
+smithy::eventstream::Message MakeJsonEvent(const char* type, const smithy::Document& doc) {
+  return smithy::eventstream::MakeEventMessage(type, "application/json",
+                                               smithy::Blob::FromString(smithy::json::Encode(doc)));
+}
+
 smithy::Outcome<smithy::eventstream::Message> EncodeRoomEvent(const RoomEvents& event) {
   if (event.is_message()) {
-    return smithy::eventstream::MakeEventMessage(
-        "message", "application/json",
-        smithy::Blob::FromString(
-            smithy::json::Encode(example::chat::SerializeChatMessage(event.as_message()))));
+    return MakeJsonEvent("message", example::chat::SerializeChatMessage(event.as_message()));
   }
   if (event.is_joined()) {
-    return smithy::eventstream::MakeEventMessage(
-        "joined", "application/json",
-        smithy::Blob::FromString(
-            smithy::json::Encode(example::chat::SerializeMemberJoined(event.as_joined()))));
+    return MakeJsonEvent("joined", example::chat::SerializeMemberJoined(event.as_joined()));
   }
   if (event.is_left()) {
-    return smithy::eventstream::MakeEventMessage(
-        "left", "application/json",
-        smithy::Blob::FromString(
-            smithy::json::Encode(example::chat::SerializeMemberLeft(event.as_left()))));
+    return MakeJsonEvent("left", example::chat::SerializeMemberLeft(event.as_left()));
   }
   return smithy::Error::Validation("RoomEvents: no event member engaged");
 }
@@ -152,6 +148,8 @@ class AsyncHub {
 smithy::eventstream::Detached Serve(AsyncHub& hub, std::string room, std::string name,
                                     std::shared_ptr<smithy::http::WebSocket> socket) {
   const std::string id = room + "/" + name;
+  // The socket is copied, not moved: the refusal branch below sends the
+  // typed exception on the raw socket.
   AsyncStream stream(socket, EncodeRoomEvent, DecodeChatEvent);
   if (!hub.registry().Add(id, stream.Share())) {
     // The nickname reservation, refused the way the generated path would:
@@ -176,7 +174,7 @@ smithy::eventstream::Detached Serve(AsyncHub& hub, std::string room, std::string
     auto received = co_await stream.Receive();
     if (!received.ok()) break;  // wire failed
     const std::optional<ChatEvents>& event = *received;
-    if (!event.has_value()) break;  // client vanished
+    if (!event.has_value()) break;  // client closed without a leave
     if (event->is_leave()) {
       left_cleanly = true;
       break;
@@ -188,6 +186,8 @@ smithy::eventstream::Detached Serve(AsyncHub& hub, std::string room, std::string
   hub.registry().Remove(id);
   hub.BroadcastToRoom(room, RoomEvents::FromLeft(MemberLeft{.member = name}));
   if (left_cleanly) {
+    // Best-effort: a registry chain still draining this session's tail
+    // holds the send slot and refuses this — the discard is deliberate.
     (void)co_await stream.Send(RoomEvents::FromLeft(MemberLeft{.member = name}));
   }
   stream.Close();

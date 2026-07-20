@@ -1300,6 +1300,12 @@ TEST(BeastWebSocketTest, TheGateRefusesOverTlsToo) {
 // ---------------------------------------------------------------------------
 
 TEST(BeastWebSocketTest, AsyncSendAndReceiveRoundTripOverTheWire) {
+  // Declared before the session so a failed assertion below cannot leave a
+  // parked callback pointing at a dead stack frame — client teardown fires
+  // outstanding completions, and these must still be alive to catch them.
+  std::promise<Outcome<std::optional<eventstream::Message>>> parked;
+  std::promise<Outcome<std::optional<eventstream::Message>>> refused;
+
   BeastServerTransport server(EchoOptions());
   ASSERT_TRUE(server.Start(NotFoundHandler()).ok());
   auto dialed = BeastWebSocketClient::Dial({.host = "127.0.0.1", .port = server.port()});
@@ -1324,11 +1330,9 @@ TEST(BeastWebSocketTest, AsyncSendAndReceiveRoundTripOverTheWire) {
   }
 
   // A second outstanding receive is refused inline while the first parks.
-  std::promise<Outcome<std::optional<eventstream::Message>>> parked;
   socket->ReceiveAsync([&parked](Outcome<std::optional<eventstream::Message>> message) {
     parked.set_value(std::move(message));
   });
-  std::promise<Outcome<std::optional<eventstream::Message>>> refused;
   socket->ReceiveAsync([&refused](Outcome<std::optional<eventstream::Message>> message) {
     refused.set_value(std::move(message));
   });
@@ -1336,12 +1340,156 @@ TEST(BeastWebSocketTest, AsyncSendAndReceiveRoundTripOverTheWire) {
   ASSERT_FALSE(refusal.ok());
   EXPECT_EQ(refusal.error().kind(), ErrorKind::kValidation);
 
-  // Close completes the parked receive with the terminal outcome.
+  // Close completes the parked receive with the terminal outcome, and a
+  // send-class op after the close is refused inline with Transport.
   socket->Close();
   auto end = parked.get_future().get();
   ASSERT_TRUE(end.ok()) << end.error().message();
   EXPECT_FALSE(end->has_value());
+  std::promise<Outcome<Unit>> late;
+  socket->SendAsync(Text("chat", "too-late"),
+                    [&late](Outcome<Unit> outcome) { late.set_value(std::move(outcome)); });
+  auto dead = late.get_future().get();
+  ASSERT_FALSE(dead.ok());
+  EXPECT_EQ(dead.error().kind(), ErrorKind::kTransport);
   server.Stop();
+}
+
+TEST(BeastWebSocketTest, ReceiveAsyncBehindABlockedReceiverIsRefused) {
+  BeastServerTransport server(EchoOptions());
+  ASSERT_TRUE(server.Start(NotFoundHandler()).ok());
+  auto dialed = BeastWebSocketClient::Dial({.host = "127.0.0.1", .port = server.port()});
+  ASSERT_TRUE(dialed.ok()) << dialed.error().message();
+  const std::shared_ptr<WebSocket>& socket = *dialed;
+
+  // A blocking receive parks (the echo server sends nothing unprompted)...
+  Outcome<std::optional<eventstream::Message>> blocked = std::optional<eventstream::Message>();
+  std::thread waiter([&] { blocked = socket->Receive(); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(250));  // let it park
+
+  // ...making an async receive the second outstanding receive-class op:
+  // refused inline (websocket.h's mixed-API one-outstanding contract).
+  auto refused = std::make_shared<std::promise<Outcome<std::optional<eventstream::Message>>>>();
+  auto refusal_future = refused->get_future();
+  socket->ReceiveAsync([refused](Outcome<std::optional<eventstream::Message>> message) {
+    refused->set_value(std::move(message));
+  });
+  const bool refused_inline =
+      refusal_future.wait_for(std::chrono::seconds(5)) == std::future_status::ready;
+
+  // Unblock and join the waiter before asserting, so a regression fails
+  // instead of hanging or terminating.
+  socket->Close();
+  waiter.join();
+  ASSERT_TRUE(refused_inline) << "the second receive-class op parked instead of refusing";
+  auto refusal = refusal_future.get();
+  ASSERT_FALSE(refusal.ok());
+  EXPECT_EQ(refusal.error().kind(), ErrorKind::kValidation);
+  EXPECT_TRUE(!blocked.ok() || !blocked->has_value());  // the close's terminal outcome
+  server.Stop();
+}
+
+TEST(BeastWebSocketTest, AsyncSendParkedOnAWedgedWireIsRefusedThenCompletedByClose) {
+  // The Beast-side send matrix the pair cannot stand in for: a parked
+  // SendAsync (wire wedged by a non-reading peer), the inline refusal of a
+  // second send-class op behind it, and Close completing the parked one.
+  std::promise<void> release_serve;
+  std::shared_future<void> released = release_serve.get_future().share();
+  BeastServerTransport::Options options;
+  options.on_websocket = [released](const HttpRequest&, WebSocket&) {
+    released.wait();  // never Receives: the client's sends back up
+  };
+  BeastServerTransport server(options);
+  ASSERT_TRUE(server.Start(NotFoundHandler()).ok());
+  auto dialed = BeastWebSocketClient::Dial({.host = "127.0.0.1", .port = server.port()});
+  ASSERT_TRUE(dialed.ok()) << dialed.error().message();
+  const std::shared_ptr<WebSocket>& socket = *dialed;
+
+  // Async-send until one fails to complete: that one is parked on the
+  // wire. The callbacks own their promises (shared_ptr), so nothing here
+  // dangles whichever way the test exits.
+  const std::string bulk(1024 * 1024, 'x');
+  std::future<Outcome<Unit>> parked_future;
+  bool parked = false;
+  for (int i = 0; i < 64 && !parked; ++i) {
+    auto result = std::make_shared<std::promise<Outcome<Unit>>>();
+    parked_future = result->get_future();
+    socket->SendAsync(Text("bulk", bulk),
+                      [result](Outcome<Unit> outcome) { result->set_value(std::move(outcome)); });
+    if (parked_future.wait_for(std::chrono::seconds(2)) != std::future_status::ready) {
+      parked = true;
+    } else {
+      ASSERT_TRUE(parked_future.get().ok());
+    }
+  }
+  ASSERT_TRUE(parked) << "the wire never wedged; the setup is wrong";
+
+  // The second send-class op behind the parked one refuses inline.
+  auto refused = std::make_shared<std::promise<Outcome<Unit>>>();
+  auto refusal_future = refused->get_future();
+  socket->SendAsync(Text("chat", "one-too-many"),
+                    [refused](Outcome<Unit> outcome) { refused->set_value(std::move(outcome)); });
+  auto refusal = refusal_future.get();
+  ASSERT_FALSE(refusal.ok());
+  EXPECT_EQ(refusal.error().kind(), ErrorKind::kValidation);
+
+  // Close escalates past the in-flight write and completes the parked
+  // send with the terminal outcome — never leaves it hanging.
+  socket->Close();
+  ASSERT_EQ(parked_future.wait_for(std::chrono::seconds(5)), std::future_status::ready)
+      << "Close() left the parked SendAsync incomplete";
+  auto outcome = parked_future.get();
+  ASSERT_FALSE(outcome.ok());
+  EXPECT_EQ(outcome.error().kind(), ErrorKind::kTransport);
+
+  release_serve.set_value();
+  server.Stop();
+}
+
+TEST(BeastWebSocketTest, TheGateGuardsTheSharedSeamToo) {
+  BeastServerTransport::Options options;
+  options.handler_threads = 1;
+  std::atomic<int> launched{0};
+  options.websocket_gate = [](const HttpRequest& request) -> std::optional<HttpResponse> {
+    if (request.target == "/allowed") return std::nullopt;
+    HttpResponse refusal;
+    refusal.status = 403;
+    return refusal;
+  };
+  options.on_websocket_session = [&launched](const HttpRequest&,
+                                             std::shared_ptr<WebSocket> socket) {
+    ++launched;
+    socket->Close();
+  };
+  BeastServerTransport server(options);
+  ASSERT_TRUE(server.Start(NotFoundHandler()).ok());
+
+  // A refused target never reaches the launch callback — the gate answers
+  // before any session exists, exactly as on the borrowed seam.
+  EXPECT_FALSE(
+      BeastWebSocketClient::Dial({.host = "127.0.0.1", .port = server.port(), .target = "/nope"})
+          .ok());
+  EXPECT_EQ(launched.load(), 0);
+
+  auto accepted = BeastWebSocketClient::Dial(
+      {.host = "127.0.0.1", .port = server.port(), .target = "/allowed"});
+  ASSERT_TRUE(accepted.ok()) << accepted.error().message();
+  for (int i = 0; i < 500 && launched.load() < 1; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  EXPECT_EQ(launched.load(), 1);
+  server.Stop();
+}
+
+TEST(BeastWebSocketTest, TheSharedSeamAloneStillNeedsHandlerThreads) {
+  BeastServerTransport::Options options;
+  options.handler_threads = 0;
+  options.on_websocket_session = [](const HttpRequest&, std::shared_ptr<WebSocket>) {};
+  BeastServerTransport server(options);
+  auto started = server.Start(NotFoundHandler());
+  ASSERT_FALSE(started.ok());
+  EXPECT_EQ(started.error().kind(), ErrorKind::kValidation);
+  EXPECT_NE(started.error().message().find("handler_threads"), std::string::npos);
 }
 
 TEST(BeastWebSocketTest, TheSharedSessionSeamServesWithoutParkingAHandlerThread) {
@@ -1351,10 +1499,11 @@ TEST(BeastWebSocketTest, TheSharedSessionSeamServesWithoutParkingAHandlerThread)
   BeastServerTransport::Options options;
   options.handler_threads = 1;
   std::atomic<int> launched{0};
-  options.on_websocket_session = [&launched](const HttpRequest&,
-                                             std::shared_ptr<WebSocket> socket) {
+  std::atomic<int> ended{0};  // the server-side loops observably unwind
+  options.on_websocket_session = [&launched, &ended](const HttpRequest&,
+                                                     std::shared_ptr<WebSocket> socket) {
     ++launched;
-    [](std::shared_ptr<WebSocket> session) -> eventstream::Detached {
+    [](std::shared_ptr<WebSocket> session, std::atomic<int>* ended) -> eventstream::Detached {
       eventstream::AsyncEventStream<eventstream::Message, eventstream::Message> stream(
           std::move(session), [](const eventstream::Message& message) { return message; },
           [](const eventstream::Message& message) { return message; });
@@ -1366,7 +1515,8 @@ TEST(BeastWebSocketTest, TheSharedSessionSeamServesWithoutParkingAHandlerThread)
         auto sent = co_await stream.Send(reply);
         if (!sent.ok()) break;
       }
-    }(std::move(socket));
+      ++*ended;
+    }(std::move(socket), &ended);
   };
   BeastServerTransport server(options);
   ASSERT_TRUE(server.Start(NotFoundHandler()).ok());
@@ -1389,17 +1539,28 @@ TEST(BeastWebSocketTest, TheSharedSessionSeamServesWithoutParkingAHandlerThread)
   }
   EXPECT_EQ(launched.load(), 3);
 
-  // A client close ends its loop; the others keep serving.
+  // A client close ends its loop — the coroutine frame unwinds, not just
+  // the client's view of the wire — and the others keep serving.
   clients[0]->Close();
+  for (int i = 0; i < 500 && ended.load() < 1; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  EXPECT_EQ(ended.load(), 1);
   ASSERT_TRUE(clients[1]->Send(Text("chat", "still-here")).ok());
   auto still = clients[1]->Receive();
   ASSERT_TRUE(still.ok() && still->has_value());
 
   // Stop() aborts the shared sessions through the same sweep as borrowed
-  // ones; the remaining clients observe their sessions ending.
+  // ones: the remaining clients observe their sessions ending AND the
+  // server-side loops all unwind (a sweep that missed a parked receive
+  // would leak its coroutine frame forever).
   server.Stop();
   auto after_stop = clients[2]->Receive();
   EXPECT_TRUE(!after_stop.ok() || !after_stop->has_value());
+  for (int i = 0; i < 500 && ended.load() < 3; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  EXPECT_EQ(ended.load(), 3);
 }
 
 TEST(BeastWebSocketTest, BothServeSeamsSetIsRefusedAtStart) {
@@ -1409,7 +1570,7 @@ TEST(BeastWebSocketTest, BothServeSeamsSetIsRefusedAtStart) {
   auto started = server.Start(NotFoundHandler());
   ASSERT_FALSE(started.ok());
   EXPECT_EQ(started.error().kind(), ErrorKind::kValidation);
-  EXPECT_NE(started.error().message().find("exactly one"), std::string::npos);
+  EXPECT_NE(started.error().message().find("cannot both be set"), std::string::npos);
 }
 
 }  // namespace

@@ -195,6 +195,27 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
   }
 
   @Override
+  public void writeStreamSessionRoute(
+      CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
+    StructureShape input = ProtocolSupport.inputShape(context, operation);
+    String inputType = context.cppSymbols().toSymbol(input).getName();
+    w.openBlock(
+        "(void)stream_router_->AddSession(\"GET\", \"/service/$L/operation/$L\", "
+            + "[handler](const smithy::http::HttpRequest& request, "
+            + ProtocolSupport.REQUEST_CONTEXT_PARAM
+            + " context, std::shared_ptr<smithy::http::WebSocket> socket) {",
+        service.getId().getName(),
+        operation.getId().getName());
+    w.write("(void)request;");
+    w.write("(void)context;");
+    w.write("// The fixed upgrade URI carries no initial members (ADR-0016): the input");
+    w.write("// is empty beyond the stream itself.");
+    w.write("$L input{};", inputType);
+    EventStreamCodeGen.writeLaunchAsync(w, operation, "std::move(input)");
+    w.closeBlock("}, $S);", operation.getId().getName());
+  }
+
+  @Override
   public void writeOperationBody(
       CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
     StructureShape input = ProtocolSupport.inputShape(context, operation);

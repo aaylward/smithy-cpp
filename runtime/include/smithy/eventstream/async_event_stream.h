@@ -48,6 +48,76 @@ struct Detached {
   };
 };
 
+// The handler-task coroutine type (ADR-0021): the shape a generated async
+// streaming handler returns. Lazy — nothing runs until the generated
+// Detached wrapper co_awaits it — and single-shot: the await starts the
+// handler, the handler's `co_return Outcome<Unit>` resumes the awaiter by
+// symmetric transfer, and a handler that throws completes with
+// Error::Unknown instead of terminating (the containment posture, since
+// completion contexts have no caller to rethrow to). Deliberately not a
+// general task type — no executor, no generic result, exactly "await one
+// handler, get its outcome" — which is all the generated serve path
+// needs to restore the blocking contract's framework-framed typed
+// errors.
+class [[nodiscard]] StreamTask {
+ public:
+  struct promise_type {
+    // NOLINTBEGIN(readability-convert-member-functions-to-static) — the
+    // coroutine machinery calls these through the promise instance.
+    StreamTask get_return_object() noexcept {
+      return StreamTask(std::coroutine_handle<promise_type>::from_promise(*this));
+    }
+    std::suspend_always initial_suspend() noexcept { return {}; }
+    struct FinalAwaiter {
+      bool await_ready() const noexcept { return false; }
+      std::coroutine_handle<> await_suspend(std::coroutine_handle<promise_type> h) noexcept {
+        return h.promise().continuation;  // symmetric transfer to the awaiter
+      }
+      void await_resume() const noexcept {}
+    };
+    FinalAwaiter final_suspend() noexcept { return {}; }
+    void return_value(Outcome<Unit> outcome) noexcept { result = std::move(outcome); }
+    void unhandled_exception() noexcept {
+      try {
+        std::rethrow_exception(std::current_exception());
+      } catch (const std::exception& e) {
+        result = Error::Unknown(std::string("streaming handler threw: ") + e.what());
+      } catch (...) {
+        result = Error::Unknown("streaming handler threw a non-std exception");
+      }
+    }
+    // NOLINTEND(readability-convert-member-functions-to-static)
+    Outcome<Unit> result = Unit{};
+    std::coroutine_handle<> continuation = std::noop_coroutine();
+  };
+
+  explicit StreamTask(std::coroutine_handle<promise_type> handle) : handle_(handle) {}
+  StreamTask(StreamTask&& other) noexcept : handle_(std::exchange(other.handle_, {})) {}
+  StreamTask(const StreamTask&) = delete;
+  StreamTask& operator=(const StreamTask&) = delete;
+  StreamTask& operator=(StreamTask&&) = delete;  // single-shot: no reseating
+  ~StreamTask() {
+    // Destroys a suspended frame: never-awaited (parked at the initial
+    // suspend) or completed (parked at the final suspend) — both legal.
+    if (handle_) handle_.destroy();
+  }
+
+  // co_await, exactly once: starts the handler by symmetric transfer and
+  // resumes the awaiter with the handler's Outcome when it completes —
+  // on whatever thread the handler's last completion ran. (The NOLINT: the
+  // awaitable protocol calls await_ready through the instance.)
+  // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
+  bool await_ready() const noexcept { return false; }
+  std::coroutine_handle<> await_suspend(std::coroutine_handle<> awaiter) noexcept {
+    handle_.promise().continuation = awaiter;
+    return handle_;
+  }
+  Outcome<Unit> await_resume() noexcept { return std::move(handle_.promise().result); }
+
+ private:
+  std::coroutine_handle<promise_type> handle_;
+};
+
 // The typed session's coroutine adapter (ADR-0019): EventStream's contract
 // over the completion-driven socket primitives, with `co_await` where the
 // blocking facade parks a thread. Owns its session (shared_ptr — the async

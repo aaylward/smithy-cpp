@@ -212,11 +212,46 @@ options.on_websocket_session = router.ServeSession();
 
 (one router serves one seam; `Add` and `AddSession` refuse to mix — a process that wants
 both seams serves them from two transports, since a transport itself mounts at most one
-dispatcher). The generated
-streaming serve path stays blocking in this slice — serde for an async mount is
-hand-written on the public envelope helpers, as the thread-free hub shows
-([examples/chat/async_hub_server_main.cc](../examples/chat/async_hub_server_main.cc),
-driven as real shell-commanded processes by `async_hub_cli_test.sh`).
+dispatcher).
+
+### Generated async streaming handlers (ADR-0021)
+
+Everything above is the hand-mount shape — yours when the generator does not cover a
+transport or a wire. For a generated service, the generator now emits the whole thing:
+implement `<Service>AsyncHandler` — each streaming operation is a coroutine returning
+`smithy::eventstream::StreamTask` over the operation's `<Op>AsyncServerStream&`, unary
+operations keep their blocking signatures — construct `<Service>Server` with it, and
+mount the session seam:
+
+```cpp
+class MyHandler final : public example::chat::ChatAsyncHandler {
+  smithy::eventstream::StreamTask Converse(example::chat::ConverseInput input,
+                                           example::chat::ConverseAsyncServerStream& stream) override {
+    while (true) {
+      auto event = co_await stream.Receive();
+      if (!event.ok() || !event->has_value()) co_return smithy::Unit{};
+      // ... co_await stream.Send(reply), registry fan-out via stream.Share() ...
+    }
+  }
+  // ... Watch, ListRooms ...
+};
+
+example::chat::ChatServer server(std::make_shared<MyHandler>());
+options.websocket_gate = server.StreamRouter()->Gate();
+options.on_websocket_session = server.StreamRouter()->ServeSession();
+```
+
+Route matching, input parsing, envelope codecs, and refusal framing are all generated.
+`co_return` an error and the generated wrapper ends the stream with the typed exception
+message — exactly the blocking contract — and a coroutine that throws surfaces as the
+never-leak `InternalFailure` instead of terminating. `input` arrives by value (the
+coroutine's own copy; the upgrade request is gone by the first resumption), and there is
+no `RequestContext` parameter: everything modeled rides the input. One server instance
+serves one seam — the constructor picks it. The thread-free chat hub is the working
+reference ([examples/chat/async_hub_server_main.cc](../examples/chat/async_hub_server_main.cc),
+driven as real shell-commanded processes by `async_hub_cli_test.sh`), and the same
+consumer script passes out of tree against both seams
+(`examples/bazel-consumer/chat_async_reconnect_server_main.cc`).
 
 Note `Stop()`'s semantics from ADR-0015: it *aborts* live stream sessions rather than
 draining them, so a graceful rollout drains application-side first — now one line:

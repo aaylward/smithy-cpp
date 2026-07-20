@@ -218,6 +218,15 @@ final class EventStreamCodeGen {
         + ">";
   }
 
+  /** The async handler's session type (ADR-0021): {@link #serverStreamType}'s coroutine sibling. */
+  static String asyncServerStreamType(CppContext context, OperationShape operation) {
+    return "smithy::eventstream::AsyncEventStream<"
+        + eventUnionType(context, outputInfo(context.model(), operation))
+        + ", "
+        + eventUnionType(context, inputInfo(context.model(), operation))
+        + ">";
+  }
+
   /** The generated header alias for {@link #clientStreamType}: {@code <Op>ClientStream}. */
   static String clientStreamAlias(OperationShape operation) {
     return opName(operation) + "ClientStream";
@@ -226,6 +235,13 @@ final class EventStreamCodeGen {
   /** The generated header alias for {@link #serverStreamType}: {@code <Op>ServerStream}. */
   static String serverStreamAlias(OperationShape operation) {
     return opName(operation) + "ServerStream";
+  }
+
+  /**
+   * The generated header alias for {@link #asyncServerStreamType}: {@code <Op>AsyncServerStream}.
+   */
+  static String asyncServerStreamAlias(OperationShape operation) {
+    return opName(operation) + "AsyncServerStream";
   }
 
   /**
@@ -258,6 +274,14 @@ final class EventStreamCodeGen {
           "using $L = $L;",
           alias,
           serverSide ? serverStreamType(context, operation) : clientStreamType(context, operation));
+      if (serverSide) {
+        String asyncAlias = asyncServerStreamAlias(operation);
+        TypeGenerators.requireNoModelCollision(
+            context, service, operation, asyncAlias, "stream alias");
+        w.write("/// The same session for an async handler (ADR-0021): co_await where the");
+        w.write("/// blocking sibling parks a thread; identical directions and Share().");
+        w.write("using $L = $L;", asyncAlias, asyncServerStreamType(context, operation));
+      }
     }
     w.write("");
   }
@@ -365,6 +389,8 @@ final class EventStreamCodeGen {
       List<OperationShape> streamingOperations) {
     w.addInclude("\"smithy/eventstream/envelope.h\"");
     w.addInclude("\"smithy/http/websocket.h\"");
+    w.addInclude("\"smithy/eventstream/async_event_stream.h\"");
+    w.addInclude("<utility>");
     for (OperationShape operation : streamingOperations) {
       writeEncodeFunction(w, context, protocol, operation, outputInfo(context.model(), operation));
       writeDecodeFunction(
@@ -376,6 +402,7 @@ final class EventStreamCodeGen {
           inputInfo(context.model(), operation),
           /* clientSide= */ false);
       writeExceptionMessageBuilder(w, context, service, protocol, operation);
+      writeAsyncServeWrapper(w, context, service, operation);
     }
   }
 
@@ -392,6 +419,55 @@ final class EventStreamCodeGen {
         clientStreamAlias(operation),
         encoderArgument(inputInfo(context.model(), operation), operation),
         op);
+  }
+
+  /**
+   * The generated launch wrapper (ADR-0021), one per streaming operation, into server.cc's
+   * anonymous namespace: a Detached coroutine that owns the typed async session, awaits the
+   * handler's StreamTask, and frames a failure outcome exactly like the blocking route — through
+   * SendAsync, never a blocking Send on a completion context.
+   */
+  static void writeAsyncServeWrapper(
+      CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
+    String op = opName(operation);
+    String serviceName = CppReservedWords.escape(service.getId().getName());
+    String inputType =
+        context.cppSymbols().toSymbol(ProtocolSupport.inputShape(context, operation)).getName();
+    w.write("// The async route's launch wrapper (ADR-0021): its frame owns the typed");
+    w.write("// session, so the handler may take it by reference; the handler's outcome");
+    w.write("// is framed exactly like the blocking route's, via SendAsync — a blocking");
+    w.write("// Send here would run on a completion context.");
+    w.openBlock(
+        "smithy::eventstream::Detached Serve$LAsync(std::shared_ptr<$LAsyncHandler> handler,"
+            + " $L input, std::shared_ptr<smithy::http::WebSocket> socket) {",
+        op,
+        serviceName,
+        inputType);
+    w.write(
+        "$L stream(socket, $L, Decode$LEvent);",
+        asyncServerStreamAlias(operation),
+        encoderArgument(outputInfo(context.model(), operation), operation),
+        op);
+    w.write("auto outcome = co_await handler->$L(std::move(input), stream);", op);
+    w.openBlock("if (!outcome.ok()) {");
+    w.write("socket->SendAsync(Build$LExceptionMessage(outcome.error()),", op);
+    w.write(
+        "                  [socket](const smithy::Outcome<smithy::Unit>&) {"
+            + " socket->Close(); });");
+    w.write("co_return;");
+    w.closeBlock("}");
+    w.write("stream.Close();");
+    w.closeBlock("}");
+    w.write("");
+  }
+
+  /**
+   * The shared tail of every session (async) streaming route: hand the parsed input and the owned
+   * socket to the operation's launch wrapper, which returns immediately — the launch-point contract
+   * of the shared seam.
+   */
+  static void writeLaunchAsync(CppWriter w, OperationShape operation, String inputExpr) {
+    w.write("Serve$LAsync(handler, $L, std::move(socket));", opName(operation), inputExpr);
   }
 
   /**

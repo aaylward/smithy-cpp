@@ -6,6 +6,7 @@
 
 #include "example/chat/types.h"
 #include "smithy/core/outcome.h"
+#include "smithy/eventstream/async_event_stream.h"
 #include "smithy/eventstream/event_stream.h"
 #include "smithy/http/transport.h"
 #include "smithy/server/router.h"
@@ -16,9 +17,15 @@ namespace example::chat {
 /// The typed session a Converse handler borrows (ADR-0016): Tx = what this
 /// server sends, Rx = what the client sends.
 using ConverseServerStream = smithy::eventstream::EventStream<RoomEvents, ChatEvents>;
+/// The same session for an async handler (ADR-0021): co_await where the
+/// blocking sibling parks a thread; identical directions and Share().
+using ConverseAsyncServerStream = smithy::eventstream::AsyncEventStream<RoomEvents, ChatEvents>;
 /// The typed session a Watch handler borrows (ADR-0016): Tx = what this
 /// server sends, Rx = what the client sends.
 using WatchServerStream = smithy::eventstream::EventStream<RoomEvents, smithy::eventstream::NoEvents>;
+/// The same session for an async handler (ADR-0021): co_await where the
+/// blocking sibling parks a thread; identical directions and Share().
+using WatchAsyncServerStream = smithy::eventstream::AsyncEventStream<RoomEvents, smithy::eventstream::NoEvents>;
 
 /// Implement one method per operation. Return a modeled error as
 /// smithy::Error::Modeled("<ErrorShapeName>", message), optionally with the
@@ -64,19 +71,71 @@ class ChatHandler {
     virtual smithy::Outcome<smithy::Unit> Watch(const WatchInput& input, WatchServerStream& stream, const smithy::server::RequestContext& context) = 0;
 };
 
+/// ChatHandler's zero-thread sibling (ADR-0021): implement this and construct
+/// ChatServer with it to serve every streaming route on the shared-session
+/// seam — no parked thread per session. Unary operations keep the blocking
+/// shape (request/response on the handler pool either way). Implementations
+/// must be thread-safe, like ChatHandler.
+class ChatAsyncHandler {
+  public:
+    virtual ~ChatAsyncHandler() = default;
+
+    /// Bidirectional: the client streams ChatEvents up and receives RoomEvents
+    /// down over one WebSocket session. Initial-request members ride the upgrade
+    /// GET (the room label and the nickname header). Kicked is the mid-stream
+    /// modeled error: a handler returning it ends the stream with a typed
+    /// exception message before the close (exceptions travel via the operation's
+    /// errors list, not as event union members — ADR-0016's wire binding).
+    ///
+    /// Async streaming operation (ADR-0021): a coroutine — co_await
+    /// stream.Receive()/Send() until done, then co_return smithy::Unit{}
+    /// for a clean close, or
+    /// an error, which ends the stream with an exception message before the
+    /// close. `input` is the coroutine's own copy — the upgrade request is
+    /// gone by the first resumption. `stream` stays valid until the returned
+    /// task completes. The coroutine runs and resumes on the transport's
+    /// completion contexts: never block there — blocking work belongs on
+    /// application threads, reached through stream.Share().
+    virtual smithy::eventstream::StreamTask Converse(ConverseInput input, ConverseAsyncServerStream& stream) = 0;
+    /// Unary neighbor: an ordinary request/response on the same service, served
+    /// by the same transport that upgrades the streaming operations.
+    virtual smithy::Outcome<ListRoomsOutput> ListRooms(const ListRoomsInput& input, const smithy::server::RequestContext& context) = 0;
+    /// Server-push: no input stream, so the client's transmit direction is the
+    /// runtime's NoEvents — the client only listens to the room.
+    ///
+    /// Async streaming operation (ADR-0021): a coroutine — co_await
+    /// stream.Send() to drive the session (a Receive only ever reports the
+    /// client's close), then co_return smithy::Unit{} for a clean close, or
+    /// an error, which ends the stream with an exception message before the
+    /// close. `input` is the coroutine's own copy — the upgrade request is
+    /// gone by the first resumption. `stream` stays valid until the returned
+    /// task completes. The coroutine runs and resumes on the transport's
+    /// completion contexts: never block there — blocking work belongs on
+    /// application threads, reached through stream.Share().
+    virtual smithy::eventstream::StreamTask Watch(WatchInput input, WatchAsyncServerStream& stream) = 0;
+};
+
 /// simpleRestJson server for example.chat#Chat: routing, deserialization, handler dispatch,
 /// response serialization, and modeled-error mapping. Pass Handler() to any
 /// smithy::http::HttpServerTransport.
 class ChatServer {
   public:
     explicit ChatServer(std::shared_ptr<ChatHandler> handler);
+    /// The zero-thread alternative (ADR-0021): the unary table is identical,
+    /// and every streaming route is registered on the shared-session seam,
+    /// served by coroutine. One server instance serves one seam — the
+    /// constructor chosen decides which two-line mount applies (StreamRouter).
+    explicit ChatServer(std::shared_ptr<ChatAsyncHandler> handler);
 
     smithy::http::RequestHandler Handler() const;
 
     /// The WebSocket router carrying every streaming route (ADR-0016), ready
-    /// to mount on the transport in two lines:
+    /// to mount on the transport in two lines — the serve line keyed to the
+    /// constructor used:
     ///   options.websocket_gate = server.StreamRouter()->Gate();
-    ///   options.on_websocket = server.StreamRouter()->Serve();
+    ///   options.on_websocket = server.StreamRouter()->Serve();  // blocking handler
+    ///   options.on_websocket_session =
+    ///       server.StreamRouter()->ServeSession();  // async handler (ADR-0021)
     std::shared_ptr<smithy::server::WebSocketRouter> StreamRouter() const;
 
   private:

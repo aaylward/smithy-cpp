@@ -17,6 +17,7 @@
 #include "smithy/core/base64.h"
 #include "smithy/core/blob.h"
 #include "smithy/core/document_serde.h"
+#include "smithy/eventstream/async_event_stream.h"
 #include "smithy/eventstream/envelope.h"
 #include "smithy/http/headers.h"
 #include "smithy/http/websocket.h"
@@ -213,6 +214,21 @@ smithy::eventstream::Message BuildConverseExceptionMessage(const smithy::Error& 
   return smithy::eventstream::MakeExceptionMessage(type, "application/json", smithy::Blob::FromString(smithy::json::Encode(smithy::Document(std::move(body)))));
 }
 
+// The async route's launch wrapper (ADR-0021): its frame owns the typed
+// session, so the handler may take it by reference; the handler's outcome
+// is framed exactly like the blocking route's, via SendAsync — a blocking
+// Send here would run on a completion context.
+smithy::eventstream::Detached ServeConverseAsync(std::shared_ptr<ChatAsyncHandler> handler, ConverseInput input, std::shared_ptr<smithy::http::WebSocket> socket) {
+  ConverseAsyncServerStream stream(socket, EncodeConverseEvent, DecodeConverseEvent);
+  auto outcome = co_await handler->Converse(std::move(input), stream);
+  if (!outcome.ok()) {
+    socket->SendAsync(BuildConverseExceptionMessage(outcome.error()),
+                      [socket](const smithy::Outcome<smithy::Unit>&) { socket->Close(); });
+    co_return;
+  }
+  stream.Close();
+}
+
 // One event per message (ADR-0016): the engaged member's structure is the
 // payload, its member name the :event-type.
 smithy::Outcome<smithy::eventstream::Message> EncodeWatchEvent(const RoomEvents& event) {
@@ -254,6 +270,21 @@ smithy::eventstream::Message BuildWatchExceptionMessage(const smithy::Error& err
     body.emplace("message", smithy::Document(std::move(message)));
   }
   return smithy::eventstream::MakeExceptionMessage(type, "application/json", smithy::Blob::FromString(smithy::json::Encode(smithy::Document(std::move(body)))));
+}
+
+// The async route's launch wrapper (ADR-0021): its frame owns the typed
+// session, so the handler may take it by reference; the handler's outcome
+// is framed exactly like the blocking route's, via SendAsync — a blocking
+// Send here would run on a completion context.
+smithy::eventstream::Detached ServeWatchAsync(std::shared_ptr<ChatAsyncHandler> handler, WatchInput input, std::shared_ptr<smithy::http::WebSocket> socket) {
+  WatchAsyncServerStream stream(socket, EncodeWatchEvent, DecodeWatchEvent);
+  auto outcome = co_await handler->Watch(std::move(input), stream);
+  if (!outcome.ok()) {
+    socket->SendAsync(BuildWatchExceptionMessage(outcome.error()),
+                      [socket](const smithy::Outcome<smithy::Unit>&) { socket->Close(); });
+    co_return;
+  }
+  stream.Close();
 }
 
 }  // namespace
@@ -318,6 +349,56 @@ ChatServer::ChatServer(std::shared_ptr<ChatHandler> handler)
       (void)socket.Send(BuildWatchExceptionMessage(outcome.error()));
     }
     stream.Close();
+  }, "Watch");
+}
+
+ChatServer::ChatServer(std::shared_ptr<ChatAsyncHandler> handler)
+  : router_(std::make_shared<smithy::server::Router>()),
+    stream_router_(std::make_shared<smithy::server::WebSocketRouter>()) {
+  // The same unary table; every streaming route rides the shared-session
+  // seam (ADR-0021) — an AddSession launch point per operation, so serving
+  // a stream parks no handler thread.
+  (void)router_->Add("GET", "/rooms", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec (415), then Accept (406);
+    // the malformed-request suite pins the error-identity headers. A missing
+    // content-type is tolerated, and blob payloads without @mediaType accept
+    // any content type / accept.
+    if (request.headers.Get("content-type").has_value()) {
+      auto error_response = JsonError(415, "", "unsupported media type", {});
+      error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
+      return error_response;
+    }
+    if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
+      auto error_response = JsonError(406, "", "not acceptable", {});
+      error_response.headers.Set("x-error-type", "NotAcceptableException");
+      return error_response;
+    }
+    std::vector<smithy::server::ValidationFailure> validation_failures;
+    auto input = ParseListRoomsInput(request, context, &validation_failures);
+    if (!input) return ErrorToResponse(input.error());
+    auto outcome = handler->ListRooms(*input, context);
+    if (!outcome) return ErrorToResponse(outcome.error());
+    return BuildListRoomsResponse(*outcome);
+  }, "ListRooms");
+  (void)stream_router_->AddSession("GET", "/rooms/{room}/converse", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::shared_ptr<smithy::http::WebSocket> socket) {
+    std::vector<smithy::server::ValidationFailure> validation_failures;
+    auto input = ParseConverseInput(request, context, &validation_failures);
+    if (!input) {
+      (void)socket->Send(BuildConverseExceptionMessage(input.error()));
+      socket->Close();
+      return;
+    }
+    ServeConverseAsync(handler, *std::move(input), std::move(socket));
+  }, "Converse");
+  (void)stream_router_->AddSession("GET", "/rooms/{room}/watch", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::shared_ptr<smithy::http::WebSocket> socket) {
+    std::vector<smithy::server::ValidationFailure> validation_failures;
+    auto input = ParseWatchInput(request, context, &validation_failures);
+    if (!input) {
+      (void)socket->Send(BuildWatchExceptionMessage(input.error()));
+      socket->Close();
+      return;
+    }
+    ServeWatchAsync(handler, *std::move(input), std::move(socket));
   }, "Watch");
 }
 

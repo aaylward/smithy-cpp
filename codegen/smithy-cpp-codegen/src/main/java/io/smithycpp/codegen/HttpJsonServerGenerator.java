@@ -527,6 +527,40 @@ final class HttpJsonServerGenerator {
   }
 
   /**
+   * One streaming operation's shared-session route (ADR-0021): the same parse and refusals as
+   * {@link #writeStreamRoute} — before any coroutine exists, on the launch callback — then the
+   * owned socket and parsed input go to the generated async wrapper, and the callback returns
+   * immediately (the launch-point contract).
+   */
+  void writeStreamSessionRoute(
+      CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
+    HttpTrait http = operation.expectTrait(HttpTrait.class);
+    String opName = CppReservedWords.escape(operation.getId().getName());
+    w.openBlock(
+        "(void)stream_router_->AddSession(\"GET\", $S, [handler](const smithy::http::HttpRequest&"
+            + " request, "
+            + ProtocolSupport.REQUEST_CONTEXT_PARAM
+            + " context, std::shared_ptr<smithy::http::WebSocket> socket) {",
+        routePattern(http));
+    w.write("std::vector<smithy::server::ValidationFailure> validation_failures;");
+    w.write("auto input = Parse$LInput(request, context, &validation_failures);", opName);
+    w.openBlock("if (!input) {");
+    w.write("(void)socket->Send(Build$LExceptionMessage(input.error()));", opName);
+    w.write("socket->Close();");
+    w.write("return;");
+    w.closeBlock("}");
+    if (emitsValidation) {
+      writeSessionValidationRefusal(w, opName);
+    }
+    if (validation.validates(operation)) {
+      w.write("$L(*input, \"\", &validation_failures);", validation.validatorNameFor(operation));
+      writeSessionValidationRefusal(w, opName);
+    }
+    EventStreamCodeGen.writeLaunchAsync(w, operation, "*std::move(input)");
+    w.closeBlock("}, $S);", operation.getId().getName());
+  }
+
+  /**
    * The streaming analog of ValidationErrorResponse: a refused upgrade answers over the session —
    * one SerializationException exception message carrying the first failure, then the close.
    */
@@ -537,6 +571,18 @@ final class HttpJsonServerGenerator {
             + "smithy::Error::Validation(validation_failures.front().message)));",
         opName);
     w.write("socket.Close();");
+    w.write("return;");
+    w.closeBlock("}");
+  }
+
+  /** {@link #writeStreamValidationRefusal} on the shared seam's owned socket. */
+  private static void writeSessionValidationRefusal(CppWriter w, String opName) {
+    w.openBlock("if (!validation_failures.empty()) {");
+    w.write(
+        "(void)socket->Send(Build$LExceptionMessage("
+            + "smithy::Error::Validation(validation_failures.front().message)));",
+        opName);
+    w.write("socket->Close();");
     w.write("return;");
     w.closeBlock("}");
   }

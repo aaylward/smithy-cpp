@@ -17,6 +17,7 @@
 
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
@@ -376,6 +377,175 @@ TEST_F(ScriptedChatTest, AnUndeclaredModeledErrorFallsThroughAsGenericModeled) {
   EXPECT_EQ(outcome.error().code(), "RoomFull");
   EXPECT_EQ(outcome.error().message(), "room is full");
   EXPECT_FALSE(ConverseErrors::FromError(outcome.error()).is_kicked());
+}
+
+// ---------------------------------------------------------------------------
+// The generated ASYNC serve path (ADR-0021): the same wire, zero threads.
+// ---------------------------------------------------------------------------
+
+// The smallest coroutine session loop, plus the scripted failure modes the
+// generated wrapper must frame: a typed Kicked on "kick me", a throw on
+// "explode" (StreamTask's containment, end to end), an echo otherwise.
+class EchoAsyncHandler final : public ChatAsyncHandler {
+ public:
+  smithy::eventstream::StreamTask Converse(ConverseInput input,
+                                           ConverseAsyncServerStream& stream) override {
+    const std::string name = input.nickname.value_or("anonymous");
+    (void)co_await stream.Send(RoomEvents::FromJoined(MemberJoined{.member = name}));
+    while (true) {
+      auto event = co_await stream.Receive();
+      if (!event.ok() || !event->has_value()) co_return smithy::Unit{};
+      if ((*event)->is_leave()) {
+        (void)co_await stream.Send(RoomEvents::FromLeft(MemberLeft{.member = name}));
+        co_return smithy::Unit{};
+      }
+      if (!(*event)->is_message()) continue;
+      const ChatMessage& message = (*event)->as_message();
+      if (message.text == "kick me") {
+        Kicked kicked;
+        kicked.message = "kicked from " + input.room;
+        kicked.by = kModerator;
+        auto refusal = smithy::Error::Modeled("Kicked", *kicked.message);
+        refusal.set_detail(std::move(kicked));
+        co_return refusal;
+      }
+      if (message.text == "explode") {
+        throw std::runtime_error("secret-internal-detail");
+      }
+      (void)co_await stream.Send(RoomEvents::FromMessage(message));
+    }
+  }
+
+  smithy::eventstream::StreamTask Watch(WatchInput input, WatchAsyncServerStream& stream) override {
+    for (int i = 0; i < 3; ++i) {
+      ChatMessage update;
+      update.text = input.room + "-update-" + std::to_string(i);
+      (void)co_await stream.Send(RoomEvents::FromMessage(update));
+    }
+    co_return smithy::Unit{};
+  }
+
+  smithy::Outcome<ListRoomsOutput> ListRooms(const ListRoomsInput&,
+                                             const smithy::server::RequestContext&) override {
+    ListRoomsOutput output;
+    output.rooms.push_back(RoomSummary{.name = "lobby", .members = 2});
+    return output;
+  }
+};
+
+class AsyncChatEndToEndTest : public StreamTestFixture {
+ protected:
+  void SetUp() override { StartWithAsync(std::make_shared<EchoAsyncHandler>()); }
+};
+
+TEST_F(AsyncChatEndToEndTest, BidiEventsRoundTripWithZeroServeThreads) {
+  ConverseInput input;
+  input.room = "lobby";
+  input.nickname = "ada";
+  auto stream = client_->Converse(input);
+  ASSERT_TRUE(stream.ok()) << stream.error().message();
+  EXPECT_EQ(last_dialed_target_, "/rooms/lobby/converse");
+  // The structural claim of the seam: the launch point returned and no
+  // serve thread exists — the pair's completions drive the coroutine.
+  EXPECT_TRUE(threads_.empty());
+
+  auto joined = stream->Receive();
+  ASSERT_TRUE(joined.ok() && joined->has_value());
+  ASSERT_TRUE((**joined).is_joined());
+  EXPECT_EQ((**joined).as_joined().member, "ada");
+
+  for (int i = 0; i < 5; ++i) {
+    ChatMessage message;
+    message.text = "hello-" + std::to_string(i);
+    message.sender = "ada";
+    ASSERT_TRUE(stream->Send(ChatEvents::FromMessage(message)).ok());
+    auto echo = stream->Receive();
+    ASSERT_TRUE(echo.ok() && echo->has_value());
+    ASSERT_TRUE((**echo).is_message());
+    EXPECT_EQ((**echo).as_message().text, "hello-" + std::to_string(i));
+  }
+
+  // A clean leave: the handler co_returns Unit and the generated wrapper
+  // closes — the next Receive is the stream's natural end.
+  LeaveNotice leave;
+  leave.reason = "done";
+  ASSERT_TRUE(stream->Send(ChatEvents::FromLeave(leave)).ok());
+  auto left = stream->Receive();
+  ASSERT_TRUE(left.ok() && left->has_value());
+  ASSERT_TRUE((**left).is_left());
+  auto end = stream->Receive();
+  ASSERT_TRUE(end.ok()) << end.error().message();
+  EXPECT_FALSE(end->has_value());
+}
+
+TEST_F(AsyncChatEndToEndTest, AsyncWatchPushesWithoutAClientTransmitDirection) {
+  WatchInput input;
+  input.room = "lobby";
+  auto stream = client_->Watch(input);
+  ASSERT_TRUE(stream.ok()) << stream.error().message();
+  for (int i = 0; i < 3; ++i) {
+    auto update = stream->Receive();
+    ASSERT_TRUE(update.ok() && update->has_value());
+    ASSERT_TRUE((**update).is_message());
+    EXPECT_EQ((**update).as_message().text, "lobby-update-" + std::to_string(i));
+  }
+  auto end = stream->Receive();
+  ASSERT_TRUE(end.ok()) << end.error().message();
+  EXPECT_FALSE(end->has_value());
+}
+
+TEST_F(AsyncChatEndToEndTest, AFailedTaskOutcomeSurfacesTypedOnTheClient) {
+  // The blocking contract's best convenience, restored by StreamTask: the
+  // handler co_returns the modeled error, the generated wrapper frames the
+  // typed exception, and the client sees the exact unary-shaped failure.
+  ConverseInput input;
+  input.room = "lobby";
+  input.nickname = "mallory";
+  auto stream = client_->Converse(input);
+  ASSERT_TRUE(stream.ok()) << stream.error().message();
+  ASSERT_TRUE(stream->Receive().ok());  // drain the joined greeting
+
+  ChatMessage message;
+  message.text = "kick me";
+  ASSERT_TRUE(stream->Send(ChatEvents::FromMessage(message)).ok());
+  auto outcome = stream->Receive();
+  ASSERT_FALSE(outcome.ok());
+  EXPECT_EQ(outcome.error().kind(), smithy::ErrorKind::kModeled);
+  EXPECT_EQ(outcome.error().code(), "Kicked");
+  EXPECT_EQ(outcome.error().message(), "kicked from lobby");
+  const Kicked* detail = outcome.error().detail<Kicked>();
+  ASSERT_NE(detail, nullptr);
+  EXPECT_EQ(detail->by, kModerator);
+  ASSERT_TRUE(ConverseErrors::FromError(outcome.error()).is_kicked());
+}
+
+TEST_F(AsyncChatEndToEndTest, AThrowingAsyncHandlerSurfacesInternalFailureNotTermination) {
+  // StreamTask's containment through the whole generated stack: the
+  // coroutine throws, the task completes with Error::Unknown, the wrapper
+  // frames the never-leak InternalFailure — and the process lives.
+  ConverseInput input;
+  input.room = "lobby";
+  input.nickname = "bug";
+  auto stream = client_->Converse(input);
+  ASSERT_TRUE(stream.ok()) << stream.error().message();
+  ASSERT_TRUE(stream->Receive().ok());  // drain the joined greeting
+
+  ChatMessage message;
+  message.text = "explode";
+  ASSERT_TRUE(stream->Send(ChatEvents::FromMessage(message)).ok());
+  auto outcome = stream->Receive();
+  ASSERT_FALSE(outcome.ok());
+  EXPECT_EQ(outcome.error().code(), "InternalFailure");
+  EXPECT_EQ(outcome.error().message(), "internal failure");
+  EXPECT_EQ(outcome.error().message().find("secret-internal-detail"), std::string::npos);
+}
+
+TEST_F(AsyncChatEndToEndTest, UnaryOperationSharesTheAsyncService) {
+  const auto rooms = client_->ListRooms();
+  ASSERT_TRUE(rooms.ok()) << rooms.error().message();
+  ASSERT_EQ(rooms->rooms.size(), 1U);
+  EXPECT_EQ(rooms->rooms[0].name, "lobby");
+  EXPECT_EQ(rooms->rooms[0].members, 2);
 }
 
 }  // namespace

@@ -245,6 +245,59 @@ class EventStreamGeneratorTest {
   }
 
   @Test
+  void serverGrowsTheAsyncHandlerAndSessionRoutes() {
+    // ADR-0021: the coroutine sibling — async aliases, the StreamTask
+    // handler, the second constructor wiring AddSession launch points, and
+    // the Detached wrapper that frames a failed outcome via SendAsync.
+    MockManifest manifest = rest();
+    String header = manifest.expectFileString("/include/test/stream/server.h");
+    assertTrue(
+        header.contains(
+            "using ConverseAsyncServerStream ="
+                + " smithy::eventstream::AsyncEventStream<ServerEvents, ClientEvents>;"),
+        header);
+    assertTrue(
+        header.contains(
+            "virtual smithy::eventstream::StreamTask Converse(ConverseInput input,"
+                + " ConverseAsyncServerStream& stream) = 0;"),
+        header);
+    // Unary operations keep the blocking shape on the async handler.
+    assertTrue(header.contains("class SvcAsyncHandler {"), header);
+    assertTrue(
+        header.contains("explicit SvcServer(std::shared_ptr<SvcAsyncHandler> handler);"), header);
+
+    String server = manifest.expectFileString("/src/server.cc");
+    assertTrue(
+        server.contains("(void)stream_router_->AddSession(\"GET\", \"/rooms/{room}/converse\","),
+        server);
+    // The launch point parses like the blocking route, refuses on the owned
+    // socket, and hands off to the wrapper without blocking.
+    assertTrue(
+        server.contains("(void)socket->Send(BuildConverseExceptionMessage(input.error()));"),
+        server);
+    assertTrue(
+        server.contains("ServeConverseAsync(handler, *std::move(input), std::move(socket));"),
+        server);
+    assertTrue(
+        server.contains(
+            "smithy::eventstream::Detached ServeConverseAsync(std::shared_ptr<SvcAsyncHandler>"
+                + " handler, ConverseInput input,"
+                + " std::shared_ptr<smithy::http::WebSocket> socket) {"),
+        server);
+    assertTrue(
+        server.contains("auto outcome = co_await handler->Converse(std::move(input), stream);"),
+        server);
+    // A failed outcome is framed through SendAsync — never a blocking Send
+    // on a completion context — and the close rides its callback.
+    assertTrue(
+        server.contains("socket->SendAsync(BuildConverseExceptionMessage(outcome.error()),"),
+        server);
+    assertTrue(
+        server.contains("[socket](const smithy::Outcome<smithy::Unit>&) { socket->Close(); });"),
+        server);
+  }
+
+  @Test
   void streamRoutesGuardValidationLikeUnaryRoutes() {
     // The flip side of the absence pin above: with a constrained initial
     // member, the constrained operation's route validates and refuses over

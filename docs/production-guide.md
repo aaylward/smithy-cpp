@@ -601,7 +601,7 @@ clients should treat a close during redial as "try the other host", not
 with roster snapshot, grace expiry announcing the departure — as real
 processes:
 [examples/chat/async_hub_cli_test.sh](../examples/chat/async_hub_cli_test.sh)
-on the hand-mounted async hub, and
+on the generated-async-handler hub (ADR-0021), and
 [examples/bazel-consumer/chat_reconnect_cli_test.sh](../examples/bazel-consumer/chat_reconnect_cli_test.sh)
 on a fully generated server and clients through the module boundary.
 

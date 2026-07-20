@@ -37,13 +37,26 @@ class StreamTestFixture : public testing::Test {
   // restart with a different handler; earlier sessions stay owned until
   // TearDown.
   void StartWith(std::shared_ptr<ChatHandler> handler) {
-    server_ = std::make_unique<ChatServer>(std::move(handler));
+    Start(std::make_unique<ChatServer>(std::move(handler)), /*session_seam=*/false);
+  }
+
+  // The ADR-0021 wiring: the same server around the ASYNC handler, its
+  // streaming routes dispatched through ServeSession. The launch point
+  // runs inline in the dialer and returns immediately; the pair's inline
+  // completions then drive the coroutine, so no serve thread exists.
+  void StartWithAsync(std::shared_ptr<ChatAsyncHandler> handler) {
+    Start(std::make_unique<ChatServer>(std::move(handler)), /*session_seam=*/true);
+  }
+
+  void Start(std::unique_ptr<ChatServer> server, bool session_seam) {
+    server_ = std::move(server);
     auto loopback = std::make_shared<smithy::http::Loopback>();
     ASSERT_TRUE(loopback->Start(server_->Handler()).ok());
     smithy::ClientConfig config;
     config.retry.max_attempts = 1;
     config.http_client = loopback;  // the unary neighbor's transport
-    config.websocket_dialer = [this](const smithy::http::WebSocketDialRequest& request)
+    config.websocket_dialer = [this,
+                               session_seam](const smithy::http::WebSocketDialRequest& request)
         -> smithy::Outcome<std::shared_ptr<smithy::http::WebSocket>> {
       last_dialed_target_ = request.target;
       auto [near, far] = smithy::http::InMemoryWebSocketPair::Create();
@@ -53,9 +66,13 @@ class StreamTestFixture : public testing::Test {
       upgrade.headers = request.headers;
       sessions_.push_back(far);
       if (serve_far_end_) {
-        threads_.emplace_back([serve = server_->StreamRouter()->Serve(), upgrade, session = far] {
-          serve(upgrade, *session);
-        });
+        if (session_seam) {
+          server_->StreamRouter()->ServeSession()(upgrade, far);  // a launch point, not a loop
+        } else {
+          threads_.emplace_back([serve = server_->StreamRouter()->Serve(), upgrade, session = far] {
+            serve(upgrade, *session);
+          });
+        }
       }
       return near;
     };

@@ -632,8 +632,10 @@ TEST(SessionRegistryGraceTest, DetachParksAndResumeSwapsInTheNewConnection) {
   // The old connection was closed by the detach; the entry stays counted.
   EXPECT_EQ(NextAt(session), std::nullopt);
   EXPECT_EQ(slow.size(), 1U);
+  EXPECT_EQ(slow.Ids(), (std::vector<std::string>{"ada"}));  // still registered
   // Default posture: events to a detached id are dropped, reported unqueued.
   EXPECT_FALSE(slow.SendTo("ada", Note{"lost"}));
+  EXPECT_EQ(slow.Broadcast(Note{"lost-too"}), 0U);  // detached ids count as unqueued
 
   // The identity-keyed swap: the new connection takes over the entry.
   Session fresh = MakeSession();

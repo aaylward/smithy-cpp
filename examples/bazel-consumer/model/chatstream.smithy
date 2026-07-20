@@ -19,6 +19,12 @@ service Chat {
 @http(method: "POST", uri: "/exchange")
 operation Exchange {
     input := {
+        /// The session identity the reconnect story keys on (ADR-0020):
+        /// the registry id, and what a resume ticket would be bound to.
+        @required
+        @httpQuery("name")
+        name: String
+
         @httpPayload
         events: Notes
     }

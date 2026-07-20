@@ -1,4 +1,5 @@
-load("@rules_cc//cc:defs.bzl", "cc_test")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_test")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("@smithy_cpp//bazel:defs.bzl", "smithy_cpp_client_library", "smithy_cpp_server_library")
 
 # The base model is protocol-agnostic (the upstream Smithy way); each pair of
@@ -172,6 +173,49 @@ smithy_cpp_server_library(
     srcs = ["model/chatstream.smithy"],
     namespace = "acme::chat",
     service = "acme.chat#Chat",
+)
+
+# The reconnect loop (ADR-0020) as real shell-commanded processes: the
+# generated streaming server with SessionRegistry grace, generated clients,
+# kill -9 / rejoin / expiry — the consumer e2e for Detach/Resume. Beast on
+# both ends; behind a download-blocking proxy exclude it with the other
+# Beast targets.
+cc_binary(
+    name = "chat_reconnect_server",
+    srcs = ["chat_reconnect_server_main.cc"],
+    deps = [
+        ":chat_stream_server",
+        "@smithy_cpp//runtime:core",
+        "@smithy_cpp//runtime:http_beast",
+        "@smithy_cpp//runtime:server",
+    ],
+)
+
+cc_binary(
+    name = "chat_reconnect_client",
+    srcs = ["chat_reconnect_client_main.cc"],
+    deps = [
+        ":chat_stream_client",
+        "@smithy_cpp//runtime:client",
+        "@smithy_cpp//runtime:core",
+        "@smithy_cpp//runtime:eventstream",
+        "@smithy_cpp//runtime:http_beast",  # the generated client's default dialer
+    ],
+)
+
+sh_test(
+    name = "chat_reconnect_cli_test",
+    size = "medium",  # a real 3s grace expiry plus process choreography
+    srcs = ["chat_reconnect_cli_test.sh"],
+    args = [
+        "$(rootpath :chat_reconnect_server)",
+        "$(rootpath :chat_reconnect_client)",
+    ],
+    data = [
+        ":chat_reconnect_client",
+        ":chat_reconnect_server",
+    ],
+    tags = ["requires-network"],
 )
 
 # One bidi round trip through the module boundary, the streams riding an

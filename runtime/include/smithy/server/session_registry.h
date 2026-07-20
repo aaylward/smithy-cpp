@@ -415,9 +415,9 @@ class SessionRegistry {
     // ADR-0020: parked awaiting Resume or expiry. While detached,
     // stopping is also true (delivery is down); Resume clears both.
     bool detached = false;
-    std::chrono::steady_clock::time_point deadline{};
-    std::thread writer;  // sync mode only: started by Add, joined by
-                         // Reap/destructor (async entries hold none)
+    std::chrono::steady_clock::time_point deadline;  // meaningful iff detached
+    std::thread writer;                              // sync mode only: started by Add, joined by
+                                                     // Reap/destructor (async entries hold none)
   };
 
   static Options Normalize(Options options) {

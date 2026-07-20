@@ -339,7 +339,7 @@ class WsSession final : public WebSocketSessionBase,
       WebSocket::SendCallback cb;
       {
         const std::lock_guard<std::mutex> lock(mutex_);
-        cb = std::move(pending_send_);
+        cb = std::exchange(pending_send_, nullptr);
         write_complete_ = true;
         wake_.notify_all();
       }
@@ -490,7 +490,7 @@ class WsSession final : public WebSocketSessionBase,
     {
       const std::lock_guard<std::mutex> lock(mutex_);
       if (pending_receive_) {
-        receive = std::move(pending_receive_);
+        receive = std::exchange(pending_receive_, nullptr);
         handoff.emplace(std::move(message));
       } else {
         received_.push_back(std::move(message));
@@ -506,14 +506,16 @@ class WsSession final : public WebSocketSessionBase,
   }
 
   // Takes the parked async completions; called with mutex_ held on every
-  // terminal transition, fired by the caller after unlocking. std::move
-  // leaves the slots empty, so a completion can never fire twice.
+  // terminal transition, fired by the caller after unlocking. std::exchange
+  // (never a bare std::move: libc++'s small-buffer std::function move
+  // leaves the source still engaged) empties the slots, so a completion
+  // can never fire twice and the slots' emptiness stays the busy signal.
   struct AsyncWaiters {
     WebSocket::ReceiveCallback receive;
     WebSocket::SendCallback send;
   };
   AsyncWaiters TakeAsyncWaitersLocked() {
-    return {std::move(pending_receive_), std::move(pending_send_)};
+    return {std::exchange(pending_receive_, nullptr), std::exchange(pending_send_, nullptr)};
   }
 
   // Fires the taken completions with the session's terminal outcome:
@@ -536,7 +538,7 @@ class WsSession final : public WebSocketSessionBase,
     if (failed_ || peer_closed_ || close_requested_) {
       write_complete_ = true;
       write_error_ = failed_ ? error_ : "session is closed";
-      WebSocket::SendCallback send = std::move(pending_send_);
+      WebSocket::SendCallback send = std::exchange(pending_send_, nullptr);
       const std::string why = write_error_;
       wake_.notify_all();
       lock.unlock();
@@ -573,7 +575,7 @@ class WsSession final : public WebSocketSessionBase,
           error_ = write_error_;
         }
       }
-      send = std::move(pending_send_);
+      send = std::exchange(pending_send_, nullptr);
       send_error = write_error_;
       wake_.notify_all();
       if (!ec && close_requested_ && !close_started_) {

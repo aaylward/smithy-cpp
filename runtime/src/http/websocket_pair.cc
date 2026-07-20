@@ -114,7 +114,10 @@ class PairEnd final : public WebSocket {
       const std::lock_guard<std::mutex> lock(state_->mutex);
       state_->closed = true;
       for (std::size_t end = 0; end < 2; ++end) {
-        receives[end] = std::move(state_->pending_receive[end]);
+        // std::exchange, never a bare std::move: libc++'s small-buffer
+        // std::function move leaves the source engaged, and these slots'
+        // emptiness is the one-outstanding busy signal.
+        receives[end] = std::exchange(state_->pending_receive[end], nullptr);
         std::optional<PendingSend>& parked = state_->pending_send[end];
         if (parked.has_value()) {
           sends[end] = std::move(parked->callback);
@@ -205,7 +208,7 @@ class PairEnd final : public WebSocket {
     WebSocket::ReceiveCallback& parked = state_->pending_receive[1 - send_index_];
     if (!parked) return nullptr;
     delivered = message;
-    return std::move(parked);
+    return std::exchange(parked, nullptr);
   }
 
   // With the lock held: after this end freed queue space by receiving, the

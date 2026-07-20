@@ -1,4 +1,5 @@
-load("@rules_cc//cc:defs.bzl", "cc_test")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_test")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 # Full-duplex chat example (ADR-0016; PLAN §Phase 8's exit criterion): the
 # generated client and generated server exercising event streams end to end.
@@ -48,4 +49,74 @@ cc_test(
         "//runtime:test_tls_identity",
         "@googletest//:gtest_main",
     ],
+)
+
+# The consumer hub (issue #112): SessionRegistry + EventStream::Share turning
+# the chat service into a fan-out room server — the reference for the
+# multi-client pattern the Go-style WebSocket hub hand-rolls. In-memory half:
+# several generated clients against HubHandler through injected pairs.
+cc_test(
+    name = "hub_e2e_test",
+    size = "small",
+    srcs = [
+        "hub_e2e_test.cc",
+        "hub_handler.h",
+    ],
+    deps = [
+        "//examples/chat/generated:client",
+        "//examples/chat/generated:server",
+        "//runtime:client",
+        "//runtime:http",
+        "//runtime:server",
+        "@googletest//:gtest_main",
+    ],
+)
+
+# Real-process half of the hub example: the server binary hub_cli_test.sh
+# SIGTERMs into a drained exit...
+cc_binary(
+    name = "hub_server",
+    srcs = [
+        "hub_handler.h",
+        "hub_server_main.cc",
+    ],
+    deps = [
+        "//examples/chat/generated:server",
+        "//runtime:core",
+        "//runtime:http_beast",
+        "//runtime:server",
+    ],
+)
+
+# ...and the shell-drivable client: commands in on stdin, one event per line
+# out on stdout (also the client-side Share() demo — the stdin thread sends
+# through an owning handle while main runs the receive loop).
+cc_binary(
+    name = "hub_client",
+    srcs = ["hub_client_main.cc"],
+    deps = [
+        "//examples/chat/generated:client",
+        "//runtime:client",
+        "//runtime:core",
+        "//runtime:http",
+    ],
+)
+
+# Executes the hub as real processes over real WebSockets: one server, four
+# clients (two talkers, a watcher, an impostor) driven by shell commands
+# through their stdin — fan-out, redaction, the typed refusal, clean and
+# abrupt departures, live occupancy, SIGTERM → drain → exit 0.
+sh_test(
+    name = "hub_cli_test",
+    size = "small",
+    srcs = ["hub_cli_test.sh"],
+    args = [
+        "$(rootpath :hub_server)",
+        "$(rootpath :hub_client)",
+    ],
+    data = [
+        ":hub_client",
+        ":hub_server",
+    ],
+    tags = ["requires-network"],
 )

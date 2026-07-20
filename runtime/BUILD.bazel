@@ -456,6 +456,7 @@ cc_library(
     hdrs = [
         "include/smithy/server/middleware.h",
         "include/smithy/server/router.h",
+        "include/smithy/server/session_registry.h",
         "include/smithy/server/websocket_router.h",
     ],
     copts = COPTS,
@@ -496,6 +497,19 @@ cc_test(
     srcs = ["tests/server/middleware_test.cc"],
     copts = COPTS,
     deps = [
+        ":server",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "session_registry_test",
+    size = "small",
+    srcs = ["tests/server/session_registry_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":eventstream",
+        ":http",
         ":server",
         "@googletest//:gtest_main",
     ],

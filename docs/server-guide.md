@@ -101,7 +101,12 @@ the stream with one typed exception message before the close (a `Modeled` error 
 `set_detail()` surfaces on the client exactly like a unary modeled error) — unless the
 stream already terminated: propagating a failed `Receive()` closes without a message,
 which that peer already observed. The `stream&` is valid only until the handler returns,
-so join any helper thread still using it before returning. The generated
+so join any helper thread still using it before returning — or hand such threads an
+*owning handle* instead: `stream.Share()` returns a
+`std::shared_ptr<EventStreamHandle<Out>>` (issue #112, ADR-0017) that is safe to hold
+beyond the return. A handle sends and closes from any thread while the session lives;
+once the handler has returned it fails softly with `Error::Transport` — exactly what a
+closed stream reports — so nothing dangles and nothing new can go wrong. The generated
 server exposes `StreamRouter()`, a `smithy::server::WebSocketRouter` with every streaming
 route registered; mount it on the transport in two lines — the upgrade path deliberately
 bypasses the HTTP middleware chain (ADR-0015), so unary dispatch beside it is untouched:
@@ -124,12 +129,35 @@ query, and headers arrive on the upgrade request, which the transport accepts *b
 route parses them — so a validation failure surfaces as a successful dial whose first
 `Receive()` is a terminal `SerializationException`, not as a refused upgrade.
 
-Note `Stop()`'s semantics from ADR-0015: it *aborts* live stream sessions rather
-than draining them, so a graceful rollout drains application-side first. The recipe: keep
-your own registry of live sessions (the handler adds the borrowed `stream` on entry and
-removes it on exit, under a mutex), and on drain call `Close()` on each — it is idempotent
-and safe from any thread, each blocked handler wakes and returns, and once the registry
-empties, `Stop()` has nothing left to abort.
+Multi-client fan-out — "N connected players, the server pushes state to all of them" —
+is `smithy::server::SessionRegistry<Out>` (issue #112, ADR-0017), a thread-safe map of
+owning handles with a bounded outbound queue and a writer thread per session, so a
+broadcast never stalls a room behind the slowest client's TCP window:
+
+```cpp
+smithy::server::SessionRegistry<RoomEvents> registry;
+registry.Add(player_id, stream.Share());              // handler entry
+registry.SendTo(player_id, event);                    // queued, non-blocking
+registry.Broadcast(ids, [&](const auto& id) { return RedactFor(id); });  // per-recipient
+registry.Remove(player_id);                           // handler exit (a late Remove is
+                                                      // a soft bug, never a dangle)
+```
+
+When a session's queue is full the event is dropped and the slow-consumer policy runs:
+the default disconnects the client (its handler observes the close and unwinds);
+`Options::on_slow_consumer` keeps the policy with your application instead. Per-recipient
+construction exists because broadcast-identical-bytes is the wrong primitive for
+per-viewer state — the callback runs once per recipient, outside all registry locks.
+
+Note `Stop()`'s semantics from ADR-0015: it *aborts* live stream sessions rather than
+draining them, so a graceful rollout drains application-side first — now one line:
+`registry.Drain(grace)` closes every session (each blocked handler wakes, returns, and
+removes itself) and waits until the registry empties, after which `Stop()` has nothing
+left to abort. The working reference is the chat hub
+([examples/chat/hub_handler.h](../examples/chat/hub_handler.h)): rooms, per-viewer
+redaction, watchers and talkers on one registry, and the SIGTERM → `Drain()` → `Stop()`
+lifecycle, exercised end to end both in memory (`hub_e2e_test.cc`) and as real processes
+driven by shell commands (`hub_cli_test.sh`).
 
 Handlers are testable without any transport (or Boost): `InMemoryWebSocketPair` plus an
 injected dialer runs the full generated client↔server path in memory. The chat example's

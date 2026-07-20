@@ -95,6 +95,24 @@ via `git_override` until then.
   callback for in-flight gauges with guaranteed start/complete pairing.
   **Breaking:** `Observe(callback, now)` call sites become
   `Observe(callback, nullptr, now)`.
+- Event-stream session handles and fan-out (ADR-0017, issue #112):
+  `stream.Share()` mints `std::shared_ptr<EventStreamHandle<Out>>` — an
+  owning handle safe to hold beyond the handler's borrow, sending and
+  closing from any thread while the session lives and failing softly with
+  `Error::Transport` (never a dangle) once it is gone.
+  `smithy::server::SessionRegistry<Out>` builds the multi-client hub on
+  top: a thread-safe map of handles with a bounded outbound queue and
+  writer thread per session, so `SendTo`/`Broadcast` never block on a slow
+  client's wire; per-recipient event construction
+  (`Broadcast(ids, make)`) for per-viewer redaction; a slow-consumer
+  policy (disconnect by default, `Options::on_slow_consumer` to override);
+  and `Drain(grace)` — close every session and wait for handlers to unwind
+  — as the graceful step before the transport's abort-flavored `Stop()`.
+  The consumer reference is the chat hub (`examples/chat/`): rooms,
+  redaction, watchers and talkers on one registry, SIGTERM → drain → clean
+  exit, tested in memory and as real processes driven by shell commands.
+  **Breaking:** `EventStream` is now move-only (copying was never
+  meaningful; handles are how a session fans out).
 - Phase 8 slice 3, generated event streams (ADR-0016): `@streaming` union
   operations generate real streaming code for `simpleRestJson` and
   `rpcv2Cbor` (`jsonRpc2` refuses with a diagnostic). Clients gain

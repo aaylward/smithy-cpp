@@ -29,6 +29,8 @@
 #include <thread>
 #include <vector>
 
+#include "smithy/eventstream/envelope.h"
+#include "smithy/eventstream/json_frame.h"
 #include "smithy/http/beast_transport.h"
 #include "smithy/http/websocket.h"
 #include "smithy/testing/connection_event_recorder.h"
@@ -333,14 +335,47 @@ TEST(BeastWebSocketTest, AFailedUpgradeHandshakeIsObservedAsUpgradeFailure) {
   }
 }
 
-// A hostile peer speaking raw Beast websocket, for protocol-violation
-// tests the typed client cannot produce.
+// A raw Beast websocket peer, for protocol-violation tests the typed
+// client cannot produce — and, given a subprotocol `offer`, for
+// browser-fidelity tests of the negotiated JSON-text wire (ADR-0018): what
+// it sends and reads is exactly what a page's `new WebSocket(url, offer)`
+// plus JSON.parse would.
 class RawWsPeer {
  public:
-  explicit RawWsPeer(int port) : ws_(io_) {
+  explicit RawWsPeer(int port, const std::string& offer = "") : ws_(io_) {
     boost::asio::ip::tcp::resolver resolver(io_);
     boost::asio::connect(ws_.next_layer(), resolver.resolve("127.0.0.1", std::to_string(port)));
-    ws_.handshake("127.0.0.1", "/");
+    if (!offer.empty()) {
+      ws_.set_option(boost::beast::websocket::stream_base::decorator(
+          [offer](boost::beast::websocket::request_type& req) {
+            req.set(boost::beast::http::field::sec_websocket_protocol, offer);
+          }));
+    }
+    ws_.handshake(response_, "127.0.0.1", "/");
+  }
+
+  // What the 101 selected — empty when the server chose no subprotocol
+  // (a browser that offered one would fail the connection itself here).
+  std::string selected_subprotocol() const {
+    return std::string(response_[boost::beast::http::field::sec_websocket_protocol]);
+  }
+
+  // One received message, asserted to be a text frame (the JSON wire's
+  // only legal kind).
+  std::string ReadText() {
+    boost::beast::flat_buffer buffer;
+    ws_.read(buffer);
+    EXPECT_FALSE(ws_.got_binary()) << "the JSON wire carries text frames";
+    return boost::beast::buffers_to_string(buffer.data());
+  }
+
+  // One received message, asserted to be a binary frame (the default
+  // wire's only legal kind).
+  std::string ReadBinary() {
+    boost::beast::flat_buffer buffer;
+    ws_.read(buffer);
+    EXPECT_TRUE(ws_.got_binary()) << "the binary wire carries binary frames";
+    return boost::beast::buffers_to_string(buffer.data());
   }
   void SendText(const std::string& text) {
     ws_.text(true);
@@ -369,6 +404,7 @@ class RawWsPeer {
  private:
   boost::asio::io_context io_;
   boost::beast::websocket::stream<boost::asio::ip::tcp::socket> ws_;
+  boost::beast::websocket::response_type response_;
 };
 
 TEST(BeastWebSocketTest, ATextMessageFailsTheSessionAsAProtocolError) {
@@ -428,6 +464,207 @@ TEST(BeastWebSocketTest, ATrailingByteAfterTheFrameFailsTheSession) {
   ASSERT_FALSE(result.ok());
   EXPECT_NE(result.error().message().find("exactly one"), std::string::npos);
   server.Stop();
+}
+
+// --- The negotiated JSON-text wire (ADR-0018) ---
+
+const std::string kJsonToken(eventstream::kJsonFramesSubprotocol);
+
+// A JSON-mode serve loop must echo envelope-bearing messages verbatim:
+// the JSON wire refuses payloads that are not JSON objects, so the
+// "echo:"-prefix server above would fail its own Send.
+BeastServerTransport::Options VerbatimEchoOptions() {
+  BeastServerTransport::Options options;
+  options.websocket_accept_json_frames = true;
+  options.on_websocket = [](const HttpRequest&, WebSocket& socket) {
+    while (true) {
+      auto message = socket.Receive();
+      if (!message.ok() || !message->has_value()) {
+        return;
+      }
+      if (!socket.Send(**message).ok()) {
+        return;
+      }
+    }
+  };
+  return options;
+}
+
+TEST(BeastWebSocketTest, NegotiatedJsonFramesCarryMessagesTransparently) {
+  // Both ends typed: the offer is echoed, the wire flips to text, and
+  // above the session nothing changes — the same Messages round-trip.
+  BeastServerTransport server(VerbatimEchoOptions());
+  ASSERT_TRUE(server.Start(NotFoundHandler()).ok());
+  auto dialed = BeastWebSocketClient::Dial(
+      {.host = "127.0.0.1", .port = server.port(), .offer_json_frames = true});
+  ASSERT_TRUE(dialed.ok()) << dialed.error().message();
+
+  const Message sent = eventstream::MakeEventMessage("chat", "application/json",
+                                                     Blob::FromString(R"({"text":"hello"})"));
+  ASSERT_TRUE((*dialed)->Send(sent).ok());
+  auto received = (*dialed)->Receive();
+  ASSERT_TRUE(received.ok()) << received.error().message();
+  ASSERT_TRUE(received->has_value());
+  EXPECT_EQ(**received, sent);
+  (*dialed)->Close();
+  server.Stop();
+}
+
+TEST(BeastWebSocketTest, ABrowserFidelityPeerSpeaksTheJsonWire) {
+  // The issue-#113 story at the transport layer: a peer doing exactly
+  // what a page does — offer the subprotocol, JSON.stringify out,
+  // JSON.parse in — while the serve callback speaks eventstream::Message,
+  // unaware of the wire mode.
+  std::promise<Outcome<std::optional<Message>>> serve_saw;
+  BeastServerTransport::Options options;
+  options.websocket_accept_json_frames = true;
+  options.on_websocket = [&serve_saw](const HttpRequest&, WebSocket& socket) {
+    (void)socket.Send(eventstream::MakeEventMessage("greeting", "application/json",
+                                                    Blob::FromString(R"({"text":"hi"})")));
+    serve_saw.set_value(socket.Receive());
+  };
+  BeastServerTransport server(options);
+  ASSERT_TRUE(server.Start(NotFoundHandler()).ok());
+
+  RawWsPeer peer(server.port(), kJsonToken);
+  EXPECT_EQ(peer.selected_subprotocol(), kJsonToken);
+  // Byte-pinned: this is the text a browser's onmessage handler receives.
+  EXPECT_EQ(peer.ReadText(), R"({"event":"greeting","payload":{"text":"hi"}})");
+
+  peer.SendText(R"({"event":"chat","payload":{"text":"from a browser"}})");
+  auto result = serve_saw.get_future().get();
+  ASSERT_TRUE(result.ok()) << result.error().message();
+  ASSERT_TRUE(result->has_value());
+  EXPECT_EQ(**result,
+            eventstream::MakeEventMessage("chat", "application/json",
+                                          Blob::FromString(R"({"text":"from a browser"})")));
+  server.Stop();
+}
+
+TEST(BeastWebSocketTest, TheOfferFallsBackToBinaryWhenTheServerDoesNotAccept) {
+  // Flag off: the offer is simply not selected (headerless 101, a
+  // pre-ADR-0018 server byte for byte) and the typed client silently
+  // keeps the binary wire — both modes carry the same messages.
+  BeastServerTransport server(EchoOptions());
+  ASSERT_TRUE(server.Start(NotFoundHandler()).ok());
+
+  RawWsPeer raw(server.port(), kJsonToken);
+  EXPECT_EQ(raw.selected_subprotocol(), "");
+
+  auto dialed = BeastWebSocketClient::Dial(
+      {.host = "127.0.0.1", .port = server.port(), .offer_json_frames = true});
+  ASSERT_TRUE(dialed.ok()) << dialed.error().message();
+  const Message sent = Text("chat", "still binary");
+  ASSERT_TRUE((*dialed)->Send(sent).ok());
+  auto received = (*dialed)->Receive();
+  ASSERT_TRUE(received.ok() && received->has_value());
+  EXPECT_EQ((**received).payload.ToString(), "echo:still binary");
+  (*dialed)->Close();
+  server.Stop();
+}
+
+TEST(BeastWebSocketTest, ClientsThatDoNotOfferAreUntouchedByTheServerFlag) {
+  // Native clients never negotiate: with the flag on and no offer, the
+  // 101 carries no subprotocol and the binary wire serves as always.
+  BeastServerTransport server(VerbatimEchoOptions());
+  ASSERT_TRUE(server.Start(NotFoundHandler()).ok());
+
+  RawWsPeer peer(server.port());
+  EXPECT_EQ(peer.selected_subprotocol(), "");
+  const Message sent = Text("chat", "binary as ever");
+  auto frame = eventstream::EncodeMessage(sent);
+  ASSERT_TRUE(frame.ok());
+  peer.SendBinary(*frame);
+  // The verbatim echo comes back as one binary event-stream frame.
+  EXPECT_EQ(peer.ReadBinary(), *frame);
+  server.Stop();
+}
+
+TEST(BeastWebSocketTest, ABinaryFrameOnAJsonSessionFailsTheSession) {
+  // The fail-closed transpose: in JSON mode, *binary* is the protocol
+  // violation — the exact mirror of binary mode's posture on text.
+  std::promise<Outcome<std::optional<Message>>> serve_saw;
+  BeastServerTransport::Options options;
+  options.websocket_accept_json_frames = true;
+  options.on_websocket = [&serve_saw](const HttpRequest&, WebSocket& socket) {
+    serve_saw.set_value(socket.Receive());
+  };
+  BeastServerTransport server(options);
+  ASSERT_TRUE(server.Start(NotFoundHandler()).ok());
+
+  auto frame = eventstream::EncodeMessage(Text("chat", "valid binary frame"));
+  ASSERT_TRUE(frame.ok());
+  RawWsPeer peer(server.port(), kJsonToken);
+  ASSERT_EQ(peer.selected_subprotocol(), kJsonToken);
+  peer.SendBinary(*frame);
+  auto result = serve_saw.get_future().get();
+  ASSERT_FALSE(result.ok());
+  EXPECT_NE(result.error().message().find("binary message on a JSON-text"), std::string::npos)
+      << result.error().message();
+  EXPECT_EQ(peer.DrainToCloseCode(), boost::beast::websocket::error::closed);
+  EXPECT_EQ(peer.reason().code, boost::beast::websocket::close_code::protocol_error);
+  server.Stop();
+}
+
+TEST(BeastWebSocketTest, AMalformedJsonEnvelopeFailsTheSession) {
+  std::promise<Outcome<std::optional<Message>>> serve_saw;
+  BeastServerTransport::Options options;
+  options.websocket_accept_json_frames = true;
+  options.on_websocket = [&serve_saw](const HttpRequest&, WebSocket& socket) {
+    serve_saw.set_value(socket.Receive());
+  };
+  BeastServerTransport server(options);
+  ASSERT_TRUE(server.Start(NotFoundHandler()).ok());
+
+  RawWsPeer peer(server.port(), kJsonToken);
+  ASSERT_EQ(peer.selected_subprotocol(), kJsonToken);
+  peer.SendText(R"({"event":"chat","payload":{},"extra":true})");  // unknown member
+  auto result = serve_saw.get_future().get();
+  ASSERT_FALSE(result.ok());
+  EXPECT_NE(result.error().message().find("eventstream json frame"), std::string::npos)
+      << result.error().message();
+  EXPECT_EQ(peer.DrainToCloseCode(), boost::beast::websocket::error::closed);
+  EXPECT_EQ(peer.reason().code, boost::beast::websocket::close_code::protocol_error);
+  server.Stop();
+}
+
+TEST(BeastWebSocketTest, AServerSelectingAnUnofferedSubprotocolFailsTheDial) {
+  // RFC 6455: a server may only select what was offered. A raw Beast
+  // server that decorates a bogus selection onto the 101 is a peer the
+  // typed client cannot trust to speak either wire.
+  boost::asio::io_context io;
+  boost::asio::ip::tcp::acceptor acceptor(io, {boost::asio::ip::address_v4::loopback(), 0});
+  const int port = acceptor.local_endpoint().port();
+  std::thread hostile([&acceptor, &io] {
+    boost::asio::ip::tcp::socket socket(io);
+    acceptor.accept(socket);
+    boost::beast::websocket::stream<boost::asio::ip::tcp::socket> ws(std::move(socket));
+    ws.set_option(boost::beast::websocket::stream_base::decorator(
+        [](boost::beast::websocket::response_type& response) {
+          response.set(boost::beast::http::field::sec_websocket_protocol, "bogus.proto");
+        }));
+    boost::beast::error_code ec;
+    ws.accept(ec);
+    if (!ec) {
+      boost::beast::flat_buffer buffer;
+      ws.read(buffer, ec);  // hold the session until the client tears down
+    }
+  });
+
+  auto dialed = BeastWebSocketClient::Dial({.host = "127.0.0.1", .port = port});
+  ASSERT_FALSE(dialed.ok());
+  EXPECT_NE(dialed.error().message().find("unoffered subprotocol"), std::string::npos)
+      << dialed.error().message();
+  hostile.join();
+}
+
+TEST(BeastWebSocketTest, StartRefusesJsonFramesWithoutAServeCallback) {
+  BeastServerTransport::Options options;
+  options.websocket_accept_json_frames = true;
+  BeastServerTransport server(options);
+  auto started = server.Start(NotFoundHandler());
+  ASSERT_FALSE(started.ok());
+  EXPECT_NE(started.error().message().find("websocket_accept_json_frames"), std::string::npos);
 }
 
 TEST(BeastWebSocketTest, SendRefusesWhatTheCodecRefusesWithoutTouchingTheWire) {

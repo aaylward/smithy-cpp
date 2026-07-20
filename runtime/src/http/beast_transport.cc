@@ -34,6 +34,8 @@
 #include <vector>
 
 #include "smithy/client/config.h"
+#include "smithy/eventstream/json_frame.h"
+#include "smithy/http/headers.h"
 #include "smithy/http/server_dispatch.h"
 #include "smithy/http/uri.h"
 
@@ -194,6 +196,12 @@ class WsSession final : public WebSocketSessionBase,
 
   WsStream& stream() { return ws_; }
 
+  // Switches the session to the negotiated JSON-text wire (ADR-0018):
+  // messages travel as text frames carrying the JSON envelope, and binary
+  // frames become the protocol violation. Call before Start() — the flag
+  // is read concurrently by the pumps and facade afterwards, unlocked.
+  void EnableJsonFrames() { json_frames_ = true; }
+
   // Arms the read pump; call once, on the connection's executor.
   void Start() { PumpRead(); }
 
@@ -215,7 +223,8 @@ class WsSession final : public WebSocketSessionBase,
   }
 
   Outcome<Unit> Send(const eventstream::Message& message) override {
-    auto frame = eventstream::EncodeMessage(message);
+    auto frame =
+        json_frames_ ? eventstream::EncodeJsonFrame(message) : eventstream::EncodeMessage(message);
     if (!frame.ok()) {
       return std::move(frame).error();  // the codec's Validation, verbatim
     }
@@ -325,12 +334,28 @@ class WsSession final : public WebSocketSessionBase,
       Fail(ec.message());
       return;
     }
+    const auto data = read_buffer_.data();
+    const std::string_view bytes(static_cast<const char*>(data.data()), data.size());
+    if (json_frames_) {
+      // The negotiated JSON-text wire (ADR-0018): one JSON envelope per
+      // text message; a binary message is the protocol violation here —
+      // the exact mirror of binary mode's posture on text.
+      if (ws_.got_binary()) {
+        FailAndClose("binary message on a JSON-text event-stream socket");
+        return;
+      }
+      auto decoded = eventstream::DecodeJsonFrame(bytes);
+      if (!decoded.ok()) {
+        FailAndClose(decoded.error().message());
+        return;
+      }
+      Deliver(std::move(*decoded), n);
+      return;
+    }
     if (!ws_.got_binary()) {
       FailAndClose("text message on an event-stream socket");
       return;
     }
-    const auto data = read_buffer_.data();
-    const std::string_view bytes(static_cast<const char*>(data.data()), data.size());
     auto decoded = eventstream::DecodeMessage(bytes);
     // Exactly one frame per binary message (ADR-0015): WebSocket framing
     // provides the boundaries, so a partial, trailing-bytes, or malformed
@@ -344,10 +369,15 @@ class WsSession final : public WebSocketSessionBase,
       FailAndClose("binary message is not exactly one event-stream frame");
       return;
     }
-    read_buffer_.consume(n);
+    Deliver(std::move(frame->message), n);
+  }
+
+  // Queues one decoded message for Receive and re-arms the pump.
+  void Deliver(eventstream::Message message, std::size_t bytes_read) {
+    read_buffer_.consume(bytes_read);
     {
       const std::lock_guard<std::mutex> lock(mutex_);
-      received_.push_back(std::move(frame->message));
+      received_.push_back(std::move(message));
       wake_.notify_all();
     }
     PumpRead();
@@ -364,7 +394,7 @@ class WsSession final : public WebSocketSessionBase,
     wire_write_busy_ = true;
     write_buffer_ = std::move(frame);
     lock.unlock();
-    ws_.binary(true);
+    ws_.binary(!json_frames_);  // text frames on the negotiated JSON wire
     auto self = this->shared_from_this();
     ws_.async_write(asio::buffer(write_buffer_),
                     [self](beast::error_code ec, std::size_t) { self->OnWrite(ec); });
@@ -483,6 +513,9 @@ class WsSession final : public WebSocketSessionBase,
 
   std::shared_ptr<void> keeper_;
   WsStream ws_;
+  // The negotiated wire encoding (ADR-0018): set once before Start(),
+  // read-only afterwards — safe unlocked from the pumps and the facade.
+  bool json_frames_ = false;
   beast::flat_buffer read_buffer_;
   std::string write_buffer_;
 
@@ -534,6 +567,28 @@ void InvokeServeGuarded(const std::function<void(const HttpRequest&, WebSocket&)
   } catch (...) {
     std::clog << "smithy: on_websocket threw a non-std exception\n";
   }
+}
+
+// The ADR-0018 subprotocol token as the Beast string type, for 101
+// decorators and handshake-response comparisons.
+beast::string_view JsonFramesToken() {
+  return {eventstream::kJsonFramesSubprotocol.data(), eventstream::kJsonFramesSubprotocol.size()};
+}
+
+// True when the upgrade request offers the ADR-0018 JSON-frames
+// subprotocol: any position in Sec-WebSocket-Protocol's comma-separated
+// list, across repeated headers. Tokens are case-sensitive (RFC 6455) and
+// unknown ones are simply not selected — the 101 then carries no
+// subprotocol and a client that required one fails the connection itself.
+bool OffersJsonFrames(const HttpRequest& request) {
+  for (const std::string& value : request.headers.GetAll("sec-websocket-protocol")) {
+    for (const std::string& token : SplitHeaderListValues(value)) {
+      if (token == eventstream::kJsonFramesSubprotocol) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 }  // namespace
@@ -1074,6 +1129,15 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
     // The transport refuses what the codec could not represent — the
     // symmetric-bounds line (ADR-0014), extended to the wire.
     session->stream().read_message_max(eventstream::kMaxMessageBytes);
+    if (opts.websocket_accept_json_frames && OffersJsonFrames(request)) {
+      // The negotiated JSON-text mode (ADR-0018), on the accept-decorator
+      // seam ADR-0015 reserved: echo the token in the 101 and flip the
+      // session's wire encoding before the pump arms.
+      session->EnableJsonFrames();
+      session->stream().set_option(bws::stream_base::decorator([](bws::response_type& response) {
+        response.set(bhttp::field::sec_websocket_protocol, JsonFramesToken());
+      }));
+    }
     session->stream().async_accept(
         parser->get(), [weak = weak_from_this(), session, parser, request = std::move(request),
                         phase = std::move(phase)](beast::error_code ec) mutable {
@@ -1133,6 +1197,11 @@ Outcome<Unit> BeastServerTransport::Start(RequestHandler handler) {
     // The gate only guards the upgrade path, which exists only with a
     // serve callback — a gate alone would be silently dead config.
     return Error::Validation("beast: websocket_gate without on_websocket never runs");
+  }
+  if (options_.websocket_accept_json_frames && !options_.on_websocket) {
+    // Same dead-config shape: negotiation happens on the upgrade path.
+    return Error::Validation(
+        "beast: websocket_accept_json_frames without on_websocket never negotiates");
   }
 
   const bool has_cert = !options_.tls_certificate_chain_pem.empty();
@@ -1683,12 +1752,20 @@ Outcome<std::shared_ptr<WebSocket>> FinishDial(std::unique_ptr<DialedConnection>
       .idle_timeout = std::chrono::seconds(std::max(options.idle_timeout_seconds, 1)),
       .keep_alive_pings = true});
   ws.read_message_max(eventstream::kMaxMessageBytes);
-  if (!options.headers.entries().empty()) {
-    ws.set_option(bws::stream_base::decorator([headers = options.headers](bws::request_type& req) {
-      for (const auto& [name, value] : headers.entries()) {
-        req.insert(name, value);
-      }
-    }));
+  if (!options.headers.entries().empty() || options.offer_json_frames) {
+    // One decorator carries both jobs — a second set_option would replace
+    // the first. The offer is set last, so it wins over a same-named entry
+    // smuggled through Options::headers (that header is a negotiation
+    // channel, not a transport-bypass one).
+    ws.set_option(bws::stream_base::decorator(
+        [headers = options.headers, offer = options.offer_json_frames](bws::request_type& req) {
+          for (const auto& [name, value] : headers.entries()) {
+            req.insert(name, value);
+          }
+          if (offer) {
+            req.set(bhttp::field::sec_websocket_protocol, JsonFramesToken());
+          }
+        }));
   }
 
   const int default_port = options.tls ? 443 : 80;
@@ -1699,9 +1776,10 @@ Outcome<std::shared_ptr<WebSocket>> FinishDial(std::unique_ptr<DialedConnection>
   bool handshake_done = false;
   // The response-capturing overload: on a refusal the server's actual HTTP
   // answer is the diagnosis (401 vs 404 vs 503), not Beast's generic
-  // "upgrade declined" text.
-  bws::response_type refusal;
-  ws.async_handshake(refusal, host_header, options.target.empty() ? "/" : options.target,
+  // "upgrade declined" text — and on success the 101's
+  // Sec-WebSocket-Protocol is the negotiation result (ADR-0018).
+  bws::response_type handshake_response;
+  ws.async_handshake(handshake_response, host_header, options.target.empty() ? "/" : options.target,
                      [&upgrade_ec, &handshake_done](beast::error_code ec) {
                        upgrade_ec = ec;
                        handshake_done = true;
@@ -1725,8 +1803,8 @@ Outcome<std::shared_ptr<WebSocket>> FinishDial(std::unique_ptr<DialedConnection>
     // and reason into the error, the operator's first question.
     std::string detail;
     if (upgrade_ec == bws::error::upgrade_declined) {
-      detail = " refused: HTTP " + std::to_string(refusal.result_int());
-      const std::string reason(refusal.reason());
+      detail = " refused: HTTP " + std::to_string(handshake_response.result_int());
+      const std::string reason(handshake_response.reason());
       if (!reason.empty()) {
         detail += " " + reason;
       }
@@ -1735,6 +1813,21 @@ Outcome<std::shared_ptr<WebSocket>> FinishDial(std::unique_ptr<DialedConnection>
     }
     return Error::Transport("beast websocket: upgrade of " + options.host + options.target + detail,
                             /*retryable=*/false);
+  }
+  const beast::string_view selected = handshake_response[bhttp::field::sec_websocket_protocol];
+  if (!selected.empty()) {
+    if (!options.offer_json_frames || selected != JsonFramesToken()) {
+      // A server may only select what was offered (RFC 6455); anything
+      // else is a peer this client cannot trust to speak either wire.
+      session.reset();
+      connection->Run();
+      return Error::Transport(
+          "beast websocket: server selected an unoffered subprotocol: " + std::string(selected),
+          /*retryable=*/false);
+    }
+    // The echo selects the JSON-text wire; no echo is the silent binary
+    // fallback (ADR-0018) — both modes carry the same messages.
+    session->EnableJsonFrames();
   }
   asio::post(connection->io, [session] { session->Start(); });
   return std::shared_ptr<WebSocket>(

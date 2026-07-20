@@ -150,6 +150,20 @@ class BeastServerTransport : public HttpServerTransport {
     // composable from the same middleware pieces the HTTP chain uses.
     std::function<std::optional<HttpResponse>(const HttpRequest&)> websocket_gate;
     std::function<void(const HttpRequest&, WebSocket&)> on_websocket;
+    // Negotiated JSON-text event-stream frames (ADR-0018): set, a client
+    // that offers the `smithy.eventstream.v1+json` subprotocol on the
+    // upgrade gets the token echoed in the 101 and a session whose
+    // messages travel as text frames carrying the JSON envelope
+    // ({"event": "<member>", "payload": {...}}) — the wire a browser
+    // speaks with JSON.parse alone. Everyone else keeps the binary wire,
+    // headerless 101 included: native clients never negotiate, and with
+    // this unset the transport is byte-identical to one predating the
+    // mode. The mode is a wire detail — on_websocket, the routers, and
+    // generated code still speak eventstream::Message — but enable it
+    // only when the services served here carry JSON event payloads
+    // (simpleRestJson): a non-JSON event on a negotiated session fails
+    // its first Send instead of riding a text frame.
+    bool websocket_accept_json_frames = false;
     // How long a silent upgraded connection stays up (keep-alive pings
     // run underneath — a healthy-but-quiet stream survives, a vanished
     // peer is detected). The HTTP request_timeout_seconds governs the

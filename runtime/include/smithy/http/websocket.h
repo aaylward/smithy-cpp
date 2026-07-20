@@ -15,9 +15,13 @@ namespace smithy::http {
 // A blocking, full-duplex event-stream session over one WebSocket
 // connection (ADR-0015). What travels is eventstream::Message — exactly one
 // frame per binary WebSocket message; text messages and malformed frames
-// fail the session. Both ends of the wire speak this type: the server side
-// arrives in BeastServerTransport::Options::on_websocket, the client side
-// from BeastWebSocketClient::Dial.
+// fail the session. (On a session negotiated to the JSON-text mode of
+// ADR-0018 the wire encoding flips — one JSON envelope per text message,
+// binary messages fail — but this facade is unchanged: the transport
+// translates, and both modes carry the same Messages.) Both ends of the
+// wire speak this type: the server side arrives in
+// BeastServerTransport::Options::on_websocket, the client side from
+// BeastWebSocketClient::Dial.
 //
 // Full duplex means one receiving thread and one sending thread may block
 // concurrently (mirroring WebSocket's own one-read + one-write model);
@@ -135,6 +139,14 @@ class BeastWebSocketClient {
     // Extra headers on the upgrade request — bearer tokens, api keys: the
     // server's websocket_gate sees these before any upgrade completes.
     Headers headers;
+    // Offer the negotiated JSON-text frame mode (ADR-0018) on the dial:
+    // an echoed subprotocol selects text framing, no echo falls back to
+    // the binary wire silently — both modes carry the same messages, so
+    // the difference is invisible above the session. For parity, tooling,
+    // and the negotiation tests; browsers are the JSON wire's audience,
+    // and native clients should keep the default. A server that answers
+    // with a subprotocol never offered fails the dial.
+    bool offer_json_frames = false;
     // The per-phase budget for the connect, TLS, and upgrade handshakes.
     int handshake_timeout_ms = 30000;
     // After the upgrade: how long a silent connection stays up. Keep-alive

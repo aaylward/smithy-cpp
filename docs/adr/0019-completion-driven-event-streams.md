@@ -8,7 +8,9 @@ on the Beast sessions and `InMemoryWebSocketPair`),
 `BeastServerTransport::Options::on_websocket_session`,
 `smithy::eventstream::AsyncEventStream<Tx, Rx>` + `smithy::eventstream::Detached`,
 `EventStreamHandle::{SendAsync, SupportsAsync}`,
-`SessionRegistry Options::async_delivery`, the `examples/chat` async hub.
+`SessionRegistry Options::async_delivery`,
+`WebSocketRouter::{AddSession, ServeSession}` (issue #118, the shared-seam
+route mount), the `examples/chat` async hub.
 
 ## Context
 

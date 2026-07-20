@@ -10,6 +10,7 @@
 
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <string>
 
 #include "compile/gauntlet/cbor/client.h"
@@ -18,6 +19,8 @@
 #include "compile/gauntlet/jsonrpc/server.h"
 #include "compile/gauntlet/rest/client.h"
 #include "compile/gauntlet/rest/server.h"
+#include "compile/streaming/cbor/server.h"
+#include "compile/streaming/rest/server.h"
 
 namespace {
 
@@ -125,6 +128,45 @@ TEST(GauntletCompileTest, EveryProtocolEmitsTheGauntletShapes) {
   compile::gauntlet::jsonrpc::RunGauntletInput jsonrpc_input;
   jsonrpc_input.class_ = "jsonrpc";
   EXPECT_EQ(jsonrpc_input.class_, "jsonrpc");
+}
+
+// The streaming server halves (ADR-0016): the handler's streaming signature
+// and the StreamRouter wiring must compile against the transport-neutral
+// runtime alone — no Boost in this target. The client halves link the Beast
+// dialer and compile in streaming_compile_test instead.
+TEST(GauntletCompileTest, StreamingServersExposeAStreamRouter) {
+  namespace rest_stream = compile::streaming::rest;
+  struct Handler : rest_stream::RelayHandler {
+    smithy::Outcome<smithy::Unit> Converse(
+        const rest_stream::ConverseInput& input,
+        smithy::eventstream::EventStream<rest_stream::ServerEvents, rest_stream::ClientEvents>&
+            stream,
+        const smithy::server::RequestContext&) override {
+      rest_stream::MemberJoined joined;
+      joined.member = input.room;
+      (void)stream.Send(rest_stream::ServerEvents::FromJoined(joined));
+      return smithy::Unit{};
+    }
+    smithy::Outcome<smithy::Unit> Watch(
+        const rest_stream::WatchInput&,
+        smithy::eventstream::EventStream<rest_stream::ServerEvents, smithy::eventstream::NoEvents>&
+            stream,
+        const smithy::server::RequestContext&) override {
+      stream.Close();
+      return smithy::Unit{};
+    }
+  };
+  rest_stream::RelayServer server(std::make_shared<Handler>());
+  EXPECT_NE(server.StreamRouter(), nullptr);
+  EXPECT_NE(server.Handler(), nullptr);
+
+  // The rpcv2Cbor face generates the same event unions into its namespace.
+  const auto event = compile::streaming::cbor::ServerEvents::FromMessage([] {
+    compile::streaming::cbor::ChatMessage message;
+    message.text = "compiles";
+    return message;
+  }());
+  EXPECT_TRUE(event.is_message());
 }
 
 }  // namespace

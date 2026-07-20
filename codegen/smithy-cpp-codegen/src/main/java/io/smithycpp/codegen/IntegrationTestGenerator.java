@@ -23,6 +23,12 @@ final class IntegrationTestGenerator {
   private final ServiceShape service;
   private final ProtocolGenerator protocol;
   private final List<OperationShape> operations;
+  // Streaming operations (ADR-0016) get no generated integration tests: the
+  // scripted "one input, one output" round trip is unary-shaped, and this
+  // harness drives HTTP transports that never upgrade. The scripted handler
+  // still needs their overrides to compile; the chat example's e2e suites
+  // are where streams get exercised.
+  private final List<OperationShape> unaryOperations;
   private final RandomValueGenerator random;
 
   IntegrationTestGenerator(
@@ -34,6 +40,10 @@ final class IntegrationTestGenerator {
     this.service = service;
     this.protocol = protocol;
     this.operations = operations;
+    this.unaryOperations =
+        operations.stream()
+            .filter(op -> !EventStreamCodeGen.streaming(context.model(), op))
+            .toList();
     this.random = new RandomValueGenerator(context);
   }
 
@@ -127,13 +137,13 @@ final class IntegrationTestGenerator {
     writeFixture(w);
     w.write("");
 
-    for (OperationShape operation : operations) {
+    for (OperationShape operation : unaryOperations) {
       writeRoundTripTests(w, operation);
     }
-    for (OperationShape operation : operations) {
+    for (OperationShape operation : unaryOperations) {
       writeErrorTests(w, operation);
     }
-    for (OperationShape operation : operations) {
+    for (OperationShape operation : unaryOperations) {
       if (unknownFieldEligible(operation)) {
         writeUnknownFieldTest(w, operation);
       }
@@ -154,6 +164,10 @@ final class IntegrationTestGenerator {
     w.write("public:").indent();
     for (OperationShape operation : operations) {
       String op = opName(operation);
+      if (EventStreamCodeGen.streaming(context.model(), operation)) {
+        EventStreamCodeGen.writeTestHandlerStub(w, context, operation);
+        continue;
+      }
       ProtocolSupport.openTestHandlerOverride(
           w, typeName(output(operation)), op, typeName(input(operation)));
       w.write("last$L = input;", op);

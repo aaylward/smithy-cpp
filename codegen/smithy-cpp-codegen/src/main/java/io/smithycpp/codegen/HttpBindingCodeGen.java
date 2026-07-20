@@ -52,6 +52,15 @@ final class HttpBindingCodeGen {
       HttpBinding prefixHeaders) {
 
     static RequestBindings of(HttpBindingIndex index, OperationShape operation) {
+      return of(index, operation, null);
+    }
+
+    /**
+     * Variant excluding one member — the event-stream union of a streaming operation (ADR-0016),
+     * which is the session itself and never a wire binding of the upgrade request.
+     */
+    static RequestBindings of(
+        HttpBindingIndex index, OperationShape operation, MemberShape excluded) {
       Map<String, HttpBinding> labels = new TreeMap<>();
       Map<String, HttpBinding> queries = new TreeMap<>();
       Map<String, HttpBinding> headers = new TreeMap<>();
@@ -60,6 +69,9 @@ final class HttpBindingCodeGen {
       HttpBinding payload = null;
       HttpBinding prefixHeaders = null;
       for (HttpBinding binding : index.getRequestBindings(operation).values()) {
+        if (binding.getMember().equals(excluded)) {
+          continue;
+        }
         switch (binding.getLocation()) {
           case LABEL -> labels.put(binding.getLocationName(), binding);
           case QUERY -> queries.put(binding.getLocationName(), binding);

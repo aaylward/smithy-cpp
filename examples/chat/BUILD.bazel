@@ -1,0 +1,51 @@
+load("@rules_cc//cc:defs.bzl", "cc_test")
+
+# Full-duplex chat example (ADR-0016; PLAN §Phase 8's exit criterion): the
+# generated client and generated server exercising event streams end to end.
+# Both e2e targets link the generated streaming client, which carries the
+# default Beast dialer (//runtime:http_beast), so behind a download-blocking
+# proxy exclude them like the other Beast targets (docs/development.md,
+# "Machine-specific Bazel flags"); CI runs both.
+
+# In-memory half: every streaming flow through an injected
+# InMemoryWebSocketPair dialer wired to the generated StreamRouter — no wire,
+# no sockets (Beast is a link-time passenger only).
+cc_test(
+    name = "chat_e2e_test",
+    size = "small",
+    srcs = [
+        "chat_e2e_test.cc",
+        "room_handler.h",
+    ],
+    deps = [
+        "//examples/chat/generated:client",
+        "//examples/chat/generated:server",
+        "//runtime:client",
+        "//runtime:http",
+        "//runtime:server",
+        "@googletest//:gtest_main",
+    ],
+)
+
+# Real-WebSocket half — the exit criterion itself: BeastServerTransport
+# upgrades on the StreamRouter's gate/serve, the generated client dials real
+# loopback WebSockets (TLS included) through the default Beast dialer.
+cc_test(
+    name = "chat_e2e_beast_test",
+    size = "small",
+    srcs = [
+        "chat_e2e_beast_test.cc",
+        "room_handler.h",
+    ],
+    tags = ["requires-network"],
+    deps = [
+        "//examples/chat/generated:client",
+        "//examples/chat/generated:server",
+        "//runtime:client",
+        "//runtime:http",
+        "//runtime:http_beast",
+        "//runtime:server",
+        "//runtime:test_tls_identity",
+        "@googletest//:gtest_main",
+    ],
+)

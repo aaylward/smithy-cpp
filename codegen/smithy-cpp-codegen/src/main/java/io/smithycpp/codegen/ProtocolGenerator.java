@@ -61,6 +61,58 @@ interface ProtocolGenerator {
   void writeOperationBody(
       CppWriter w, CppContext context, ServiceShape service, OperationShape operation);
 
+  /**
+   * Whether the protocol carries event-stream operations over WebSocket (ADR-0016). Protocols that
+   * refuse (jsonRpc2's single-POST envelope has no per-operation URI to upgrade on) get a
+   * generation-time diagnostic naming the operation instead of broken output.
+   */
+  default boolean supportsEventStreams() {
+    return false;
+  }
+
+  /**
+   * Whether a streaming operation's initial-request members resolve through its @http
+   * label/query/header bindings onto the upgrade request. False for fixed-upgrade-URI protocols
+   * (rpcv2Cbor), where any initial-request member is rejected at generation time.
+   */
+  default boolean bindsInitialRequestMembers() {
+    return false;
+  }
+
+  /** Expression producing an event payload (a smithy::Blob) from a serialized Document. */
+  default String eventPayloadEncode(String docExpr) {
+    throw new software.amazon.smithy.codegen.core.CodegenException(
+        "cpp-codegen: " + name() + " does not support event streams");
+  }
+
+  /** Expression producing an Outcome&lt;smithy::Document&gt; from an event payload Blob. */
+  default String eventPayloadDecode(String payloadExpr) {
+    throw new software.amazon.smithy.codegen.core.CodegenException(
+        "cpp-codegen: " + name() + " does not support event streams");
+  }
+
+  /**
+   * Emits the body of one streaming operation method (ADR-0016): the upgrade target from the
+   * operation's bindings, then the shared dial-and-wrap tail ({@link
+   * EventStreamCodeGen#writeDialAndReturn}). Unreachable for refusing protocols — {@link
+   * EventStreamCodeGen#validate} rejected the model first.
+   */
+  default void writeStreamingOperationBody(
+      CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
+    throw new software.amazon.smithy.codegen.core.CodegenException(
+        "cpp-codegen: " + name() + " does not support event streams");
+  }
+
+  /**
+   * Emits the constructor statement registering one streaming operation's WebSocket route on {@code
+   * stream_router_}. Unreachable for refusing protocols, like {@link #writeStreamingOperationBody}.
+   */
+  default void writeStreamServerRoute(
+      CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
+    throw new software.amazon.smithy.codegen.core.CodegenException(
+        "cpp-codegen: " + name() + " does not support event streams");
+  }
+
   /** Includes server.cc needs beyond the shared set. */
   List<String> serverIncludes();
 

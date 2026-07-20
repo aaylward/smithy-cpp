@@ -34,6 +34,18 @@ final class ServerGenerator {
     return CppReservedWords.escape(service.getId().getName());
   }
 
+  /** The event-streaming subset (ADR-0016); empty for unary-only services. */
+  private List<OperationShape> streamingOperations() {
+    return EventStreamCodeGen.streamingOperations(context.model(), operations);
+  }
+
+  /** The unary complement of {@link #streamingOperations()}. */
+  private List<OperationShape> unaryOperations() {
+    return operations.stream()
+        .filter(op -> !EventStreamCodeGen.streaming(context.model(), op))
+        .toList();
+  }
+
   void run() {
     rejectRouteConflicts();
     context
@@ -85,8 +97,17 @@ final class ServerGenerator {
     w.addInclude("\"smithy/core/outcome.h\"");
     w.addInclude("\"smithy/http/transport.h\"");
     w.addInclude("\"smithy/server/router.h\"");
+    boolean hasStreaming = !streamingOperations().isEmpty();
+    if (hasStreaming) {
+      w.addInclude("\"smithy/eventstream/event_stream.h\"");
+      w.addInclude("\"smithy/server/websocket_router.h\"");
+    }
 
     String name = serviceName();
+    if (hasStreaming) {
+      EventStreamCodeGen.writeStreamAliases(
+          w, context, service, streamingOperations(), /* serverSide= */ true);
+    }
     w.write("/// Implement one method per operation. Return a modeled error as");
     w.write("/// smithy::Error::Modeled(\"<ErrorShapeName>\", message), optionally with the");
     w.write("/// typed error structure attached via set_detail() so it serializes fully.");
@@ -99,6 +120,7 @@ final class ServerGenerator {
     w.write("virtual ~$LHandler() = default;", name);
     w.write("");
     for (OperationShape operation : operations) {
+      boolean documented = operation.hasTrait(DocumentationTrait.class);
       operation
           .getTrait(DocumentationTrait.class)
           .ifPresent(
@@ -109,6 +131,37 @@ final class ServerGenerator {
               });
       StructureShape input = ProtocolSupport.inputShape(context, operation);
       StructureShape output = ProtocolSupport.outputShape(context, operation);
+      if (EventStreamCodeGen.streaming(context.model(), operation)) {
+        // Streaming operations (ADR-0016): input first, context last, the
+        // ADR-0010 shape, with the borrowed session in between.
+        if (documented) {
+          w.write("///"); // blank separator: model docs above, boilerplate below
+        }
+        if (EventStreamCodeGen.inputInfo(context.model(), operation).isEmpty()) {
+          w.write("/// Streaming operation (ADR-0016): this operation models no");
+          w.write("/// client-to-server events, so drive the session with Send (a Receive");
+          w.write("/// only ever reports the client's close). Return Unit for a clean");
+          w.write("/// close — or an error, which ends the stream with an exception");
+          w.write("/// message before the close.");
+        } else {
+          w.write("/// Streaming operation (ADR-0016): Send/Receive on `stream` until done,");
+          w.write("/// then return Unit for a clean close — or an error, which ends the");
+          w.write("/// stream with an exception message before the close (unless the");
+          w.write("/// stream already terminated: propagating a failed Receive() closes");
+          w.write("/// without a message — the peer already observed that failure).");
+        }
+        w.write("/// `stream` is valid only until this method returns; join any helper");
+        w.write("/// thread still using it. Blocks the transport's handler thread for");
+        w.write("/// the session's lifetime.");
+        w.write(
+            "virtual smithy::Outcome<smithy::Unit> $L(const $L& input, $L& stream, $L context)"
+                + " = 0;",
+            CppReservedWords.escape(operation.getId().getName()),
+            context.cppSymbols().toSymbol(input).getName(),
+            EventStreamCodeGen.serverStreamAlias(operation),
+            ProtocolSupport.REQUEST_CONTEXT_PARAM);
+        continue;
+      }
       w.write(
           "virtual smithy::Outcome<$L> $L(const $L& input, $L context) = 0;",
           context.cppSymbols().toSymbol(output).getName(),
@@ -130,9 +183,21 @@ final class ServerGenerator {
     w.write("explicit $LServer(std::shared_ptr<$LHandler> handler);", name, name);
     w.write("");
     w.write("smithy::http::RequestHandler Handler() const;");
+    if (hasStreaming) {
+      w.write("");
+      w.write("/// The WebSocket router carrying every streaming route (ADR-0016), ready");
+      w.write("/// to mount on the transport in two lines:");
+      w.write("///   options.websocket_gate = server.StreamRouter()->Gate();");
+      w.write("///   options.on_websocket = server.StreamRouter()->Serve();");
+      w.write("std::shared_ptr<smithy::server::WebSocketRouter> StreamRouter() const;");
+    }
     w.write("").dedent();
     w.write("private:").indent();
-    w.write("std::shared_ptr<smithy::server::Router> router_;").dedent();
+    w.write("std::shared_ptr<smithy::server::Router> router_;");
+    if (hasStreaming) {
+      w.write("std::shared_ptr<smithy::server::WebSocketRouter> stream_router_;");
+    }
+    w.dedent();
     w.closeBlock("};");
     w.write("");
   }
@@ -145,21 +210,39 @@ final class ServerGenerator {
       w.addInclude(include);
     }
     String name = serviceName();
+    boolean hasStreaming = !streamingOperations().isEmpty();
 
     w.write("namespace {");
     w.write("");
     protocol.writeServerHelpers(w, context, service, operations);
+    if (hasStreaming) {
+      EventStreamCodeGen.writeServerStreamHelpers(
+          w, context, service, protocol, streamingOperations());
+    }
     w.write("}  // namespace");
     w.write("");
 
     w.openBlock("$LServer::$LServer(std::shared_ptr<$LHandler> handler)", name, name, name);
-    w.write(": router_(std::make_shared<smithy::server::Router>()) {");
+    if (hasStreaming) {
+      w.write(": router_(std::make_shared<smithy::server::Router>()),");
+      w.write("  stream_router_(std::make_shared<smithy::server::WebSocketRouter>()) {");
+    } else {
+      w.write(": router_(std::make_shared<smithy::server::Router>()) {");
+    }
     w.dedent();
     w.indent();
     w.write("// The route table is derived from the model's @http traits; conflicts are");
     w.write("// a modeling error surfaced by Router::Add (checked at generation time in a");
     w.write("// later phase), so registration results are intentionally discarded.");
-    protocol.writeServerRoutes(w, context, service, operations);
+    protocol.writeServerRoutes(w, context, service, unaryOperations());
+    if (hasStreaming) {
+      w.write("// Streaming routes (ADR-0016) live on the WebSocket router; the upgrade");
+      w.write("// path bypasses the HTTP chain (ADR-0015), so they never collide with");
+      w.write("// the unary table above.");
+      for (OperationShape operation : streamingOperations()) {
+        protocol.writeStreamServerRoute(w, context, service, operation);
+      }
+    }
     w.dedent();
     w.write("}");
     w.write("");
@@ -171,5 +254,14 @@ final class ServerGenerator {
             + "{ return router->Route(request); };");
     w.closeBlock("}");
     w.write("");
+
+    if (hasStreaming) {
+      w.openBlock(
+          "std::shared_ptr<smithy::server::WebSocketRouter> $LServer::StreamRouter() const {",
+          name);
+      w.write("return stream_router_;");
+      w.closeBlock("}");
+      w.write("");
+    }
   }
 }

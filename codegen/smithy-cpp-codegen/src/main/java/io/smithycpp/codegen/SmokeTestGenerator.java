@@ -16,12 +16,22 @@ final class SmokeTestGenerator {
   private final CppContext context;
   private final ServiceShape service;
   private final List<OperationShape> operations;
+  // Streaming operations (ADR-0016) get no generated smoke test: a unary
+  // "call, compare one output" round trip has no meaning for an event-stream
+  // session, and this harness drives Loopback, which never upgrades. The
+  // handler stub still needs their overrides to compile; the chat example's
+  // e2e suites are where streams get exercised.
+  private final List<OperationShape> unaryOperations;
   private final NodeLiteralGenerator literals;
 
   SmokeTestGenerator(CppContext context, ServiceShape service, List<OperationShape> operations) {
     this.context = context;
     this.service = service;
     this.operations = operations;
+    this.unaryOperations =
+        operations.stream()
+            .filter(op -> !EventStreamCodeGen.streaming(context.model(), op))
+            .toList();
     this.literals = new NodeLiteralGenerator(context);
   }
 
@@ -142,7 +152,7 @@ final class SmokeTestGenerator {
     w.write("");
     w.write("namespace {");
     w.write("");
-    for (OperationShape operation : operations) {
+    for (OperationShape operation : unaryOperations) {
       StructureShape out = output(operation);
       w.openBlock(
           "$L Minimal$LOutput() {",
@@ -164,6 +174,10 @@ final class SmokeTestGenerator {
     w.openBlock("class SmokeHandler : public $LHandler {", name);
     w.write("public:").indent();
     for (OperationShape operation : operations) {
+      if (EventStreamCodeGen.streaming(context.model(), operation)) {
+        EventStreamCodeGen.writeTestHandlerStub(w, context, operation);
+        continue;
+      }
       ProtocolSupport.openTestHandlerOverride(
           w,
           typeName(output(operation)),
@@ -190,7 +204,7 @@ final class SmokeTestGenerator {
     w.write("}  // namespace");
     w.write("");
 
-    for (OperationShape operation : operations) {
+    for (OperationShape operation : unaryOperations) {
       String opName = CppReservedWords.escape(operation.getId().getName());
       w.openBlock("TEST($LSmokeTest, $LRoundTrips) {", name, opName);
       w.write("$LClient client = MakeClient(std::make_shared<SmokeHandler>());", name);
@@ -214,7 +228,7 @@ final class SmokeTestGenerator {
   private void writeErrorMappingTest(CppWriter w) {
     OperationShape errorOp = null;
     StructureShape errorShape = null;
-    for (OperationShape operation : operations) {
+    for (OperationShape operation : unaryOperations) {
       List<ShapeId> errors = operation.getErrors(service);
       if (!errors.isEmpty()) {
         errorOp = operation;

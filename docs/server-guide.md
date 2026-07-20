@@ -92,12 +92,80 @@ JSON-RPC call — success or error — as an HTTP 200 envelope (envelope-level f
 reserved JSON-RPC codes: -32700 parse, -32600 invalid request, -32601 method not found,
 -32602 invalid params).
 
+## Serving event streams
+
+Event-stream operations (ADR-0016) grow the handler a streaming method — input first, the
+typed session in the middle, context last — that blocks for the session's lifetime:
+`Send`/`Receive` until done, then return `Unit` for a clean close, or an `Error`, which ends
+the stream with one typed exception message before the close (a `Modeled` error with
+`set_detail()` surfaces on the client exactly like a unary modeled error) — unless the
+stream already terminated: propagating a failed `Receive()` closes without a message,
+which that peer already observed. The `stream&` is valid only until the handler returns,
+so join any helper thread still using it before returning. The generated
+server exposes `StreamRouter()`, a `smithy::server::WebSocketRouter` with every streaming
+route registered; mount it on the transport in two lines — the upgrade path deliberately
+bypasses the HTTP middleware chain (ADR-0015), so unary dispatch beside it is untouched:
+
+```cpp
+smithy::http::BeastServerTransport::Options options;
+options.websocket_gate = server.StreamRouter()->Gate();  // 404/405 refusals pre-upgrade
+options.on_websocket = server.StreamRouter()->Serve();   // blocking per-session dispatch
+smithy::http::BeastServerTransport transport(options);
+transport.Start(server.Handler());                       // unary routes, same port
+```
+
+Whatever method the operation models, upgrades are always GET on the modeled URI — a
+WebSocket upgrade is a GET on the wire, and the generated routes register accordingly.
+
+Application admission policy (auth, rate limits) composes by wrapping `Gate()`: run your
+refusal first, then defer to the router's (`smithy/server/websocket_router.h` shows the
+pattern). Constraint validation also guards streaming inputs, with one wrinkle: the labels,
+query, and headers arrive on the upgrade request, which the transport accepts *before* the
+route parses them — so a validation failure surfaces as a successful dial whose first
+`Receive()` is a terminal `SerializationException`, not as a refused upgrade.
+
+Note `Stop()`'s semantics from ADR-0015: it *aborts* live stream sessions rather
+than draining them, so a graceful rollout drains application-side first. The recipe: keep
+your own registry of live sessions (the handler adds the borrowed `stream` on entry and
+removes it on exit, under a mutex), and on drain call `Close()` on each — it is idempotent
+and safe from any thread, each blocked handler wakes and returns, and once the registry
+empties, `Stop()` has nothing left to abort.
+
+Handlers are testable without any transport (or Boost): `InMemoryWebSocketPair` plus an
+injected dialer runs the full generated client↔server path in memory. The chat example's
+e2e fixture is ~15 lines:
+
+```cpp
+auto server = std::make_shared<ChatServer>(std::make_shared<MyHandler>());
+smithy::ClientConfig config;
+config.websocket_dialer = [&](const smithy::http::WebSocketDialRequest& request)
+    -> smithy::Outcome<std::shared_ptr<smithy::http::WebSocket>> {
+  auto [near, far] = smithy::http::InMemoryWebSocketPair::Create();
+  smithy::http::HttpRequest upgrade;                 // what a transport would deliver
+  upgrade.method = "GET";
+  upgrade.target = request.target;
+  upgrade.headers = request.headers;
+  serve_threads.emplace_back([serve = server->StreamRouter()->Serve(), upgrade,
+                              session = far] { serve(upgrade, *session); });
+  return near;
+};
+auto client = ChatClient::Create(std::move(config));  // client->Converse(...) streams in memory
+```
+
+(Join the serve threads in teardown after `Close()`ing the far ends.) The full-duplex chat
+example ([examples/chat/](../examples/chat/)) is the working reference:
+a generated client and server streaming both directions over real WebSockets, plus this
+in-memory wiring for Boost-free tests.
+
 ## Generated smoke tests
 
 Every generated module ships `tests/smoke_test.cc` (target `:smoke_test` in the module's
 `tests/` package): the generated client calls the generated server over the loopback transport
 — every operation round-trips a minimal valid value and one test proves modeled-error mapping.
-It passes out of the box and is the natural place to start testing a real handler.
+It passes out of the box and is the natural place to start testing a real handler. Streaming
+operations are skipped by the generated smoke/integration suites (a unary round trip has no
+meaning for a session; their handler overrides are close-immediately stubs) — drive them the
+way the chat example's e2e tests do.
 
 ## Constraint validation
 
@@ -137,5 +205,6 @@ serialization error) — see [production-guide.md](production-guide.md).
 
 Nested `@required` absences as `fieldList` entries and a server-strict serde variant (clients
 must skip null dense-map values and accept UTC-offset timestamps in responses; servers share
-that serde today), and `@streaming` payloads (Phase 8; see
-[Current limitations](../README.md#current-limitations)).
+that serde today), and `@streaming` blob payloads (see
+[Current limitations](../README.md#current-limitations)). Event-stream operations generate
+streaming handlers and a `StreamRouter()` (ADR-0016).

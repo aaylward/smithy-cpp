@@ -642,6 +642,12 @@ final class ProtocolSupport {
       if (errors.isEmpty()) {
         continue;
       }
+      if (EventStreamCodeGen.streaming(context.model(), operation)) {
+        // Streaming operations never see an HTTP error response — exceptions
+        // arrive as event-stream messages, decoded straight through the
+        // Make<Error>Error functions above — so Parse<Op>Error would be dead.
+        continue;
+      }
       Map<String, StructureShape> sorted = new TreeMap<>();
       for (ShapeId errorId : errors) {
         StructureShape shape =

@@ -9,6 +9,7 @@
 
 #include "smithy/core/outcome.h"
 #include "smithy/http/message.h"
+#include "smithy/http/uri.h"
 
 namespace smithy::server {
 
@@ -32,6 +33,46 @@ struct RequestContext {
 
 using RouteHandler =
     std::function<http::HttpResponse(const http::HttpRequest&, const RequestContext&)>;
+
+namespace internal {
+
+// The @http URI-pattern matcher, shared by Router and WebSocketRouter so
+// pattern grammar and precedence cannot drift between unary and streaming
+// routing (ADR-0016). Internal: generated code and applications route
+// through the two routers, never through these.
+struct Segment {
+  enum class Kind { kLiteral, kLabel, kGreedy } kind = Kind::kLiteral;
+  std::string text;  // literal text or label name
+};
+
+// Parses @http trait syntax ("/cities/{cityId}/forecast", greedy
+// "/files/{path+}"). Fails on a missing leading '/', an empty segment or
+// label name, and a greedy label before the final segment.
+Outcome<std::vector<Segment>> ParsePattern(std::string_view pattern);
+
+// True when `pattern` matches the request's decoded `segments`; the winning
+// route's label values (greedy values re-joined with '/') land in `labels`.
+// A null `labels` answers match/no-match without extracting label values.
+bool MatchSegments(const std::vector<Segment>& pattern, const std::vector<std::string>& segments,
+                   PathLabels* labels);
+
+// True when `a` is more specific than `b` per the Smithy HTTP binding
+// spec's precedence: segment by segment a literal outranks a label, a label
+// outranks a greedy label; longer patterns rank higher when a prefix ties.
+bool MoreSpecific(const std::vector<Segment>& a, const std::vector<Segment>& b);
+
+// True when two patterns have the same shape (same length and kinds, same
+// literal texts) and so would always match the same targets — the Add-time
+// conflict test.
+bool SameShape(const std::vector<Segment>& a, const std::vector<Segment>& b);
+
+// The request-target normalization Router::Route and WebSocketRouter share
+// (ADR-0016), so unary and streaming routing see the same segments: the
+// decoded target with one trailing empty segment dropped ("/a/" matches
+// "/a"). Fails on a malformed target (the routers' 400).
+Outcome<http::RequestTarget> NormalizedTarget(const http::HttpRequest& request);
+
+}  // namespace internal
 
 // Method + URI-pattern dispatch per the Smithy HTTP binding spec.
 //
@@ -60,22 +101,11 @@ class Router {
   http::HttpResponse Route(const http::HttpRequest& request) const;
 
  private:
-  struct Segment {
-    enum class Kind { kLiteral, kLabel, kGreedy } kind = Kind::kLiteral;
-    std::string text;  // literal text or label name
-  };
   struct RouteEntry {
-    std::vector<Segment> segments;
+    std::vector<internal::Segment> segments;
     RouteHandler handler;
     std::string operation;
   };
-
-  static Outcome<std::vector<Segment>> ParsePattern(std::string_view pattern);
-  // A null `labels` answers match/no-match without extracting label values.
-  static bool Matches(const RouteEntry& route, const std::vector<std::string>& segments,
-                      PathLabels* labels);
-  // True when `a` is more specific than `b` per the spec's precedence rules.
-  static bool MoreSpecific(const std::vector<Segment>& a, const std::vector<Segment>& b);
 
   // Keyed by HTTP method (exact match; methods are case-sensitive per
   // RFC 9110). Map order makes the 405 Allow list deterministic.

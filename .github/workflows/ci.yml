@@ -181,9 +181,13 @@ jobs:
           sudo apt-get update -q || true
           sudo apt-get install -y -q lcov
           REPORT="$(bazelisk info output_path)/_coverage/_coverage_report.dat"
-          lcov --summary "$REPORT"
-          lcov --list "$REPORT"
-          genhtml --output-directory coverage-html "$REPORT"
+          # The multithreaded runtime tests can tear gcov's non-atomic
+          # profile counters, leaving spurious negative hit counts that
+          # lcov 2.x treats as fatal (1.x only warned). Downgrade to a
+          # warning — this job is measurement-only, with no threshold gate.
+          lcov --ignore-errors negative --summary "$REPORT"
+          lcov --ignore-errors negative --list "$REPORT"
+          genhtml --ignore-errors negative --output-directory coverage-html "$REPORT"
           cp "$REPORT" coverage-html/coverage.lcov
       - uses: actions/upload-artifact@v4
         with:

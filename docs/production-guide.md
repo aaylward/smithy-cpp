@@ -403,6 +403,76 @@ local experiments and must never reach production. The lower-level
 self-contained — it carries the asio SSL implementation and the BoringSSL
 dependency itself, so no extra build flags are needed.
 
+## Event streams
+
+A streaming operation (ADR-0016) needs no extra client configuration: the
+WebSocket dial derives host, port, and TLS from the same `config.endpoint`
+and `config.tls` the unary transport uses (an `https` endpoint dials `wss`).
+The call returns the typed session; drive it with the canonical loop —
+`Receive()`'s nullopt is the peer's clean close, and a received exception is
+terminal, surfacing exactly like a unary modeled error:
+
+```cpp
+auto stream = client.Converse(input);            // upgrade GET on the @http URI
+if (!stream) { /* dial/refusal error */ }
+while (true) {
+  auto event = stream->Receive();
+  if (!event.ok()) { /* modeled exception or wire failure */ break; }
+  if (!event->has_value()) break;                // server closed cleanly
+  /* dispatch on (**event).is_...() */
+  (void)stream->Send(/* your next event */);
+}
+stream->Close();                                 // idempotent; also the cancel path
+```
+
+An operation that models no client-to-server events returns a receive-only
+stream: its `Send` does not compile (the `NoEvents` direction), so drive it
+with `Receive`/`Close` only.
+
+Not every `ClientConfig` knob reaches a streaming dial — the upgrade GET is
+not a unary request:
+
+| ClientConfig knob | Event-stream dial |
+|---|---|
+| `endpoint`, `tls` | **Applies.** Host, port, and wss-vs-ws derive from the one endpoint. |
+| `bearer_token` / `api_key` (the modeled auth traits) | **Applies.** Attached to the upgrade request like any unary request. |
+| `user_agent` | **Applies.** Rides the upgrade request's headers. |
+| `websocket_dialer` | **Applies.** Replaces the default Beast dial (the test seam). |
+| `http_client` | **Not used.** Streams never touch the unary transport. |
+| `interceptors` | **Not applied.** The upgrade bypasses the interceptor chain. |
+| `retry` | **Not applied.** A failed or refused dial surfaces once; refusals are terminal. |
+| `request_timeout_ms`, `max_idle_connections` | **Not applied.** Dial phases run under `WebSocketDialRequest::handshake_timeout_ms` (default 30 s); a live session idles under its `idle_timeout_seconds` (default 300, keep-alive pings underneath). |
+
+The interceptor row is the trap worth naming: auth implemented as an
+interceptor that stamps `authorization` onto unary requests never runs for
+streams, and the dial goes out anonymous. Use the modeled auth traits
+(`config.bearer_token` / `config.api_key`), or wrap the dialer to add
+headers to the upgrade request:
+
+```cpp
+config.websocket_dialer = [](smithy::http::WebSocketDialRequest request) {
+  request.headers.Set("authorization", "Bearer " + FetchToken());
+  return smithy::http::BeastWebSocketClient::Dialer()(request);
+};
+```
+
+The two dial-timeout knobs above live on `WebSocketDialRequest` with
+production defaults; a wrapping dialer like the one shown can tighten them
+per deployment the same way.
+
+Server-side, mount the generated `StreamRouter()` on the transport
+(`websocket_gate` = `Gate()`, `on_websocket` = `Serve()`; compose your own
+admission refusals around `Gate()` — see
+[server-guide.md](server-guide.md#serving-event-streams)). The hardening
+notes above apply verbatim: upgraded sessions idle under
+`websocket_idle_timeout_seconds`, and `Stop()` aborts live streams rather
+than draining them (ADR-0015), so end streams application-side first when a
+rollout needs grace. Every live stream also pins one handler-pool
+thread for its whole lifetime (the serve callback blocks by design), so
+size `handler_threads` at expected concurrent sessions plus unary
+headroom — sixteen idle streams on the default pool starve everything
+else.
+
 ## Server hardening
 
 The production server transport (`BeastServerTransport`, ADR-0006) enforces

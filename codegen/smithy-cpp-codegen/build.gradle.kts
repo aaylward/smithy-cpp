@@ -43,6 +43,16 @@ val generateCafeFixture = registerFixtureTask(
     "examples/cafe/generated",
 )
 
+// Full-duplex chat fixture (ADR-0016): bidirectional + server-push event
+// streams next to a unary neighbor, the Phase 8 exit-criterion example.
+val generateChatFixture = registerFixtureTask(
+    "generateChatFixture",
+    "examples/chat/model/chat.smithy",
+    "example.chat#Chat",
+    "example::chat",
+    "examples/chat/generated",
+)
+
 // simpleRestJson (alloy) fixture: the vendor-neutral REST/JSON protocol.
 val generateBookstoreFixture = registerFixtureTask(
     "generateBookstoreFixture",
@@ -170,6 +180,7 @@ tasks.register("generateFixtures") {
     dependsOn(
         generateWeatherFixture,
         generateCafeFixture,
+        generateChatFixture,
         generateBookstoreFixture,
         generateRoundTripRestFixture,
         generateRoundTripRpcFixture,

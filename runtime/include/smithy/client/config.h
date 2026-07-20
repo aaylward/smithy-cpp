@@ -10,6 +10,7 @@
 #include "smithy/client/interceptor.h"
 #include "smithy/client/retry.h"
 #include "smithy/http/transport.h"
+#include "smithy/http/websocket.h"
 
 namespace smithy {
 
@@ -64,6 +65,13 @@ struct ClientConfig {
 
   // Optional transport override; shared so several clients can reuse one.
   std::shared_ptr<http::HttpClient> http_client;
+
+  // Optional WebSocket dialer override for event-stream operations
+  // (ADR-0016), injected the way http_client injects the unary transport —
+  // which is also how tests run streams without Beast. When unset, generated
+  // streaming clients dial with smithy::http::BeastWebSocketClient::Dialer()
+  // from this config's endpoint and TLS options.
+  http::WebSocketDialer websocket_dialer;
 };
 
 }  // namespace smithy

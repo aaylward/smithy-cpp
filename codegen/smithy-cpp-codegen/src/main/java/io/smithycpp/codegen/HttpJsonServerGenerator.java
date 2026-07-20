@@ -85,6 +85,11 @@ final class HttpJsonServerGenerator {
     emitsValidation = validation.wiringEmitted();
     for (OperationShape operation : operations) {
       writeParseInputFunction(w, context, serde, operation);
+      if (EventStreamCodeGen.streaming(context.model(), operation)) {
+        // Streaming operations answer over the session, never an HTTP
+        // response; only their upgrade-request parse is shared (ADR-0016).
+        continue;
+      }
       writeBuildResponseFunction(w, context, serde, operation);
     }
   }
@@ -97,7 +102,12 @@ final class HttpJsonServerGenerator {
   private static boolean anyTopLevelRequired(CppContext context, List<OperationShape> operations) {
     HttpBindingIndex index = HttpBindingIndex.of(context.model());
     for (OperationShape operation : operations) {
+      MemberShape streamMember = EventStreamCodeGen.inputStreamMember(context.model(), operation);
       for (HttpBinding binding : index.getRequestBindings(operation).values()) {
+        if (binding.getMember().equals(streamMember)) {
+          // The event-stream union is the session, not a parsed member.
+          continue;
+        }
         boolean location =
             switch (binding.getLocation()) {
               case DOCUMENT, QUERY, HEADER -> true;
@@ -119,7 +129,8 @@ final class HttpJsonServerGenerator {
     String inputType = context.cppSymbols().toSymbol(input).getName();
     String opName = CppReservedWords.escape(operation.getId().getName());
     HttpBindingCodeGen.RequestBindings req =
-        HttpBindingCodeGen.RequestBindings.of(index, operation);
+        HttpBindingCodeGen.RequestBindings.of(
+            index, operation, EventStreamCodeGen.inputStreamMember(context.model(), operation));
     Map<String, HttpBinding> labels = req.labels();
     Map<String, HttpBinding> queries = req.queries();
     Map<String, HttpBinding> headers = req.headers();
@@ -364,9 +375,8 @@ final class HttpJsonServerGenerator {
     w.write("");
   }
 
-  void writeRoute(CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
-    HttpTrait http = operation.expectTrait(HttpTrait.class);
-    String opName = CppReservedWords.escape(operation.getId().getName());
+  /** The runtime Router/WebSocketRouter pattern for an @http URI (shared grammar). */
+  private static String routePattern(HttpTrait http) {
     StringBuilder pattern = new StringBuilder();
     for (SmithyPattern.Segment segment : http.getUri().getSegments()) {
       pattern.append('/');
@@ -381,6 +391,13 @@ final class HttpJsonServerGenerator {
     if (pattern.length() == 0) {
       pattern.append('/');
     }
+    return pattern.toString();
+  }
+
+  void writeRoute(CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
+    HttpTrait http = operation.expectTrait(HttpTrait.class);
+    String opName = CppReservedWords.escape(operation.getId().getName());
+    String pattern = routePattern(http);
     HttpBindingIndex bindingIndex = HttpBindingIndex.of(context.model());
     HttpBindingCodeGen.RequestBindings req =
         HttpBindingCodeGen.RequestBindings.of(bindingIndex, operation);
@@ -393,7 +410,7 @@ final class HttpJsonServerGenerator {
             + ProtocolSupport.REQUEST_CONTEXT_PARAM
             + " context) -> smithy::http::HttpResponse {",
         http.getMethod(),
-        pattern.toString(),
+        pattern,
         compressed ? "raw_request" : "request");
     if (compressed) {
       w.write("smithy::http::HttpRequest request = raw_request;");
@@ -466,5 +483,61 @@ final class HttpJsonServerGenerator {
     w.write("if (!outcome) return ErrorToResponse(outcome.error());");
     w.write("return Build$LResponse(*outcome);", opName);
     w.closeBlock("}, $S);", operation.getId().getName());
+  }
+
+  /**
+   * One streaming operation's WebSocket route (ADR-0016): the upgrade request parses through the
+   * same Parse&lt;Op&gt;Input as a unary request (labels, query, headers; the accepted upgrade has
+   * no body), refusals answer with one exception message before the close, and the handler borrows
+   * the typed session for the callback's lifetime.
+   */
+  void writeStreamRoute(
+      CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
+    HttpTrait http = operation.expectTrait(HttpTrait.class);
+    String opName = CppReservedWords.escape(operation.getId().getName());
+    // Always GET: a WebSocket upgrade is a GET on the wire (ADR-0016)
+    // whatever method the operation models, and the route must match what
+    // arrives.
+    w.openBlock(
+        "(void)stream_router_->Add(\"GET\", $S, [handler](const smithy::http::HttpRequest&"
+            + " request, "
+            + ProtocolSupport.REQUEST_CONTEXT_PARAM
+            + " context, smithy::http::WebSocket& socket) {",
+        routePattern(http));
+    w.write("std::vector<smithy::server::ValidationFailure> validation_failures;");
+    w.write("auto input = Parse$LInput(request, context, &validation_failures);", opName);
+    w.openBlock("if (!input) {");
+    w.write("(void)socket.Send(Build$LExceptionMessage(input.error()));", opName);
+    w.write("socket.Close();");
+    w.write("return;");
+    w.closeBlock("}");
+    // The refusal checks mirror unary writeRoute's guards exactly: the
+    // parse-recorded check only when the service emits validation at all,
+    // the validator call + check only when this operation's input is
+    // constrained — a service that validates nothing gets no dead check.
+    if (emitsValidation) {
+      writeStreamValidationRefusal(w, opName);
+    }
+    if (validation.validates(operation)) {
+      w.write("$L(*input, \"\", &validation_failures);", validation.validatorNameFor(operation));
+      writeStreamValidationRefusal(w, opName);
+    }
+    EventStreamCodeGen.writeServeAndClose(w, context, operation, "*input");
+    w.closeBlock("}, $S);", operation.getId().getName());
+  }
+
+  /**
+   * The streaming analog of ValidationErrorResponse: a refused upgrade answers over the session —
+   * one SerializationException exception message carrying the first failure, then the close.
+   */
+  private static void writeStreamValidationRefusal(CppWriter w, String opName) {
+    w.openBlock("if (!validation_failures.empty()) {");
+    w.write(
+        "(void)socket.Send(Build$LExceptionMessage("
+            + "smithy::Error::Validation(validation_failures.front().message)));",
+        opName);
+    w.write("socket.Close();");
+    w.write("return;");
+    w.closeBlock("}");
   }
 }

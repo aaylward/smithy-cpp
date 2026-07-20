@@ -225,9 +225,13 @@ TEST(BeastWebSocketTest, TheGateRefusesBeforeAnyUpgradeExists) {
   BeastServerTransport server(options);
   ASSERT_TRUE(server.Start(NotFoundHandler()).ok());
 
-  // No credentials: the dial fails — the server answered 401, never 101.
+  // No credentials: the dial fails — the server answered 401, never 101 —
+  // and the refusal error names the HTTP status the server actually sent
+  // (the response-capturing handshake), not just "declined".
   auto refused = BeastWebSocketClient::Dial({.host = "127.0.0.1", .port = server.port()});
-  EXPECT_FALSE(refused.ok());
+  ASSERT_FALSE(refused.ok());
+  EXPECT_NE(refused.error().message().find("refused: HTTP 401"), std::string::npos)
+      << refused.error().message();
 
   // Credentials ride the upgrade request's headers and the gate sees them.
   Headers credentials;
@@ -869,6 +873,69 @@ TEST(BeastWebSocketTest, TheGateAndServeCallbackSeeTheFullUpgradeRequest) {
   ASSERT_EQ(target_future.wait_for(std::chrono::seconds(5)), std::future_status::ready);
   EXPECT_EQ(target_future.get(), "/rooms/7/stream?replay=3");
   (*dialed)->Close();
+  server.Stop();
+}
+
+TEST(BeastWebSocketTest, CloseUnblocksASendWedgedOnANonReadingPeer) {
+  // The contract's other half (websocket.h): Close() from another thread
+  // unblocks a blocked SEND, not just a blocked Receive. A peer that stops
+  // reading wedges a sender for real — the session's receive queue and the
+  // kernel buffers fill, then async_write never completes — so Close must
+  // escalate (cancel the in-flight write) rather than defer behind it.
+  std::promise<void> release_serve;
+  std::shared_future<void> released = release_serve.get_future().share();
+  BeastServerTransport::Options options;
+  options.on_websocket = [released](const HttpRequest&, WebSocket&) {
+    released.wait();  // never Receives: the client's sends back up
+  };
+  BeastServerTransport server(options);
+  ASSERT_TRUE(server.Start(NotFoundHandler()).ok());
+
+  auto dialed = BeastWebSocketClient::Dial({.host = "127.0.0.1", .port = server.port()});
+  ASSERT_TRUE(dialed.ok()) << dialed.error().message();
+  const std::shared_ptr<WebSocket>& socket = *dialed;
+
+  // Far more than the receive queue plus kernel buffers can absorb: the
+  // sender is guaranteed to wedge mid-loop, blocked inside Send.
+  const std::string bulk(1024 * 1024, 'x');
+  std::atomic<int> sent{0};
+  std::promise<Outcome<Unit>> send_result;
+  std::thread sender([&socket, &bulk, &sent, &send_result] {
+    for (int i = 0; i < 64; ++i) {
+      auto outcome = socket->Send(Text("bulk", bulk));
+      if (!outcome.ok()) {
+        send_result.set_value(std::move(outcome));
+        return;
+      }
+      ++sent;
+    }
+    send_result.set_value(Unit{});  // never wedged: the test setup is wrong
+  });
+
+  // Let the sender wedge (progress stalls), then Close from this thread.
+  int last = -1;
+  while (sent.load() != last) {
+    last = sent.load();
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  }
+  const auto closed_at = std::chrono::steady_clock::now();
+  socket->Close();
+  auto result_future = send_result.get_future();
+  ASSERT_EQ(result_future.wait_for(std::chrono::seconds(5)), std::future_status::ready)
+      << "Close() left the Send blocked";
+  EXPECT_LT(std::chrono::steady_clock::now() - closed_at, std::chrono::seconds(2));
+  sender.join();
+  auto result = result_future.get();
+  ASSERT_FALSE(result.ok()) << "the wedged Send was expected to fail, not complete";
+  EXPECT_NE(result.error().message().find("closed"), std::string::npos) << result.error().message();
+
+  // The receiver side of an aborted-mid-frame wire surfaces an error, not
+  // the clean nullopt — the wire was cut with a frame half-written
+  // (documented in websocket.h).
+  auto receive = socket->Receive();
+  EXPECT_FALSE(receive.ok());
+
+  release_serve.set_value();
   server.Stop();
 }
 

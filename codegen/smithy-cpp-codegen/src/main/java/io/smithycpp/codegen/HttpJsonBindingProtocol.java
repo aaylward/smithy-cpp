@@ -115,4 +115,36 @@ final class HttpJsonBindingProtocol implements ProtocolGenerator {
       CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
     server.writeRoute(w, context, service, operation);
   }
+
+  @Override
+  public boolean supportsEventStreams() {
+    return true;
+  }
+
+  @Override
+  public boolean bindsInitialRequestMembers() {
+    return true;
+  }
+
+  @Override
+  public String eventPayloadEncode(String docExpr) {
+    return "smithy::Blob::FromString(smithy::json::Encode(" + docExpr + "))";
+  }
+
+  @Override
+  public String eventPayloadDecode(String payloadExpr) {
+    return "smithy::json::Decode(" + payloadExpr + ".ToString())";
+  }
+
+  @Override
+  public void writeStreamingOperationBody(
+      CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
+    client.writeStreamingOperationBody(w, context, service, operation);
+  }
+
+  @Override
+  public void writeStreamServerRoute(
+      CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
+    server.writeStreamRoute(w, context, service, operation);
+  }
 }

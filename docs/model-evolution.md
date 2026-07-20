@@ -171,3 +171,11 @@ compiling) are separate questions:
 For anything in the ❌ rows, [versioning.md](versioning.md) applies: it is a breaking change to
 your service's consumers, and (for changes to this repo's generator itself) must be called out
 in the CHANGELOG under a "Breaking" heading with a migration note.
+
+## Streaming unions
+
+Adding a member to a `@streaming` event union is a wire-breaking change
+for live peers: an unknown `:event-type` is a terminal serialization
+error on the receiving side (the closed-union posture, applied to
+streams), so old peers' sessions end at the first new-member event.
+Roll out receivers before senders, or model a new operation.

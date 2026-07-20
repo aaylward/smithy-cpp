@@ -52,9 +52,48 @@ smithy_cpp_server_library(
     service = "compile.gauntlet#Gauntlet",
 )
 
+# The streaming slice of the harness (ADR-0016): a bidirectional chat-like op
+# plus a server-push one, generated for both streaming protocols (jsonRpc2
+# refuses event streams at generation time, so it gets no binding). The
+# clients' binaries link the default Beast dialer, so streaming_compile_test
+# below adds //runtime:http_beast; the libraries themselves stay Beast-free
+# to compile (only linking needs the dialer's definition).
+
+STREAMING_MODEL = ["model/streaming.smithy"]
+
+smithy_cpp_client_library(
+    name = "streaming_rest_client",
+    srcs = STREAMING_MODEL,
+    namespace = "compile::streaming::rest",
+    service = "compile.streaming#Relay",
+)
+
+smithy_cpp_server_library(
+    name = "streaming_rest_server",
+    srcs = STREAMING_MODEL,
+    namespace = "compile::streaming::rest",
+    service = "compile.streaming#Relay",
+)
+
+smithy_cpp_client_library(
+    name = "streaming_cbor_client",
+    srcs = STREAMING_MODEL,
+    namespace = "compile::streaming::cbor",
+    service = "compile.streaming#Pipe",
+)
+
+smithy_cpp_server_library(
+    name = "streaming_cbor_server",
+    srcs = STREAMING_MODEL,
+    namespace = "compile::streaming::cbor",
+    service = "compile.streaming#Pipe",
+)
+
 # Linking the test forces every generated TU above through the compiler; the
 # assertions then spot-check the escaping contract (keyword members get a
 # trailing underscore, hostile enum values round-trip, int64-min defaults).
+# The streaming server halves ride along — they speak only the transport-
+# neutral WebSocket seam (ADR-0016), so no Boost enters this target.
 cc_test(
     name = "gauntlet_compile_test",
     size = "small",
@@ -66,8 +105,37 @@ cc_test(
         ":gauntlet_jsonrpc_server",
         ":gauntlet_rest_client",
         ":gauntlet_rest_server",
+        ":streaming_cbor_server",
+        ":streaming_rest_server",
         "//runtime:client",
         "//runtime:http",
+        "//runtime:server",
+        "@googletest//:gtest_main",
+    ],
+)
+
+# The streaming halves, behaviorally: the clients' operation bodies fall
+# back to BeastWebSocketClient::Dialer(), so this link pulls in Boost — it
+# joins the Beast targets behind the documented local exclusion list
+# (docs/development.md, "Machine-specific Bazel flags"); CI runs it. The
+# server halves ride along for the flows nothing else drives (the cbor
+# streaming server, the REST validation-refusal arm); each service's client
+# and server libraries carry an identical serde.cc, deduplicated by archive
+# linking exactly like gauntlet_compile_test's pairs.
+cc_test(
+    name = "streaming_compile_test",
+    size = "small",
+    srcs = ["streaming_compile_test.cc"],
+    deps = [
+        ":streaming_cbor_client",
+        ":streaming_cbor_server",
+        ":streaming_rest_client",
+        ":streaming_rest_server",
+        "//runtime:cbor",
+        "//runtime:client",
+        "//runtime:http",
+        "//runtime:http_beast",
+        "//runtime:server",
         "@googletest//:gtest_main",
     ],
 )

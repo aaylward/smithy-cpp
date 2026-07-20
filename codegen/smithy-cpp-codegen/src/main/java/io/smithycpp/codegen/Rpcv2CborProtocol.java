@@ -141,6 +141,60 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
   }
 
   @Override
+  public boolean supportsEventStreams() {
+    return true;
+  }
+
+  @Override
+  public String eventPayloadEncode(String docExpr) {
+    return "smithy::cbor::Encode(" + docExpr + ")";
+  }
+
+  @Override
+  public String eventPayloadDecode(String payloadExpr) {
+    return "smithy::cbor::Decode(" + payloadExpr + ")";
+  }
+
+  @Override
+  public void writeStreamingOperationBody(
+      CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
+    StructureShape input = ProtocolSupport.inputShape(context, operation);
+    if (!input.members().isEmpty()) {
+      // The input carries only the event-stream union — validate() rejected
+      // initial members, since the fixed upgrade URI cannot carry them.
+      w.write("(void)input;");
+    }
+    w.write("smithy::http::WebSocketDialRequest request;");
+    w.write(
+        "request.target = path_prefix_ + \"/service/$L/operation/$L\";",
+        service.getId().getName(),
+        operation.getId().getName());
+    w.write("request.headers.Set(\"user-agent\", config_.user_agent);");
+    ClientGenerator.writeAuth(w, service);
+    EventStreamCodeGen.writeDialAndReturn(w, context, operation);
+  }
+
+  @Override
+  public void writeStreamServerRoute(
+      CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
+    StructureShape input = ProtocolSupport.inputShape(context, operation);
+    String inputType = context.cppSymbols().toSymbol(input).getName();
+    w.openBlock(
+        "(void)stream_router_->Add(\"GET\", \"/service/$L/operation/$L\", "
+            + "[handler](const smithy::http::HttpRequest& request, "
+            + ProtocolSupport.REQUEST_CONTEXT_PARAM
+            + " context, smithy::http::WebSocket& socket) {",
+        service.getId().getName(),
+        operation.getId().getName());
+    w.write("(void)request;");
+    w.write("// The fixed upgrade URI carries no initial members (ADR-0016): the input");
+    w.write("// is empty beyond the stream itself.");
+    w.write("$L input{};", inputType);
+    EventStreamCodeGen.writeServeAndClose(w, context, operation, "input");
+    w.closeBlock("}, $S);", operation.getId().getName());
+  }
+
+  @Override
   public void writeOperationBody(
       CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
     StructureShape input = ProtocolSupport.inputShape(context, operation);

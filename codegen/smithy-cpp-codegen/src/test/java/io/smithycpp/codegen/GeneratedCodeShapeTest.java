@@ -404,11 +404,13 @@ class GeneratedCodeShapeTest {
   }
 
   @Test
-  void streamingTraitIsIgnoredAndGeneratesThePlainShape() {
-    // The README's "Current limitations" states that @streaming is ignored —
+  void streamingBlobsStayPlainBufferedBlobs() {
+    // The README's "Current limitations": @streaming BLOBS remain unmodeled —
     // a streaming blob payload generates as an ordinary, fully buffered
-    // smithy::Blob. This pins that claim (and will fail when Phase 8 makes
-    // streaming real, forcing the doc sites to be updated in step).
+    // smithy::Blob with the plain unary operation around it. Event-stream
+    // unions became real in Phase 8 slice 3 (ADR-0016; the flipped pin is
+    // eventStreamOperationsGenerateStreamingSignatures below), which is why
+    // this pin is now blob-specific.
     String model =
         """
         $version: "2.0"
@@ -431,10 +433,64 @@ class GeneratedCodeShapeTest {
         @streaming
         blob StreamingBlob
         """;
-    String types =
-        PluginTestHarness.generate(model, "test.shape#Svc", "test::shape")
-            .expectFileString("/include/test/shape/types.h");
+    var manifest = PluginTestHarness.generate(model, "test.shape#Svc", "test::shape");
+    String types = manifest.expectFileString("/include/test/shape/types.h");
     assertTrue(types.contains("smithy::Blob body{};"), types);
+    String client = manifest.expectFileString("/include/test/shape/client.h");
+    assertTrue(
+        client.contains("smithy::Outcome<UploadOutput> Upload(const UploadInput& input) const;"),
+        client);
+    assertFalse(client.contains("EventStream"), client);
+  }
+
+  @Test
+  void eventStreamOperationsGenerateStreamingSignatures() {
+    // The flip of the old "@streaming is ignored" pin (ADR-0016): an
+    // event-stream union on an operation now generates the typed-session
+    // signature on both wire ends. The full surface (codecs, routes,
+    // diagnostics, BUILD deps) is EventStreamGeneratorTest's.
+    String model =
+        """
+        $version: "2.0"
+        namespace test.shape
+        use alloy#simpleRestJson
+
+        @simpleRestJson
+        service Svc { version: "1", operations: [Chat] }
+
+        @http(method: "POST", uri: "/chat")
+        operation Chat {
+            input := { @httpPayload events: In }
+            output := { @httpPayload events: Out }
+        }
+
+        @streaming
+        union In { ping: Ping }
+
+        @streaming
+        union Out { pong: Pong }
+
+        structure Ping { text: String }
+        structure Pong { text: String }
+        """;
+    var manifest = PluginTestHarness.generate(model, "test.shape#Svc", "test::shape");
+    String client = manifest.expectFileString("/include/test/shape/client.h");
+    assertTrue(
+        client.contains("using ChatClientStream = smithy::eventstream::EventStream<In, Out>;"),
+        client);
+    assertTrue(
+        client.contains("smithy::Outcome<ChatClientStream> Chat(const ChatInput& input) const;"),
+        client);
+    String server = manifest.expectFileString("/include/test/shape/server.h");
+    assertTrue(
+        server.contains("using ChatServerStream = smithy::eventstream::EventStream<Out, In>;"),
+        server);
+    assertTrue(
+        server.contains(
+            "virtual smithy::Outcome<smithy::Unit> Chat(const ChatInput& input,"
+                + " ChatServerStream& stream,"
+                + " const smithy::server::RequestContext& context) = 0;"),
+        server);
   }
 
   @Test

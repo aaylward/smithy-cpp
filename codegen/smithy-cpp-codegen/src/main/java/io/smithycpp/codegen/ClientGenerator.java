@@ -23,6 +23,11 @@ final class ClientGenerator {
     return ProtocolSupport.containedOperations(context.model(), service);
   }
 
+  /** The event-streaming subset (ADR-0016); empty for unary-only services. */
+  private List<OperationShape> streamingOperations() {
+    return EventStreamCodeGen.streamingOperations(context.model(), operations());
+  }
+
   private String clientName() {
     return CppReservedWords.escape(service.getId().getName()) + "Client";
   }
@@ -43,6 +48,9 @@ final class ClientGenerator {
     w.addInclude("\"smithy/http/transport.h\"");
 
     String name = clientName();
+    if (!streamingOperations().isEmpty()) {
+      w.addInclude("\"smithy/eventstream/event_stream.h\"");
+    }
     List<OperationShape> paginated =
         operations().stream().filter(op -> pagination(op).isPresent()).toList();
     if (!paginated.isEmpty()) {
@@ -53,6 +61,10 @@ final class ClientGenerator {
         w.write("class $L;", paginatorName(operation));
       }
       w.write("");
+    }
+    if (!streamingOperations().isEmpty()) {
+      EventStreamCodeGen.writeStreamAliases(
+          w, context, service, streamingOperations(), /* serverSide= */ false);
     }
     w.write("/// $L client for $L.", protocol.name(), service.getId().toString());
     w.write("/// Modeled service errors surface as smithy::Error with kind kModeled,");
@@ -65,6 +77,7 @@ final class ClientGenerator {
     w.write("static smithy::Outcome<$L> Create(smithy::ClientConfig config);", name);
     w.write("");
     for (OperationShape operation : operations()) {
+      boolean documented = operation.hasTrait(DocumentationTrait.class);
       operation
           .getTrait(DocumentationTrait.class)
           .ifPresent(
@@ -78,6 +91,31 @@ final class ClientGenerator {
       String outputType =
           context.cppSymbols().toSymbol(ProtocolSupport.outputShape(context, operation)).getName();
       String defaulted = input.members().isEmpty() ? " = {}" : "";
+      if (EventStreamCodeGen.streaming(context.model(), operation)) {
+        // Streaming operations (ADR-0016) return the typed session instead of
+        // an output structure; the wire contract lives on the runtime type.
+        if (documented) {
+          w.write("///"); // blank separator: model docs above, boilerplate below
+        }
+        w.write("/// Opens the operation's event stream over a WebSocket upgrade");
+        if (EventStreamCodeGen.inputInfo(context.model(), operation).isEmpty()) {
+          w.write("/// (ADR-0016). This operation models no client-to-server events; only");
+          w.write("/// Receive is meaningful (nullopt on the peer's clean close — Send does");
+          w.write("/// not compile on a NoEvents direction), and a received exception");
+          w.write("/// surfaces through Receive() as a modeled error, the unary shape.");
+        } else {
+          w.write("/// (ADR-0016). Send carries input events, Receive yields output events");
+          w.write("/// (nullopt on the peer's clean close), and a received exception");
+          w.write("/// surfaces through Receive() as a modeled error, the unary shape.");
+        }
+        w.write(
+            "smithy::Outcome<$L> $L(const $L& input$L) const;",
+            EventStreamCodeGen.clientStreamAlias(operation),
+            CppReservedWords.escape(operation.getId().getName()),
+            inputType,
+            defaulted);
+        continue;
+      }
       w.write(
           "smithy::Outcome<$L> $L(const $L& input$L) const;",
           outputType,
@@ -225,32 +263,12 @@ final class ClientGenerator {
   /**
    * The listing's synthetic name lives beside the model's own types, so a modeled shape with the
    * same C++ name in this namespace must fail loudly (the plural already dodges the
-   * operation-named-error convention, e.g. DescribeSink vs DescribeSinkError).
+   * operation-named-error convention, e.g. DescribeSink vs DescribeSinkError). The shared check
+   * (TypeGenerators) also guards the generated stream aliases.
    */
   private void requireNoModelCollision(OperationShape operation, String listingName) {
-    String namespace = service.getId().getNamespace();
-    java.util.stream.Stream<software.amazon.smithy.model.shapes.Shape> named =
-        java.util.stream.Stream.of(
-                context.model().getStructureShapes().stream(),
-                context.model().getUnionShapes().stream(),
-                context.model().getEnumShapes().stream(),
-                context.model().getIntEnumShapes().stream())
-            .flatMap(s -> s.map(software.amazon.smithy.model.shapes.Shape.class::cast));
-    named
-        .filter(shape -> shape.getId().getNamespace().equals(namespace))
-        .filter(shape -> context.cppSymbols().toSymbol(shape).getName().equals(listingName))
-        .findAny()
-        .ifPresent(
-            shape -> {
-              throw new software.amazon.smithy.codegen.core.CodegenException(
-                  "cpp-codegen: operation "
-                      + operation.getId()
-                      + " generates the error listing '"
-                      + listingName
-                      + "', which collides with shape "
-                      + shape.getId()
-                      + "; rename the shape or the operation");
-            });
+    TypeGenerators.requireNoModelCollision(
+        context, service, operation, listingName, "error listing");
   }
 
   private String errorsName(OperationShape operation) {
@@ -282,8 +300,12 @@ final class ClientGenerator {
     return CppReservedWords.escape(operation.getId().getName()) + "Paginator";
   }
 
-  /** Auth from the service's traits; a null provider leaves the request anonymous. */
-  private void writeAuth(CppWriter w) {
+  /**
+   * Auth from the service's traits; a null provider leaves the request anonymous. Static so the
+   * protocols' streaming operation bodies attach the same auth to the upgrade request (their local
+   * is also named {@code request}, with .headers/.target members) — one emission, no drift.
+   */
+  static void writeAuth(CppWriter w, ServiceShape service) {
     if (service.hasTrait(software.amazon.smithy.model.traits.HttpBearerAuthTrait.class)) {
       w.write("// @httpBearerAuth: attach the configured token (fetched per request).");
       w.openBlock("if (config_.bearer_token) {");
@@ -331,6 +353,10 @@ final class ClientGenerator {
     w.write("");
     protocol.writeClientHelpers(w, context);
     ProtocolSupport.writeOperationErrorParsers(w, context, service, protocol, operations());
+    if (!streamingOperations().isEmpty()) {
+      EventStreamCodeGen.writeClientStreamHelpers(
+          w, context, service, protocol, streamingOperations(), name);
+    }
     w.write("}  // namespace");
     w.write("");
 
@@ -386,7 +412,7 @@ final class ClientGenerator {
             + "request.headers.Set(\"accept\", $S);",
         protocol.contentType());
     w.write("request.headers.Set(\"user-agent\", config_.user_agent);");
-    writeAuth(w);
+    writeAuth(w, service);
     w.openBlock("if (!request.body.empty()) {");
     w.write("request.headers.Set(\"content-length\", std::to_string(request.body.size()));");
     w.closeBlock("}");
@@ -399,8 +425,14 @@ final class ClientGenerator {
     for (OperationShape operation : operations()) {
       StructureShape input = ProtocolSupport.inputShape(context, operation);
       String inputType = context.cppSymbols().toSymbol(input).getName();
+      boolean streaming = EventStreamCodeGen.streaming(context.model(), operation);
       String outputType =
-          context.cppSymbols().toSymbol(ProtocolSupport.outputShape(context, operation)).getName();
+          streaming
+              ? EventStreamCodeGen.clientStreamAlias(operation)
+              : context
+                  .cppSymbols()
+                  .toSymbol(ProtocolSupport.outputShape(context, operation))
+                  .getName();
       w.openBlock(
           "smithy::Outcome<$L> $L::$L(const $L& input) const {",
           outputType,
@@ -410,7 +442,11 @@ final class ClientGenerator {
       if (input.members().isEmpty()) {
         w.write("(void)input;");
       }
-      protocol.writeOperationBody(w, context, service, operation);
+      if (streaming) {
+        protocol.writeStreamingOperationBody(w, context, service, operation);
+      } else {
+        protocol.writeOperationBody(w, context, service, operation);
+      }
       w.closeBlock("}");
       w.write("");
     }

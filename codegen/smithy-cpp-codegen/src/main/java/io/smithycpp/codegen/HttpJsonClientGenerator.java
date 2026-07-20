@@ -150,51 +150,7 @@ final class HttpJsonClientGenerator {
         ProtocolSupport.prepareIdempotencyTokens(
             w, context, input, context.cppSymbols().toSymbol(input).getName());
 
-    // Target: path segments in pattern order, then query.
-    w.write("std::string target = path_prefix_;");
-    for (SmithyPattern.Segment segment : http.getUri().getSegments()) {
-      if (!segment.isLabel()) {
-        w.write("target += \"/$L\";", segment.getContent());
-        continue;
-      }
-      HttpBinding binding = labels.get(segment.getContent());
-      if (binding == null) {
-        throw new CodegenException(
-            "cpp-codegen: no @httpLabel member for {"
-                + segment.getContent()
-                + "} in "
-                + operation.getId());
-      }
-      String value =
-          ProtocolSupport.toStringExpression(
-              context,
-              binding.getMember(),
-              in + "." + context.cppSymbols().toMemberName(binding.getMember()),
-              serde.timestampFormat(binding.getMember(), "smithy::TimestampFormat::kDateTime"));
-      String encoder = segment.isGreedyLabel() ? "EncodeGreedyPathSegment" : "EncodePathSegment";
-      w.write("target += \"/\";");
-      w.write("target += smithy::http::$L($L);", encoder, value);
-    }
-    boolean hasQuery =
-        !queries.isEmpty() || queryParams != null || !http.getUri().getQueryLiterals().isEmpty();
-    if (hasQuery) {
-      w.write("smithy::http::QueryString query;");
-      for (Map.Entry<String, String> literal :
-          new TreeMap<>(http.getUri().getQueryLiterals()).entrySet()) {
-        if (literal.getValue().isEmpty()) {
-          w.write("query.AddFlag($S);", literal.getKey());
-        } else {
-          w.write("query.Add($S, $S);", literal.getKey(), literal.getValue());
-        }
-      }
-      for (HttpBinding binding : queries.values()) {
-        writeQueryBinding(w, context, serde, binding, in);
-      }
-      if (queryParams != null) {
-        writeQueryParamsBinding(w, context, queryParams, in);
-      }
-      w.write("target += query.ToString();");
-    }
+    writeTarget(w, context, serde, operation, http, labels, queries, queryParams, in);
 
     w.write("smithy::http::HttpRequest request;");
     w.write("request.method = $S;", http.getMethod());
@@ -329,6 +285,114 @@ final class HttpJsonClientGenerator {
           type);
     }
     w.write("return out;");
+  }
+
+  /**
+   * The request target — path segments in pattern order, then query — into a {@code target} local.
+   * Shared by the unary request and the streaming upgrade request (ADR-0016), so label/query
+   * resolution cannot drift between them.
+   */
+  private void writeTarget(
+      CppWriter w,
+      CppContext context,
+      SerdeCodeGen serde,
+      OperationShape operation,
+      HttpTrait http,
+      Map<String, HttpBinding> labels,
+      Map<String, HttpBinding> queries,
+      HttpBinding queryParams,
+      String in) {
+    w.write("std::string target = path_prefix_;");
+    for (SmithyPattern.Segment segment : http.getUri().getSegments()) {
+      if (!segment.isLabel()) {
+        w.write("target += \"/$L\";", segment.getContent());
+        continue;
+      }
+      HttpBinding binding = labels.get(segment.getContent());
+      if (binding == null) {
+        throw new CodegenException(
+            "cpp-codegen: no @httpLabel member for {"
+                + segment.getContent()
+                + "} in "
+                + operation.getId());
+      }
+      String value =
+          ProtocolSupport.toStringExpression(
+              context,
+              binding.getMember(),
+              in + "." + context.cppSymbols().toMemberName(binding.getMember()),
+              serde.timestampFormat(binding.getMember(), "smithy::TimestampFormat::kDateTime"));
+      String encoder = segment.isGreedyLabel() ? "EncodeGreedyPathSegment" : "EncodePathSegment";
+      w.write("target += \"/\";");
+      w.write("target += smithy::http::$L($L);", encoder, value);
+    }
+    boolean hasQuery =
+        !queries.isEmpty() || queryParams != null || !http.getUri().getQueryLiterals().isEmpty();
+    if (hasQuery) {
+      w.write("smithy::http::QueryString query;");
+      for (Map.Entry<String, String> literal :
+          new TreeMap<>(http.getUri().getQueryLiterals()).entrySet()) {
+        if (literal.getValue().isEmpty()) {
+          w.write("query.AddFlag($S);", literal.getKey());
+        } else {
+          w.write("query.Add($S, $S);", literal.getKey(), literal.getValue());
+        }
+      }
+      for (HttpBinding binding : queries.values()) {
+        writeQueryBinding(w, context, serde, binding, in);
+      }
+      if (queryParams != null) {
+        writeQueryParamsBinding(w, context, queryParams, in);
+      }
+      w.write("target += query.ToString();");
+    }
+  }
+
+  /**
+   * The streaming operation body (ADR-0016): the upgrade request from the same @http bindings a
+   * unary request resolves — labels and query onto the target, headers onto the upgrade GET; the
+   * stream member is the session, never a binding (and validate() rejected everything else) — then
+   * the shared dial-and-wrap tail.
+   */
+  void writeStreamingOperationBody(
+      CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
+    HttpTrait http =
+        operation
+            .getTrait(HttpTrait.class)
+            .orElseThrow(
+                () ->
+                    new CodegenException(
+                        "cpp-codegen: HTTP+JSON operation missing @http: " + operation.getId()));
+    HttpBindingIndex index = HttpBindingIndex.of(context.model());
+    StructureShape input = ProtocolSupport.inputShape(context, operation);
+    SerdeCodeGen serde = new SerdeCodeGen(context, useJsonName);
+    HttpBindingCodeGen.RequestBindings req =
+        HttpBindingCodeGen.RequestBindings.of(index, operation);
+    boolean usesInput =
+        !req.labels().isEmpty()
+            || !req.queries().isEmpty()
+            || req.queryParams() != null
+            || !req.headers().isEmpty()
+            || req.prefixHeaders() != null;
+    if (!usesInput && !input.members().isEmpty()) {
+      w.write("(void)input;");
+    }
+    String in =
+        ProtocolSupport.prepareIdempotencyTokens(
+            w, context, input, context.cppSymbols().toSymbol(input).getName());
+    writeTarget(
+        w, context, serde, operation, http, req.labels(), req.queries(), req.queryParams(), in);
+    w.write("smithy::http::WebSocketDialRequest request;");
+    w.write("request.target = std::move(target);");
+    for (HttpBinding binding : req.headers().values()) {
+      HttpBindingCodeGen.writeHeaderWriteBinding(w, context, serde, binding, in, "request.headers");
+    }
+    if (req.prefixHeaders() != null) {
+      HttpBindingCodeGen.writePrefixHeadersWrite(w, context, req.prefixHeaders(), in, "request");
+    }
+    w.write("request.headers.Set(\"user-agent\", config_.user_agent);");
+    ClientGenerator.writeAuth(w, service);
+    EventStreamCodeGen.writeDialAndReturn(w, context, operation);
   }
 
   /**

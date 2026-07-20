@@ -26,6 +26,7 @@ _RUNTIME_DEPS = [
     Label("//runtime:client"),
     Label("//runtime:compression"),
     Label("//runtime:core"),
+    Label("//runtime:eventstream"),
     Label("//runtime:http"),
     Label("//runtime:json"),
 ]
@@ -108,6 +109,12 @@ _smithy_cpp_generate = rule(
 def _smithy_cpp_library(name, srcs, service, namespace, mode, deps, **kwargs):
     gen = name + "_smithy_gen"
 
+    # Caller-supplied deps are appended to the runtime set — the seam for
+    # deps generation alone cannot decide, e.g. //runtime:http_beast on a
+    # streaming client whose binaries link the default Beast dialer
+    # (ADR-0016; the generated-BUILD path adds it automatically).
+    extra_deps = kwargs.pop("deps", [])
+
     # tags/testonly apply to the internal targets too, so e.g. tags = ["manual"]
     # keeps every piece of the macro out of wildcard builds.
     inherited = {k: kwargs[k] for k in ("tags", "testonly") if k in kwargs}
@@ -139,7 +146,7 @@ def _smithy_cpp_library(name, srcs, service, namespace, mode, deps, **kwargs):
         hdrs = [":" + gen + "_hdrs"],
         srcs = [":" + gen + "_srcs"] if mode != "types" else [],
         includes = [gen + "/include"],
-        deps = [str(d) for d in deps],
+        deps = [str(d) for d in deps] + extra_deps,
         **kwargs
     )
 

@@ -50,6 +50,12 @@ using example::chat::MemberJoined;
 using example::chat::MemberLeft;
 using example::chat::RoomEvents;
 
+// A reconnect can beat the old wire's failure notice, so admission retries
+// resume-or-add briefly before refusing the nickname as a live duplicate
+// (the production guide's admission recipe).
+constexpr int kAdmissionAttempts = 20;
+constexpr auto kAdmissionRetryDelay = std::chrono::milliseconds(50);
+
 // The Converse wire, hand-mounted: the same envelope convention the
 // generated codecs speak (ADR-0016), over the exported serde functions.
 smithy::eventstream::Message MakeJsonEvent(const char* type, const smithy::Document& doc) {
@@ -134,8 +140,9 @@ class AsyncHub {
     options.async_delivery = true;  // ADR-0019: chains, not writer threads
     options.grace_period = grace;   // ADR-0020: abrupt losses detach, not vanish
     options.on_expired = [hub](const std::string& id) {
-      // Grace ran out: the departure the disconnect deferred. Runs on the
-      // registry's expiry thread; Broadcast is safe from any thread.
+      // Grace ran out: the departure the disconnect deferred. Runs off
+      // the handler threads (the registry's expiry thread, or the Drain
+      // caller on shutdown); Broadcast is safe from any thread.
       const auto slash = id.find('/');
       if (slash == std::string::npos) return;
       hub->BroadcastToRoom(id.substr(0, slash),
@@ -170,10 +177,10 @@ smithy::eventstream::Detached Serve(AsyncHub& hub, std::string room, std::string
   // Pre-co_await, on the launching handler thread: blocking briefly is fine.
   bool resumed = false;
   bool added = false;
-  for (int attempt = 0; attempt < 20 && !resumed && !added; ++attempt) {
+  for (int attempt = 0; attempt < kAdmissionAttempts && !resumed && !added; ++attempt) {
     resumed = hub.registry().Resume(id, stream.Share());
     if (!resumed) added = hub.registry().Add(id, stream.Share());
-    if (!resumed && !added) std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    if (!resumed && !added) std::this_thread::sleep_for(kAdmissionRetryDelay);
   }
   if (!resumed && !added) {
     // The nickname reservation, refused the way the generated path would:

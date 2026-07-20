@@ -154,8 +154,9 @@ via `git_override` until then.
   default (snapshot replay is authoritative); opt-in retention keeps a
   bounded tail. `Drain` and the destructor expire detached sessions
   immediately. The production guide blesses the whole loop — resume
-  ticket → gate → `Resume` → snapshot — plus the native redial shape, and
-  the async chat hub demonstrates it end to end as real processes.
+  ticket → gate → `Resume` → snapshot — plus the native redial shape; the
+  chat hubs demonstrate the registry half (abrupt kill, snapshot resume,
+  deferred departure) as real shell-driven processes.
 - Event-stream session handles and fan-out (ADR-0017, issue #112):
   `stream.Share()` mints an `EventStreamHandle<Out>` — an owning cheap-copy
   value handle safe to hold beyond the handler's borrow (copies are how a

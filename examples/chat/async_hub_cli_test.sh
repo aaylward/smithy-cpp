@@ -10,8 +10,12 @@
 set -euo pipefail
 
 # Whatever path ends this script — a fail(), set -e, or the sandbox's
-# timeout SIGTERM — no server or client process outlives it.
+# timeout SIGTERM — no server or client process outlives it. An EXIT trap
+# alone misses untrapped signals (bash skips it when killed), so route
+# TERM/INT through exit.
 trap 'kill $(jobs -p) 2>/dev/null || true' EXIT
+trap 'exit 143' TERM
+trap 'exit 130' INT
 
 step() { echo "async-hub: $*" >&2; }
 fail() {
@@ -91,6 +95,12 @@ exec 4> grace2.in
 wait_for grace2.out '^joined grace$' "grace rejoined after leaving"
 echo "/quit" >&4
 # No immediate announcement: the session is detached, awaiting a resume.
+# Pinned one second in (safely inside the 3s grace) — a regression to the
+# immediate announce path fails here, not just "announces sooner". The
+# count is 1: grace's earlier clean /leave.
+sleep 1
+[ "$(grep -c '^left grace$' ada.out || true)" -eq 1 ] \
+  || fail "the departure was announced before grace expired"
 # The 3s grace runs out, on_expired fires, and the room finally hears it.
 wait_for_count ada.out '^left grace$' 2 "the deferred departure at expiry"
 exec 4>&-

@@ -73,6 +73,15 @@ jobs:
           CC: clang
           CXX: clang++
         run: bazelisk test //... --config=ci --config=asan --config=ubsan
+      # TSan needs its own build (incompatible with asan) and earns its keep
+      # on the concurrency heart: the registry's writer/chain/grace threads
+      # (ADR-0017/0019/0020). The suite's churn tests exist for this run.
+      - name: bazel test session registry under tsan
+        if: runner.os == 'Linux'
+        env:
+          CC: clang
+          CXX: clang++
+        run: bazelisk test //runtime:session_registry_test --config=ci --config=tsan
 
   fuzz:
     name: fuzz (libFuzzer smoke)
@@ -235,14 +244,19 @@ jobs:
       # Excluded from tidy: src/json/json.cc includes the nlohmann backend,
       # which only exists inside the Bazel build graph; beast_src.cc is the
       # Boost implementation TU and only compiles with the BCR modules'
-      # BOOST_*_SEPARATE_COMPILATION defines (no first-party code in it).
+      # BOOST_*_SEPARATE_COMPILATION defines (no first-party code in it);
+      # examples/bazel-consumer generates its acme/* headers inside its own
+      # module's build graph (nothing checked in), so its sources cannot
+      # resolve here — clang-format still covers them, and the consumer CI
+      # jobs compile them with full warnings.
       - name: clang-tidy
         run: |
           # Example sources include their generated headers short-form; give
           # tidy every generated include root so new examples need no edit here.
           GEN_INCLUDES=$(find examples -type d -path '*/generated/include' | sed 's/^/-I/')
           find runtime/src examples -name '*.cc' ! -name '*_test.cc' ! -path '*/src/json/*' \
-            ! -name 'beast_src.cc' ! -path '*/generated/*' -print0 \
+            ! -name 'beast_src.cc' ! -path '*/generated/*' \
+            ! -path '*/bazel-consumer/*' -print0 \
             | xargs -0 -I{} clang-tidy --quiet {} -- -Iruntime/include -I. \
               $GEN_INCLUDES -std=c++20
       - name: buildifier

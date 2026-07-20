@@ -27,6 +27,12 @@ using acme::chat::ExchangeInput;
 using acme::chat::Note;
 using acme::chat::Notes;
 
+// A reconnect can beat the old wire's failure notice, so admission retries
+// resume-or-add briefly before refusing the name as a live duplicate (the
+// production guide's admission recipe).
+constexpr int kAdmissionAttempts = 20;
+constexpr auto kAdmissionRetryDelay = std::chrono::milliseconds(50);
+
 // The generated blocking handler with the reconnect exits split the
 // ADR-0020 way: deliberate leaves Remove, everything else Detaches.
 class ReconnectHubHandler final : public acme::chat::ChatHandler {
@@ -38,14 +44,13 @@ class ReconnectHubHandler final : public acme::chat::ChatHandler {
                                          smithy::eventstream::EventStream<Notes, Notes>& stream,
                                          const smithy::server::RequestContext&) override {
     const std::string& id = input.name;
-    // Resume first, then a fresh join; a reconnect can beat the old
-    // wire's failure notice, so retry briefly before refusing the name.
+    // Resume first, then a fresh join (see kAdmissionAttempts above).
     bool resumed = false;
     bool added = false;
-    for (int attempt = 0; attempt < 20 && !resumed && !added; ++attempt) {
+    for (int attempt = 0; attempt < kAdmissionAttempts && !resumed && !added; ++attempt) {
       resumed = registry_.Resume(id, stream.Share());
       if (!resumed) added = registry_.Add(id, stream.Share());
-      if (!resumed && !added) std::this_thread::sleep_for(std::chrono::milliseconds(50));
+      if (!resumed && !added) std::this_thread::sleep_for(kAdmissionRetryDelay);
     }
     if (!resumed && !added) {
       return smithy::Error::Validation("name '" + id + "' is already in the session");

@@ -38,11 +38,12 @@ namespace smithy::server {
 // The queue is the load-bearing decision: SendTo/Broadcast enqueue and
 // return, and a per-session writer thread (started by Add) delivers in FIFO
 // order — so a broadcast never stalls the room behind the slowest client's
-// TCP window. When a session's queue is full the event is dropped and the
-// slow-consumer policy runs: by default the session is closed (the Go-hub
-// answer — its handler observes the close, returns, and removes itself);
-// Options::on_slow_consumer replaces that default, keeping policy with the
-// application. Per-recipient construction (the Broadcast(ids, make)
+// TCP window. When an attached session's queue is full the event is dropped
+// and the slow-consumer policy runs: by default the session is closed (the
+// Go-hub answer — its handler observes the close, returns, and removes
+// itself); Options::on_slow_consumer replaces that default, keeping policy
+// with the application. (A detached session's overflow just drops — see
+// Options::queue_while_detached.) Per-recipient construction (the Broadcast(ids, make)
 // overloads) exists because broadcast-identical-bytes is the wrong
 // primitive for per-viewer state: make runs once per recipient, outside all
 // registry locks.
@@ -53,8 +54,9 @@ namespace smithy::server {
 // closes the session and discards its undelivered events; a writer mid-Send
 // finishes or fails that event first, then exits. CloseAll closes every
 // registered session; each blocked handler wakes, returns, and Removes
-// itself, which is why Drain (CloseAll, then wait until the map empties) is
-// the graceful-shutdown step to run before a transport Stop() — Stop()
+// itself, which is why Drain (expire detached ghosts, CloseAll, then wait
+// until the map empties) is the graceful-shutdown step to run before a
+// transport Stop() — Stop()
 // aborts live sessions rather than draining them (ADR-0015). The registry's
 // destructor closes every remaining session and joins every writer, so a
 // registry can never outlive-crash its threads.
@@ -115,7 +117,10 @@ class SessionRegistry {
     // game, tell the room). Mutually exclusive with a successful Resume.
     // No registry locks are held; it may call back into the registry.
     // Also runs for detached entries that Drain or the destructor expire
-    // immediately (a draining server does not wait out ghosts).
+    // immediately (a draining server does not wait out ghosts). It runs
+    // off the handler threads: on the registry's expiry thread, or on
+    // whichever thread called Drain or the destructor. An exception it
+    // throws is swallowed (there is no caller to land in).
     std::function<void(const Id&)> on_expired;
     // Events sent to a detached id are DROPPED by default (reported
     // unqueued): the blessed recovery is snapshot replay on resume, which
@@ -135,7 +140,7 @@ class SessionRegistry {
   // still registered here were leaked by their handlers (Remove-on-exit);
   // closing them is what lets the join terminate.
   ~SessionRegistry() {
-    StopReaper();
+    StopExpiry();
     ExpireDetachedNow();
     std::vector<std::shared_ptr<Entry>> all;
     {
@@ -184,7 +189,9 @@ class SessionRegistry {
   // exits (after finishing any event mid-Send). Remove never closes the
   // session — the handler that owns the stream usually calls this on its
   // way out, when the session is already over; closing a live session is
-  // CloseAll's or the handle's job. False when id is not registered.
+  // CloseAll's or the handle's job. On a detached entry Remove is the
+  // deliberate-leave path: it cancels the pending expiry, and on_expired
+  // never runs. False when id is not registered.
   bool Remove(const Id& id) {
     std::shared_ptr<Entry> entry;
     {
@@ -217,11 +224,11 @@ class SessionRegistry {
 
   // The abrupt-loss exit path (ADR-0020): instead of Remove, park the
   // entry detached — still registered, delivery stopped, deadline armed,
-  // zero per-session threads (the writer exits and is reaped; a chain
-  // goes idle). The session's old handle is closed (idempotent on a wire
-  // that already died — the usual reason to be here) so nothing stays
-  // wedged mid-send. False for an unknown or already-detached id, or
-  // when Options::grace_period is zero.
+  // zero per-session threads (the writer exits, its join deferred to
+  // Resume or expiry; a chain goes idle). The session's old handle is
+  // closed (idempotent on a wire that already died — the usual reason to
+  // be here) so nothing stays wedged mid-send. False for an unknown or
+  // already-detached id, or when Options::grace_period is zero.
   bool Detach(const Id& id) {
     if (options_.grace_period == std::chrono::seconds{0}) return false;
     std::shared_ptr<Entry> entry;
@@ -241,7 +248,7 @@ class SessionRegistry {
         old_handle.emplace(entry->handle);
       }
       entry->wake.notify_all();
-      ArmReaperLocked();
+      ArmExpiryLocked();
     }
     old_handle->Close();
     return true;
@@ -256,6 +263,9 @@ class SessionRegistry {
   // False on an attached entry (that id is live — whether to kick it is
   // the application's call), an expired or unknown id, or when grace is
   // disabled. The caller then treats the connection as a fresh join.
+  // Resume may block briefly — the old connection's in-flight send
+  // failing out — and it holds the registry lock while it waits, so
+  // Add/Remove/SendTo/Broadcast and expiry stall behind it for that beat.
   bool Resume(const Id& id, Handle handle) {
     if (options_.grace_period == std::chrono::seconds{0}) return false;
     const bool async_mode = options_.async_delivery && handle.SupportsAsync();
@@ -268,12 +278,14 @@ class SessionRegistry {
       entry = it->second;
       std::unique_lock<std::mutex> entry_lock(entry->mutex);
       if (!entry->detached || std::chrono::steady_clock::now() >= entry->deadline) {
-        return false;  // live, or expiry owns it (the reaper will claim it)
+        return false;  // live, or expiry owns it (its thread will claim it)
       }
       // Delivery quiesced before the handle swap: the old writer exited
       // (Detach closed its session, so a mid-send writer unblocks
       // promptly) and any chain completion has landed. Bounded-short by
-      // construction; both flips notify entry->wake.
+      // construction; both flips notify entry->wake. Held under the
+      // registry lock — the whole registry waits with us, which is what
+      // forecloses a concurrent expiry claim or Remove mid-swap.
       entry->wake.wait(entry_lock, [&entry] {
         return (!entry->writer.joinable() || entry->done) && !entry->delivering;
       });
@@ -297,8 +309,10 @@ class SessionRegistry {
 
   // Queues one event for id; delivery is FIFO whichever mode the session
   // runs in. True when queued. False — the event is dropped — for an
-  // unknown id, a session whose delivery already failed, or a full queue
-  // (after running the slow-consumer policy).
+  // unknown id; a session whose delivery already failed; an attached
+  // session's full queue (after running the slow-consumer policy); or a
+  // detached id, unless Options::queue_while_detached retains it (a full
+  // detached queue drops with no policy run — see the Option).
   bool SendTo(const Id& id, Tx event) {
     std::shared_ptr<Entry> entry;
     {
@@ -359,13 +373,16 @@ class SessionRegistry {
   // Closes every registered session (idempotent, non-blocking): each
   // blocked handler wakes and returns, unregistering itself on the way out.
   void CloseAll() {
-    std::vector<std::shared_ptr<Entry>> snapshot;
+    // Handle COPIES, taken under the lock Resume swaps under — closing
+    // through the entries after releasing it would race a concurrent
+    // Resume's handle swap. The closes still run outside every lock.
+    std::vector<Handle> handles;
     {
       const std::lock_guard<std::mutex> lock(mutex_);
-      snapshot.reserve(sessions_.size());
-      for (const auto& [id, entry] : sessions_) snapshot.push_back(entry);
+      handles.reserve(sessions_.size());
+      for (const auto& [id, entry] : sessions_) handles.push_back(entry->handle);
     }
-    for (const auto& entry : snapshot) entry->handle.Close();
+    for (Handle& handle : handles) handle.Close();
   }
 
   // The graceful-shutdown step (issue #112 proposal 3): CloseAll, then wait
@@ -399,17 +416,23 @@ class SessionRegistry {
  private:
   struct Entry {
     explicit Entry(Handle h) : handle(std::move(h)) {}
-    // Replaced only by Resume, after delivery quiesces (the writer exited
-    // and no chain completion is in flight) — every other access happens
-    // while the entry's delivery machinery owns it.
+    // Written only by Resume, under BOTH the registry and entry locks,
+    // after delivery quiesces (the writer exited and no chain completion
+    // is in flight). Delivery reads it lock-free — the quiescence wait is
+    // what makes that safe — and every other reader (CloseAll, the
+    // close-on-full default) copies it under one of those locks and acts
+    // on the copy.
     Handle handle;
     std::mutex mutex;
     std::condition_variable wake;
     std::deque<Tx> queue;
-    bool stopping = false;  // delivery must end: Remove/teardown asked,
-                            // or its own delivery failed (queue discarded)
+    bool stopping = false;  // delivery must end: Remove/teardown/Detach
+                            // asked, or its own delivery failed (queue
+                            // discarded unless detached and retaining)
     bool done = false;      // the writer exited; join is now instant
-    // Set once in Add, before the entry is visible; immutable after.
+    // Set in Add before the entry is visible; thereafter changed only
+    // under the entry lock (the chain->writer collision fallback,
+    // Resume's re-arm from the new handle).
     bool async_mode = false;
     bool delivering = false;  // an async send chain is in flight
     // ADR-0020: parked awaiting Resume or expiry. While detached,
@@ -430,8 +453,9 @@ class SessionRegistry {
 
   // The per-session delivery loop: FIFO off the queue, one blocking Send at
   // a time. A failed Send is terminal for delivery (the session is closed
-  // or gone) — remaining events are discarded and the writer exits; the
-  // handler side observes the same failure through its own stream.
+  // or gone) — remaining events are discarded (unless the entry is
+  // detached and retaining its queue for a resume) and the writer exits;
+  // the handler side observes the same failure through its own stream.
   static void WriterLoop(Entry& entry) {
     for (;;) {
       Tx event;
@@ -475,6 +499,8 @@ class SessionRegistry {
     {
       const std::lock_guard<std::mutex> lock(entry->mutex);
       if (entry->detached) {
+        // Tested before stopping: detached implies stopping, and the
+        // retention branch must win over the refuse-on-stopping one.
         // Default: drop — snapshot replay on resume is authoritative.
         // Opt-in retention queues to capacity; a full queue drops outright
         // (the slow-consumer policy needs a live session to act on).
@@ -506,7 +532,16 @@ class SessionRegistry {
     if (options_.on_slow_consumer) {
       options_.on_slow_consumer(id);
     } else {
-      entry->handle.Close();
+      // A handle copy under the entry lock (which Resume's swap holds),
+      // closed outside it — closing through the entry directly would race
+      // a concurrent Resume's swap. The copy is whichever connection the
+      // id has as the drop is charged; that is close-on-full's contract.
+      std::optional<Handle> doomed;
+      {
+        const std::lock_guard<std::mutex> lock(entry->mutex);
+        doomed.emplace(entry->handle);
+      }
+      doomed->Close();
     }
     return false;
   }
@@ -613,25 +648,25 @@ class SessionRegistry {
   // Resume mutually exclusive, exactly once, by construction.
 
   // Registry lock held.
-  void ArmReaperLocked() {
-    if (!reaper_.joinable()) {
-      reaper_ = std::thread([this] { ReaperLoop(); });
+  void ArmExpiryLocked() {
+    if (!expiry_.joinable()) {
+      expiry_ = std::thread([this] { ExpiryLoop(); });
     }
-    reaper_wake_.notify_all();  // a new deadline may now be the nearest
+    expiry_wake_.notify_all();  // a new deadline may now be the nearest
   }
 
-  void StopReaper() {
+  void StopExpiry() {
     {
       const std::lock_guard<std::mutex> lock(mutex_);
-      reaper_stop_ = true;
+      expiry_stop_ = true;
     }
-    reaper_wake_.notify_all();
-    if (reaper_.joinable()) reaper_.join();
+    expiry_wake_.notify_all();
+    if (expiry_.joinable()) expiry_.join();
   }
 
-  void ReaperLoop() {
+  void ExpiryLoop() {
     std::unique_lock<std::mutex> lock(mutex_);
-    while (!reaper_stop_) {
+    while (!expiry_stop_) {
       std::optional<std::chrono::steady_clock::time_point> next;
       for (const auto& [id, entry] : sessions_) {
         const std::lock_guard<std::mutex> entry_lock(entry->mutex);
@@ -639,11 +674,11 @@ class SessionRegistry {
         if (!next || entry->deadline < *next) next = entry->deadline;
       }
       if (!next) {
-        reaper_wake_.wait(lock);
+        expiry_wake_.wait(lock);
         continue;
       }
-      reaper_wake_.wait_until(lock, *next);
-      if (reaper_stop_) break;
+      expiry_wake_.wait_until(lock, *next);
+      if (expiry_stop_) break;
       auto expired = TakeExpiredLocked(std::chrono::steady_clock::now());
       if (expired.empty()) continue;
       lock.unlock();
@@ -654,30 +689,29 @@ class SessionRegistry {
 
   // Registry lock held: claim every detached entry whose deadline passed
   // (erase from the map; retire exited writers for their join) and return
-  // the claims for the caller to fire outside all locks.
+  // the claims for the caller to fire outside all locks. One entry-lock
+  // hold decides both claim and writer: a claimable entry is detached,
+  // hence stopping, so the chain fallback's spawn (guarded on !stopping)
+  // cannot make the writer joinable after we look — and joins run only
+  // under mutex_, which we hold.
   std::vector<std::pair<Id, std::shared_ptr<Entry>>> TakeExpiredLocked(
       std::chrono::steady_clock::time_point now) {
     std::vector<std::pair<Id, std::shared_ptr<Entry>>> expired;
     for (auto it = sessions_.begin(); it != sessions_.end();) {
       bool claim = false;
+      bool has_writer = false;
       {
         const std::lock_guard<std::mutex> entry_lock(it->second->mutex);
         claim = it->second->detached && now >= it->second->deadline;
+        has_writer = claim && it->second->writer.joinable();
       }
       if (!claim) {
         ++it;
         continue;
       }
+      if (has_writer) retired_.push_back(it->second);
       expired.emplace_back(it->first, std::move(it->second));
       it = sessions_.erase(it);
-    }
-    for (auto& [id, entry] : expired) {
-      bool has_writer = false;
-      {
-        const std::lock_guard<std::mutex> entry_lock(entry->mutex);
-        has_writer = entry->writer.joinable();
-      }
-      if (has_writer) retired_.push_back(entry);
     }
     if (!expired.empty()) ReapLocked();
     return expired;
@@ -685,7 +719,15 @@ class SessionRegistry {
 
   void FireExpiries(const std::vector<std::pair<Id, std::shared_ptr<Entry>>>& expired) {
     for (const auto& [id, entry] : expired) {
-      if (options_.on_expired) options_.on_expired(id);
+      if (!options_.on_expired) continue;
+      try {
+        options_.on_expired(id);
+      } catch (...) {
+        // On the expiry thread (or mid-teardown) there is no caller to
+        // rethrow to — an escaping exception would terminate the process
+        // and starve the rest of the batch. A throwing expiry policy is
+        // the application's bug; the claim already happened either way.
+      }
     }
     drained_.notify_all();  // the map shrank; a Drain may now be done
   }
@@ -706,10 +748,10 @@ class SessionRegistry {
   std::condition_variable drained_;
   std::map<Id, std::shared_ptr<Entry>> sessions_;
   std::vector<std::shared_ptr<Entry>> retired_;
-  // The grace machinery's thread (see above); guarded by mutex_.
-  std::thread reaper_;
-  std::condition_variable reaper_wake_;
-  bool reaper_stop_ = false;
+  // The grace machinery's expiry thread (see above); guarded by mutex_.
+  std::thread expiry_;
+  std::condition_variable expiry_wake_;
+  bool expiry_stop_ = false;
 };
 
 }  // namespace smithy::server

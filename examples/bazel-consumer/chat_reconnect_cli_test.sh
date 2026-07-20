@@ -4,13 +4,18 @@
 # GENERATED clients driven by shell commands. Covers the join broadcast, an
 # abrupt kill -9 with a rejoin-within-grace receiving the roster snapshot
 # (and no duplicate join announced), a /quit whose departure is announced
-# only at grace expiry, a deliberate /leave announcing immediately, and the
-# SIGTERM drain that never waits out ghosts. Portable: no `timeout`,
-# BSD-sed-safe.
+# only AFTER the grace deadline (deferral asserted, then expiry), a
+# deliberate /leave announcing immediately, and a SIGTERM drain holding a
+# fresh long-grace ghost that must be expired, not waited out. Portable:
+# no `timeout`, BSD-sed-safe.
 set -euo pipefail
 
-# Whatever path ends this script, no server or client outlives it.
+# Whatever path ends this script, no server or client outlives it. An
+# EXIT trap alone misses untrapped signals (bash skips it when killed),
+# so route the sandbox's TERM/INT through exit.
 trap 'kill $(jobs -p) 2>/dev/null || true' EXIT
+trap 'exit 143' TERM
+trap 'exit 130' INT
 
 step() { echo "reconnect: $*" >&2; }
 fail() {
@@ -80,8 +85,12 @@ step "a /quit detaches; grace expiry announces the departure"
 echo "/quit" >&4
 exec 4>&-
 wait "$bob2_pid" || fail "quitting client exited non-zero"
-# Nothing announced yet: the session sits detached until the 3s grace
-# runs out and on_expired finally tells the room.
+# The deferral itself, pinned: one second in (safely inside the 3s
+# grace) nothing has been announced — a regression to the immediate
+# Remove+announce path fails here, not just "announces sooner".
+sleep 1
+[ "$(grep -c '^note left:bob$' ada.out || true)" -eq 0 ] \
+  || fail "the departure was announced before grace expired"
 wait_for ada.out '^note left:bob$' "the deferred departure at expiry"
 
 step "a deliberate /leave announces immediately"
@@ -91,9 +100,36 @@ wait_for ada.out '^closed$' "ada's clean close"
 exec 3>&-
 wait "$ada_pid" || fail "ada's client exited non-zero"
 
-step "SIGTERM: the hub drains without waiting out ghosts, exit 0"
+step "SIGTERM: the hub drains, exit 0"
 kill -TERM "$server_pid"
 wait "$server_pid" || fail "server did not exit 0 after draining"
 grep -q "draining" "$log" || fail "server log missing the drain checkpoint"
 grep -q "chat-hub: drained" "$log" || fail "server log missing the drained checkpoint"
+
+step "a long-grace ghost never stalls the drain"
+# A fresh hub whose 300s grace dwarfs its 5s drain timeout: a ghost made
+# moments before SIGTERM must be expired by the drain, not waited out —
+# a regression there exits 1 on the drain timeout, a hard failure.
+log2="${TEST_TMPDIR}/server2.log"
+"$server" 0 300 2> "$log2" &
+server2_pid=$!
+port2=""
+for _ in $(seq 1 100); do
+  port2=$(sed -n 's/.*serving on :\([0-9][0-9]*\).*/\1/p' "$log2" 2>/dev/null || true)
+  [ -n "$port2" ] && break
+  sleep 0.2
+done
+[ -n "$port2" ] || fail "second server never reported its port"
+mkfifo eve.in
+"$client" "$port2" eve < eve.in > eve.out &
+eve_pid=$!
+exec 5> eve.in
+wait_for eve.out '^note joined:eve$' "eve's join at the second hub"
+kill -9 "$eve_pid" 2>/dev/null || true
+wait "$eve_pid" 2>/dev/null || true
+exec 5>&-
+sleep 1  # the hub notices the dead wire and parks eve detached
+kill -TERM "$server2_pid"
+wait "$server2_pid" || fail "drain waited out the ghost instead of expiring it"
+grep -q "chat-hub: drained" "$log2" || fail "second server log missing the drained checkpoint"
 step "clean exit"

@@ -44,13 +44,14 @@ byte-identical to ADR-0017/0019 behavior) and `Options::on_expired`, plus:
 
 - `Detach(id)` — the handler's abrupt-loss exit path. The entry stays in
   the map, marked detached with its deadline armed; its delivery stops
-  (the writer thread exits and is reaped; an async chain goes idle) and
-  its handle is dropped, so a detached entry is pure bookkeeping — **zero
-  per-session threads**, structurally. False for an unknown id, an
+  (the writer thread exits, its join deferred to resume or expiry; an
+  async chain goes idle) and its handle is closed, sitting stale in the
+  entry until `Resume` replaces it — a detached entry is bookkeeping with
+  **zero per-session threads**, structurally. False for an unknown id, an
   already-detached id, or when grace is disabled.
 - `Resume(id, handle)` — **the identity-keyed atomic swap** the Go hub
   lacked. It succeeds only on a detached entry within grace: the new
-  handle replaces the dropped one, delivery re-arms (writer or completion
+  handle replaces the stale one, delivery re-arms (writer or completion
   chain, per the new handle's `SupportsAsync`), and the pending expiry is
   cancelled — all under one lock hold, so the races that heuristic
   implementations lose (resume vs. expiry, two dials claiming the same
@@ -78,10 +79,10 @@ registry pays one thread only once grace is actually in use.
 snapshot replay — the resume handler sends authoritative current state,
 which supersedes anything missed. `Options::queue_while_detached` opts a
 registry into retaining events in the existing bounded queue instead
-(capacity and slow-consumer policy apply unchanged — with the close-on-full
-default, policy on a full detached queue falls back to dropping the
-event, since there is no live session to close); delivery resumes with the
-swap. Either way, grace never turns a disconnect into unbounded retention.
+(capacity applies unchanged; the slow-consumer policy does not run while
+detached — a full detached queue drops the event outright, since there is
+no live session for policy to act on); delivery resumes with the swap.
+Either way, grace never turns a disconnect into unbounded retention.
 
 **`Drain` expires detached entries immediately** — `CloseAll` closes the
 live sessions, and a draining server is not waiting five minutes for
@@ -148,6 +149,9 @@ gate-validated resume ticket, `Resume` + snapshot in the handler, and an
 registry owning the races. The registry gains one optional thread and a
 detached state whose interactions (with `Drain`, `Remove`, both delivery
 modes, and the queue policy) are pinned by tests rather than rediscovered
-per consumer. The chat hub demonstrates the loop end to end, driven as
-real processes; applications needing stronger delivery than snapshot
-replay own it at the protocol level, unchanged.
+per consumer. The chat hubs demonstrate the registry half of the loop —
+abrupt kill, resume with a roster snapshot, grace expiry announcing the
+departure — driven as real processes (their resume keys on the nickname;
+the ticketed handshake stays the guide's worked pattern); applications
+needing stronger delivery than snapshot replay own it at the protocol
+level, unchanged.

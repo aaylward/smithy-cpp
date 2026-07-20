@@ -155,8 +155,8 @@ Reconnects get a grace window on the same registry (ADR-0020): set
 and `Resume(id, handle)` swaps a reconnecting connection into the parked entry
 — `Options::on_expired` runs the deferred cleanup exactly once when nobody
 comes back. The full handshake (resume ticket → gate → `Resume` → snapshot
-replay) and the client redial shape live in the production guide's
-event-stream section.
+replay) and the client redial shape live in the
+[production guide's reconnect section](production-guide.md#reconnect-and-resume).
 
 ### Serving without a thread per session (ADR-0019)
 

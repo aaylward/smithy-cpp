@@ -144,6 +144,18 @@ via `git_override` until then.
   refuse to mix rather than deaden routes silently. The thread-free chat
   hub now mounts its Converse route through the router instead of a
   hand-rolled target parser.
+- Reconnect grace (ADR-0020, issue #116): `SessionRegistry` grows
+  `Options::{grace_period, on_expired, queue_while_detached}` and
+  `Detach(id)`/`Resume(id, handle)` — an abrupt loss parks the session
+  (zero per-session threads; one lazy expiry thread per registry), a
+  reconnect within grace performs the identity-keyed atomic swap and
+  replays a snapshot, and expiry runs its cleanup exactly once, mutually
+  exclusive with a successful resume. Events to a detached id drop by
+  default (snapshot replay is authoritative); opt-in retention keeps a
+  bounded tail. `Drain` and the destructor expire detached sessions
+  immediately. The production guide blesses the whole loop — resume
+  ticket → gate → `Resume` → snapshot — plus the native redial shape, and
+  the async chat hub demonstrates it end to end as real processes.
 - Event-stream session handles and fan-out (ADR-0017, issue #112):
   `stream.Share()` mints an `EventStreamHandle<Out>` — an owning cheap-copy
   value handle safe to hold beyond the handler's borrow (copies are how a

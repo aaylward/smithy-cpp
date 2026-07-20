@@ -23,6 +23,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -97,9 +98,20 @@ using AsyncStream = smithy::eventstream::AsyncEventStream<RoomEvents, ChatEvents
 // handler threads, all delivery on the transport's completions.
 class AsyncHub {
  public:
-  AsyncHub() : registry_(RegistryOptions()) {}
+  explicit AsyncHub(std::chrono::seconds grace) : registry_(RegistryOptions(this, grace)) {}
 
   smithy::server::SessionRegistry<RoomEvents>& registry() { return registry_; }
+
+  // The roster a resumed session replays as its snapshot (ADR-0020's
+  // recovery model: authoritative current state, not missed messages).
+  std::vector<std::string> RoomMembers(const std::string& room) const {
+    const std::string prefix = room + "/";
+    std::vector<std::string> names;
+    for (const std::string& id : registry_.Ids()) {
+      if (id.starts_with(prefix)) names.push_back(id.substr(prefix.size()));
+    }
+    return names;
+  }
 
   void BroadcastToRoom(const std::string& room, const RoomEvents& event) {
     registry_.Broadcast(RoomIds(room), event);
@@ -116,9 +128,19 @@ class AsyncHub {
   }
 
  private:
-  static smithy::server::SessionRegistry<RoomEvents>::Options RegistryOptions() {
+  static smithy::server::SessionRegistry<RoomEvents>::Options RegistryOptions(
+      AsyncHub* hub, std::chrono::seconds grace) {
     smithy::server::SessionRegistry<RoomEvents>::Options options;
     options.async_delivery = true;  // ADR-0019: chains, not writer threads
+    options.grace_period = grace;   // ADR-0020: abrupt losses detach, not vanish
+    options.on_expired = [hub](const std::string& id) {
+      // Grace ran out: the departure the disconnect deferred. Runs on the
+      // registry's expiry thread; Broadcast is safe from any thread.
+      const auto slash = id.find('/');
+      if (slash == std::string::npos) return;
+      hub->BroadcastToRoom(id.substr(0, slash),
+                           RoomEvents::FromLeft(MemberLeft{.member = id.substr(slash + 1)}));
+    };
     return options;
   }
 
@@ -142,11 +164,20 @@ smithy::eventstream::Detached Serve(AsyncHub& hub, std::string room, std::string
   // The socket is copied, not moved: the refusal branch below sends the
   // typed exception on the raw socket.
   AsyncStream stream(socket, EncodeRoomEvent, DecodeChatEvent);
-  if (!hub.registry().Add(id, stream.Share())) {
+  // Resume first (the reconnect story, ADR-0020), then a fresh join. A
+  // reconnect can beat the old wire's failure notice — the entry looks
+  // live for a beat — so retry briefly before refusing the nickname.
+  // Pre-co_await, on the launching handler thread: blocking briefly is fine.
+  bool resumed = false;
+  bool added = false;
+  for (int attempt = 0; attempt < 20 && !resumed && !added; ++attempt) {
+    resumed = hub.registry().Resume(id, stream.Share());
+    if (!resumed) added = hub.registry().Add(id, stream.Share());
+    if (!resumed && !added) std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  }
+  if (!resumed && !added) {
     // The nickname reservation, refused the way the generated path would:
-    // one typed exception message, then the close (before any co_await —
-    // this still runs on the launching handler thread, where a brief
-    // blocking send is fine).
+    // one typed exception message, then the close.
     Kicked kicked;
     kicked.message = "nickname '" + name + "' is already in " + room;
     kicked.by = "hub";
@@ -158,7 +189,17 @@ smithy::eventstream::Detached Serve(AsyncHub& hub, std::string room, std::string
     co_return;
   }
 
-  hub.BroadcastToRoom(room, RoomEvents::FromJoined(MemberJoined{.member = name}));
+  if (resumed) {
+    // Snapshot replay, the blessed recovery: the roster as it stands now,
+    // as this session's first events. Direct sends are the handler's
+    // request/reply moment; a collision with a broadcast chain just
+    // converts this session to writer delivery.
+    for (const std::string& member : hub.RoomMembers(room)) {
+      (void)co_await stream.Send(RoomEvents::FromJoined(MemberJoined{.member = member}));
+    }
+  } else {
+    hub.BroadcastToRoom(room, RoomEvents::FromJoined(MemberJoined{.member = name}));
+  }
 
   bool left_cleanly = false;
   while (true) {
@@ -174,13 +215,19 @@ smithy::eventstream::Detached Serve(AsyncHub& hub, std::string room, std::string
     hub.BroadcastMessage(room, id, name, event->as_message().text);
   }
 
-  hub.registry().Remove(id);
-  hub.BroadcastToRoom(room, RoomEvents::FromLeft(MemberLeft{.member = name}));
   if (left_cleanly) {
+    hub.registry().Remove(id);
+    hub.BroadcastToRoom(room, RoomEvents::FromLeft(MemberLeft{.member = name}));
     // Best-effort: a registry chain still draining this session's tail
     // holds the send slot and refuses this — the discard is deliberate.
     (void)co_await stream.Send(RoomEvents::FromLeft(MemberLeft{.member = name}));
+  } else if (!hub.registry().Detach(id)) {
+    // Grace disabled (or the entry already gone): the pre-ADR-0020 path.
+    hub.registry().Remove(id);
+    hub.BroadcastToRoom(room, RoomEvents::FromLeft(MemberLeft{.member = name}));
   }
+  // An abrupt loss inside grace stays silent: the resumed session replays
+  // the roster, and only expiry announces the departure (on_expired).
   stream.Close();
 }
 
@@ -193,7 +240,10 @@ int main(int argc, char** argv) {
   sigaddset(&shutdown_signals, SIGTERM);
   pthread_sigmask(SIG_BLOCK, &shutdown_signals, nullptr);
 
-  AsyncHub hub;
+  // argv: [port [grace-seconds]] — 0 binds an ephemeral port; the short
+  // grace is what lets the CLI test watch an expiry inside its timeout.
+  const std::chrono::seconds grace{argc > 2 ? std::atoi(argv[2]) : 300};
+  AsyncHub hub(grace);
   // Route matching through the streaming router (issue #118): the same
   // pattern grammar and refusal shapes as every other route in the repo,
   // mounted on the shared seam in the same two lines as the borrowed one.

@@ -140,7 +140,9 @@ modeled errors — is slice 3's, deliberately not decided here.
   server upgrade (subprotocol negotiation / extra 101 headers via
   Beast's response decorator; the gate sees the request today, but
   nothing can shape the acceptance response). Neither changes the
-  session contract.
+  session contract. *(Amendment, 2026-07-20: ADR-0018 consumed the
+  accept-decorator seam for the negotiated JSON-text frame mode; the
+  close-code accessor stays reserved.)*
 - The async-adapter pressure point, named: the serve callback's
   borrow-until-return contract (`WebSocket&` valid only while
   `on_websocket` runs) is what a future async/coroutine adapter will

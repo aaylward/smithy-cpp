@@ -46,7 +46,9 @@ Consolidated in one place — if your API depends on any of these, check here be
   ([ADR-0014](docs/adr/0014-event-stream-framing-first.md)) and the WebSocket transports
   ([ADR-0015](docs/adr/0015-websocket-transports.md)) — the full-duplex chat example
   ([`examples/chat/`](examples/chat/)) runs generated client ↔ generated server over real
-  WebSockets in CI. Scoping edges (`@eventHeader` / `@eventPayload`, body-bound
+  WebSockets in CI, and browsers join `simpleRestJson` streams codec-free over the
+  negotiated JSON-text wire ([ADR-0018](docs/adr/0018-json-text-event-stream-frames.md)).
+  Scoping edges (`@eventHeader` / `@eventPayload`, body-bound
   initial-request members, initial-response members) are rejected with generation-time
   diagnostics.
 - **No Bazel Central Registry / Maven publishing** — consumers pin a git commit

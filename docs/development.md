@@ -193,4 +193,6 @@ cd codegen && gradle spotlessApply
   Add `-g -fsanitize=thread` for a TSan pass — worth running on any change to the
   transport's threading (system Boost is header-only here, so no beast_src.cc and no
   Bazel involved). This catches the class of bug the proxy exclusions would otherwise
-  defer to CI, e.g. an io_context going workless mid-request (PR #97).
+  defer to CI, e.g. an io_context going workless mid-request (PR #97). CI's tsan step
+  runs the Beast suites too (alongside the registry and coroutine suites), so this
+  recipe is the local pre-check, not the only line of defense.

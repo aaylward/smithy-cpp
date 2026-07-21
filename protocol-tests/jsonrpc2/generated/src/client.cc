@@ -252,7 +252,7 @@ smithy::Outcome<EchoStreamClientStream> JsonRpc2ProtocolClient::EchoStream(const
   auto sent = (*socket)->Send(opening);
   if (!sent) return std::move(sent).error();
   return EchoStreamClientStream(
-      std::make_shared<smithy::eventstream::JsonRpcStreamSocket>(*std::move(socket), smithy::Document(1)),
+      std::make_shared<smithy::eventstream::JsonRpcStreamSocket>(*std::move(socket), smithy::Document(1), smithy::eventstream::JsonRpcStreamSocket::Role::kClient),
       EncodeEchoStreamEvent, DecodeEchoStreamEvent);
 }
 

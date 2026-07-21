@@ -57,6 +57,12 @@ class AccumulateEndToEndTest : public StreamTestFixture {
     auto end = stream->Receive();
     ASSERT_TRUE(end.ok()) << end.error().message();
     EXPECT_FALSE(end->has_value());
+
+    // The end is stable: the server's close follows its terminal, and a
+    // Receive past the end reports the same closed stream, no hang.
+    auto after = stream->Receive();
+    ASSERT_TRUE(after.ok()) << after.error().message();
+    EXPECT_FALSE(after->has_value());
   }
 
   void OverflowSurfacesTyped() {
@@ -121,14 +127,17 @@ TEST_F(AccumulateEndToEndTest, TheWireIsPlainJsonRpcTextEndToEnd) {
       near->Send(RawText(R"({"jsonrpc":"2.0","method":"Accumulate","params":{"start":1},"id":7})"))
           .ok());
   ASSERT_TRUE(
-      near->Send(RawText(
-                     R"({"jsonrpc":"2.0","method":"add","params":{"id":7,"payload":{"value":2}}})"))
+      near
+          ->Send(RawText(
+              R"({"jsonrpc":"2.0","method":"add","params":{"id":7,"payload":{"value":0.5}}})"))
           .ok());
   auto total = near->Receive();
   ASSERT_TRUE(total.ok() && total->has_value());
   EXPECT_TRUE((**total).headers.empty());
+  // A non-integral total on purpose: 1.5 has one canonical rendering,
+  // so the byte pin doesn't ride the encoder's integral-double spelling.
   EXPECT_EQ((**total).payload.ToString(),
-            R"({"jsonrpc":"2.0","method":"total","params":{"id":7,"payload":{"value":3.0}}})");
+            R"({"jsonrpc":"2.0","method":"total","params":{"id":7,"payload":{"value":1.5}}})");
 
   ASSERT_TRUE(
       near->Send(RawText(

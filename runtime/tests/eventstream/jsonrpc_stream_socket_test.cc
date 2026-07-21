@@ -4,7 +4,9 @@
 // wire view. Covers the event round trip through both facades (blocking
 // and async), the terminal-response classification (result = clean end,
 // error = exception message), the exception-send refusal, and the
-// fail-closed posture on malformed and mis-framed inbound traffic.
+// per-role violation policing: both ends fail closed on malformed and
+// mis-framed inbound traffic, and the server end answers the reserved-code
+// terminal for the opening id before its close.
 
 #include "smithy/eventstream/jsonrpc_stream_socket.h"
 
@@ -31,14 +33,15 @@ Message Raw(std::string text) {
   return message;
 }
 
-std::shared_ptr<JsonRpcStreamSocket> Wrap(std::shared_ptr<http::WebSocket> inner) {
-  return std::make_shared<JsonRpcStreamSocket>(std::move(inner), Document(1));
+std::shared_ptr<JsonRpcStreamSocket> Wrap(std::shared_ptr<http::WebSocket> inner,
+                                          JsonRpcStreamSocket::Role role) {
+  return std::make_shared<JsonRpcStreamSocket>(std::move(inner), Document(1), role);
 }
 
 TEST(JsonRpcStreamSocketTest, EventsRoundTripBetweenTwoWrappedEnds) {
   auto [left, right] = http::InMemoryWebSocketPair::Create();
-  auto client = Wrap(left);
-  auto server = Wrap(right);
+  auto client = Wrap(left, JsonRpcStreamSocket::Role::kClient);
+  auto server = Wrap(right, JsonRpcStreamSocket::Role::kServer);
 
   const Message event =
       MakeEventMessage("message", "application/json", Blob::FromString(R"({"text":"hi"})"));
@@ -60,7 +63,7 @@ TEST(JsonRpcStreamSocketTest, TheWireCarriesThePinnedNotificationText) {
   // One end unwrapped: what it receives is the wire — a headerless
   // message whose payload is the notification text, byte-pinned.
   auto [left, right] = http::InMemoryWebSocketPair::Create();
-  auto client = Wrap(left);
+  auto client = Wrap(left, JsonRpcStreamSocket::Role::kClient);
 
   ASSERT_TRUE(
       client->Send(MakeEventMessage("message", "application/json", Blob::FromString(R"({"n":1})")))
@@ -75,7 +78,7 @@ TEST(JsonRpcStreamSocketTest, TheWireCarriesThePinnedNotificationText) {
 
 TEST(JsonRpcStreamSocketTest, TheTerminalResultIsTheCleanEnd) {
   auto [left, right] = http::InMemoryWebSocketPair::Create();
-  auto client = Wrap(left);
+  auto client = Wrap(left, JsonRpcStreamSocket::Role::kClient);
 
   ASSERT_TRUE(right->Send(Raw(R"({"jsonrpc":"2.0","result":{},"id":1})")).ok());
   auto received = client->Receive();
@@ -87,7 +90,7 @@ TEST(JsonRpcStreamSocketTest, TheTerminalResultIsTheCleanEnd) {
 
 TEST(JsonRpcStreamSocketTest, TheTerminalErrorArrivesAsTheExceptionMessage) {
   auto [left, right] = http::InMemoryWebSocketPair::Create();
-  auto client = Wrap(left);
+  auto client = Wrap(left, JsonRpcStreamSocket::Role::kClient);
 
   ASSERT_TRUE(right
                   ->Send(Raw(R"({"jsonrpc":"2.0","error":{"code":409,"message":"kicked",)"
@@ -96,9 +99,10 @@ TEST(JsonRpcStreamSocketTest, TheTerminalErrorArrivesAsTheExceptionMessage) {
   auto received = client->Receive();
   ASSERT_TRUE(received.ok());
   ASSERT_TRUE(received->has_value());
-  // Exactly the exception Message the binary wire would have carried —
-  // ADR-0016's terminal contract downstream (EventStream, the generated
-  // decoders) applies unchanged.
+  // The exception Message shape ADR-0016's downstream contract expects;
+  // the __type spelling rides the wire verbatim (this peer sent the short
+  // name, generated jsonRpc2 terminals stamp the fully-qualified shape ID
+  // — SanitizeErrorCode in the generated decoders resolves either).
   ASSERT_NE((**received).FindString(":exception-type"), nullptr);
   EXPECT_EQ(*(**received).FindString(":exception-type"), "Kicked");
   EXPECT_EQ((**received).payload.ToString(),
@@ -107,7 +111,7 @@ TEST(JsonRpcStreamSocketTest, TheTerminalErrorArrivesAsTheExceptionMessage) {
 
 TEST(JsonRpcStreamSocketTest, ExceptionSendsAreRefusedAndTheSessionSurvives) {
   auto [left, right] = http::InMemoryWebSocketPair::Create();
-  auto server = Wrap(right);
+  auto server = Wrap(right, JsonRpcStreamSocket::Role::kServer);
 
   auto refused = server->Send(
       MakeExceptionMessage("Kicked", "application/json", Blob::FromString(R"({"by":"mod"})")));
@@ -120,12 +124,17 @@ TEST(JsonRpcStreamSocketTest, ExceptionSendsAreRefusedAndTheSessionSurvives) {
 
 TEST(JsonRpcStreamSocketTest, MalformedInboundTextIsSerializationTerminal) {
   auto [left, right] = http::InMemoryWebSocketPair::Create();
-  auto client = Wrap(left);
+  auto client = Wrap(left, JsonRpcStreamSocket::Role::kClient);
 
   ASSERT_TRUE(right->Send(Raw("not json")).ok());
   auto received = client->Receive();
   ASSERT_FALSE(received.ok());
   EXPECT_EQ(received.error().kind(), ErrorKind::kSerialization);
+  // The client end fails closed and answers nothing — terminal envelopes
+  // are server-minted, so the peer just sees the close.
+  auto peer = right->Receive();
+  ASSERT_TRUE(peer.ok());
+  EXPECT_FALSE(peer->has_value());
 }
 
 TEST(JsonRpcStreamSocketTest, EnvelopeFramedInboundMessagesAreRefused) {
@@ -133,19 +142,97 @@ TEST(JsonRpcStreamSocketTest, EnvelopeFramedInboundMessagesAreRefused) {
   // stream (a mis-wired test, a wrong-mode transport) is a protocol
   // violation, not a message.
   auto [left, right] = http::InMemoryWebSocketPair::Create();
-  auto client = Wrap(left);
+  auto client = Wrap(left, JsonRpcStreamSocket::Role::kClient);
 
   ASSERT_TRUE(
       right->Send(MakeEventMessage("ping", "application/json", Blob::FromString("{}"))).ok());
   auto received = client->Receive();
   ASSERT_FALSE(received.ok());
   EXPECT_EQ(received.error().kind(), ErrorKind::kSerialization);
+  auto peer = right->Receive();
+  ASSERT_TRUE(peer.ok());
+  EXPECT_FALSE(peer->has_value());  // fail-closed, no terminal from a client
+}
+
+TEST(JsonRpcStreamSocketTest, TheServerRoleAnswersAViolationThenCloses) {
+  // The server end's half of the policing contract: the reserved-code
+  // terminal error for the opening id goes out BEFORE the close, so a
+  // conforming peer learns why the stream died.
+  auto [left, right] = http::InMemoryWebSocketPair::Create();
+  auto server = Wrap(right, JsonRpcStreamSocket::Role::kServer);
+
+  ASSERT_TRUE(left->Send(Raw("not json")).ok());
+  auto received = server->Receive();
+  ASSERT_FALSE(received.ok());
+  EXPECT_EQ(received.error().kind(), ErrorKind::kSerialization);
+
+  auto terminal = left->Receive();
+  ASSERT_TRUE(terminal.ok());
+  ASSERT_TRUE(terminal->has_value());
+  EXPECT_TRUE((**terminal).headers.empty());
+  EXPECT_EQ((**terminal).payload.ToString(),
+            R"({"error":{"code":-32700,"data":{"__type":"SerializationException"},)"
+            R"("message":"text frame is not JSON"},"id":1,"jsonrpc":"2.0"})");
+  auto closed = left->Receive();
+  ASSERT_TRUE(closed.ok());
+  EXPECT_FALSE(closed->has_value());  // nothing follows the terminal
+}
+
+TEST(JsonRpcStreamSocketTest, TheServerRoleRefusesAClientResponseEnvelope) {
+  // Terminal response envelopes are server-minted: a client sending one
+  // must not read as the peer's clean close (or as its terminal error).
+  auto [left, right] = http::InMemoryWebSocketPair::Create();
+  auto server = Wrap(right, JsonRpcStreamSocket::Role::kServer);
+
+  ASSERT_TRUE(left->Send(Raw(R"({"jsonrpc":"2.0","result":{},"id":1})")).ok());
+  auto received = server->Receive();
+  ASSERT_FALSE(received.ok());
+  EXPECT_EQ(received.error().kind(), ErrorKind::kSerialization);
+  EXPECT_NE(received.error().message().find("a response envelope from the client"),
+            std::string::npos);
+
+  auto terminal = left->Receive();
+  ASSERT_TRUE(terminal.ok());
+  ASSERT_TRUE(terminal->has_value());
+  EXPECT_EQ((**terminal).payload.ToString(),
+            R"({"error":{"code":-32600,"data":{"__type":"SerializationException"},)"
+            R"("message":"a response envelope from the client"},"id":1,"jsonrpc":"2.0"})");
+  auto closed = left->Receive();
+  ASSERT_TRUE(closed.ok());
+  EXPECT_FALSE(closed->has_value());
+}
+
+TEST(JsonRpcStreamSocketTest, TheServerRoleAnswersAViolationOnTheAsyncPathToo) {
+  // The async twin polices identically, and the close rides the terminal
+  // send's completion — the write cannot be cancelled by the close (the
+  // ADR-0021 ordering lesson).
+  auto [left, right] = http::InMemoryWebSocketPair::Create();
+  auto server = Wrap(right, JsonRpcStreamSocket::Role::kServer);
+
+  ASSERT_TRUE(left->Send(Raw(R"({"jsonrpc":"2.0","method":"","params":{}})")).ok());
+  bool observed = false;
+  server->ReceiveAsync([&observed](Outcome<std::optional<Message>> received) {
+    ASSERT_FALSE(received.ok());
+    EXPECT_EQ(received.error().kind(), ErrorKind::kSerialization);
+    observed = true;
+  });
+  EXPECT_TRUE(observed);  // the pair completes inline
+
+  auto terminal = left->Receive();
+  ASSERT_TRUE(terminal.ok());
+  ASSERT_TRUE(terminal->has_value());
+  EXPECT_EQ((**terminal).payload.ToString(),
+            R"({"error":{"code":-32600,"data":{"__type":"SerializationException"},)"
+            R"("message":"\"method\" is not a non-empty string"},"id":1,"jsonrpc":"2.0"})");
+  auto closed = left->Receive();
+  ASSERT_TRUE(closed.ok());
+  EXPECT_FALSE(closed->has_value());
 }
 
 TEST(JsonRpcStreamSocketTest, TheAsyncTwinsTranslateTheSameWay) {
   auto [left, right] = http::InMemoryWebSocketPair::Create();
-  auto client = Wrap(left);
-  auto server = Wrap(right);
+  auto client = Wrap(left, JsonRpcStreamSocket::Role::kClient);
+  auto server = Wrap(right, JsonRpcStreamSocket::Role::kServer);
   ASSERT_TRUE(client->SupportsAsync());
 
   // The pair completes inline; the assertions run before the calls return.
@@ -180,7 +267,7 @@ TEST(JsonRpcStreamSocketTest, TheAsyncTwinsTranslateTheSameWay) {
 
 TEST(JsonRpcStreamSocketTest, AnAsyncEncodeRefusalCompletesInline) {
   auto [left, right] = http::InMemoryWebSocketPair::Create();
-  auto client = Wrap(left);
+  auto client = Wrap(left, JsonRpcStreamSocket::Role::kClient);
 
   bool refused = false;
   client->SendAsync(MakeExceptionMessage("Kicked", "", Blob::FromString("{}")),
@@ -196,7 +283,7 @@ TEST(JsonRpcStreamSocketTest, TheBorrowingFormTranslatesLikeTheOwningOne) {
   // The blocking serve seam's shape: the route borrows its socket, so the
   // wrapper borrows too (EventStream's borrowed-constructor mirror).
   auto [left, right] = http::InMemoryWebSocketPair::Create();
-  JsonRpcStreamSocket client(*left, Document(1));
+  JsonRpcStreamSocket client(*left, Document(1), JsonRpcStreamSocket::Role::kClient);
 
   const Message event = MakeEventMessage("ping", "application/json", Blob::FromString("{}"));
   ASSERT_TRUE(client.Send(event).ok());
@@ -213,8 +300,8 @@ TEST(JsonRpcStreamSocketTest, TheBorrowingFormTranslatesLikeTheOwningOne) {
 
 TEST(JsonRpcStreamSocketTest, CloseAndThePeersCleanCloseDelegate) {
   auto [left, right] = http::InMemoryWebSocketPair::Create();
-  auto client = Wrap(left);
-  auto server = Wrap(right);
+  auto client = Wrap(left, JsonRpcStreamSocket::Role::kClient);
+  auto server = Wrap(right, JsonRpcStreamSocket::Role::kServer);
 
   client->Close();
   auto received = server->Receive();

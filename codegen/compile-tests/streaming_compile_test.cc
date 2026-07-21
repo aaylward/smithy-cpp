@@ -45,6 +45,18 @@ namespace relay = compile::streaming::rest;
 namespace pipe = compile::streaming::cbor;
 namespace wire = compile::streaming::jsonrpc;
 
+// Scope-exit join for a blocking-seam serve thread, closing the client end
+// first so the thread's blocked Receive drains: an ASSERT's early return
+// must neither terminate on a joinable thread nor deadlock the join.
+struct ServeJoin {
+  std::shared_ptr<smithy::http::WebSocket> peer;
+  std::thread thread;
+  ~ServeJoin() {
+    peer->Close();
+    if (thread.joinable()) thread.join();
+  }
+};
+
 // A dialer handing out one end of an in-memory pair, keeping the other for
 // the test to play the server and the full dial request for assertions.
 smithy::ClientConfig InMemoryConfig(std::shared_ptr<smithy::http::WebSocket>* server_end,
@@ -234,9 +246,8 @@ TEST(StreamValidationTest, AnInvalidLabelRefusesWithOneExceptionThenTheClose) {
   smithy::http::HttpRequest upgrade;
   upgrade.method = "GET";
   upgrade.target = "/rooms/waytoolongroom/converse";  // @length(max: 8) violated
-  std::thread serve_thread([serve = server.StreamRouter()->Serve(), upgrade, session = server_end] {
-    serve(upgrade, *session);
-  });
+  ServeJoin serve{client_end, std::thread([serve = server.StreamRouter()->Serve(), upgrade,
+                                           session = server_end] { serve(upgrade, *session); })};
 
   auto refusal = client_end->Receive();
   ASSERT_TRUE(refusal.ok() && refusal->has_value());
@@ -248,7 +259,6 @@ TEST(StreamValidationTest, AnInvalidLabelRefusesWithOneExceptionThenTheClose) {
   auto closed = client_end->Receive();
   ASSERT_TRUE(closed.ok());
   EXPECT_FALSE(closed->has_value());
-  serve_thread.join();
 }
 
 // The ADR-0021 twin: the never-launched async handler behind the session
@@ -348,10 +358,8 @@ TEST(StreamValidationTest, TheJsonRpcWireRefusesTheSameConstraintOnBothSeams) {
   // Blocking seam: identical bytes through the served thread.
   wire::WireServer blocking_server(std::make_shared<NeverCalledWireHandler>());
   auto [client_end, server_end] = smithy::http::InMemoryWebSocketPair::Create();
-  std::thread serve_thread(
-      [serve = blocking_server.StreamRouter()->Serve(), upgrade, session = server_end] {
-        serve(upgrade, *session);
-      });
+  ServeJoin serve{client_end, std::thread([serve = blocking_server.StreamRouter()->Serve(), upgrade,
+                                           session = server_end] { serve(upgrade, *session); })};
   ASSERT_TRUE(client_end->Send(open_message).ok());
   auto blocking_refusal = client_end->Receive();
   ASSERT_TRUE(blocking_refusal.ok() && blocking_refusal->has_value());
@@ -359,7 +367,6 @@ TEST(StreamValidationTest, TheJsonRpcWireRefusesTheSameConstraintOnBothSeams) {
   auto blocking_closed = client_end->Receive();
   ASSERT_TRUE(blocking_closed.ok());
   EXPECT_FALSE(blocking_closed->has_value());
-  serve_thread.join();
 }
 
 // ---------------------------------------------------------------------------

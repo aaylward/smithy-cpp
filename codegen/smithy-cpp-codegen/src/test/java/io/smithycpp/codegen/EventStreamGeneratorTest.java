@@ -479,7 +479,9 @@ class EventStreamGeneratorTest {
     // response envelope — result on a clean completion, the unary error
     // identity otherwise — never an exception message.
     assertTrue(
-        server.contains("smithy::eventstream::JsonRpcStreamSocket wrapped(socket, opening.id);"),
+        server.contains(
+            "smithy::eventstream::JsonRpcStreamSocket wrapped(socket, opening.id,"
+                + " smithy::eventstream::JsonRpcStreamSocket::Role::kServer);"),
         server);
     assertTrue(server.contains("BuildJsonRpcTerminalResult(opening.id)"), server);
     assertTrue(

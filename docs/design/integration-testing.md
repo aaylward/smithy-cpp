@@ -59,7 +59,7 @@ The `Rng` is seeded `std::mt19937`, so any failure reproduces deterministically.
 | `examples/roundtrip` (rest) | simpleRestJson | kitchen sink: every binding location at once, all three timestamp formats, sparse/unique lists, maps, unions, blob payload + struct payload, prefix headers, documents, both error classes |
 | `examples/roundtrip` (rpc) | rpcv2Cbor | the same kitchen-sink shapes over CBOR |
 | `examples/roundtrip` (jsonrpc) | jsonRpc2 | the same kitchen-sink shapes over JSON-RPC 2.0 envelopes |
-| `examples/jsonrpc2` | jsonRpc2 | calculator showcase + hand-rolled-peer interop wire tests |
+| `examples/jsonrpc2` | jsonRpc2 | calculator showcase + hand-rolled-peer interop wire tests; stream e2e on both seams over the pair and real WebSockets, pinning the browser-shaped JSON-RPC text (ADR-0023) |
 
 `examples/roundtrip/model/roundtrip.smithy` defines all three services over shared shapes, so
 the REST and RPC matrices exercise identical structures. To add a fixture: write the model, register

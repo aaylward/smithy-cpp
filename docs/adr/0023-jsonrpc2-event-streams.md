@@ -47,7 +47,10 @@ implementation lives.
   seam ADR-0016 reserved: jsonRpc2 is the first protocol carrying
   body-bound initial-request members. `id` is `1`, the unary constant —
   one stream per socket makes it a formality, echoed rather than
-  meaningful.
+  meaningful. Unlike the unary endpoint, the id is **mandatory**: a
+  notification-shaped opening (no id) is refused with `-32600`
+  (`"the opening call must carry an id"`) — nothing could answer it and
+  nothing could echo it.
 - **Events.** Each event, in both directions, is a JSON-RPC
   **notification**: `{"jsonrpc": "2.0", "method": "<eventMember>",
   "params": {"id": <opening id>, "payload": {...}}}`. `method` is the
@@ -72,13 +75,43 @@ implementation lives.
   the ADR-0016 contract.
 - **Reserved codes.** Envelope-level failures use the unary endpoint's
   reserved codes as a terminal error, then close: `-32700` unparseable
-  JSON, `-32600` not a valid request envelope (including a
-  non-notification envelope arriving mid-stream), `-32601` unknown
+  JSON, `-32600` not a valid request envelope, `-32601` unknown
   method — including a method that names a *unary* operation: the
-  stream endpoint dispatches streaming operations only — and `-32602`
-  params that fail deserialization or validation. A vanilla JSON-RPC 2.0 client that
-  ignores notifications observes a well-formed call → response pair in
-  every case.
+  stream endpoint dispatches streaming operations only, mirroring the
+  unary `POST` endpoint, which knows no streaming methods and answers
+  them `-32601` too — and `-32602` params that fail
+  **deserialization**. Params that deserialize but fail *constraint
+  validation* answer the unary validation identity instead: the `400`
+  error object carrying `smithy.framework#ValidationException`, exactly
+  what the unary endpoint answers, before any handler runs. A vanilla
+  JSON-RPC 2.0 client that ignores notifications observes a well-formed
+  call → response pair in every case.
+- **Mid-stream policing.** After a live opening, `JsonRpcStreamSocket`
+  (see Decisions) classifies every inbound frame; an envelope-level
+  violation is **session-fatal on both ends**. The classifications, each
+  with a fixed reason string pinned by the conformance suite (no decoder
+  detail leaks into wire text): `-32700` for a text frame that is not
+  JSON; `-32600` for everything else the envelope grammar refuses — a
+  non-object envelope, a wrong or missing `jsonrpc` version, an unknown
+  envelope or params member, a request envelope after the opening call,
+  a notification without the opening id echo (one stream per socket), a
+  response for a foreign id, a malformed error object, an oversized
+  frame, and **any response envelope sent by the client** (terminals are
+  server-minted; a client-sent `result` must not read as the peer's
+  clean close). The server end answers the reserved-code terminal error
+  for the opening id — `{"error": {"code": <code>, "data": {"__type":
+  "SerializationException"}, "message": "<reason>"}, "id": <opening
+  id>, "jsonrpc": "2.0"}` — *before* its close (the close and the
+  caller's completion both ride the send's completion, so nothing can
+  cancel the write); the client end just fails closed. Both surface
+  `Error::Serialization` to the layer above. **Carve-out:** a
+  grammatically valid notification whose *modeled* content is wrong — an
+  unknown event member name, a payload the generated decoder refuses —
+  fails at the modeled layer, where ADR-0016's terminal rule applies
+  unchanged: the session closes, but the shared decode machinery closes
+  the socket before the driver's terminal send, so a terminal envelope
+  is **not guaranteed** on that path (the binary wires behave
+  identically; the conformance suite pins the distinction).
 - **One stream per socket.** Unary calls never share the socket; the
   session stays per-operation, so the ADR-0015/0017 backpressure,
   close, and fanout contracts apply unchanged.
@@ -122,11 +155,23 @@ implementation lives.
   could. The stateless envelope grammar lives in a `jsonrpc_frame`
   codec pair beside it (`EncodeJsonRpcNotification` /
   `DecodeJsonRpcStreamFrame`), the one place the member names are spelled —
-  `json_frame.h`'s rule, applied again. Fail-closed transposes: an
-  envelope that is not an object, a wrong `jsonrpc` version, a
-  notification without an object `params`/`payload`, or a response for
-  an id that is not the opening id is a stream-level serialization
-  error, handled by the layer that owns errors today.
+  `json_frame.h`'s rule, applied again — scoped honestly: the codec
+  spells the **mid-stream** grammar only; the opening and terminal
+  envelopes are generated code's (see below), their spellings living in
+  the emitters, with the conformance suite pinning both. Fail-closed
+  transposes as classification, not error: everything the grammar
+  refuses comes back as a violation frame carrying the reserved code
+  and a fixed reason, which the wrapper polices per the mid-stream
+  rules above. Two recorded classification edges: the exception type is
+  read from `data.__type` **verbatim**, so a jsonRpc2 terminal carries
+  the fully qualified shape id where the binary wires stamp the short
+  name — both spellings resolve through the generated decoders'
+  `SanitizeErrorCode`, and the wrapper never respells either; and an
+  error object carrying no `data.__type` falls back to the type
+  `"JsonRpcError"`, which matches no modeled shape and surfaces as the
+  generic terminal error — a service that actually models a shape named
+  `JsonRpcError` would collide with the fallback (accepted; the name
+  is reserved by convention).
 - **Envelope construction stays generated; the split of duties mirrors
   unary.** The unary precedent is exact: the runtime routes, generated
   code speaks JSON-RPC. The generated client builds the opening

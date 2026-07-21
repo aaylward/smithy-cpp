@@ -216,7 +216,7 @@ smithy::Outcome<AccumulateClientStream> CalculatorClient::Accumulate(const Accum
   auto sent = (*socket)->Send(opening);
   if (!sent) return std::move(sent).error();
   return AccumulateClientStream(
-      std::make_shared<smithy::eventstream::JsonRpcStreamSocket>(*std::move(socket), smithy::Document(1)),
+      std::make_shared<smithy::eventstream::JsonRpcStreamSocket>(*std::move(socket), smithy::Document(1), smithy::eventstream::JsonRpcStreamSocket::Role::kClient),
       EncodeAccumulateEvent, DecodeAccumulateEvent);
 }
 

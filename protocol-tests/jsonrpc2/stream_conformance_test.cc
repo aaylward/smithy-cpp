@@ -21,12 +21,14 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
 #include "smithy/client/config.h"
 #include "smithy/core/error.h"
 #include "smithy/core/outcome.h"
+#include "smithy/eventstream/envelope.h"
 #include "smithy/eventstream/frame.h"
 #include "smithy/http/message.h"
 #include "smithy/http/websocket.h"
@@ -269,6 +271,119 @@ TEST_F(StreamConformanceTest, Minus32602ForUndeserializableParams) {
             R"("id":9,"jsonrpc":"2.0"})");
 }
 
+TEST_F(StreamConformanceTest, AHeaderedOpeningMessageIsRefusedWithMinus32600) {
+  // Only the pair can even deliver this (Beast raw-text yields headerless
+  // messages by construction): a peer speaking the eventstream envelope
+  // wire into the JSON-RPC endpoint.
+  auto peer = OpenSession();
+  EXPECT_TRUE(peer->Send(smithy::eventstream::MakeEventMessage("note", "application/json",
+                                                               Blob::FromString("{}")))
+                  .ok());
+  auto answer = peer->Receive();
+  ASSERT_TRUE(answer.ok() && answer->has_value());
+  EXPECT_EQ((**answer).payload.ToString(),
+            R"({"error":{"code":-32600,"data":{"__type":"SerializationException"},)"
+            R"("message":"the opening message must be one JSON-RPC request envelope"},)"
+            R"("id":null,"jsonrpc":"2.0"})");
+  auto end = peer->Receive();
+  ASSERT_TRUE(end.ok());
+  EXPECT_FALSE(end->has_value());
+}
+
+// --- Mid-stream envelope policing (ADR-0023): after a valid opening, an
+// envelope-level violation earns the reserved-code terminal error for the
+// opening id, then the close — never a success terminal, never a bare
+// close. The wrapper polices; the handler only ever sees a dead session.
+
+class MidStreamConformanceTest : public StreamConformanceTest {
+ protected:
+  // Opens EchoStream (id 42) and proves the session is live with one echo.
+  std::shared_ptr<http::WebSocket> OpenLiveStream() {
+    auto peer = OpenSession();
+    EXPECT_TRUE(
+        peer->Send(RawText(R"({"jsonrpc":"2.0","method":"EchoStream","params":{},"id":42})")).ok());
+    EXPECT_TRUE(
+        peer
+            ->Send(RawText(
+                R"({"jsonrpc":"2.0","method":"note","params":{"id":42,"payload":{"text":"x"}}})"))
+            .ok());
+    auto echo = peer->Receive();
+    EXPECT_TRUE(echo.ok() && echo->has_value());
+    return peer;
+  }
+
+  // The violating frame's whole aftermath: exactly one terminal — the
+  // expected reserved-code envelope — then the close, and in particular
+  // NOT the driver's own result terminal behind it.
+  void ExpectViolationTerminal(const std::shared_ptr<http::WebSocket>& peer,
+                               const std::string& expected) {
+    auto answer = peer->Receive();
+    ASSERT_TRUE(answer.ok() && answer->has_value());
+    EXPECT_EQ((**answer).payload.ToString(), expected);
+    auto end = peer->Receive();
+    ASSERT_TRUE(end.ok());
+    EXPECT_FALSE(end->has_value()) << "a second envelope followed the violation terminal";
+  }
+};
+
+TEST_F(MidStreamConformanceTest, UnparseableTextMidStreamIsMinus32700ThenTheClose) {
+  auto peer = OpenLiveStream();
+  ASSERT_TRUE(peer->Send(RawText("not json")).ok());
+  ExpectViolationTerminal(peer,
+                          R"({"error":{"code":-32700,"data":{"__type":"SerializationException"},)"
+                          R"("message":"text frame is not JSON"},"id":42,"jsonrpc":"2.0"})");
+}
+
+TEST_F(MidStreamConformanceTest, ARequestEnvelopeMidStreamIsMinus32600ThenTheClose) {
+  auto peer = OpenLiveStream();
+  ASSERT_TRUE(
+      peer->Send(RawText(R"({"jsonrpc":"2.0","method":"EchoStream","params":{},"id":43})")).ok());
+  ExpectViolationTerminal(
+      peer, R"({"error":{"code":-32600,"data":{"__type":"SerializationException"},)"
+            R"("message":"a request envelope after the opening call"},"id":42,"jsonrpc":"2.0"})");
+}
+
+TEST_F(MidStreamConformanceTest, AClientSentResultEnvelopeIsMinus32600ThenTheClose) {
+  // Terminal response envelopes are server-minted; a client-sent result
+  // must not read as the peer's clean close (it would skip the handler's
+  // own exit paths and earn a success terminal for a violation).
+  auto peer = OpenLiveStream();
+  ASSERT_TRUE(peer->Send(RawText(R"({"jsonrpc":"2.0","result":{},"id":42})")).ok());
+  ExpectViolationTerminal(
+      peer, R"({"error":{"code":-32600,"data":{"__type":"SerializationException"},)"
+            R"("message":"a response envelope from the client"},"id":42,"jsonrpc":"2.0"})");
+}
+
+TEST_F(MidStreamConformanceTest, AForeignIdEchoMidStreamIsMinus32600ThenTheClose) {
+  auto peer = OpenLiveStream();
+  ASSERT_TRUE(
+      peer
+          ->Send(RawText(
+              R"({"jsonrpc":"2.0","method":"note","params":{"id":9,"payload":{"text":"x"}}})"))
+          .ok());
+  ExpectViolationTerminal(
+      peer, R"({"error":{"code":-32600,"data":{"__type":"SerializationException"},)"
+            R"x("message":"notification for a different call's id (one stream per socket)"},)x"
+            "\"id\":42,\"jsonrpc\":\"2.0\"}");
+}
+
+TEST_F(MidStreamConformanceTest, AnUnknownEventMemberFollowsTheModeledLayerRule) {
+  // A grammatically valid notification naming no modeled member is a
+  // MODELED-layer violation: the generated decoder rejects it and ADR-0016's
+  // terminal rule applies — the session closes; unlike the envelope-level
+  // cases above, no terminal envelope is promised (the binary wires behave
+  // identically). Pinned so the distinction cannot drift silently.
+  auto peer = OpenLiveStream();
+  ASSERT_TRUE(
+      peer->Send(RawText(R"({"jsonrpc":"2.0","method":"nope","params":{"id":42,"payload":{}}})"))
+          .ok());
+  auto end = peer->Receive();
+  ASSERT_TRUE(end.ok()) << end.error().message();
+  EXPECT_FALSE(end->has_value()) << "no envelope is promised on the modeled-layer path, only the "
+                                    "close: "
+                                 << (**end).payload.ToString();
+}
+
 TEST_F(StreamConformanceTest, TheBlockingSeamSpeaksTheIdenticalWire) {
   // Seam parity: the same opening, echo, and terminal bytes through the
   // blocking route (served on a thread — Receive blocks there).
@@ -279,9 +394,19 @@ TEST_F(StreamConformanceTest, TheBlockingSeamSpeaksTheIdenticalWire) {
   http::HttpRequest upgrade;
   upgrade.method = "GET";
   upgrade.target = "/";
-  std::thread serve([serve_fn = server_->StreamRouter()->Serve(), upgrade, session = far] {
-    serve_fn(upgrade, *session);
-  });
+  // Scope-exit join, closing the near end first so the serve thread's
+  // blocked Receive drains: an ASSERT's early return must neither
+  // terminate on a joinable thread nor deadlock the join.
+  struct ServeJoin {
+    std::shared_ptr<http::WebSocket> peer;
+    std::thread thread;
+    ~ServeJoin() {
+      peer->Close();
+      if (thread.joinable()) thread.join();
+    }
+  } serve{near, std::thread([serve_fn = server_->StreamRouter()->Serve(), upgrade, session = far] {
+            serve_fn(upgrade, *session);
+          })};
 
   ASSERT_TRUE(
       near->Send(RawText(
@@ -304,7 +429,9 @@ TEST_F(StreamConformanceTest, TheBlockingSeamSpeaksTheIdenticalWire) {
   auto terminal = near->Receive();
   ASSERT_TRUE(terminal.ok() && terminal->has_value());
   EXPECT_EQ((**terminal).payload.ToString(), R"({"id":42,"jsonrpc":"2.0","result":{}})");
-  serve.join();
+  auto end = near->Receive();
+  ASSERT_TRUE(end.ok());
+  EXPECT_FALSE(end->has_value());  // the driver's close follows its terminal
 }
 
 // --- The client side of the same wire ---------------------------------
@@ -329,9 +456,8 @@ class ClientStreamConformanceTest : public testing::Test {
       sessions_.push_back(far);
       return near;
     };
-    auto client = JsonRpc2ProtocolClient::Create(std::move(config));
-    EXPECT_TRUE(client.ok());
-    return std::move(*client);
+    return JsonRpc2ProtocolClient::Create(std::move(config))
+        .value_or_die("creating the conformance client");
   }
 
   void TearDown() override {

@@ -23,13 +23,24 @@ namespace smithy::eventstream {
 //
 // Sends translate events into notifications echoing the opening call's id;
 // exception messages are refused (the generated serve path mints terminal
-// envelopes — it owns the @httpError table). Receives classify: a
-// notification arrives as exactly the event Message the binary wire would
-// have carried, the terminal error envelope arrives as the exception
-// Message (ADR-0016's terminal contract downstream applies unchanged),
-// and the terminal result envelope is the stream's clean end — it
-// surfaces as nullopt, never as a message. A frame the codec refuses is
-// Error::Serialization, terminal for the session like any malformed frame.
+// envelopes — it owns the @httpError table). Receives classify per role:
+// a notification arrives as exactly the event Message the binary wire
+// would have carried; on the CLIENT end the terminal error envelope
+// arrives as the exception Message (ADR-0016's terminal contract
+// downstream applies unchanged) and the terminal result envelope is the
+// stream's clean end (it surfaces as nullopt, never as a message).
+//
+// Envelope-level violations are policed here, per ADR-0023: a frame the
+// codec classifies kViolation — and, on the SERVER end, any response
+// envelope (terminals are server-minted) — is session-fatal. The server
+// answers the reserved-code terminal error for the opening id BEFORE
+// closing — the close AND the caller's completion both wait on the send's
+// completion, so neither the wrapper's close nor whatever the resumed
+// caller does next (a generated driver closes the session as it unwinds)
+// can cancel the write; the client just fails closed. Either way the
+// caller sees Error::Serialization on a session that is genuinely dead —
+// a handler cannot (and need not) distinguish a violating peer from a
+// failed wire.
 //
 // The opening request envelope never passes through here: generated code
 // sends and reads it on the inner socket before constructing the wrapper.
@@ -38,15 +49,22 @@ namespace smithy::eventstream {
 // delegated untouched.
 class JsonRpcStreamSocket final : public http::WebSocket {
  public:
+  // Which end of the wire this wrapper serves. The roles differ only in
+  // inbound policing (see above): the server answers violations and
+  // refuses response envelopes; the client classifies them.
+  enum class Role { kClient, kServer };
+
   // `id` is the opening call's id, echoed into every notification and
   // matched against every inbound frame.
-  JsonRpcStreamSocket(std::shared_ptr<http::WebSocket> inner, Document id);
+  JsonRpcStreamSocket(std::shared_ptr<http::WebSocket> inner, Document id, Role role);
 
   // The borrowing form, mirroring EventStream's borrowed constructor: the
   // blocking serve seam owns its socket only for the route callback's
   // lifetime, and the wrapper must not outlive it — the caller keeps
-  // `inner` alive past every call on this object.
-  JsonRpcStreamSocket(http::WebSocket& inner, Document id);
+  // `inner` alive past every call on this object AND past any async
+  // completion it armed (on the blocking seam there are none; prefer the
+  // owning form anywhere completions outlive the frame).
+  JsonRpcStreamSocket(http::WebSocket& inner, Document id, Role role);
 
   Outcome<std::optional<Message>> Receive() override;
   Outcome<Unit> Send(const Message& message) override;
@@ -60,6 +78,7 @@ class JsonRpcStreamSocket final : public http::WebSocket {
   std::shared_ptr<http::WebSocket> owner_;
   http::WebSocket* inner_;
   Document id_;
+  Role role_;
 };
 
 }  // namespace smithy::eventstream

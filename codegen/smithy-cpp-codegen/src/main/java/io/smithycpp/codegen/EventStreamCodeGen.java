@@ -62,8 +62,10 @@ final class EventStreamCodeGen {
   /**
    * Fails generation for models this slice does not carry (each diagnostic names the shape and the
    * fix): streaming on a refusing protocol, @eventHeader/@eventPayload event members,
-   * initial-request members the upgrade request cannot carry, and initial-response members (the
-   * ":initial-response" message is a documented deferral).
+   * initial-request members the upgrade request cannot carry (jsonRpc2's opening envelope carries
+   * them, so its carriage mode returns early instead — ADR-0023), a @required stream-union member
+   * (the union is the session, never a parsed input member, so @required could not be honored), and
+   * initial-response members (the ":initial-response" message is a documented deferral).
    */
   static void validate(
       CppContext context,

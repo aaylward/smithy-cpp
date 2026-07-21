@@ -224,7 +224,7 @@ smithy::Outcome<Terms> DecodeAccumulateEvent(const smithy::eventstream::Message&
 // frame (and the stream it owns) outlives the write. Best-effort, like
 // every terminal send: a send the dead session refuses is discarded.
 smithy::eventstream::Detached ServeAccumulateAsync(std::shared_ptr<CalculatorAsyncHandler> handler, AccumulateInput input, std::shared_ptr<smithy::http::WebSocket> socket, smithy::Document id) {
-  auto wrapped = std::make_shared<smithy::eventstream::JsonRpcStreamSocket>(socket, id);
+  auto wrapped = std::make_shared<smithy::eventstream::JsonRpcStreamSocket>(socket, id, smithy::eventstream::JsonRpcStreamSocket::Role::kServer);
   AccumulateAsyncServerStream stream(wrapped, EncodeAccumulateEvent, DecodeAccumulateEvent);
   auto outcome = co_await handler->Accumulate(std::move(input), stream);
   // Built OUTSIDE the co_await expression on purpose: a conditional
@@ -259,7 +259,7 @@ void ServeJsonRpcStream(CalculatorHandler& handler, const smithy::server::Reques
     input = *std::move(parsed);
     // The union is the session, never an opening member (ADR-0023).
     input.terms.reset();
-    smithy::eventstream::JsonRpcStreamSocket wrapped(socket, opening.id);
+    smithy::eventstream::JsonRpcStreamSocket wrapped(socket, opening.id, smithy::eventstream::JsonRpcStreamSocket::Role::kServer);
     AccumulateServerStream stream(wrapped, EncodeAccumulateEvent, DecodeAccumulateEvent);
     auto outcome = handler.Accumulate(input, stream, context);
     // The terminal response rides the raw socket: the wrapper only speaks

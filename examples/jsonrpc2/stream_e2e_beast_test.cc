@@ -127,6 +127,13 @@ TEST_F(AccumulateBeastEndToEndTest, TheModeledOverflowIsTypedOverTheRealWire) {
   const Overflow* detail = outcome.error().detail<Overflow>();
   ASSERT_NE(detail, nullptr);
   EXPECT_EQ(detail->limit, kAccumulateLimit);
+
+  // The terminal error ends the session on both sides: the server closes
+  // behind its envelope, and a Receive past the error reports the clean
+  // close once the handshake lands — no hang, no second error.
+  auto after = stream->Receive();
+  ASSERT_TRUE(after.ok()) << after.error().message();
+  EXPECT_FALSE(after->has_value());
 }
 
 TEST_F(AccumulateBeastEndToEndTest, UnaryAndStreamingShareOnePort) {
@@ -160,12 +167,14 @@ TEST_F(AccumulateBeastEndToEndTest, ABrowserShapedPeerExchangesThePinnedText) {
   ASSERT_TRUE(
       (*peer)
           ->Send(RawText(
-              R"({"jsonrpc":"2.0","method":"add","params":{"id":7,"payload":{"value":2}}})"))
+              R"({"jsonrpc":"2.0","method":"add","params":{"id":7,"payload":{"value":0.5}}})"))
           .ok());
   auto total = (*peer)->Receive();
   ASSERT_TRUE(total.ok() && total->has_value());
+  // Non-integral on purpose: 1.5 has one canonical rendering, so the pin
+  // doesn't ride the encoder's integral-double spelling.
   EXPECT_EQ((**total).payload.ToString(),
-            R"({"jsonrpc":"2.0","method":"total","params":{"id":7,"payload":{"value":3.0}}})");
+            R"({"jsonrpc":"2.0","method":"total","params":{"id":7,"payload":{"value":1.5}}})");
 
   ASSERT_TRUE(
       (*peer)
@@ -178,6 +187,31 @@ TEST_F(AccumulateBeastEndToEndTest, ABrowserShapedPeerExchangesThePinnedText) {
   auto end = (*peer)->Receive();
   ASSERT_TRUE(end.ok());
   EXPECT_FALSE(end->has_value());  // a vanilla peer saw one call, one response
+}
+
+TEST_F(AccumulateBeastEndToEndTest, AMidStreamViolationEarnsTheReservedCodeOverTheRealWire) {
+  // The wrapper's envelope policing (ADR-0023) across an actual socket:
+  // unparseable text after a live opening earns the -32700 terminal for
+  // the opening id, and the close rides behind the write — the peer reads
+  // the envelope, then the clean close, in that order.
+  Start(/*session_seam=*/true);
+  auto peer = smithy::http::BeastWebSocketClient::Dial(
+      {.host = "127.0.0.1", .port = transport_->port(), .raw_text_frames = true});
+  ASSERT_TRUE(peer.ok()) << peer.error().message();
+
+  ASSERT_TRUE(
+      (*peer)
+          ->Send(RawText(R"({"jsonrpc":"2.0","method":"Accumulate","params":{"start":1},"id":7})"))
+          .ok());
+  ASSERT_TRUE((*peer)->Send(RawText("not json")).ok());
+  auto terminal = (*peer)->Receive();
+  ASSERT_TRUE(terminal.ok() && terminal->has_value());
+  EXPECT_EQ((**terminal).payload.ToString(),
+            R"({"error":{"code":-32700,"data":{"__type":"SerializationException"},)"
+            R"("message":"text frame is not JSON"},"id":7,"jsonrpc":"2.0"})");
+  auto end = (*peer)->Receive();
+  ASSERT_TRUE(end.ok());
+  EXPECT_FALSE(end->has_value());  // nothing follows the violation terminal
 }
 
 }  // namespace

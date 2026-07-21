@@ -120,8 +120,10 @@ smithy::http::BeastServerTransport transport(options);
 transport.Start(server.Handler());                       // unary routes, same port
 ```
 
-Whatever method the operation models, upgrades are always GET on the modeled URI — a
-WebSocket upgrade is a GET on the wire, and the generated routes register accordingly.
+Whatever method the operation models, upgrades are always GET — a WebSocket upgrade is a
+GET on the wire, and the generated routes register accordingly: on the modeled URI for
+the binding protocols, on the shared `/` endpoint for jsonRpc2 (ADR-0023), whose opening
+envelope carries the routing instead.
 
 Application admission policy (auth, rate limits) composes by wrapping `Gate()`: run your
 refusal first, then defer to the router's (`smithy/server/websocket_router.h` shows the

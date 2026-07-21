@@ -40,17 +40,18 @@ Consolidated in one place — if your API depends on any of these, check here be
 - **`@streaming` blobs are not modeled yet.** A streaming blob payload generates as an
   ordinary `smithy::Blob`, fully buffered in memory. Event streams, by contrast, are real
   ([ADR-0016](docs/adr/0016-generated-event-streams.md)): a `@streaming` union operation
-  generates a typed `smithy::eventstream::EventStream` session over WebSocket for
-  `simpleRestJson` and `rpcv2Cbor` (client and server; `jsonRpc2` refuses at generation
-  time), riding the event-stream framing codec
-  ([ADR-0014](docs/adr/0014-event-stream-framing-first.md)) and the WebSocket transports
-  ([ADR-0015](docs/adr/0015-websocket-transports.md)) — the full-duplex chat example
+  generates a typed `smithy::eventstream::EventStream` session over WebSocket for all
+  three protocols — `simpleRestJson` and `rpcv2Cbor` ride the event-stream framing codec
+  ([ADR-0014](docs/adr/0014-event-stream-framing-first.md)) and `jsonRpc2` streams
+  JSON-RPC 2.0 envelopes natively ([ADR-0023](docs/adr/0023-jsonrpc2-event-streams.md)) —
+  over the WebSocket transports
+  ([ADR-0015](docs/adr/0015-websocket-transports.md)). The full-duplex chat example
   ([`examples/chat/`](examples/chat/)) runs generated client ↔ generated server over real
-  WebSockets in CI, and browsers join `simpleRestJson` streams codec-free over the
-  negotiated JSON-text wire ([ADR-0018](docs/adr/0018-json-text-event-stream-frames.md)).
-  Scoping edges (`@eventHeader` / `@eventPayload`, body-bound
-  initial-request members, initial-response members) are rejected with generation-time
-  diagnostics.
+  WebSockets in CI, and browsers join codec-free: `simpleRestJson` over the negotiated
+  JSON-text wire ([ADR-0018](docs/adr/0018-json-text-event-stream-frames.md)), `jsonRpc2`
+  over plain JSON-RPC text frames. Scoping edges (`@eventHeader` / `@eventPayload`,
+  initial-response members, and — outside `jsonRpc2`, whose opening call carries them —
+  body-bound initial-request members) are rejected with generation-time diagnostics.
 - **No Bazel Central Registry / Maven publishing** — consumers pin a git commit
   ([quickstart](docs/quickstart.md)); publishing is deferred until the project is
   production-validated (#44 tracks release readiness).

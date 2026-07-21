@@ -158,7 +158,11 @@ via `git_override` until then.
   (the `eth_subscribe` shape); the stream ends with a response envelope for
   the opening id — `result` on clean completion, the unary error-object
   convention unchanged for modeled errors, the reserved codes (-32700,
-  -32600, -32601, -32602) for envelope-level failures — then the close. A
+  -32600, -32601, -32602) for envelope-level failures — then the close.
+  Mid-stream envelope violations (unparseable text, request or response
+  envelopes after the opening call, foreign-id echoes) are policed by the
+  wrapper per role: the server answers the reserved-code terminal for the
+  opening id before its close, both ends fail closed. A
   vanilla JSON-RPC client that ignores notifications sees one well-formed
   call/response pair; a browser consumes the whole session with
   `JSON.parse` alone (`new WebSocket(url)`, no subprotocol, no codec). The
@@ -276,8 +280,8 @@ via `git_override` until then.
   sessions so blocked serve callbacks wake. Usable directly ahead of the
   generated streaming API (slice 3).
 - Phase 8 groundwork, wire-format-first (ADR-0014): `//runtime:eventstream`
-  is the event-stream message framing both streaming protocols are defined
-  against — CRC-guarded prelude, ten typed header wire types (headers
+  is the event-stream message framing the binding streaming protocols
+  (simpleRestJson, rpcv2Cbor) are defined against — CRC-guarded prelude, ten typed header wire types (headers
   build from plain values and the timestamp is the runtime's own
   `smithy::Timestamp`), opaque `Blob` payloads, an incremental strict
   fail-closed decoder, and symmetric bounds (Encode refuses whatever

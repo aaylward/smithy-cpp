@@ -15,10 +15,12 @@ namespace smithy::http {
 // A blocking, full-duplex event-stream session over one WebSocket
 // connection (ADR-0015). What travels is eventstream::Message — exactly one
 // frame per binary WebSocket message; text messages and malformed frames
-// fail the session. (On a session negotiated to the JSON-text mode of
-// ADR-0018 the wire encoding flips — one JSON envelope per text message,
-// binary messages fail — but this facade is unchanged: the transport
-// translates, and both modes carry the same Messages.) Both ends of the
+// fail the session. (Two sibling wire modes flip the encoding without
+// touching this facade: a session negotiated to ADR-0018's JSON-text mode
+// carries one JSON envelope per text message, and a raw-text session
+// (ADR-0023, jsonRpc2 streams) carries headerless Messages as verbatim
+// text frames — in both, binary messages fail, the transport translates,
+// and every mode carries the same Messages.) Both ends of the
 // wire speak this type: the server side arrives in
 // BeastServerTransport::Options::on_websocket (borrowed) or
 // on_websocket_session (shared, ADR-0019), the client side from

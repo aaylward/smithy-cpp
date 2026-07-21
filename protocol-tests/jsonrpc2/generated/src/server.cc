@@ -314,7 +314,7 @@ smithy::Outcome<UpEvents> DecodeEchoStreamEvent(const smithy::eventstream::Messa
 // frame (and the stream it owns) outlives the write. Best-effort, like
 // every terminal send: a send the dead session refuses is discarded.
 smithy::eventstream::Detached ServeEchoStreamAsync(std::shared_ptr<JsonRpc2ProtocolAsyncHandler> handler, EchoStreamInput input, std::shared_ptr<smithy::http::WebSocket> socket, smithy::Document id) {
-  auto wrapped = std::make_shared<smithy::eventstream::JsonRpcStreamSocket>(socket, id);
+  auto wrapped = std::make_shared<smithy::eventstream::JsonRpcStreamSocket>(socket, id, smithy::eventstream::JsonRpcStreamSocket::Role::kServer);
   EchoStreamAsyncServerStream stream(wrapped, EncodeEchoStreamEvent, DecodeEchoStreamEvent);
   auto outcome = co_await handler->EchoStream(std::move(input), stream);
   // Built OUTSIDE the co_await expression on purpose: a conditional
@@ -349,7 +349,7 @@ void ServeJsonRpcStream(JsonRpc2ProtocolHandler& handler, const smithy::server::
     input = *std::move(parsed);
     // The union is the session, never an opening member (ADR-0023).
     input.events.reset();
-    smithy::eventstream::JsonRpcStreamSocket wrapped(socket, opening.id);
+    smithy::eventstream::JsonRpcStreamSocket wrapped(socket, opening.id, smithy::eventstream::JsonRpcStreamSocket::Role::kServer);
     EchoStreamServerStream stream(wrapped, EncodeEchoStreamEvent, DecodeEchoStreamEvent);
     auto outcome = handler.EchoStream(input, stream, context);
     // The terminal response rides the raw socket: the wrapper only speaks

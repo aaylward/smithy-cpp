@@ -151,7 +151,8 @@ final class JsonRpc2StreamCodeGen {
         serviceName,
         inputType);
     w.write(
-        "auto wrapped = std::make_shared<smithy::eventstream::JsonRpcStreamSocket>(socket, id);");
+        "auto wrapped = std::make_shared<smithy::eventstream::JsonRpcStreamSocket>(socket, id,"
+            + " smithy::eventstream::JsonRpcStreamSocket::Role::kServer);");
     w.write(
         "$L stream(wrapped, $L, Decode$LEvent);",
         EventStreamCodeGen.asyncServerStreamAlias(operation),
@@ -275,7 +276,9 @@ final class JsonRpc2StreamCodeGen {
         w.write("Serve$LAsync(handler, std::move(input), std::move(socket), opening.id);", op);
         w.write("co_return;");
       } else {
-        w.write("smithy::eventstream::JsonRpcStreamSocket wrapped(socket, opening.id);");
+        w.write(
+            "smithy::eventstream::JsonRpcStreamSocket wrapped(socket, opening.id,"
+                + " smithy::eventstream::JsonRpcStreamSocket::Role::kServer);");
         w.write(
             "$L stream(wrapped, $L, Decode$LEvent);",
             EventStreamCodeGen.serverStreamAlias(operation),
@@ -368,7 +371,7 @@ final class JsonRpc2StreamCodeGen {
     w.write("return $L(", EventStreamCodeGen.clientStreamAlias(operation));
     w.write(
         "    std::make_shared<smithy::eventstream::JsonRpcStreamSocket>(*std::move(socket),"
-            + " smithy::Document(1)),");
+            + " smithy::Document(1), smithy::eventstream::JsonRpcStreamSocket::Role::kClient),");
     w.write(
         "    $L, Decode$LEvent);",
         EventStreamCodeGen.encoderArgument(

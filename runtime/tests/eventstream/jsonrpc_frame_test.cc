@@ -2,8 +2,9 @@
 // encoder mints (byte-pinned — text frames ARE the wire), the round trip
 // back to the Message the binary wire would carry, the terminal-response
 // classification (result = the clean end, error = the exception message),
-// and the fail-closed bank — every malformed envelope must surface as
-// Error::Serialization, never as a half-understood message.
+// and the fail-closed bank — every malformed envelope must classify as a
+// kViolation carrying its reserved code, never as a half-understood
+// message.
 
 #include "smithy/eventstream/jsonrpc_frame.h"
 
@@ -27,9 +28,9 @@ std::string EncodeOrDie(const Message& message, const Document& id = kId) {
 }
 
 JsonRpcStreamFrame DecodeOrDie(std::string_view text, const Document& id = kId) {
-  auto frame = DecodeJsonRpcStreamFrame(text, id);
-  EXPECT_TRUE(frame.ok()) << frame.error().message();
-  return frame.ok() ? *std::move(frame) : JsonRpcStreamFrame{};
+  JsonRpcStreamFrame frame = DecodeJsonRpcStreamFrame(text, id);
+  EXPECT_NE(frame.kind, JsonRpcStreamFrame::Kind::kViolation) << frame.reason;
+  return frame;
 }
 
 void ExpectEncodeRefusal(const Message& message, const char* why) {
@@ -38,10 +39,15 @@ void ExpectEncodeRefusal(const Message& message, const char* why) {
   EXPECT_EQ(text.error().kind(), ErrorKind::kValidation) << why;
 }
 
-void ExpectDecodeRefusal(std::string_view text, const char* why, const Document& id = kId) {
-  const auto frame = DecodeJsonRpcStreamFrame(text, id);
-  ASSERT_FALSE(frame.ok()) << why;
-  EXPECT_EQ(frame.error().kind(), ErrorKind::kSerialization) << why;
+// A grammar failure classifies as kViolation carrying its reserved code —
+// -32700 for unparseable text, -32600 for everything else (ADR-0023). The
+// codes are wire truth (the server answers them), so every case pins its
+// code, not just the refusal.
+void ExpectViolation(std::string_view text, int code, const char* why, const Document& id = kId) {
+  const JsonRpcStreamFrame frame = DecodeJsonRpcStreamFrame(text, id);
+  ASSERT_EQ(frame.kind, JsonRpcStreamFrame::Kind::kViolation) << why;
+  EXPECT_EQ(frame.code, code) << why << " — reason: " << frame.reason;
+  EXPECT_FALSE(frame.reason.empty()) << why;
 }
 
 TEST(JsonRpcFrameTest, EventsRenderThePinnedNotificationText) {
@@ -87,9 +93,9 @@ TEST(JsonRpcFrameTest, NonIntegerIdsEchoAndMatch) {
       EncodeOrDie(MakeEventMessage("ping", "", Blob::FromString("{}")), string_id);
   EXPECT_EQ(text, R"({"jsonrpc":"2.0","method":"ping","params":{"id":"abc-1","payload":{}}})");
   EXPECT_EQ(DecodeOrDie(text, string_id).kind, JsonRpcStreamFrame::Kind::kEvent);
-  ExpectDecodeRefusal(text, "string echo against integer id");
-  ExpectDecodeRefusal(R"({"jsonrpc":"2.0","method":"ping","params":{"id":"1","payload":{}}})",
-                      "\"1\" is not 1");
+  ExpectViolation(text, -32600, "string echo against integer id");
+  ExpectViolation(R"({"jsonrpc":"2.0","method":"ping","params":{"id":"1","payload":{}}})", -32600,
+                  "\"1\" is not 1");
 }
 
 TEST(JsonRpcFrameTest, ExceptionsCannotRideNotifications) {
@@ -169,61 +175,62 @@ TEST(JsonRpcFrameTest, AnUntypedErrorFallsBackToTheGenericException) {
 
 TEST(JsonRpcFrameTest, ResponsesAndEchoesForAForeignIdAreRefused) {
   // One stream per socket: every frame belongs to the opening call.
-  ExpectDecodeRefusal(R"({"jsonrpc":"2.0","result":{},"id":2})", "foreign response id");
-  ExpectDecodeRefusal(R"({"jsonrpc":"2.0","result":{}})", "missing response id");
-  ExpectDecodeRefusal(R"({"jsonrpc":"2.0","method":"ping","params":{"id":2,"payload":{}}})",
-                      "foreign notification id");
-  ExpectDecodeRefusal(R"({"jsonrpc":"2.0","method":"ping","params":{"payload":{}}})",
-                      "missing notification id echo");
+  ExpectViolation(R"({"jsonrpc":"2.0","result":{},"id":2})", -32600, "foreign response id");
+  ExpectViolation(R"({"jsonrpc":"2.0","result":{}})", -32600, "missing response id");
+  ExpectViolation(R"({"jsonrpc":"2.0","method":"ping","params":{"id":2,"payload":{}}})", -32600,
+                  "foreign notification id");
+  ExpectViolation(R"({"jsonrpc":"2.0","method":"ping","params":{"payload":{}}})", -32600,
+                  "missing notification id echo");
 }
 
 TEST(JsonRpcFrameTest, ARequestEnvelopeAfterTheOpeningCallIsRefused) {
   // A method member plus a top-level id is a second call — there is no
   // second call on a one-stream socket (multiplexing is the door the id
   // echo leaves open, not a thing this wire speaks).
-  ExpectDecodeRefusal(R"({"jsonrpc":"2.0","method":"ping","params":{},"id":1})",
-                      "request envelope");
+  ExpectViolation(R"({"jsonrpc":"2.0","method":"ping","params":{},"id":1})", -32600,
+                  "request envelope");
 }
 
 TEST(JsonRpcFrameTest, TheFailClosedBankRefusesEveryMalformedEnvelope) {
-  ExpectDecodeRefusal("not json at all", "not JSON");
-  ExpectDecodeRefusal("", "empty text");
-  ExpectDecodeRefusal("null", "null envelope");
-  ExpectDecodeRefusal("[]", "array envelope");
-  ExpectDecodeRefusal("{}", "empty envelope");
-  ExpectDecodeRefusal(R"({"method":"ping","params":{"id":1,"payload":{}}})", "missing jsonrpc");
-  ExpectDecodeRefusal(R"({"jsonrpc":"1.0","method":"ping","params":{"id":1,"payload":{}}})",
-                      "wrong version");
-  ExpectDecodeRefusal(R"({"jsonrpc":2,"method":"ping","params":{"id":1,"payload":{}}})",
-                      "non-string version");
-  ExpectDecodeRefusal(R"({"jsonrpc":"2.0","method":"ping","params":{"id":1,"payload":{}},"x":1})",
-                      "unknown member");
-  ExpectDecodeRefusal(R"({"jsonrpc":"2.0","method":"ping","params":{"id":1,"payload":{}},)"
-                      R"("result":{}})",
-                      "notification mixed with response");
-  ExpectDecodeRefusal(R"({"jsonrpc":"2.0","id":1})", "neither notification nor response");
-  ExpectDecodeRefusal(R"({"jsonrpc":"2.0","method":"","params":{"id":1,"payload":{}}})",
-                      "empty method");
-  ExpectDecodeRefusal(R"({"jsonrpc":"2.0","method":5,"params":{"id":1,"payload":{}}})",
-                      "non-string method");
-  ExpectDecodeRefusal(R"({"jsonrpc":"2.0","method":"ping"})", "missing params");
-  ExpectDecodeRefusal(R"({"jsonrpc":"2.0","method":"ping","params":[1]})", "array params");
-  ExpectDecodeRefusal(R"({"jsonrpc":"2.0","method":"ping","params":{"id":1,"payload":{},"x":1}})",
-                      "unknown params member");
-  ExpectDecodeRefusal(R"({"jsonrpc":"2.0","method":"ping","params":{"id":1}})", "missing payload");
-  ExpectDecodeRefusal(R"({"jsonrpc":"2.0","method":"ping","params":{"id":1,"payload":[1]}})",
-                      "array payload");
-  ExpectDecodeRefusal(R"({"jsonrpc":"2.0","result":{},"error":{"code":1},"id":1})",
-                      "both result and error");
-  ExpectDecodeRefusal(R"({"jsonrpc":"2.0","error":[1],"id":1})", "array error");
-  ExpectDecodeRefusal(R"({"jsonrpc":"2.0","error":{},"id":1})", "missing code");
-  ExpectDecodeRefusal(R"({"jsonrpc":"2.0","error":{"code":"x"},"id":1})", "non-integer code");
-  ExpectDecodeRefusal(R"({"jsonrpc":"2.0","error":{"code":1,"message":5},"id":1})",
-                      "non-string message");
-  ExpectDecodeRefusal(R"({"jsonrpc":"2.0","error":{"code":1,"data":[1]},"id":1})",
-                      "non-object data");
-  ExpectDecodeRefusal(R"({"jsonrpc":"2.0","error":{"code":1,"extra":true},"id":1})",
-                      "unknown error member");
+  ExpectViolation("not json at all", -32700, "not JSON");
+  ExpectViolation("", -32700, "empty text");
+  ExpectViolation("null", -32600, "null envelope");
+  ExpectViolation("[]", -32600, "array envelope");
+  ExpectViolation("{}", -32600, "empty envelope");
+  ExpectViolation(R"({"method":"ping","params":{"id":1,"payload":{}}})", -32600, "missing jsonrpc");
+  ExpectViolation(R"({"jsonrpc":"1.0","method":"ping","params":{"id":1,"payload":{}}})", -32600,
+                  "wrong version");
+  ExpectViolation(R"({"jsonrpc":2,"method":"ping","params":{"id":1,"payload":{}}})", -32600,
+                  "non-string version");
+  ExpectViolation(R"({"jsonrpc":"2.0","method":"ping","params":{"id":1,"payload":{}},"x":1})",
+                  -32600, "unknown member");
+  ExpectViolation(R"({"jsonrpc":"2.0","method":"ping","params":{"id":1,"payload":{}},)"
+                  R"("result":{}})",
+                  -32600, "notification mixed with response");
+  ExpectViolation(R"({"jsonrpc":"2.0","id":1})", -32600, "neither notification nor response");
+  ExpectViolation(R"({"jsonrpc":"2.0","method":"","params":{"id":1,"payload":{}}})", -32600,
+                  "empty method");
+  ExpectViolation(R"({"jsonrpc":"2.0","method":5,"params":{"id":1,"payload":{}}})", -32600,
+                  "non-string method");
+  ExpectViolation(R"({"jsonrpc":"2.0","method":"ping"})", -32600, "missing params");
+  ExpectViolation(R"({"jsonrpc":"2.0","method":"ping","params":[1]})", -32600, "array params");
+  ExpectViolation(R"({"jsonrpc":"2.0","method":"ping","params":{"id":1,"payload":{},"x":1}})",
+                  -32600, "unknown params member");
+  ExpectViolation(R"({"jsonrpc":"2.0","method":"ping","params":{"id":1}})", -32600,
+                  "missing payload");
+  ExpectViolation(R"({"jsonrpc":"2.0","method":"ping","params":{"id":1,"payload":[1]}})", -32600,
+                  "array payload");
+  ExpectViolation(R"({"jsonrpc":"2.0","result":{},"error":{"code":1},"id":1})", -32600,
+                  "both result and error");
+  ExpectViolation(R"({"jsonrpc":"2.0","error":[1],"id":1})", -32600, "array error");
+  ExpectViolation(R"({"jsonrpc":"2.0","error":{},"id":1})", -32600, "missing code");
+  ExpectViolation(R"({"jsonrpc":"2.0","error":{"code":"x"},"id":1})", -32600, "non-integer code");
+  ExpectViolation(R"({"jsonrpc":"2.0","error":{"code":1,"message":5},"id":1})", -32600,
+                  "non-string message");
+  ExpectViolation(R"({"jsonrpc":"2.0","error":{"code":1,"data":[1]},"id":1})", -32600,
+                  "non-object data");
+  ExpectViolation(R"({"jsonrpc":"2.0","error":{"code":1,"extra":true},"id":1})", -32600,
+                  "unknown error member");
 }
 
 TEST(JsonRpcFrameTest, TheSizeCeilingHoldsInBothDirections) {
@@ -232,7 +239,18 @@ TEST(JsonRpcFrameTest, TheSizeCeilingHoldsInBothDirections) {
                       "oversized encode");
   const std::string huge_frame =
       R"({"jsonrpc":"2.0","method":"big","params":{"id":1,"payload":)" + huge_payload + "}}";
-  ExpectDecodeRefusal(huge_frame, "oversized decode");
+  ExpectViolation(huge_frame, -32600, "oversized decode");
+}
+
+TEST(JsonRpcFrameTest, TheViolationResponseRendersThePinnedRefusalShape) {
+  // Byte-pinned: the terminal error a server answers an envelope-level
+  // violation with — the unary refusal shape exactly.
+  EXPECT_EQ(EncodeJsonRpcViolationResponse(-32700, "text frame is not JSON", Document(42)),
+            R"({"error":{"code":-32700,"data":{"__type":"SerializationException"},)"
+            R"("message":"text frame is not JSON"},"id":42,"jsonrpc":"2.0"})");
+  EXPECT_EQ(EncodeJsonRpcViolationResponse(-32600, "why", Document()),
+            R"({"error":{"code":-32600,"data":{"__type":"SerializationException"},)"
+            R"("message":"why"},"id":null,"jsonrpc":"2.0"})");
 }
 
 }  // namespace

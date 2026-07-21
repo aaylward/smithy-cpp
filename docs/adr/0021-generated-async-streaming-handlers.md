@@ -9,7 +9,10 @@ Implemented: `smithy::eventstream::StreamTask`, the generated
 `<Service>AsyncHandler` / `<Op>AsyncServerStream` surface, the
 `<Service>Server` async constructor wiring `AddSession` routes, the
 `examples/chat` async hub ported onto it, and an out-of-tree consumer
-hub with shell-driven tests.
+hub with shell-driven tests. Amended by ADR-0023: jsonRpc2 streams ride
+the same seam through a shared-endpoint session driver
+(`ServeJsonRpcSession`) plus `smithy::eventstream::ReceiveMessage`, the
+single-shot receive twin of this ADR's `SendMessageAwaitable`.
 
 ## Context
 

@@ -105,10 +105,11 @@ interface ProtocolGenerator {
   }
 
   /**
-   * Emits the body of one streaming operation method (ADR-0016): the upgrade target from the
-   * operation's bindings, then the shared dial-and-wrap tail ({@link
-   * EventStreamCodeGen#writeDialAndReturn}). Unreachable for refusing protocols — {@link
-   * EventStreamCodeGen#validate} rejected the model first.
+   * Emits the body of one streaming operation method (ADR-0016): the upgrade target — the
+   * operation's bindings for the binding protocols, the shared {@code /} endpoint for jsonRpc2
+   * (ADR-0023, which also sends the opening request envelope before wrapping) — then the shared
+   * dial-and-wrap tail ({@link EventStreamCodeGen#writeDialAndReturn}). Unreachable for protocols
+   * that model no streams.
    */
   default void writeStreamingOperationBody(
       CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
@@ -118,7 +119,9 @@ interface ProtocolGenerator {
 
   /**
    * Emits the constructor statement registering one streaming operation's WebSocket route on {@code
-   * stream_router_}. Unreachable for refusing protocols, like {@link #writeStreamingOperationBody}.
+   * stream_router_}. Unreachable for refusing protocols, like {@link #writeStreamingOperationBody};
+   * single-endpoint protocols (jsonRpc2) override the plural {@link #writeStreamServerRoutes}
+   * instead and never call this.
    */
   default void writeStreamServerRoute(
       CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
@@ -130,7 +133,8 @@ interface ProtocolGenerator {
    * Emits the constructor statement registering one streaming operation's shared-session route
    * (ADR-0021): an {@code AddSession} launch point that parses and refuses like {@link
    * #writeStreamServerRoute}, then hands the owned socket to the generated async wrapper.
-   * Unreachable for refusing protocols.
+   * Unreachable for refusing protocols; single-endpoint protocols override the plural {@link
+   * #writeStreamSessionRoutes} instead and never call this.
    */
   default void writeStreamSessionRoute(
       CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {

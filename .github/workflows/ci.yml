@@ -258,10 +258,14 @@ jobs:
           # Example sources include their generated headers short-form; give
           # tidy every generated include root so new examples need no edit here.
           GEN_INCLUDES=$(find examples -type d -path '*/generated/include' | sed 's/^/-I/')
+          # -P: one tidy per core — each TU re-parses its whole include graph
+          # and runs the static analyzer, so the sweep is embarrassingly
+          # parallel (xargs still exits non-zero if any invocation fails;
+          # interleaved output is the accepted cost).
           find runtime/src examples -name '*.cc' ! -name '*_test.cc' ! -path '*/src/json/*' \
             ! -name 'beast_src.cc' ! -path '*/generated/*' \
             ! -path '*/bazel-consumer/*' -print0 \
-            | xargs -0 -I{} clang-tidy --quiet {} -- -Iruntime/include -I. \
+            | xargs -0 -P "$(nproc)" -I{} clang-tidy --quiet {} -- -Iruntime/include -I. \
               $GEN_INCLUDES -std=c++20
       - name: buildifier
         run: npx -y @bazel/buildifier@8.2.1 --lint=warn --mode=check -r .

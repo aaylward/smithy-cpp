@@ -5,11 +5,21 @@
 #include <memory>
 
 #include "smithy/core/outcome.h"
+#include "smithy/eventstream/async_event_stream.h"
+#include "smithy/eventstream/event_stream.h"
 #include "smithy/http/transport.h"
 #include "smithy/protocoltests/jsonrpc2/types.h"
 #include "smithy/server/router.h"
+#include "smithy/server/websocket_router.h"
 
 namespace smithy::protocoltests::jsonrpc2 {
+
+/// The typed session a EchoStream handler borrows (ADR-0016): Tx = what this
+/// server sends, Rx = what the client sends.
+using EchoStreamServerStream = smithy::eventstream::EventStream<DownEvents, UpEvents>;
+/// The same session for an async handler (ADR-0021): co_await where the
+/// blocking sibling parks a thread; identical directions and Share().
+using EchoStreamAsyncServerStream = smithy::eventstream::AsyncEventStream<DownEvents, UpEvents>;
 
 /// Implement one method per operation. Return a modeled error as
 /// smithy::Error::Modeled("<ErrorShapeName>", message), optionally with the
@@ -23,6 +33,56 @@ class JsonRpc2ProtocolHandler {
     virtual ~JsonRpc2ProtocolHandler() = default;
 
     virtual smithy::Outcome<EchoPayloadOutput> EchoPayload(const EchoPayloadInput& input, const smithy::server::RequestContext& context) = 0;
+    /// The stream wire's conformance surface (ADR-0023). The smithy test traits
+    /// are request/response-shaped and cannot express a stream, so the stream
+    /// cases are authored as C++ in ../stream_conformance_test.cc — normative
+    /// for the envelopes (opening call, notification events with the id echoed
+    /// inside params, terminal result/error, the reserved codes) the way the
+    /// trait cases above are for the unary wire.
+    ///
+    /// Streaming operation (ADR-0016): Send/Receive on `stream` until done,
+    /// then return Unit for a clean close — or an error, which ends the
+    /// stream with an exception message before the close (unless the
+    /// stream already terminated: propagating a failed Receive() closes
+    /// without a message — the peer already observed that failure).
+    /// `stream` is valid only until this method returns; join any helper
+    /// thread still using it. Blocks the transport's handler thread for
+    /// the session's lifetime.
+    virtual smithy::Outcome<smithy::Unit> EchoStream(const EchoStreamInput& input, EchoStreamServerStream& stream, const smithy::server::RequestContext& context) = 0;
+    virtual smithy::Outcome<NoArgsOutput> NoArgs(const NoArgsInput& input, const smithy::server::RequestContext& context) = 0;
+    virtual smithy::Outcome<PutConstrainedOutput> PutConstrained(const PutConstrainedInput& input, const smithy::server::RequestContext& context) = 0;
+};
+
+/// JsonRpc2ProtocolHandler's zero-thread sibling (ADR-0021): implement this and construct
+/// JsonRpc2ProtocolServer with it to serve every streaming route on the shared-session
+/// seam — no parked thread per session. Unary operations keep the blocking
+/// shape (request/response on the handler pool either way). Implementations
+/// must be thread-safe, like JsonRpc2ProtocolHandler.
+class JsonRpc2ProtocolAsyncHandler {
+  public:
+    virtual ~JsonRpc2ProtocolAsyncHandler() = default;
+
+    virtual smithy::Outcome<EchoPayloadOutput> EchoPayload(const EchoPayloadInput& input, const smithy::server::RequestContext& context) = 0;
+    /// The stream wire's conformance surface (ADR-0023). The smithy test traits
+    /// are request/response-shaped and cannot express a stream, so the stream
+    /// cases are authored as C++ in ../stream_conformance_test.cc — normative
+    /// for the envelopes (opening call, notification events with the id echoed
+    /// inside params, terminal result/error, the reserved codes) the way the
+    /// trait cases above are for the unary wire.
+    ///
+    /// Async streaming operation (ADR-0021): a coroutine serving the whole
+    /// session — co_await stream.Receive()/Send() until done.
+    /// co_return smithy::Unit{} for a clean close, or an error — modeled as
+    /// smithy::Error::Modeled("<ErrorShapeName>", message) + set_detail(),
+    /// like a blocking handler — which ends the stream with one best-effort
+    /// exception message before the close. `input` is the coroutine's own
+    /// copy: the upgrade request (and its RequestContext) is gone by the
+    /// first resumption — model what the session needs as input members and
+    /// enforce identity at the gate. `stream` stays valid until the returned
+    /// task completes. Code before the first co_await runs on the launching
+    /// handler thread (brief blocking is fine there); every later resumption
+    /// is a transport completion context — never block those.
+    virtual smithy::eventstream::StreamTask EchoStream(EchoStreamInput input, EchoStreamAsyncServerStream& stream) = 0;
     virtual smithy::Outcome<NoArgsOutput> NoArgs(const NoArgsInput& input, const smithy::server::RequestContext& context) = 0;
     virtual smithy::Outcome<PutConstrainedOutput> PutConstrained(const PutConstrainedInput& input, const smithy::server::RequestContext& context) = 0;
 };
@@ -33,11 +93,26 @@ class JsonRpc2ProtocolHandler {
 class JsonRpc2ProtocolServer {
   public:
     explicit JsonRpc2ProtocolServer(std::shared_ptr<JsonRpc2ProtocolHandler> handler);
+    /// The zero-thread alternative (ADR-0021): the unary table is identical,
+    /// and every streaming route is registered on the shared-session seam,
+    /// served by coroutine. One server instance serves one seam — the
+    /// constructor chosen decides which two-line mount applies (StreamRouter).
+    explicit JsonRpc2ProtocolServer(std::shared_ptr<JsonRpc2ProtocolAsyncHandler> handler);
 
     smithy::http::RequestHandler Handler() const;
 
+    /// The WebSocket router carrying every streaming route (ADR-0016), ready
+    /// to mount on the transport in two lines — the serve line keyed to the
+    /// constructor used:
+    ///   options.websocket_gate = server.StreamRouter()->Gate();
+    ///   options.on_websocket = server.StreamRouter()->Serve();  // blocking handler
+    ///   options.on_websocket_session =
+    ///       server.StreamRouter()->ServeSession();  // async handler (ADR-0021)
+    std::shared_ptr<smithy::server::WebSocketRouter> StreamRouter() const;
+
   private:
     std::shared_ptr<smithy::server::Router> router_;
+    std::shared_ptr<smithy::server::WebSocketRouter> stream_router_;
 };
 
 }  // namespace smithy::protocoltests::jsonrpc2

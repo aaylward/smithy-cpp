@@ -270,3 +270,62 @@ cc_test(
         "@smithy_cpp//runtime:server",
     ],
 )
+
+# The jsonRpc2 stream wire (ADR-0023, issue #123) through the module
+# boundary: the smallest bidirectional service on the JSON-RPC-native wire,
+# client and server both generated inside this module's build graph.
+smithy_cpp_client_library(
+    name = "tally_stream_client",
+    srcs = ["model/tallystream.smithy"],
+    namespace = "acme::tally",
+    service = "acme.tally#Tally",
+)
+
+smithy_cpp_server_library(
+    name = "tally_stream_server",
+    srcs = ["model/tallystream.smithy"],
+    namespace = "acme::tally",
+    service = "acme.tally#Tally",
+)
+
+# The wire as real shell-commanded processes: the generated async server on
+# Beast's raw-text mode, the generated client dialing the shared endpoint —
+# opening params, totals both ways, the terminal result's clean end, and
+# the typed Busted through the terminal error envelope. Beast on both ends;
+# behind a download-blocking proxy exclude it with the other Beast targets.
+cc_binary(
+    name = "jsonrpc_stream_server",
+    srcs = ["jsonrpc_stream_server_main.cc"],
+    deps = [
+        ":tally_stream_server",
+        "@smithy_cpp//runtime:core",
+        "@smithy_cpp//runtime:http_beast",
+        "@smithy_cpp//runtime:server",
+    ],
+)
+
+cc_binary(
+    name = "jsonrpc_stream_client",
+    srcs = ["jsonrpc_stream_client_main.cc"],
+    deps = [
+        ":tally_stream_client",
+        "@smithy_cpp//runtime:client",
+        "@smithy_cpp//runtime:core",
+        "@smithy_cpp//runtime:http_beast",  # the generated client's default dialer
+    ],
+)
+
+sh_test(
+    name = "jsonrpc_stream_cli_test",
+    size = "small",
+    srcs = ["jsonrpc_stream_cli_test.sh"],
+    args = [
+        "$(rootpath :jsonrpc_stream_server)",
+        "$(rootpath :jsonrpc_stream_client)",
+    ],
+    data = [
+        ":jsonrpc_stream_client",
+        ":jsonrpc_stream_server",
+    ],
+    tags = ["requires-network"],
+)

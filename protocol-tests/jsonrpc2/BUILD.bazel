@@ -1,0 +1,21 @@
+load("@rules_cc//cc:defs.bzl", "cc_test")
+
+# The authored stream conformance suite (ADR-0023): normative for the
+# jsonRpc2 stream wire the way the model's trait cases (rendered into
+# generated/tests/) are for the unary wire. Hand-written, not generated —
+# the smithy test traits cannot express a stream.
+cc_test(
+    name = "stream_conformance_test",
+    size = "small",
+    srcs = ["stream_conformance_test.cc"],
+    deps = [
+        "//protocol-tests/jsonrpc2/generated:client",
+        "//protocol-tests/jsonrpc2/generated:server",
+        "//runtime:client",
+        "//runtime:core",
+        "//runtime:eventstream",
+        "//runtime:http",
+        "//runtime:server",
+        "@googletest//:gtest_main",
+    ],
+)

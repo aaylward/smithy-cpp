@@ -27,6 +27,7 @@ _RUNTIME_DEPS = [
     Label("//runtime:compression"),
     Label("//runtime:core"),
     Label("//runtime:eventstream"),
+    Label("//runtime:eventstream_jsonrpc"),
     Label("//runtime:http"),
     Label("//runtime:json"),
 ]

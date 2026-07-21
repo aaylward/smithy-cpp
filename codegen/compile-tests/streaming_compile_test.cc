@@ -26,6 +26,8 @@
 
 #include "compile/streaming/cbor/client.h"
 #include "compile/streaming/cbor/server.h"
+#include "compile/streaming/jsonrpc/client.h"
+#include "compile/streaming/jsonrpc/server.h"
 #include "compile/streaming/rest/client.h"
 #include "compile/streaming/rest/server.h"
 #include "smithy/cbor/cbor.h"
@@ -41,6 +43,7 @@ namespace {
 
 namespace relay = compile::streaming::rest;
 namespace pipe = compile::streaming::cbor;
+namespace wire = compile::streaming::jsonrpc;
 
 // A dialer handing out one end of an in-memory pair, keeping the other for
 // the test to play the server and the full dial request for assertions.
@@ -156,6 +159,53 @@ TEST(StreamingCompileTest, CborClientExchangesOnTheFixedUpgradeUri) {
   stream->Close();
 }
 
+TEST(StreamingCompileTest, JsonRpcClientOpensOnTheSharedEndpoint) {
+  // The ADR-0023 face: the dial targets the protocol's shared endpoint on
+  // the raw-text wire, auth rides the upgrade like everywhere else, and
+  // the opening request envelope carries the initial-request members.
+  std::shared_ptr<smithy::http::WebSocket> server_end;
+  smithy::http::WebSocketDialRequest dialed;
+  smithy::ClientConfig config = InMemoryConfig(&server_end, &dialed);
+  config.bearer_token = [] { return std::string("sesame"); };
+  auto client = wire::WireClient::Create(std::move(config));
+  ASSERT_TRUE(client.ok());
+
+  wire::ConferInput input;
+  input.room = "lobby";
+  auto stream = client->Confer(input);
+  ASSERT_TRUE(stream.ok());
+  EXPECT_EQ(dialed.target, "/");
+  EXPECT_TRUE(dialed.raw_text_frames);
+  EXPECT_EQ(dialed.headers.Get("authorization").value_or(""), "Bearer sesame");
+
+  auto opening = server_end->Receive();
+  ASSERT_TRUE(opening.ok() && opening->has_value());
+  EXPECT_TRUE((**opening).headers.empty());
+  EXPECT_EQ((**opening).payload.ToString(),
+            R"({"id":1,"jsonrpc":"2.0","method":"Confer","params":{"room":"lobby"}})");
+  stream->Close();
+}
+
+TEST(StreamingCompileTest, JsonRpcWatchOpensWithEmptyParams) {
+  // The Unit-input face: no params to serialize, still an (empty) params
+  // member on the opening envelope; the transmit direction is NoEvents.
+  std::shared_ptr<smithy::http::WebSocket> server_end;
+  smithy::http::WebSocketDialRequest dialed;
+  auto client = wire::WireClient::Create(InMemoryConfig(&server_end, &dialed));
+  ASSERT_TRUE(client.ok());
+
+  auto stream = client->Watch();
+  ASSERT_TRUE(stream.ok());
+  auto opening = server_end->Receive();
+  ASSERT_TRUE(opening.ok() && opening->has_value());
+  EXPECT_EQ((**opening).payload.ToString(),
+            R"({"id":1,"jsonrpc":"2.0","method":"Watch","params":{}})");
+  server_end->Close();
+  auto received = stream->Receive();
+  ASSERT_TRUE(received.ok());
+  EXPECT_FALSE(received->has_value());  // the peer's clean close
+}
+
 // ---------------------------------------------------------------------------
 // The streaming route's validation-refusal arm: no other fixture has a
 // constrained initial member (streaming.smithy's @length on the room label
@@ -236,6 +286,80 @@ TEST(StreamValidationTest, TheSessionSeamRefusesAnInvalidLabelIdentically) {
   auto closed = client_end->Receive();
   ASSERT_TRUE(closed.ok());
   EXPECT_FALSE(closed->has_value());
+}
+
+// The jsonRpc2 twins: the same constrained member refused on the JSON-RPC
+// wire (ADR-0023) — a ValidationException error envelope for the opening
+// call's id, then the close. The opening params carry the member, so the
+// refusal happens after the first message, not at the upgrade.
+class NeverCalledWireHandler final : public wire::WireHandler {
+ public:
+  smithy::Outcome<smithy::Unit> Confer(const wire::ConferInput&, wire::ConferServerStream&,
+                                       const smithy::server::RequestContext&) override {
+    ADD_FAILURE() << "handler ran despite a validation failure";
+    return smithy::Unit{};
+  }
+  smithy::Outcome<smithy::Unit> Watch(const wire::WatchInput&, wire::WatchServerStream& stream,
+                                      const smithy::server::RequestContext&) override {
+    stream.Close();
+    return smithy::Unit{};
+  }
+};
+
+class NeverCalledAsyncWireHandler final : public wire::WireAsyncHandler {
+ public:
+  smithy::eventstream::StreamTask Confer(wire::ConferInput,
+                                         wire::ConferAsyncServerStream&) override {
+    ADD_FAILURE() << "async handler launched despite a validation failure";
+    co_return smithy::Unit{};
+  }
+  smithy::eventstream::StreamTask Watch(wire::WatchInput,
+                                        wire::WatchAsyncServerStream& stream) override {
+    (void)co_await stream.Receive();
+    co_return smithy::Unit{};
+  }
+};
+
+TEST(StreamValidationTest, TheJsonRpcWireRefusesTheSameConstraintOnBothSeams) {
+  const std::string opening =
+      R"({"jsonrpc":"2.0","method":"Confer","params":{"room":"waytoolongroom"},"id":5})";
+  smithy::http::HttpRequest upgrade;
+  upgrade.method = "GET";
+  upgrade.target = "/";
+
+  // Session seam: the driver reads the opening inside its Detached frame,
+  // refuses, and closes — inline over the pair.
+  wire::WireServer async_server(std::make_shared<NeverCalledAsyncWireHandler>());
+  auto [async_client_end, async_server_end] = smithy::http::InMemoryWebSocketPair::Create();
+  async_server.StreamRouter()->ServeSession()(upgrade, async_server_end);
+  smithy::eventstream::Message open_message;
+  open_message.payload = smithy::Blob::FromString(opening);
+  ASSERT_TRUE(async_client_end->Send(open_message).ok());
+  auto refusal = async_client_end->Receive();
+  ASSERT_TRUE(refusal.ok() && refusal->has_value());
+  const std::string text = (**refusal).payload.ToString();
+  EXPECT_NE(text.find("\"code\":400"), std::string::npos) << text;
+  EXPECT_NE(text.find("ValidationException"), std::string::npos) << text;
+  EXPECT_NE(text.find("\"id\":5"), std::string::npos) << text;
+  auto closed = async_client_end->Receive();
+  ASSERT_TRUE(closed.ok());
+  EXPECT_FALSE(closed->has_value());
+
+  // Blocking seam: identical bytes through the served thread.
+  wire::WireServer blocking_server(std::make_shared<NeverCalledWireHandler>());
+  auto [client_end, server_end] = smithy::http::InMemoryWebSocketPair::Create();
+  std::thread serve_thread(
+      [serve = blocking_server.StreamRouter()->Serve(), upgrade, session = server_end] {
+        serve(upgrade, *session);
+      });
+  ASSERT_TRUE(client_end->Send(open_message).ok());
+  auto blocking_refusal = client_end->Receive();
+  ASSERT_TRUE(blocking_refusal.ok() && blocking_refusal->has_value());
+  EXPECT_EQ((**blocking_refusal).payload.ToString(), text);  // seam parity, byte for byte
+  auto blocking_closed = client_end->Receive();
+  ASSERT_TRUE(blocking_closed.ok());
+  EXPECT_FALSE(blocking_closed->has_value());
+  serve_thread.join();
 }
 
 // ---------------------------------------------------------------------------

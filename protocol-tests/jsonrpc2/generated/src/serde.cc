@@ -8,6 +8,49 @@
 
 namespace smithy::protocoltests::jsonrpc2 {
 
+smithy::Document SerializeEchoedNote(const EchoedNote& value) {
+  smithy::DocumentMap map;
+  map.emplace("text", smithy::Document(value.text));
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<EchoedNote> DeserializeEchoedNote(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("EchoedNote: expected a map on the wire");
+  EchoedNote out;
+  {
+    const smithy::Document* member = doc.Find("text");
+    if (member == nullptr || member->is_null()) {
+      return smithy::Error::Serialization("EchoedNote: missing required member: text");
+    }
+    if (!member->is_string()) return smithy::Error::Serialization("EchoedNote.text: unexpected type on the wire");
+    out.text = member->as_string();
+  }
+  return out;
+}
+
+smithy::Document SerializeDownEvents(const DownEvents& value) {
+  smithy::DocumentMap map;
+  if (value.is_echo()) {
+    map.emplace("echo", SerializeEchoedNote(value.as_echo()));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<DownEvents> DeserializeDownEvents(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("DownEvents: expected a map on the wire");
+  if (doc.as_map().size() - (doc.Find("__type") != nullptr ? 1 : 0) != 1) return smithy::Error::Serialization("DownEvents: expected exactly one union member");
+  if (const smithy::Document* member = doc.Find("echo"); member != nullptr && !member->is_null()) {
+    EchoedNote parsed_member{};
+    {
+      auto parsed = DeserializeEchoedNote(*member);
+      if (!parsed) return std::move(parsed).error();
+      parsed_member = std::move(*parsed);
+    }
+    return DownEvents::FromEcho(std::move(parsed_member));
+  }
+  return smithy::Error::Serialization("DownEvents: unknown or missing union member");
+}
+
 smithy::Document SerializeStringMap(const std::map<std::string, std::string>& value) {
   smithy::DocumentMap map;
   for (const auto& [key, item] : value) {
@@ -340,6 +383,133 @@ smithy::Outcome<ThrottledError> DeserializeThrottledError(const smithy::Document
       parsed_member = member->as_string();
       out.message = std::move(parsed_member);
     }
+  }
+  return out;
+}
+
+smithy::Document SerializeNote(const Note& value) {
+  smithy::DocumentMap map;
+  map.emplace("text", smithy::Document(value.text));
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<Note> DeserializeNote(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("Note: expected a map on the wire");
+  Note out;
+  {
+    const smithy::Document* member = doc.Find("text");
+    if (member == nullptr || member->is_null()) {
+      return smithy::Error::Serialization("Note: missing required member: text");
+    }
+    if (!member->is_string()) return smithy::Error::Serialization("Note.text: unexpected type on the wire");
+    out.text = member->as_string();
+  }
+  return out;
+}
+
+smithy::Document SerializeUpEvents(const UpEvents& value) {
+  smithy::DocumentMap map;
+  if (value.is_note()) {
+    map.emplace("note", SerializeNote(value.as_note()));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<UpEvents> DeserializeUpEvents(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("UpEvents: expected a map on the wire");
+  if (doc.as_map().size() - (doc.Find("__type") != nullptr ? 1 : 0) != 1) return smithy::Error::Serialization("UpEvents: expected exactly one union member");
+  if (const smithy::Document* member = doc.Find("note"); member != nullptr && !member->is_null()) {
+    Note parsed_member{};
+    {
+      auto parsed = DeserializeNote(*member);
+      if (!parsed) return std::move(parsed).error();
+      parsed_member = std::move(*parsed);
+    }
+    return UpEvents::FromNote(std::move(parsed_member));
+  }
+  return smithy::Error::Serialization("UpEvents: unknown or missing union member");
+}
+
+smithy::Document SerializeEchoStreamInput(const EchoStreamInput& value) {
+  smithy::DocumentMap map;
+  if (value.prefix.has_value()) {
+    map.emplace("prefix", smithy::Document((*value.prefix)));
+  }
+  if (value.events.has_value()) {
+    map.emplace("events", SerializeUpEvents((*value.events)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<EchoStreamInput> DeserializeEchoStreamInput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("EchoStreamInput: expected a map on the wire");
+  EchoStreamInput out;
+  {
+    const smithy::Document* member = doc.Find("prefix");
+    if (member != nullptr && !member->is_null()) {
+      std::string parsed_member{};
+      if (!member->is_string()) return smithy::Error::Serialization("EchoStreamInput.prefix: unexpected type on the wire");
+      parsed_member = member->as_string();
+      out.prefix = std::move(parsed_member);
+    }
+  }
+  {
+    const smithy::Document* member = doc.Find("events");
+    if (member != nullptr && !member->is_null()) {
+      UpEvents parsed_member{};
+      {
+        auto parsed = DeserializeUpEvents(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.events = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeEchoStreamOutput(const EchoStreamOutput& value) {
+  smithy::DocumentMap map;
+  if (value.events.has_value()) {
+    map.emplace("events", SerializeDownEvents((*value.events)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<EchoStreamOutput> DeserializeEchoStreamOutput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("EchoStreamOutput: expected a map on the wire");
+  EchoStreamOutput out;
+  {
+    const smithy::Document* member = doc.Find("events");
+    if (member != nullptr && !member->is_null()) {
+      DownEvents parsed_member{};
+      {
+        auto parsed = DeserializeDownEvents(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.events = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeStreamAbort(const StreamAbort& value) {
+  smithy::DocumentMap map;
+  map.emplace("message", smithy::Document(value.message));
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<StreamAbort> DeserializeStreamAbort(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("StreamAbort: expected a map on the wire");
+  StreamAbort out;
+  {
+    const smithy::Document* member = doc.Find("message");
+    if (member == nullptr || member->is_null()) {
+      return smithy::Error::Serialization("StreamAbort: missing required member: message");
+    }
+    if (!member->is_string()) return smithy::Error::Serialization("StreamAbort.message: unexpected type on the wire");
+    out.message = member->as_string();
   }
   return out;
 }

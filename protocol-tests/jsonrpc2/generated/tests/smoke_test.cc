@@ -45,6 +45,13 @@ class SmokeHandler : public JsonRpc2ProtocolHandler {
       (void)input;
       return MinimalEchoPayloadOutput();
     }
+    // Streaming operation (ADR-0016): no generated unary-shaped test drives
+    // this; the stub closes the stream so the interface stays implemented.
+    smithy::Outcome<smithy::Unit> EchoStream(const EchoStreamInput& input, EchoStreamServerStream& stream, const smithy::server::RequestContext&) override {
+      (void)input;
+      stream.Close();
+      return smithy::Unit{};
+    }
     smithy::Outcome<NoArgsOutput> NoArgs(const NoArgsInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalNoArgsOutput();

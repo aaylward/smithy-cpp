@@ -8,14 +8,12 @@
 //
 //   chat_async_reconnect_server [port [grace-seconds]]
 
-#include <atomic>
 #include <chrono>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
 #include <string>
-#include <thread>
 #include <utility>
 
 #include "acme/chat/server.h"
@@ -30,10 +28,7 @@ using acme::chat::ExchangeInput;
 using acme::chat::Note;
 using acme::chat::Notes;
 
-// The admission recipe (production guide): a reconnect can beat the old
-// wire's failure notice, so retry resume-or-add briefly before refusing.
-constexpr int kAdmissionAttempts = 20;
-constexpr auto kAdmissionRetryDelay = std::chrono::milliseconds(50);
+using Registry = smithy::server::SessionRegistry<Notes>;
 
 // The generated async handler with the reconnect exits split the ADR-0020
 // way: deliberate leaves Remove, everything else Detaches. Delivery rides
@@ -46,21 +41,17 @@ class AsyncReconnectHubHandler final : public acme::chat::ChatAsyncHandler {
   smithy::eventstream::StreamTask Exchange(ExchangeInput input,
                                            ExchangeAsyncServerStream& stream) override {
     const std::string id = input.name;
-    // Pre-first-suspend this runs on the launching handler thread, so the
-    // brief blocking retry is fine.
-    bool resumed = false;
-    bool added = false;
-    for (int attempt = 0; attempt < kAdmissionAttempts && !resumed && !added; ++attempt) {
-      resumed = registry_.Resume(id, stream.Share());
-      if (!resumed) added = registry_.Add(id, stream.Share());
-      if (!resumed && !added) std::this_thread::sleep_for(kAdmissionRetryDelay);
-    }
-    if (!resumed && !added) {
+    // The blessed admission call (ADR-0022): resume-or-fresh-join with the
+    // brief retry the reconnect race needs. It blocks, legally: this runs
+    // pre-first-suspend, on the launching handler thread.
+    const auto admission =
+        registry_.ResumeOrAdd(id, [&stream] { return stream.Share(); }, std::chrono::seconds(1));
+    if (admission == Registry::Admission::kRefused) {
       // The generated wrapper frames this as the typed exception message.
       co_return smithy::Error::Validation("name '" + id + "' is already in the session");
     }
 
-    if (resumed) {
+    if (admission == Registry::Admission::kResumed) {
       // Snapshot replay, the blessed recovery: current authoritative
       // state as this session's first event — never missed messages.
       std::string roster;

@@ -145,6 +145,20 @@ via `git_override` until then.
   refuse to mix rather than deaden routes silently. The thread-free chat
   hub now mounts its Converse route through the router instead of a
   hand-rolled target parser.
+- Registry admission primitives (ADR-0022, issue #122):
+  `SessionRegistry::ResumeOrAdd(id, mint, deadline)` is the reconnect
+  admission recipe as one call — Resume first, fresh Add second, retried
+  to the deadline because a reconnect can beat the old wire's failure
+  notice — returning the three-way `Admission` every consumer branches
+  on (`kResumed` → snapshot replay, `kAdded` → join announce, `kRefused`
+  → collision answer). It blocks by contract: call it pre-first-suspend
+  on the launching thread, never from a completion context. Its refusal
+  is now actionable: `Close(id)` kicks the id's live session — the
+  handler observes the close and runs its normal exit path, leaving the
+  id admittable (freed after a Remove exit, parked-resumable after a
+  Detach exit) — the missing move for silent partitions; policy stays
+  with the application. The
+  three example admission loops are deleted in favor of the call.
 - Generated async streaming handlers (ADR-0021): a streaming service now
   also emits `<Service>AsyncHandler` — each streaming operation a coroutine
   returning the new `smithy::eventstream::StreamTask` over

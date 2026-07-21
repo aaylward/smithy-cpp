@@ -1,6 +1,7 @@
 #ifndef SMITHY_SERVER_SESSION_REGISTRY_H_
 #define SMITHY_SERVER_SESSION_REGISTRY_H_
 
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
@@ -69,6 +70,9 @@ namespace smithy::server {
 // mutually exclusive with a successful Resume; Drain and the destructor
 // expire detached entries immediately. One lazy expiry thread serves the
 // whole registry — a detached session itself holds zero threads.
+// ResumeOrAdd is the blessed admission call (ADR-0022): resume-or-fresh-
+// join with the brief retry the reconnect race needs, and Close(id) is
+// the kick primitive that makes its refusal actionable.
 //
 // All methods are safe from any thread, including a handler's own (a
 // handler may SendTo itself) and the slow-consumer callback (which runs
@@ -167,8 +171,10 @@ class SessionRegistry {
   // thread, or with Options::async_delivery on an async-capable socket, a
   // completion chain armed by the first enqueue. False (and nothing
   // changes — in particular the handle is not closed) when id is already
-  // registered; a reconnect under the same id wants Remove first, which is
-  // the application's call to make.
+  // registered. A reconnect under the same id wants ResumeOrAdd; evicting
+  // a live id wants Close, so the old handler observes the end and
+  // unwinds itself — never Remove-then-Add, which leaves the old handler
+  // to tear down the NEW entry on its way out.
   bool Add(Id id, Handle handle) {
     const bool async_mode = options_.async_delivery && handle.SupportsAsync();
     auto entry = std::make_shared<Entry>(std::move(handle));
@@ -307,6 +313,51 @@ class SessionRegistry {
     return true;
   }
 
+  // The three-way admission outcome ResumeOrAdd reports — every consumer
+  // branches on it: kResumed replays the snapshot (ADR-0020's recovery),
+  // kAdded announces the fresh join, kRefused answers the collision.
+  enum class Admission { kResumed, kAdded, kRefused };
+
+  // The admission recipe as a primitive (ADR-0022, issue #122): Resume
+  // first (the reconnect story), fresh Add second, retried every ~50ms
+  // until the deadline — a reconnect can beat the old wire's failure
+  // notice, so for a beat the id looks live to both paths and only
+  // retrying converges. `mint` runs exactly once per attempt: the one
+  // fresh Share() serves both the Resume try and the Add try (handles
+  // are cheap-copy views). A zero deadline is the single-shot form; an
+  // enormous one (milliseconds::max()) is a legal "block until
+  // admitted". This method BLOCKS up to `deadline`: call it before a
+  // handler's first suspension — on the launching thread, where brief
+  // blocking is fine — never from a completion context. On a
+  // grace-disabled registry Resume never succeeds, so the call degrades
+  // to a retried Add — still the right admission shape; kResumed simply
+  // cannot occur. kRefused at the deadline almost always means the id is
+  // live on another connection (rarely: a detached entry past its grace
+  // that expiry has not yet claimed — a beat later the same call would
+  // report kAdded); whether to kick a live one (Close) is the
+  // application's call — ResumeOrAdd never kicks on its own.
+  Admission ResumeOrAdd(const Id& id, const std::function<Handle()>& mint,
+                        std::chrono::milliseconds deadline) {
+    constexpr auto kRetryInterval = std::chrono::milliseconds(50);
+    // Clamped, not added blindly: now + milliseconds::max() overflows the
+    // steady clock's representation (UB, and a wrapped deadline would
+    // silently degrade "block until admitted" to single-shot).
+    const auto start = std::chrono::steady_clock::now();
+    const auto headroom = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::time_point::max() - start);
+    const auto give_up =
+        deadline >= headroom ? std::chrono::steady_clock::time_point::max() : start + deadline;
+    while (true) {
+      Handle handle = mint();
+      if (Resume(id, handle)) return Admission::kResumed;
+      if (Add(id, std::move(handle))) return Admission::kAdded;
+      const auto now = std::chrono::steady_clock::now();
+      if (now >= give_up) return Admission::kRefused;
+      std::this_thread::sleep_for(
+          std::min<std::chrono::steady_clock::duration>(kRetryInterval, give_up - now));
+    }
+  }
+
   // Queues one event for id; delivery is FIFO whichever mode the session
   // runs in. True when queued. False — the event is dropped — for an
   // unknown id; a session whose delivery already failed; an attached
@@ -368,6 +419,32 @@ class SessionRegistry {
   }
   std::size_t Broadcast(const Tx& event) {
     return Broadcast([&event](const Id&) { return event; });
+  }
+
+  // Closes id's current session — the kick primitive (ADR-0022): the
+  // session observes the close and its handler runs its normal exit path,
+  // making the id admittable on the next dial — freed outright on a
+  // Remove exit; parked-resumable on a Detach exit, where the next
+  // ResumeOrAdd reports kResumed and snapshot replay carries the old
+  // session's identity across. Policy stays
+  // with the application: this is how a ResumeOrAdd refusal becomes
+  // actionable when the old session is known dead (a silent partition, an
+  // operator action) instead of waiting out TCP. On a detached entry it
+  // closes an already-closed handle — a harmless no-op (detached ids are
+  // Resume's and Remove's business). False for an unknown id. The handle
+  // copy is taken under the entry lock (the Resume-swap discipline) and
+  // closed outside all locks.
+  bool Close(const Id& id) {
+    std::optional<Handle> doomed;
+    {
+      const std::lock_guard<std::mutex> lock(mutex_);
+      const auto it = sessions_.find(id);
+      if (it == sessions_.end()) return false;
+      const std::lock_guard<std::mutex> entry_lock(it->second->mutex);
+      doomed.emplace(it->second->handle);
+    }
+    doomed->Close();
+    return true;
   }
 
   // Closes every registered session (idempotent, non-blocking): each

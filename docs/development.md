@@ -145,8 +145,8 @@ cd codegen && gradle spotlessApply
   `bazel test //... -- -//runtime:http_beast -//runtime:connection_event_recorder -//runtime:beast_transport_test -//runtime:beast_client_test -//runtime:beast_websocket_test -//examples/weather:weather_e2e_beast_test -//examples/simplerestjson:bookstore_server -//examples/simplerestjson:bookstore_server_lifecycle_test -//examples/chat/... -//examples/jsonrpc2/... -//protocol-tests/jsonrpc2:stream_conformance_test -//codegen/compile-tests:streaming_compile_test -//benchmarks/...`
   (the consumer module's `//:todo_beast_acceptance_test`, `//:websocket_acceptance_test`,
   `//:streaming_acceptance_test`, `//:jsonrpc_stream_cli_test`, and the
-  `//:jsonrpc_stream_server` / `//:jsonrpc_stream_client` binaries need the same
-  exclusion). `//examples/chat/...` and `//examples/jsonrpc2/...` go
+  `//:jsonrpc_stream_server` / `//:jsonrpc_stream_client` / `//:jsonrpc_raw_peer` binaries
+  need the same exclusion). `//examples/chat/...` and `//examples/jsonrpc2/...` go
   wholesale because every generated *streaming* client library links the default Beast
   dialer's definition (ADR-0016) — even the in-memory `chat_e2e_test` and the fixture's
   generated tests are Beast targets at link time, wire or no wire; the jsonRpc2 stream

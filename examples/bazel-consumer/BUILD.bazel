@@ -315,6 +315,20 @@ cc_binary(
     ],
 )
 
+# The ill-behaved half of the CLI suite: raw stdin lines as text frames,
+# so the script can flex the reserved-code refusals and the mid-stream
+# policing — edges the well-behaved generated client cannot produce.
+cc_binary(
+    name = "jsonrpc_raw_peer",
+    srcs = ["jsonrpc_raw_peer_main.cc"],
+    deps = [
+        "@smithy_cpp//runtime:core",
+        "@smithy_cpp//runtime:eventstream",
+        "@smithy_cpp//runtime:http",
+        "@smithy_cpp//runtime:http_beast",
+    ],
+)
+
 sh_test(
     name = "jsonrpc_stream_cli_test",
     size = "small",
@@ -322,8 +336,10 @@ sh_test(
     args = [
         "$(rootpath :jsonrpc_stream_server)",
         "$(rootpath :jsonrpc_stream_client)",
+        "$(rootpath :jsonrpc_raw_peer)",
     ],
     data = [
+        ":jsonrpc_raw_peer",
         ":jsonrpc_stream_client",
         ":jsonrpc_stream_server",
     ],

@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 # The jsonRpc2 stream wire (ADR-0023, issue #123) as real processes through
 # the module boundary: the GENERATED Tally service on the async surface,
-# served by Beast in raw-text mode, driven by the GENERATED CLI client.
+# served by Beast in raw-text mode, driven by the GENERATED CLI client —
+# and by the raw peer, which types whatever a browser could at the socket.
 # Covers the opening envelope's initial-request member (the seed), running
-# totals both ways, the clean end through the terminal result envelope, and
-# the modeled Busted arriving typed through the terminal error envelope.
+# totals both ways, the clean end through the terminal result envelope, the
+# modeled Busted arriving typed through the terminal error envelope, and
+# the policing edges the well-behaved client cannot produce: the -32601
+# unknown-method refusal and the -32700 mid-stream violation terminal,
+# byte-pinned, each followed by the close and nothing else.
 # Portable: no `timeout`, BSD-sed-safe.
 set -euo pipefail
 
@@ -23,6 +27,7 @@ fail() {
 
 server="$(pwd)/$1"
 client="$(pwd)/$2"
+raw_peer="$(pwd)/$3"
 log="${TEST_TMPDIR}/server.log"
 cd "${TEST_TMPDIR}"
 
@@ -54,6 +59,29 @@ if "$client" "$port" 1 -5 > busted.out; then
 fi
 grep -q '^error Busted: the tally went negative$' busted.out \
   || fail "missing the typed Busted terminal error"
+
+step "an unknown method earns the pinned -32601 terminal, then the close"
+printf '%s\n' \
+  '{"jsonrpc":"2.0","method":"Nope","params":{},"id":4}' \
+  | "$raw_peer" "$port" > unknown.out || fail "raw peer (unknown method) exited non-zero"
+printf '%s\n' \
+  'recv {"error":{"code":-32601,"data":{"__type":"UnknownOperationException"},"message":"unknown method: Nope"},"id":4,"jsonrpc":"2.0"}' \
+  'closed' > unknown.expected
+diff unknown.expected unknown.out || fail "unknown-method output mismatch"
+
+step "mid-stream garbage on a live session earns the pinned -32700 terminal"
+# The total before the violation proves the session was live; exactly one
+# envelope follows it, then the close — never a success terminal.
+printf '%s\n' \
+  '{"jsonrpc":"2.0","method":"Count","params":{"start":5},"id":9}' \
+  '{"jsonrpc":"2.0","method":"bump","params":{"id":9,"payload":{"by":2}}}' \
+  'not json' \
+  | "$raw_peer" "$port" > garbage.out || fail "raw peer (mid-stream garbage) exited non-zero"
+printf '%s\n' \
+  'recv {"jsonrpc":"2.0","method":"total","params":{"id":9,"payload":{"value":7}}}' \
+  'recv {"error":{"code":-32700,"data":{"__type":"SerializationException"},"message":"text frame is not JSON"},"id":9,"jsonrpc":"2.0"}' \
+  'closed' > garbage.expected
+diff garbage.expected garbage.out || fail "mid-stream violation output mismatch"
 
 step "SIGTERM: the server exits 0"
 kill -TERM "$server_pid"

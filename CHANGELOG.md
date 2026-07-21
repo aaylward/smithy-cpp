@@ -176,7 +176,10 @@ via `git_override` until then.
   conformance suite (`protocol-tests/jsonrpc2`), the calculator's
   `Accumulate` example over pair and real Beast (TLS included), the
   compile gauntlet's constrained-member validation refusal, and a consumer
-  CLI suite driving the generated tally service as real processes.
+  CLI suite driving the generated tally service as real processes — the
+  generated client for the modeled flows, a raw stdin-to-text-frames peer
+  for the refusal and policing edges the well-behaved client cannot
+  produce.
 - Registry admission primitives (ADR-0022, issue #122):
   `SessionRegistry::ResumeOrAdd(id, mint, deadline)` is the reconnect
   admission recipe as one call — Resume first, fresh Add second, retried

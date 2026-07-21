@@ -218,6 +218,36 @@ sh_test(
     tags = ["requires-network"],
 )
 
+# The same hub on the GENERATED async surface (ADR-0021): zero parked
+# threads, served by the generated ChatAsyncHandler through the
+# shared-session seam. Same script, same phases, same generated clients —
+# passing on both seams is the cross-seam parity proof.
+cc_binary(
+    name = "chat_async_reconnect_server",
+    srcs = ["chat_async_reconnect_server_main.cc"],
+    deps = [
+        ":chat_stream_server",
+        "@smithy_cpp//runtime:core",
+        "@smithy_cpp//runtime:http_beast",
+        "@smithy_cpp//runtime:server",
+    ],
+)
+
+sh_test(
+    name = "chat_async_reconnect_cli_test",
+    size = "medium",  # a real 3s grace expiry plus process choreography
+    srcs = ["chat_reconnect_cli_test.sh"],
+    args = [
+        "$(rootpath :chat_async_reconnect_server)",
+        "$(rootpath :chat_reconnect_client)",
+    ],
+    data = [
+        ":chat_async_reconnect_server",
+        ":chat_reconnect_client",
+    ],
+    tags = ["requires-network"],
+)
+
 # One bidi round trip through the module boundary, the streams riding an
 # injected InMemoryWebSocketPair dialer — no wire, no sockets. Linking a
 # generated streaming client still pulls the default Beast dialer's

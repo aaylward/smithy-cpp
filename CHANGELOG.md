@@ -133,8 +133,9 @@ via `git_override` until then.
   writer threads (per-session fallback for blocking-only sockets). The
   thread-free chat hub (`examples/chat/async_hub_*`) serves the same
   generated wire through the new seam, driven as real shell-commanded
-  processes. Generated handler/client surfaces stay blocking — the
-  coroutine lift for generated code is the follow-up ADR-0019 gates.
+  processes. Generated handler/client surfaces stayed blocking in that
+  slice — the handler half of the coroutine lift landed as ADR-0021
+  (above); the generated client stays blocking.
 - Streaming routes on the shared seam (issue #118): `WebSocketRouter` grows
   `AddSession`/`ServeSession()`, the `on_websocket_session` parallel of
   `Add`/`Serve()` — same pattern grammar, precedence, conflict rules, and
@@ -144,6 +145,21 @@ via `git_override` until then.
   refuse to mix rather than deaden routes silently. The thread-free chat
   hub now mounts its Converse route through the router instead of a
   hand-rolled target parser.
+- Generated async streaming handlers (ADR-0021): a streaming service now
+  also emits `<Service>AsyncHandler` — each streaming operation a coroutine
+  returning the new `smithy::eventstream::StreamTask` over
+  `<Op>AsyncServerStream&`, unary operations unchanged — and a second
+  `<Service>Server` constructor that registers every streaming route on the
+  shared-session seam (`AddSession`/`ServeSession`), so a fully generated
+  handler serves N sessions with zero parked threads. The generated launch
+  wrapper restores the blocking contract end to end: parse/validation
+  refusals answer before any coroutine exists, a `co_return`ed error ends
+  the stream with the typed exception message (framed via `SendAsync`,
+  completion-context-safe), and a throwing coroutine surfaces as the
+  never-leak `InternalFailure` instead of terminating. The chat hub now
+  runs on this surface (its hand-written mount deleted; the CLI suite
+  passes unchanged), and the consumer workspace drives the same reconnect
+  script against blocking and async generated servers alike.
 - Reconnect grace (ADR-0020, issue #116): `SessionRegistry` grows
   `Options::{grace_period, on_expired, queue_while_detached}` and
   `Detach(id)`/`Resume(id, handle)` — an abrupt loss parks the session

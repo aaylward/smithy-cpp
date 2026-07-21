@@ -75,13 +75,17 @@ jobs:
         run: bazelisk test //... --config=ci --config=asan --config=ubsan
       # TSan needs its own build (incompatible with asan) and earns its keep
       # on the concurrency heart: the registry's writer/chain/grace threads
-      # (ADR-0017/0019/0020). The suite's churn tests exist for this run.
-      - name: bazel test session registry under tsan
+      # (ADR-0017/0019/0020) and the coroutine layer's cross-thread resumes
+      # (ADR-0021's StreamTask rides the same exchange protocol). The
+      # suites' churn and parked-completion tests exist for this run.
+      - name: bazel test concurrency suites under tsan
         if: runner.os == 'Linux'
         env:
           CC: clang
           CXX: clang++
-        run: bazelisk test //runtime:session_registry_test --config=ci --config=tsan
+        run: >
+          bazelisk test //runtime:session_registry_test
+          //runtime:async_event_stream_test --config=ci --config=tsan
 
   fuzz:
     name: fuzz (libFuzzer smoke)
@@ -154,7 +158,7 @@ jobs:
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "8.14.3"
+          gradle-version: "9.6.1"
       - name: gradle build
         run: gradle build spotlessCheck
         working-directory: codegen

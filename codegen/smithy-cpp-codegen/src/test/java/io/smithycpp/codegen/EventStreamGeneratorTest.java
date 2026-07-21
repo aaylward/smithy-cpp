@@ -245,6 +245,75 @@ class EventStreamGeneratorTest {
   }
 
   @Test
+  void serverGrowsTheAsyncHandlerAndSessionRoutes() {
+    // ADR-0021: the coroutine sibling — async aliases, the StreamTask
+    // handler, the second constructor wiring AddSession launch points, and
+    // the Detached wrapper that frames a failed outcome via SendAsync.
+    MockManifest manifest = rest();
+    String header = manifest.expectFileString("/include/test/stream/server.h");
+    assertTrue(
+        header.contains(
+            "using ConverseAsyncServerStream ="
+                + " smithy::eventstream::AsyncEventStream<ServerEvents, ClientEvents>;"),
+        header);
+    assertTrue(
+        header.contains(
+            "virtual smithy::eventstream::StreamTask Converse(ConverseInput input,"
+                + " ConverseAsyncServerStream& stream) = 0;"),
+        header);
+    // Unary operations keep the blocking shape on the async handler —
+    // pinned byte-for-byte against the blocking class's signature.
+    assertTrue(header.contains("class SvcAsyncHandler {"), header);
+    String neighbor =
+        restWithUnaryNeighborAndTests().expectFileString("/include/test/stream/server.h");
+    int first = neighbor.indexOf("Ping(const PingInput& input");
+    assertTrue(first >= 0, neighbor);
+    int second = neighbor.indexOf("Ping(const PingInput& input", first + 1);
+    assertTrue(second > first, neighbor);
+    String blockingUnary =
+        neighbor.substring(
+            neighbor.lastIndexOf("virtual", first), neighbor.indexOf(";", first) + 1);
+    String asyncUnary =
+        neighbor.substring(
+            neighbor.lastIndexOf("virtual", second), neighbor.indexOf(";", second) + 1);
+    assertTrue(blockingUnary.equals(asyncUnary), blockingUnary + " vs " + asyncUnary);
+    assertTrue(
+        header.contains("explicit SvcServer(std::shared_ptr<SvcAsyncHandler> handler);"), header);
+
+    String server = manifest.expectFileString("/src/server.cc");
+    assertTrue(
+        server.contains("(void)stream_router_->AddSession(\"GET\", \"/rooms/{room}/converse\","),
+        server);
+    // The launch point parses like the blocking route, refuses on the owned
+    // socket, and hands off to the wrapper without blocking.
+    assertTrue(
+        server.contains("(void)socket->Send(BuildConverseExceptionMessage(input.error()));"),
+        server);
+    assertTrue(
+        server.contains("ServeConverseAsync(handler, *std::move(input), std::move(socket));"),
+        server);
+    assertTrue(
+        server.contains(
+            "smithy::eventstream::Detached ServeConverseAsync(std::shared_ptr<SvcAsyncHandler>"
+                + " handler, ConverseInput input,"
+                + " std::shared_ptr<smithy::http::WebSocket> socket) {"),
+        server);
+    assertTrue(
+        server.contains("auto outcome = co_await handler->Converse(std::move(input), stream);"),
+        server);
+    // A failed outcome's exception frame is AWAITED — the wrapper frame
+    // (and the stream it owns) must outlive the write, since destroying
+    // the stream closes the session and a close over a busy wire can
+    // cancel the in-flight send — and the close follows it.
+    assertTrue(
+        server.contains(
+            "(void)co_await smithy::eventstream::SendMessage(socket,"
+                + " BuildConverseExceptionMessage(outcome.error()));"),
+        server);
+    assertFalse(server.contains("socket->SendAsync(BuildConverseExceptionMessage"), server);
+  }
+
+  @Test
   void streamRoutesGuardValidationLikeUnaryRoutes() {
     // The flip side of the absence pin above: with a constrained initial
     // member, the constrained operation's route validates and refuses over
@@ -260,6 +329,12 @@ class EventStreamGeneratorTest {
     assertTrue(
         server.contains(
             "(void)socket.Send(BuildConverseExceptionMessage("
+                + "smithy::Error::Validation(validation_failures.front().message)));"),
+        server);
+    // The session (async) route refuses identically on its owned socket.
+    assertTrue(
+        server.contains(
+            "(void)socket->Send(BuildConverseExceptionMessage("
                 + "smithy::Error::Validation(validation_failures.front().message)));"),
         server);
     assertFalse(server.contains("ValidateWatchInput"), server);
@@ -283,6 +358,13 @@ class EventStreamGeneratorTest {
         server.contains("(void)stream_router_->Add(\"GET\", \"/service/Svc/operation/Chat\","),
         server);
     assertTrue(server.contains("handler->Chat(input, stream, context);"), server);
+    // The async constructor registers the same fixed URI on the session seam.
+    assertTrue(
+        server.contains(
+            "(void)stream_router_->AddSession(\"GET\", \"/service/Svc/operation/Chat\","),
+        server);
+    assertTrue(
+        server.contains("ServeChatAsync(handler, std::move(input), std::move(socket));"), server);
   }
 
   @Test

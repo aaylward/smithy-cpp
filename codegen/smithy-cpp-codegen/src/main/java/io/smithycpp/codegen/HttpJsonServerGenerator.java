@@ -516,27 +516,65 @@ final class HttpJsonServerGenerator {
     // the validator call + check only when this operation's input is
     // constrained — a service that validates nothing gets no dead check.
     if (emitsValidation) {
-      writeStreamValidationRefusal(w, opName);
+      writeStreamValidationRefusal(w, opName, "socket.");
     }
     if (validation.validates(operation)) {
       w.write("$L(*input, \"\", &validation_failures);", validation.validatorNameFor(operation));
-      writeStreamValidationRefusal(w, opName);
+      writeStreamValidationRefusal(w, opName, "socket.");
     }
     EventStreamCodeGen.writeServeAndClose(w, context, operation, "*input");
     w.closeBlock("}, $S);", operation.getId().getName());
   }
 
   /**
-   * The streaming analog of ValidationErrorResponse: a refused upgrade answers over the session —
-   * one SerializationException exception message carrying the first failure, then the close.
+   * One streaming operation's shared-session route (ADR-0021): the same parse and refusals as
+   * {@link #writeStreamRoute} — before any coroutine exists, on the launch callback — then the
+   * owned socket and parsed input go to the generated async wrapper; the callback returns at the
+   * handler's first suspension, never waiting for the session to end (the launch-point contract).
    */
-  private static void writeStreamValidationRefusal(CppWriter w, String opName) {
+  void writeStreamSessionRoute(
+      CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
+    HttpTrait http = operation.expectTrait(HttpTrait.class);
+    String opName = CppReservedWords.escape(operation.getId().getName());
+    w.openBlock(
+        "(void)stream_router_->AddSession(\"GET\", $S, [handler](const smithy::http::HttpRequest&"
+            + " request, "
+            + ProtocolSupport.REQUEST_CONTEXT_PARAM
+            + " context, std::shared_ptr<smithy::http::WebSocket> socket) {",
+        routePattern(http));
+    w.write("std::vector<smithy::server::ValidationFailure> validation_failures;");
+    w.write("auto input = Parse$LInput(request, context, &validation_failures);", opName);
+    w.openBlock("if (!input) {");
+    w.write("(void)socket->Send(Build$LExceptionMessage(input.error()));", opName);
+    w.write("socket->Close();");
+    w.write("return;");
+    w.closeBlock("}");
+    if (emitsValidation) {
+      writeStreamValidationRefusal(w, opName, "socket->");
+    }
+    if (validation.validates(operation)) {
+      w.write("$L(*input, \"\", &validation_failures);", validation.validatorNameFor(operation));
+      writeStreamValidationRefusal(w, opName, "socket->");
+    }
+    EventStreamCodeGen.writeLaunchAsync(w, operation, "*std::move(input)");
+    w.closeBlock("}, $S);", operation.getId().getName());
+  }
+
+  /**
+   * The streaming analog of ValidationErrorResponse: a refused upgrade answers over the session —
+   * one SerializationException exception message carrying the first failure, then the close. One
+   * helper serves both seams; {@code socketAccess} is "socket." (borrowed reference) or "socket->"
+   * (the shared seam's owned pointer), so the refusal semantics cannot drift between them.
+   */
+  private static void writeStreamValidationRefusal(
+      CppWriter w, String opName, String socketAccess) {
     w.openBlock("if (!validation_failures.empty()) {");
     w.write(
-        "(void)socket.Send(Build$LExceptionMessage("
+        "(void)$LSend(Build$LExceptionMessage("
             + "smithy::Error::Validation(validation_failures.front().message)));",
+        socketAccess,
         opName);
-    w.write("socket.Close();");
+    w.write("$LClose();", socketAccess);
     w.write("return;");
     w.closeBlock("}");
   }

@@ -201,6 +201,43 @@ TEST(StreamValidationTest, AnInvalidLabelRefusesWithOneExceptionThenTheClose) {
   serve_thread.join();
 }
 
+// The ADR-0021 twin: the never-launched async handler behind the session
+// seam's identical refusal — before any coroutine exists.
+class NeverCalledAsyncHandler final : public relay::RelayAsyncHandler {
+ public:
+  smithy::eventstream::StreamTask Converse(relay::ConverseInput,
+                                           relay::ConverseAsyncServerStream&) override {
+    ADD_FAILURE() << "async handler launched despite a validation failure";
+    co_return smithy::Unit{};
+  }
+  smithy::eventstream::StreamTask Watch(relay::WatchInput,
+                                        relay::WatchAsyncServerStream& stream) override {
+    (void)co_await stream.Receive();
+    co_return smithy::Unit{};
+  }
+};
+
+TEST(StreamValidationTest, TheSessionSeamRefusesAnInvalidLabelIdentically) {
+  relay::RelayServer server(std::make_shared<NeverCalledAsyncHandler>());
+  auto [client_end, server_end] = smithy::http::InMemoryWebSocketPair::Create();
+  smithy::http::HttpRequest upgrade;
+  upgrade.method = "GET";
+  upgrade.target = "/rooms/waytoolongroom/converse";  // @length(max: 8) violated
+  // The launch point refuses inline — no serve thread, no coroutine.
+  server.StreamRouter()->ServeSession()(upgrade, server_end);
+
+  auto refusal = client_end->Receive();
+  ASSERT_TRUE(refusal.ok() && refusal->has_value());
+  auto envelope = smithy::eventstream::ParseEnvelope(**refusal);
+  ASSERT_TRUE(envelope.ok()) << envelope.error().message();
+  EXPECT_EQ(envelope->kind, smithy::eventstream::EventEnvelope::Kind::kException);
+  EXPECT_EQ(envelope->type, "SerializationException");
+
+  auto closed = client_end->Receive();
+  ASSERT_TRUE(closed.ok());
+  EXPECT_FALSE(closed->has_value());
+}
+
 // ---------------------------------------------------------------------------
 // The generated rpcv2Cbor streaming SERVER, behaviorally: nothing else ever
 // constructs a PipeServer or serves its StreamRouter (gauntlet_compile_test
@@ -240,14 +277,54 @@ class EchoHandler final : public pipe::PipeHandler {
   }
 };
 
+// The async EchoHandler (ADR-0021): the same wire behavior, co_awaited.
+class EchoAsyncHandler final : public pipe::PipeAsyncHandler {
+ public:
+  smithy::eventstream::StreamTask Exchange(pipe::ExchangeInput,
+                                           pipe::ExchangeAsyncServerStream& stream) override {
+    while (true) {
+      auto event = co_await stream.Receive();
+      if (!event.ok() || !event->has_value()) co_return smithy::Unit{};
+      if (!(**event).is_message()) continue;
+      const std::string& text = (**event).as_message().text;
+      if (text == "gone") {
+        smithy::Error gone = smithy::Error::Modeled("RoomGone", "the room left");
+        gone.set_detail(pipe::RoomGone{.message = "the room left"});
+        co_return gone;
+      }
+      pipe::ChatMessage echo;
+      echo.text = "echo:" + text;
+      if (!(co_await stream.Send(pipe::ServerEvents::FromMessage(echo))).ok()) {
+        co_return smithy::Unit{};
+      }
+    }
+  }
+
+  smithy::eventstream::StreamTask Watch(pipe::WatchInput,
+                                        pipe::WatchAsyncServerStream& stream) override {
+    pipe::ChatMessage message;
+    message.text = "pushed";
+    (void)co_await stream.Send(pipe::ServerEvents::FromMessage(message));
+    co_return smithy::Unit{};
+  }
+};
+
 class CborStreamEndToEndTest : public testing::Test {
  protected:
   void SetUp() override {
-    server_ = std::make_unique<pipe::PipeServer>(std::make_shared<EchoHandler>());
+    Start(std::make_unique<pipe::PipeServer>(std::make_shared<EchoHandler>()),
+          /*session_seam=*/false);
+  }
+
+  // Rewires around a different server mid-test (the chat fixture's shape);
+  // earlier sessions stay owned until TearDown.
+  void Start(std::unique_ptr<pipe::PipeServer> server, bool session_seam) {
+    server_ = std::move(server);
     smithy::ClientConfig config;
     config.retry.max_attempts = 1;
     config.http_client = std::make_shared<smithy::http::Loopback>();
-    config.websocket_dialer = [this](const smithy::http::WebSocketDialRequest& request)
+    config.websocket_dialer = [this,
+                               session_seam](const smithy::http::WebSocketDialRequest& request)
         -> smithy::Outcome<std::shared_ptr<smithy::http::WebSocket>> {
       dialed_target_ = request.target;
       auto [near, far] = smithy::http::InMemoryWebSocketPair::Create();
@@ -256,9 +333,13 @@ class CborStreamEndToEndTest : public testing::Test {
       upgrade.target = request.target;
       upgrade.headers = request.headers;
       sessions_.push_back(far);
-      threads_.emplace_back([serve = server_->StreamRouter()->Serve(), upgrade, session = far] {
-        serve(upgrade, *session);
-      });
+      if (session_seam) {
+        server_->StreamRouter()->ServeSession()(upgrade, far);  // a launch point, not a loop
+      } else {
+        threads_.emplace_back([serve = server_->StreamRouter()->Serve(), upgrade, session = far] {
+          serve(upgrade, *session);
+        });
+      }
       return near;
     };
     auto client = pipe::PipeClient::Create(std::move(config));
@@ -312,6 +393,34 @@ TEST_F(CborStreamEndToEndTest, RoomGoneRoundTripsAsATypedMidStreamError) {
   const pipe::RoomGone* detail = outcome.error().detail<pipe::RoomGone>();
   ASSERT_NE(detail, nullptr);
   EXPECT_EQ(detail->message.value_or(""), "the room left");
+}
+
+TEST_F(CborStreamEndToEndTest, TheAsyncConstructorServesTheSameCborWire) {
+  // The ADR-0021 seam on the cbor protocol: the same fixed-URI route,
+  // codecs, echo, and typed mid-stream error — zero serve threads.
+  const std::size_t threads_before = threads_.size();
+  Start(std::make_unique<pipe::PipeServer>(std::make_shared<EchoAsyncHandler>()),
+        /*session_seam=*/true);
+
+  auto stream = client_->Exchange({});
+  ASSERT_TRUE(stream.ok()) << stream.error().message();
+  EXPECT_EQ(dialed_target_, "/service/Pipe/operation/Exchange");
+  EXPECT_EQ(threads_.size(), threads_before);  // the launch point spawned none
+
+  pipe::ChatMessage message;
+  message.text = "hello";
+  ASSERT_TRUE(stream->Send(pipe::ClientEvents::FromMessage(message)).ok());
+  auto echo = stream->Receive();
+  ASSERT_TRUE(echo.ok() && echo->has_value()) << (echo.ok() ? "closed" : echo.error().message());
+  ASSERT_TRUE((**echo).is_message());
+  EXPECT_EQ((**echo).as_message().text, "echo:hello");
+
+  message.text = "gone";
+  ASSERT_TRUE(stream->Send(pipe::ClientEvents::FromMessage(message)).ok());
+  auto outcome = stream->Receive();
+  ASSERT_FALSE(outcome.ok());
+  EXPECT_EQ(outcome.error().code(), "RoomGone");
+  ASSERT_NE(outcome.error().detail<pipe::RoomGone>(), nullptr);
 }
 
 TEST_F(CborStreamEndToEndTest, WatchPushesOverTheFixedUri) {

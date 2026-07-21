@@ -16,7 +16,10 @@ server_pid=$!
 
 port=""
 for _ in $(seq 1 100); do
-  port=$(sed -n 's/.*serving on :\([0-9][0-9]*\).*/\1/p' "$log")
+  # Tolerant of the poll racing the server's own startup: under set -e a
+  # bare failing substitution (log not created yet on a loaded runner)
+  # kills the whole script before the retry loop can do its job.
+  port=$(sed -n 's/.*serving on :\([0-9][0-9]*\).*/\1/p' "$log" 2>/dev/null || true)
   [ -n "$port" ] && break
   sleep 0.2
 done

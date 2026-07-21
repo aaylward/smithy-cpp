@@ -147,4 +147,10 @@ final class HttpJsonBindingProtocol implements ProtocolGenerator {
       CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
     server.writeStreamRoute(w, context, service, operation);
   }
+
+  @Override
+  public void writeStreamSessionRoute(
+      CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
+    server.writeStreamSessionRoute(w, context, service, operation);
+  }
 }

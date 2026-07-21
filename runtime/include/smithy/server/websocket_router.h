@@ -46,8 +46,8 @@ using StreamServeSession = std::function<void(const http::HttpRequest&, const Re
 //   options.websocket_gate = server.StreamRouter()->Gate();
 //   options.on_websocket = server.StreamRouter()->Serve();
 //
-// The shared-session seam (ADR-0019) mounts a hand-built router the same
-// way (the generated streaming path stays blocking this slice) —
+// The shared-session seam (ADR-0019) mounts a hand-built router — or the
+// generated server's async constructor (ADR-0021) — the same way:
 // AddSession routes, then:
 //
 //   options.websocket_gate = router.Gate();

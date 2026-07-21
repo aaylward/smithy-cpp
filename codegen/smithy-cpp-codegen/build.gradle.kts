@@ -196,6 +196,20 @@ tasks.withType<Test>().configureEach {
     // classpath (so ordinary tests don't assemble them) and are handed over as
     // paths instead.
     systemProperty("smithycpp.protocolTestModels", protocolTestModels.asPath)
+    // Repo files the mirror tests read through smithycpp.repoRoot. Declared as
+    // inputs so Gradle's test avoidance cannot report a stale green when only
+    // these change — exactly what let PR #120 pass while its merge to main
+    // failed: the PR's codegen job restored cached test results, the doc/dep
+    // drift sat outside every declared input, and only main's fresh run
+    // executed the tests (QuickstartMirrorTest caught it there).
+    inputs.files(
+        File(repoRoot, "docs/quickstart.md"),
+        File(repoRoot, "examples/bazel-consumer/MODULE.bazel"),
+        File(repoRoot, "examples/bazel-consumer/.bazelrc"),
+        File(repoRoot, "examples/bazel-consumer/.bazelversion"),
+        File(repoRoot, ".bazelversion"),
+        File(repoRoot, "examples/bazel-consumer/todo_integration_test.cc"),
+    ).withPathSensitivity(PathSensitivity.RELATIVE)
 }
 
 dependencies {

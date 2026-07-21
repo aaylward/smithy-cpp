@@ -75,6 +75,29 @@ echo "hi ada" >&4
 wait_for ada.out '^message grace hi ada$' "grace's reply at ada"
 wait_for grace.out '^message you hi ada$' "grace's own echo says you"
 
+step "a watcher observes the room without sending (generated async Watch)"
+"$client" "$port" lobby --watch < /dev/null > watch.out &
+watch_pid=$!
+# The watcher registers a beat after its dial returns, so prove it by
+# traffic: repeat ada's probe until it shows up (the duplicates are inert
+# noise for every other assertion).
+observed=0
+for _ in $(seq 1 100); do
+  echo "for the record" >&3
+  sleep 0.2
+  if grep -E -q '^message ada for the record$' watch.out; then
+    observed=1
+    break
+  fi
+done
+[ "$observed" = 1 ] || fail "the watcher never observed lobby traffic"
+
+step "unary neighbor reports live occupancy (watchers excluded)"
+rooms_body=$(curl -sfS "localhost:${port}/rooms")
+echo "$rooms_body" | grep -q '"name":"lobby"' || fail "no lobby in: $rooms_body"
+echo "$rooms_body" | grep -q '"members":2' \
+  || fail "expected lobby occupancy 2 (ada + grace, watcher excluded), got: $rooms_body"
+
 step "a nickname collision is refused with the typed error"
 "$client" "$port" lobby ada < /dev/null > impostor.out || true
 wait_for impostor.out '^error Kicked: .*already in lobby' "the typed refusal"

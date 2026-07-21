@@ -113,6 +113,18 @@ interface ProtocolGenerator {
         "cpp-codegen: " + name() + " does not support event streams");
   }
 
+  /**
+   * Emits the constructor statement registering one streaming operation's shared-session route
+   * (ADR-0021): an {@code AddSession} launch point that parses and refuses like {@link
+   * #writeStreamServerRoute}, then hands the owned socket to the generated async wrapper.
+   * Unreachable for refusing protocols.
+   */
+  default void writeStreamSessionRoute(
+      CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
+    throw new software.amazon.smithy.codegen.core.CodegenException(
+        "cpp-codegen: " + name() + " does not support event streams");
+  }
+
   /** Includes server.cc needs beyond the shared set. */
   List<String> serverIncludes();
 

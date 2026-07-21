@@ -100,6 +100,7 @@ final class ServerGenerator {
     boolean hasStreaming = !streamingOperations().isEmpty();
     if (hasStreaming) {
       w.addInclude("\"smithy/eventstream/event_stream.h\"");
+      w.addInclude("\"smithy/eventstream/async_event_stream.h\"");
       w.addInclude("\"smithy/server/websocket_router.h\"");
     }
 
@@ -120,17 +121,8 @@ final class ServerGenerator {
     w.write("virtual ~$LHandler() = default;", name);
     w.write("");
     for (OperationShape operation : operations) {
-      boolean documented = operation.hasTrait(DocumentationTrait.class);
-      operation
-          .getTrait(DocumentationTrait.class)
-          .ifPresent(
-              docs -> {
-                for (String line : docs.getValue().split("\n", -1)) {
-                  w.write("/// $L", line);
-                }
-              });
+      boolean documented = writeModelDocs(w, operation);
       StructureShape input = ProtocolSupport.inputShape(context, operation);
-      StructureShape output = ProtocolSupport.outputShape(context, operation);
       if (EventStreamCodeGen.streaming(context.model(), operation)) {
         // Streaming operations (ADR-0016): input first, context last, the
         // ADR-0010 shape, with the borrowed session in between.
@@ -162,16 +154,14 @@ final class ServerGenerator {
             ProtocolSupport.REQUEST_CONTEXT_PARAM);
         continue;
       }
-      w.write(
-          "virtual smithy::Outcome<$L> $L(const $L& input, $L context) = 0;",
-          context.cppSymbols().toSymbol(output).getName(),
-          CppReservedWords.escape(operation.getId().getName()),
-          context.cppSymbols().toSymbol(input).getName(),
-          ProtocolSupport.REQUEST_CONTEXT_PARAM);
+      writeUnaryVirtual(w, operation);
     }
     w.dedent();
     w.closeBlock("};");
     w.write("");
+    if (hasStreaming) {
+      writeAsyncHandlerClass(w, name);
+    }
     w.write(
         "/// $L server for $L: routing, deserialization, handler dispatch,",
         protocol.name(),
@@ -181,14 +171,24 @@ final class ServerGenerator {
     w.openBlock("class $LServer {", name);
     w.write("public:").indent();
     w.write("explicit $LServer(std::shared_ptr<$LHandler> handler);", name, name);
+    if (hasStreaming) {
+      w.write("/// The zero-thread alternative (ADR-0021): the unary table is identical,");
+      w.write("/// and every streaming route is registered on the shared-session seam,");
+      w.write("/// served by coroutine. One server instance serves one seam — the");
+      w.write("/// constructor chosen decides which two-line mount applies (StreamRouter).");
+      w.write("explicit $LServer(std::shared_ptr<$LAsyncHandler> handler);", name, name);
+    }
     w.write("");
     w.write("smithy::http::RequestHandler Handler() const;");
     if (hasStreaming) {
       w.write("");
       w.write("/// The WebSocket router carrying every streaming route (ADR-0016), ready");
-      w.write("/// to mount on the transport in two lines:");
+      w.write("/// to mount on the transport in two lines — the serve line keyed to the");
+      w.write("/// constructor used:");
       w.write("///   options.websocket_gate = server.StreamRouter()->Gate();");
-      w.write("///   options.on_websocket = server.StreamRouter()->Serve();");
+      w.write("///   options.on_websocket = server.StreamRouter()->Serve();  // blocking handler");
+      w.write("///   options.on_websocket_session =");
+      w.write("///       server.StreamRouter()->ServeSession();  // async handler (ADR-0021)");
       w.write("std::shared_ptr<smithy::server::WebSocketRouter> StreamRouter() const;");
     }
     w.write("").dedent();
@@ -196,6 +196,89 @@ final class ServerGenerator {
     w.write("std::shared_ptr<smithy::server::Router> router_;");
     if (hasStreaming) {
       w.write("std::shared_ptr<smithy::server::WebSocketRouter> stream_router_;");
+    }
+    w.dedent();
+    w.closeBlock("};");
+    w.write("");
+  }
+
+  /** Emits the operation's model docs; returns whether any were written. */
+  private boolean writeModelDocs(CppWriter w, OperationShape operation) {
+    boolean documented = operation.hasTrait(DocumentationTrait.class);
+    operation
+        .getTrait(DocumentationTrait.class)
+        .ifPresent(
+            docs -> {
+              for (String line : docs.getValue().split("\n", -1)) {
+                w.write("/// $L", line);
+              }
+            });
+    return documented;
+  }
+
+  /**
+   * One unary operation's blocking virtual. Shared by both handler classes so ADR-0021's "unary
+   * operations keep their blocking signatures verbatim" is structural, not aspirational.
+   */
+  private void writeUnaryVirtual(CppWriter w, OperationShape operation) {
+    w.write(
+        "virtual smithy::Outcome<$L> $L(const $L& input, $L context) = 0;",
+        context.cppSymbols().toSymbol(ProtocolSupport.outputShape(context, operation)).getName(),
+        CppReservedWords.escape(operation.getId().getName()),
+        context.cppSymbols().toSymbol(ProtocolSupport.inputShape(context, operation)).getName(),
+        ProtocolSupport.REQUEST_CONTEXT_PARAM);
+  }
+
+  /**
+   * The coroutine handler surface (ADR-0021): streaming operations return a StreamTask the
+   * generated launch wrapper awaits; unary operations keep their blocking signatures verbatim, so
+   * one handler object serves the whole service on the shared-session seam.
+   */
+  private void writeAsyncHandlerClass(CppWriter w, String name) {
+    w.write("/// $LHandler's zero-thread sibling (ADR-0021): implement this and construct", name);
+    w.write("/// $LServer with it to serve every streaming route on the shared-session", name);
+    w.write("/// seam — no parked thread per session. Unary operations keep the blocking");
+    w.write("/// shape (request/response on the handler pool either way). Implementations");
+    w.write("/// must be thread-safe, like $LHandler.", name);
+    w.openBlock("class $LAsyncHandler {", name);
+    w.write("public:").indent();
+    w.write("virtual ~$LAsyncHandler() = default;", name);
+    w.write("");
+    for (OperationShape operation : operations) {
+      boolean documented = writeModelDocs(w, operation);
+      StructureShape input = ProtocolSupport.inputShape(context, operation);
+      if (EventStreamCodeGen.streaming(context.model(), operation)) {
+        if (documented) {
+          w.write("///"); // blank separator: model docs above, boilerplate below
+        }
+        if (EventStreamCodeGen.inputInfo(context.model(), operation).isEmpty()) {
+          w.write("/// Async streaming operation (ADR-0021): a coroutine serving the whole");
+          w.write("/// session. No client-to-server events are modeled, so park in");
+          w.write("/// `co_await stream.Receive()` to learn the client closed, and push");
+          w.write("/// through stream.Share() (typically a registry) — a Send-only loop on");
+          w.write("/// a quiet stream never notices the client left.");
+        } else {
+          w.write("/// Async streaming operation (ADR-0021): a coroutine serving the whole");
+          w.write("/// session — co_await stream.Receive()/Send() until done.");
+        }
+        w.write("/// co_return smithy::Unit{} for a clean close, or an error — modeled as");
+        w.write("/// smithy::Error::Modeled(\"<ErrorShapeName>\", message) + set_detail(),");
+        w.write("/// like a blocking handler — which ends the stream with one best-effort");
+        w.write("/// exception message before the close. `input` is the coroutine's own");
+        w.write("/// copy: the upgrade request (and its RequestContext) is gone by the");
+        w.write("/// first resumption — model what the session needs as input members and");
+        w.write("/// enforce identity at the gate. `stream` stays valid until the returned");
+        w.write("/// task completes. Code before the first co_await runs on the launching");
+        w.write("/// handler thread (brief blocking is fine there); every later resumption");
+        w.write("/// is a transport completion context — never block those.");
+        w.write(
+            "virtual smithy::eventstream::StreamTask $L($L input, $L& stream) = 0;",
+            CppReservedWords.escape(operation.getId().getName()),
+            context.cppSymbols().toSymbol(input).getName(),
+            EventStreamCodeGen.asyncServerStreamAlias(operation));
+        continue;
+      }
+      writeUnaryVirtual(w, operation);
     }
     w.dedent();
     w.closeBlock("};");
@@ -246,6 +329,24 @@ final class ServerGenerator {
     w.dedent();
     w.write("}");
     w.write("");
+
+    if (hasStreaming) {
+      w.openBlock("$LServer::$LServer(std::shared_ptr<$LAsyncHandler> handler)", name, name, name);
+      w.write(": router_(std::make_shared<smithy::server::Router>()),");
+      w.write("  stream_router_(std::make_shared<smithy::server::WebSocketRouter>()) {");
+      w.dedent();
+      w.indent();
+      w.write("// The same unary table; every streaming route rides the shared-session");
+      w.write("// seam (ADR-0021) — an AddSession launch point per operation, so serving");
+      w.write("// a stream parks no handler thread.");
+      protocol.writeServerRoutes(w, context, service, unaryOperations());
+      for (OperationShape operation : streamingOperations()) {
+        protocol.writeStreamSessionRoute(w, context, service, operation);
+      }
+      w.dedent();
+      w.write("}");
+      w.write("");
+    }
 
     w.openBlock("smithy::http::RequestHandler $LServer::Handler() const {", name);
     w.write("auto router = router_;");

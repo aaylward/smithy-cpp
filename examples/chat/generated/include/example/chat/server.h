@@ -87,15 +87,18 @@ class ChatAsyncHandler {
     /// exception message before the close (exceptions travel via the operation's
     /// errors list, not as event union members — ADR-0016's wire binding).
     ///
-    /// Async streaming operation (ADR-0021): a coroutine — co_await
-    /// stream.Receive()/Send() until done, then co_return smithy::Unit{}
-    /// for a clean close, or
-    /// an error, which ends the stream with an exception message before the
-    /// close. `input` is the coroutine's own copy — the upgrade request is
-    /// gone by the first resumption. `stream` stays valid until the returned
-    /// task completes. The coroutine runs and resumes on the transport's
-    /// completion contexts: never block there — blocking work belongs on
-    /// application threads, reached through stream.Share().
+    /// Async streaming operation (ADR-0021): a coroutine serving the whole
+    /// session — co_await stream.Receive()/Send() until done.
+    /// co_return smithy::Unit{} for a clean close, or an error — modeled as
+    /// smithy::Error::Modeled("<ErrorShapeName>", message) + set_detail(),
+    /// like a blocking handler — which ends the stream with one best-effort
+    /// exception message before the close. `input` is the coroutine's own
+    /// copy: the upgrade request (and its RequestContext) is gone by the
+    /// first resumption — model what the session needs as input members and
+    /// enforce identity at the gate. `stream` stays valid until the returned
+    /// task completes. Code before the first co_await runs on the launching
+    /// handler thread (brief blocking is fine there); every later resumption
+    /// is a transport completion context — never block those.
     virtual smithy::eventstream::StreamTask Converse(ConverseInput input, ConverseAsyncServerStream& stream) = 0;
     /// Unary neighbor: an ordinary request/response on the same service, served
     /// by the same transport that upgrades the streaming operations.
@@ -103,15 +106,21 @@ class ChatAsyncHandler {
     /// Server-push: no input stream, so the client's transmit direction is the
     /// runtime's NoEvents — the client only listens to the room.
     ///
-    /// Async streaming operation (ADR-0021): a coroutine — co_await
-    /// stream.Send() to drive the session (a Receive only ever reports the
-    /// client's close), then co_return smithy::Unit{} for a clean close, or
-    /// an error, which ends the stream with an exception message before the
-    /// close. `input` is the coroutine's own copy — the upgrade request is
-    /// gone by the first resumption. `stream` stays valid until the returned
-    /// task completes. The coroutine runs and resumes on the transport's
-    /// completion contexts: never block there — blocking work belongs on
-    /// application threads, reached through stream.Share().
+    /// Async streaming operation (ADR-0021): a coroutine serving the whole
+    /// session. No client-to-server events are modeled, so park in
+    /// `co_await stream.Receive()` to learn the client closed, and push
+    /// through stream.Share() (typically a registry) — a Send-only loop on
+    /// a quiet stream never notices the client left.
+    /// co_return smithy::Unit{} for a clean close, or an error — modeled as
+    /// smithy::Error::Modeled("<ErrorShapeName>", message) + set_detail(),
+    /// like a blocking handler — which ends the stream with one best-effort
+    /// exception message before the close. `input` is the coroutine's own
+    /// copy: the upgrade request (and its RequestContext) is gone by the
+    /// first resumption — model what the session needs as input members and
+    /// enforce identity at the gate. `stream` stays valid until the returned
+    /// task completes. Code before the first co_await runs on the launching
+    /// handler thread (brief blocking is fine there); every later resumption
+    /// is a transport completion context — never block those.
     virtual smithy::eventstream::StreamTask Watch(WatchInput input, WatchAsyncServerStream& stream) = 0;
 };
 

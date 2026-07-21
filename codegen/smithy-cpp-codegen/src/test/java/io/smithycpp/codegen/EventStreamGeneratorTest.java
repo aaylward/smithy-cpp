@@ -261,8 +261,22 @@ class EventStreamGeneratorTest {
             "virtual smithy::eventstream::StreamTask Converse(ConverseInput input,"
                 + " ConverseAsyncServerStream& stream) = 0;"),
         header);
-    // Unary operations keep the blocking shape on the async handler.
+    // Unary operations keep the blocking shape on the async handler —
+    // pinned byte-for-byte against the blocking class's signature.
     assertTrue(header.contains("class SvcAsyncHandler {"), header);
+    String neighbor =
+        restWithUnaryNeighborAndTests().expectFileString("/include/test/stream/server.h");
+    int first = neighbor.indexOf("Ping(const PingInput& input");
+    assertTrue(first >= 0, neighbor);
+    int second = neighbor.indexOf("Ping(const PingInput& input", first + 1);
+    assertTrue(second > first, neighbor);
+    String blockingUnary =
+        neighbor.substring(
+            neighbor.lastIndexOf("virtual", first), neighbor.indexOf(";", first) + 1);
+    String asyncUnary =
+        neighbor.substring(
+            neighbor.lastIndexOf("virtual", second), neighbor.indexOf(";", second) + 1);
+    assertTrue(blockingUnary.equals(asyncUnary), blockingUnary + " vs " + asyncUnary);
     assertTrue(
         header.contains("explicit SvcServer(std::shared_ptr<SvcAsyncHandler> handler);"), header);
 
@@ -287,14 +301,16 @@ class EventStreamGeneratorTest {
     assertTrue(
         server.contains("auto outcome = co_await handler->Converse(std::move(input), stream);"),
         server);
-    // A failed outcome is framed through SendAsync — never a blocking Send
-    // on a completion context — and the close rides its callback.
+    // A failed outcome's exception frame is AWAITED — the wrapper frame
+    // (and the stream it owns) must outlive the write, since destroying
+    // the stream closes the session and a close over a busy wire can
+    // cancel the in-flight send — and the close follows it.
     assertTrue(
-        server.contains("socket->SendAsync(BuildConverseExceptionMessage(outcome.error()),"),
+        server.contains(
+            "(void)co_await smithy::eventstream::SendMessage(socket,"
+                + " BuildConverseExceptionMessage(outcome.error()));"),
         server);
-    assertTrue(
-        server.contains("[socket](const smithy::Outcome<smithy::Unit>&) { socket->Close(); });"),
-        server);
+    assertFalse(server.contains("socket->SendAsync(BuildConverseExceptionMessage"), server);
   }
 
   @Test
@@ -313,6 +329,12 @@ class EventStreamGeneratorTest {
     assertTrue(
         server.contains(
             "(void)socket.Send(BuildConverseExceptionMessage("
+                + "smithy::Error::Validation(validation_failures.front().message)));"),
+        server);
+    // The session (async) route refuses identically on its owned socket.
+    assertTrue(
+        server.contains(
+            "(void)socket->Send(BuildConverseExceptionMessage("
                 + "smithy::Error::Validation(validation_failures.front().message)));"),
         server);
     assertFalse(server.contains("ValidateWatchInput"), server);
@@ -336,6 +358,13 @@ class EventStreamGeneratorTest {
         server.contains("(void)stream_router_->Add(\"GET\", \"/service/Svc/operation/Chat\","),
         server);
     assertTrue(server.contains("handler->Chat(input, stream, context);"), server);
+    // The async constructor registers the same fixed URI on the session seam.
+    assertTrue(
+        server.contains(
+            "(void)stream_router_->AddSession(\"GET\", \"/service/Svc/operation/Chat\","),
+        server);
+    assertTrue(
+        server.contains("ServeChatAsync(handler, std::move(input), std::move(socket));"), server);
   }
 
   @Test

@@ -121,17 +121,8 @@ final class ServerGenerator {
     w.write("virtual ~$LHandler() = default;", name);
     w.write("");
     for (OperationShape operation : operations) {
-      boolean documented = operation.hasTrait(DocumentationTrait.class);
-      operation
-          .getTrait(DocumentationTrait.class)
-          .ifPresent(
-              docs -> {
-                for (String line : docs.getValue().split("\n", -1)) {
-                  w.write("/// $L", line);
-                }
-              });
+      boolean documented = writeModelDocs(w, operation);
       StructureShape input = ProtocolSupport.inputShape(context, operation);
-      StructureShape output = ProtocolSupport.outputShape(context, operation);
       if (EventStreamCodeGen.streaming(context.model(), operation)) {
         // Streaming operations (ADR-0016): input first, context last, the
         // ADR-0010 shape, with the borrowed session in between.
@@ -163,12 +154,7 @@ final class ServerGenerator {
             ProtocolSupport.REQUEST_CONTEXT_PARAM);
         continue;
       }
-      w.write(
-          "virtual smithy::Outcome<$L> $L(const $L& input, $L context) = 0;",
-          context.cppSymbols().toSymbol(output).getName(),
-          CppReservedWords.escape(operation.getId().getName()),
-          context.cppSymbols().toSymbol(input).getName(),
-          ProtocolSupport.REQUEST_CONTEXT_PARAM);
+      writeUnaryVirtual(w, operation);
     }
     w.dedent();
     w.closeBlock("};");
@@ -216,6 +202,33 @@ final class ServerGenerator {
     w.write("");
   }
 
+  /** Emits the operation's model docs; returns whether any were written. */
+  private boolean writeModelDocs(CppWriter w, OperationShape operation) {
+    boolean documented = operation.hasTrait(DocumentationTrait.class);
+    operation
+        .getTrait(DocumentationTrait.class)
+        .ifPresent(
+            docs -> {
+              for (String line : docs.getValue().split("\n", -1)) {
+                w.write("/// $L", line);
+              }
+            });
+    return documented;
+  }
+
+  /**
+   * One unary operation's blocking virtual. Shared by both handler classes so ADR-0021's "unary
+   * operations keep their blocking signatures verbatim" is structural, not aspirational.
+   */
+  private void writeUnaryVirtual(CppWriter w, OperationShape operation) {
+    w.write(
+        "virtual smithy::Outcome<$L> $L(const $L& input, $L context) = 0;",
+        context.cppSymbols().toSymbol(ProtocolSupport.outputShape(context, operation)).getName(),
+        CppReservedWords.escape(operation.getId().getName()),
+        context.cppSymbols().toSymbol(ProtocolSupport.inputShape(context, operation)).getName(),
+        ProtocolSupport.REQUEST_CONTEXT_PARAM);
+  }
+
   /**
    * The coroutine handler surface (ADR-0021): streaming operations return a StreamTask the
    * generated launch wrapper awaits; unary operations keep their blocking signatures verbatim, so
@@ -232,35 +245,32 @@ final class ServerGenerator {
     w.write("virtual ~$LAsyncHandler() = default;", name);
     w.write("");
     for (OperationShape operation : operations) {
-      boolean documented = operation.hasTrait(DocumentationTrait.class);
-      operation
-          .getTrait(DocumentationTrait.class)
-          .ifPresent(
-              docs -> {
-                for (String line : docs.getValue().split("\n", -1)) {
-                  w.write("/// $L", line);
-                }
-              });
+      boolean documented = writeModelDocs(w, operation);
       StructureShape input = ProtocolSupport.inputShape(context, operation);
-      StructureShape output = ProtocolSupport.outputShape(context, operation);
       if (EventStreamCodeGen.streaming(context.model(), operation)) {
         if (documented) {
           w.write("///"); // blank separator: model docs above, boilerplate below
         }
-        w.write("/// Async streaming operation (ADR-0021): a coroutine — co_await");
         if (EventStreamCodeGen.inputInfo(context.model(), operation).isEmpty()) {
-          w.write("/// stream.Send() to drive the session (a Receive only ever reports the");
-          w.write("/// client's close), then co_return smithy::Unit{} for a clean close, or");
+          w.write("/// Async streaming operation (ADR-0021): a coroutine serving the whole");
+          w.write("/// session. No client-to-server events are modeled, so park in");
+          w.write("/// `co_await stream.Receive()` to learn the client closed, and push");
+          w.write("/// through stream.Share() (typically a registry) — a Send-only loop on");
+          w.write("/// a quiet stream never notices the client left.");
         } else {
-          w.write("/// stream.Receive()/Send() until done, then co_return smithy::Unit{}");
-          w.write("/// for a clean close, or");
+          w.write("/// Async streaming operation (ADR-0021): a coroutine serving the whole");
+          w.write("/// session — co_await stream.Receive()/Send() until done.");
         }
-        w.write("/// an error, which ends the stream with an exception message before the");
-        w.write("/// close. `input` is the coroutine's own copy — the upgrade request is");
-        w.write("/// gone by the first resumption. `stream` stays valid until the returned");
-        w.write("/// task completes. The coroutine runs and resumes on the transport's");
-        w.write("/// completion contexts: never block there — blocking work belongs on");
-        w.write("/// application threads, reached through stream.Share().");
+        w.write("/// co_return smithy::Unit{} for a clean close, or an error — modeled as");
+        w.write("/// smithy::Error::Modeled(\"<ErrorShapeName>\", message) + set_detail(),");
+        w.write("/// like a blocking handler — which ends the stream with one best-effort");
+        w.write("/// exception message before the close. `input` is the coroutine's own");
+        w.write("/// copy: the upgrade request (and its RequestContext) is gone by the");
+        w.write("/// first resumption — model what the session needs as input members and");
+        w.write("/// enforce identity at the gate. `stream` stays valid until the returned");
+        w.write("/// task completes. Code before the first co_await runs on the launching");
+        w.write("/// handler thread (brief blocking is fine there); every later resumption");
+        w.write("/// is a transport completion context — never block those.");
         w.write(
             "virtual smithy::eventstream::StreamTask $L($L input, $L& stream) = 0;",
             CppReservedWords.escape(operation.getId().getName()),
@@ -268,12 +278,7 @@ final class ServerGenerator {
             EventStreamCodeGen.asyncServerStreamAlias(operation));
         continue;
       }
-      w.write(
-          "virtual smithy::Outcome<$L> $L(const $L& input, $L context) = 0;",
-          context.cppSymbols().toSymbol(output).getName(),
-          CppReservedWords.escape(operation.getId().getName()),
-          context.cppSymbols().toSymbol(input).getName(),
-          ProtocolSupport.REQUEST_CONTEXT_PARAM);
+      writeUnaryVirtual(w, operation);
     }
     w.dedent();
     w.closeBlock("};");

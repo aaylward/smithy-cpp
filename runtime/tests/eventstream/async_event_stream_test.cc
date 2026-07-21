@@ -618,6 +618,31 @@ TEST(StreamTaskTest, ANeverAwaitedTaskDestroysItsFrameCleanly) {
   EXPECT_FALSE(started.load());  // never ran, and (under ASan) never leaked
 }
 
+TEST(StreamTaskTest, SubTasksComposeAcrossARealSuspension) {
+  // Handlers may factor their logic into StreamTask-returning helpers and
+  // co_await each exactly once (results beyond the Outcome travel by
+  // out-parameter). Pinned: a sub-task that completes inline and one that
+  // parks in Receive, both resuming through two task layers.
+  auto [client_socket, server_socket] = http::InMemoryWebSocketPair::Create();
+  auto inner = [](AsyncEventStream<Pong, Ping>& stream) -> StreamTask {
+    auto ping = co_await stream.Receive();
+    if (!ping.ok() || !ping->has_value()) co_return Error::Unknown("no ping");
+    co_return Unit{};
+  };
+  auto outer = [&inner](std::shared_ptr<http::WebSocket> socket) -> StreamTask {
+    AsyncEventStream<Pong, Ping> stream(std::move(socket), EncodePong, DecodePing);
+    auto first = co_await []() -> StreamTask { co_return Unit{}; }();
+    if (!first.ok()) co_return first;
+    co_return co_await inner(stream);
+  };
+  Mailbox<Outcome<Unit>> outcome;
+  AwaitInto(outer(server_socket), outcome);
+  EXPECT_TRUE(outcome.Empty());  // parked in Receive, two task frames deep
+  ASSERT_TRUE(client_socket->Send(RawPing(1)).ok());
+  EXPECT_TRUE(outcome.Wait().ok());
+  client_socket->Close();
+}
+
 TEST(StreamTaskTest, ResumesTheAwaiterAfterARealSuspensionOnTheCompletionThread) {
   // The production shape: the handler parks in co_await Receive, the peer
   // completes it later, and the completion resumes the handler and then —

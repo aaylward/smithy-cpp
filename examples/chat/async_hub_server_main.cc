@@ -63,6 +63,12 @@ class AsyncHub {
 
   smithy::server::SessionRegistry<RoomEvents>& registry() { return registry_; }
 
+  // A watcher seat's id is "<room>/#watch-<n>" — one predicate, one
+  // spelling, for every roster/occupancy filter below.
+  static bool IsWatcherSeat(const std::string& id, std::size_t slash) {
+    return slash + 1 < id.size() && id[slash + 1] == '#';
+  }
+
   // The roster a resumed session replays as its snapshot (ADR-0020's
   // recovery model: authoritative current state, not missed messages).
   // Watcher seats are delivery-only and stay out of it.
@@ -70,7 +76,7 @@ class AsyncHub {
     const std::string prefix = room + "/";
     std::vector<std::string> names;
     for (const std::string& id : registry_.Ids()) {
-      if (id.starts_with(prefix) && !id.starts_with(prefix + "#")) {
+      if (id.starts_with(prefix) && !IsWatcherSeat(id, prefix.size() - 1)) {
         names.push_back(id.substr(prefix.size()));
       }
     }
@@ -81,7 +87,7 @@ class AsyncHub {
     std::map<std::string, std::int32_t> counts;
     for (const std::string& id : registry_.Ids()) {
       const auto slash = id.find('/');
-      if (slash == std::string::npos || id[slash + 1] == '#') continue;
+      if (slash == std::string::npos || IsWatcherSeat(id, slash)) continue;
       ++counts[id.substr(0, slash)];
     }
     ListRoomsOutput output;
@@ -256,7 +262,7 @@ int main(int argc, char** argv) {
   smithy::http::BeastServerTransport::Options options;
   options.address = "0.0.0.0";
   options.port = argc > 1 ? std::atoi(argv[1]) : 8080;  // 0 binds an ephemeral port
-  options.handler_threads = 2;                          // launches only — sessions hold no thread
+  options.handler_threads = 2;  // launch points + unary requests; sessions hold no thread
   options.websocket_gate = server.StreamRouter()->Gate();
   options.on_websocket_session = server.StreamRouter()->ServeSession();
   smithy::http::BeastServerTransport transport(options);

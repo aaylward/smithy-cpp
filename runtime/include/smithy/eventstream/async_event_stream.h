@@ -2,6 +2,7 @@
 #define SMITHY_EVENTSTREAM_ASYNC_EVENT_STREAM_H_
 
 #include <atomic>
+#include <cassert>
 #include <coroutine>
 #include <exception>
 #include <functional>
@@ -22,9 +23,8 @@ namespace smithy::eventstream {
 // coroutine starts eagerly, owns nothing after launch (its frame frees
 // itself at the end), and contains unhandled exceptions to a log line —
 // the transport's containment posture, since these loops run on wire
-// threads. The whole coroutine surface this slice ships is Detached plus
-// AsyncEventStream's two awaitables; a general task type can grow later
-// without disturbing either.
+// threads. The coroutine surface here is Detached, StreamTask (ADR-0021),
+// and AsyncEventStream's awaitables.
 struct Detached {
   struct promise_type {
     // NOLINTBEGIN(readability-convert-member-functions-to-static) — the
@@ -54,11 +54,15 @@ struct Detached {
 // handler, the handler's `co_return Outcome<Unit>` resumes the awaiter by
 // symmetric transfer, and a handler that throws completes with
 // Error::Unknown instead of terminating (the containment posture, since
-// completion contexts have no caller to rethrow to). Deliberately not a
-// general task type — no executor, no generic result, exactly "await one
-// handler, get its outcome" — which is all the generated serve path
-// needs to restore the blocking contract's framework-framed typed
-// errors.
+// completion contexts have no caller to rethrow to). Every path must
+// co_return an Outcome — `smithy::Unit{}` is the clean close (a bare
+// co_return does not compile). Handlers may factor their logic into
+// StreamTask-returning sub-coroutines and co_await each exactly once;
+// sub-results beyond the Outcome travel by out-parameter (the result
+// type is deliberately not generic). Not a task framework: no executor,
+// no generic result — exactly "await one handler, get its outcome",
+// which is all the generated serve path needs to restore the blocking
+// contract's framework-framed typed errors.
 class [[nodiscard]] StreamTask {
  public:
   struct promise_type {
@@ -103,12 +107,17 @@ class [[nodiscard]] StreamTask {
   }
 
   // co_await, exactly once: starts the handler by symmetric transfer and
-  // resumes the awaiter with the handler's Outcome when it completes —
-  // on whatever thread the handler's last completion ran. (The NOLINT: the
+  // resumes the awaiter with the handler's Outcome when it completes — on
+  // whatever thread the handler last resumed on, which is the awaiting
+  // thread itself when the handler never suspended. (The NOLINT: the
   // awaitable protocol calls await_ready through the instance.)
   // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
   bool await_ready() const noexcept { return false; }
   std::coroutine_handle<> await_suspend(std::coroutine_handle<> awaiter) noexcept {
+    // Double-await and await-of-moved-from are contract violations the
+    // type cannot express; fail loudly in debug builds instead of
+    // resuming a done or null frame.
+    assert(handle_ && !handle_.done());
     handle_.promise().continuation = awaiter;
     return handle_;
   }
@@ -117,6 +126,40 @@ class [[nodiscard]] StreamTask {
  private:
   std::coroutine_handle<promise_type> handle_;
 };
+
+// The generated launch wrapper's exception-frame send (ADR-0021): awaits
+// one raw, already-framed message on the socket. Exists so the wrapper's
+// frame — and the stream that frame owns — stays alive until the wire has
+// taken a refusal: destroying the stream closes the session, and a close
+// over a busy wire may cancel the in-flight write (the Beast escalation),
+// silently dropping the typed error. Best-effort by convention — callers
+// discard the outcome, close, and end.
+class [[nodiscard]] SendMessageAwaitable {
+ public:
+  SendMessageAwaitable(std::shared_ptr<http::WebSocket> socket, Message message)
+      : socket_(std::move(socket)), message_(std::move(message)) {}
+  // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
+  bool await_ready() const noexcept { return false; }
+  bool await_suspend(std::coroutine_handle<> coroutine) {
+    // The second-arrival-resumes race, as in AsyncEventStream's awaitables.
+    socket_->SendAsync(message_, [this, coroutine](Outcome<Unit> sent) {
+      sent_ = std::move(sent);
+      if (arrived_.exchange(true)) coroutine.resume();
+    });
+    return !arrived_.exchange(true);  // suspend iff the callback has not run
+  }
+  Outcome<Unit> await_resume() noexcept { return std::move(sent_); }
+
+ private:
+  std::shared_ptr<http::WebSocket> socket_;
+  Message message_;
+  std::atomic<bool> arrived_{false};
+  Outcome<Unit> sent_ = Unit{};
+};
+
+inline SendMessageAwaitable SendMessage(std::shared_ptr<http::WebSocket> socket, Message message) {
+  return SendMessageAwaitable(std::move(socket), std::move(message));
+}
 
 // The typed session's coroutine adapter (ADR-0019): EventStream's contract
 // over the completion-driven socket primitives, with `co_await` where the

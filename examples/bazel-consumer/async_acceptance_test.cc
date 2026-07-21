@@ -2,7 +2,7 @@
 // the async socket primitives, the shared-session serve seam, the
 // coroutine adapter, and async-delivery fan-out all compile and run
 // against the runtime targets alone, through the module boundary — the
-// wiring a thread-free hub uses ahead of the generated async surfaces.
+// wiring a thread-free hub uses beneath the generated async surface (ADR-0021).
 
 #include <gtest/gtest.h>
 

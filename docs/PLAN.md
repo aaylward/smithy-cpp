@@ -706,8 +706,10 @@ framing fuzzer running nightly.
 
 **Bidirectional streaming is deferred but planned — it is Phase 8, not an open-ended deferral.**
 Beyond that: HTTP/2 & TLS configuration surface, additional protocols (added only on demand
-behind the existing protocol interface), waiters, MQTT bindings, C++ modules support, async
-server handler API (coroutines) — each gets an issue and a design doc before implementation.
+behind the existing protocol interface), waiters, MQTT bindings, C++ modules support — each
+gets an issue and a design doc before implementation. ~~Async server handler API
+(coroutines)~~ — resolved: shipped as the generated async streaming handlers (ADR-0021); the
+async generated *client* remains deferred.
 Vendor-specific traits and auth schemes remain out of scope entirely (§2), not deferred.
 
 ## 9. Open questions (to resolve in early ADRs)

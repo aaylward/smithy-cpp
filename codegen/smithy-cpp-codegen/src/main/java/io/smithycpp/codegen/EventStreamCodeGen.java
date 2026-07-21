@@ -424,8 +424,11 @@ final class EventStreamCodeGen {
   /**
    * The generated launch wrapper (ADR-0021), one per streaming operation, into server.cc's
    * anonymous namespace: a Detached coroutine that owns the typed async session, awaits the
-   * handler's StreamTask, and frames a failure outcome exactly like the blocking route — through
-   * SendAsync, never a blocking Send on a completion context.
+   * handler's StreamTask, and frames a failure outcome exactly like the blocking route. The
+   * exception send is itself awaited (never a blocking Send on a completion context): the wait
+   * keeps the wrapper frame — and the stream it owns — alive until the wire has taken the refusal,
+   * because destroying the stream closes the session and a close over a busy wire can cancel the
+   * in-flight write, silently dropping the typed error.
    */
   static void writeAsyncServeWrapper(
       CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
@@ -434,9 +437,11 @@ final class EventStreamCodeGen {
     String inputType =
         context.cppSymbols().toSymbol(ProtocolSupport.inputShape(context, operation)).getName();
     w.write("// The async route's launch wrapper (ADR-0021): its frame owns the typed");
-    w.write("// session, so the handler may take it by reference; the handler's outcome");
-    w.write("// is framed exactly like the blocking route's, via SendAsync — a blocking");
-    w.write("// Send here would run on a completion context.");
+    w.write("// session, so the handler may take it by reference. A failure outcome is");
+    w.write("// framed like the blocking route's, and the exception send is AWAITED so");
+    w.write("// this frame (and the stream it owns) outlives the write — closing a");
+    w.write("// busy wire can cancel it. Best-effort, like the blocking route: a send");
+    w.write("// the terminated session refuses is discarded.");
     w.openBlock(
         "smithy::eventstream::Detached Serve$LAsync(std::shared_ptr<$LAsyncHandler> handler,"
             + " $L input, std::shared_ptr<smithy::http::WebSocket> socket) {",
@@ -450,11 +455,10 @@ final class EventStreamCodeGen {
         op);
     w.write("auto outcome = co_await handler->$L(std::move(input), stream);", op);
     w.openBlock("if (!outcome.ok()) {");
-    w.write("socket->SendAsync(Build$LExceptionMessage(outcome.error()),", op);
     w.write(
-        "                  [socket](const smithy::Outcome<smithy::Unit>&) {"
-            + " socket->Close(); });");
-    w.write("co_return;");
+        "(void)co_await smithy::eventstream::SendMessage(socket,"
+            + " Build$LExceptionMessage(outcome.error()));",
+        op);
     w.closeBlock("}");
     w.write("stream.Close();");
     w.closeBlock("}");
@@ -463,8 +467,8 @@ final class EventStreamCodeGen {
 
   /**
    * The shared tail of every session (async) streaming route: hand the parsed input and the owned
-   * socket to the operation's launch wrapper, which returns immediately — the launch-point contract
-   * of the shared seam.
+   * socket to the operation's launch wrapper, which returns at the handler's first suspension —
+   * never waiting for the session to end (the launch-point contract of the shared seam).
    */
   static void writeLaunchAsync(CppWriter w, OperationShape operation, String inputExpr) {
     w.write("Serve$LAsync(handler, $L, std::move(socket));", opName(operation), inputExpr);

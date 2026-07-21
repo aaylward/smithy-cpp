@@ -577,7 +577,20 @@ exclusive with `on_expired` — and on success sends the **current-state
 snapshot as its first events** before normal traffic. On failure it falls
 back to the fresh-join path (`Add`), because the session expired or never
 existed. A reconnect can beat the old wire's failure notice, so retry the
-resume briefly before refusing the id as a live duplicate.
+resume briefly before refusing the id as a live duplicate — this loop is
+the canonical admission recipe every example mirrors (each attempt mints
+a fresh `Share()`; the wait is legal because admission runs before the
+handler's first suspension, on the launching thread):
+
+```cpp
+bool resumed = false, added = false;
+for (int attempt = 0; attempt < 20 && !resumed && !added; ++attempt) {
+  resumed = registry.Resume(id, stream.Share());
+  if (!resumed) added = registry.Add(id, stream.Share());
+  if (!resumed && !added) std::this_thread::sleep_for(std::chrono::milliseconds(50));
+}
+if (!resumed && !added) { /* refuse: the id is live on another connection */ }
+```
 
 Say the posture out loud in your protocol docs, because it shapes client
 code: **recovery is snapshot replay, not message replay.** ADR-0016's

@@ -548,5 +548,62 @@ TEST_F(AsyncChatEndToEndTest, UnaryOperationSharesTheAsyncService) {
   EXPECT_EQ(rooms->rooms[0].members, 2);
 }
 
+// Fills the wire through a Share() handle, then refuses — the production
+// shape (the hub's admission path mints handles before its Kicked), timed
+// so the wrapper's exception send cannot complete inline.
+class FloodThenRefuseHandler final : public ChatAsyncHandler {
+ public:
+  smithy::eventstream::StreamTask Converse(ConverseInput input,
+                                           ConverseAsyncServerStream& stream) override {
+    auto handle = stream.Share();
+    for (std::size_t i = 0; i < smithy::http::InMemoryWebSocketPair::kQueueDepth; ++i) {
+      ChatMessage fill;
+      fill.text = "fill-" + std::to_string(i);
+      handle.SendAsync(RoomEvents::FromMessage(fill), [](const smithy::Outcome<smithy::Unit>&) {});
+    }
+    Kicked kicked;
+    kicked.message = "kicked from " + input.room;
+    kicked.by = kModerator;
+    auto refusal = smithy::Error::Modeled("Kicked", *kicked.message);
+    refusal.set_detail(std::move(kicked));
+    co_return refusal;
+  }
+
+  smithy::eventstream::StreamTask Watch(WatchInput, WatchAsyncServerStream& stream) override {
+    (void)co_await stream.Receive();
+    co_return smithy::Unit{};
+  }
+
+  smithy::Outcome<ListRoomsOutput> ListRooms(const ListRoomsInput&,
+                                             const smithy::server::RequestContext&) override {
+    return ListRoomsOutput{};
+  }
+};
+
+class AsyncRefusalTest : public StreamTestFixture {};
+
+TEST_F(AsyncRefusalTest, ATypedRefusalSurvivesAFullWire) {
+  // The refusal's exception message parks on the full wire; the generated
+  // wrapper must keep the session open (its frame, and the stream the
+  // frame owns) until that send completes — a regression that closes
+  // first cancels the parked write, and the client sees a bare close
+  // instead of the modeled error.
+  StartWithAsync(std::make_shared<FloodThenRefuseHandler>());
+  ConverseInput input;
+  input.room = "lobby";
+  input.nickname = "ada";
+  auto stream = client_->Converse(input);
+  ASSERT_TRUE(stream.ok()) << stream.error().message();
+
+  for (std::size_t i = 0; i < smithy::http::InMemoryWebSocketPair::kQueueDepth; ++i) {
+    auto fill = stream->Receive();
+    ASSERT_TRUE(fill.ok() && fill->has_value()) << "fill " << i << " missing";
+  }
+  auto outcome = stream->Receive();
+  ASSERT_FALSE(outcome.ok()) << "the typed refusal was lost to the close";
+  EXPECT_EQ(outcome.error().code(), "Kicked");
+  EXPECT_EQ(outcome.error().message(), "kicked from lobby");
+}
+
 }  // namespace
 }  // namespace example::chat

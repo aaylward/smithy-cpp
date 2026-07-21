@@ -516,11 +516,11 @@ final class HttpJsonServerGenerator {
     // the validator call + check only when this operation's input is
     // constrained — a service that validates nothing gets no dead check.
     if (emitsValidation) {
-      writeStreamValidationRefusal(w, opName);
+      writeStreamValidationRefusal(w, opName, "socket.");
     }
     if (validation.validates(operation)) {
       w.write("$L(*input, \"\", &validation_failures);", validation.validatorNameFor(operation));
-      writeStreamValidationRefusal(w, opName);
+      writeStreamValidationRefusal(w, opName, "socket.");
     }
     EventStreamCodeGen.writeServeAndClose(w, context, operation, "*input");
     w.closeBlock("}, $S);", operation.getId().getName());
@@ -529,8 +529,8 @@ final class HttpJsonServerGenerator {
   /**
    * One streaming operation's shared-session route (ADR-0021): the same parse and refusals as
    * {@link #writeStreamRoute} — before any coroutine exists, on the launch callback — then the
-   * owned socket and parsed input go to the generated async wrapper, and the callback returns
-   * immediately (the launch-point contract).
+   * owned socket and parsed input go to the generated async wrapper; the callback returns at the
+   * handler's first suspension, never waiting for the session to end (the launch-point contract).
    */
   void writeStreamSessionRoute(
       CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
@@ -550,11 +550,11 @@ final class HttpJsonServerGenerator {
     w.write("return;");
     w.closeBlock("}");
     if (emitsValidation) {
-      writeSessionValidationRefusal(w, opName);
+      writeStreamValidationRefusal(w, opName, "socket->");
     }
     if (validation.validates(operation)) {
       w.write("$L(*input, \"\", &validation_failures);", validation.validatorNameFor(operation));
-      writeSessionValidationRefusal(w, opName);
+      writeStreamValidationRefusal(w, opName, "socket->");
     }
     EventStreamCodeGen.writeLaunchAsync(w, operation, "*std::move(input)");
     w.closeBlock("}, $S);", operation.getId().getName());
@@ -562,27 +562,19 @@ final class HttpJsonServerGenerator {
 
   /**
    * The streaming analog of ValidationErrorResponse: a refused upgrade answers over the session —
-   * one SerializationException exception message carrying the first failure, then the close.
+   * one SerializationException exception message carrying the first failure, then the close. One
+   * helper serves both seams; {@code socketAccess} is "socket." (borrowed reference) or "socket->"
+   * (the shared seam's owned pointer), so the refusal semantics cannot drift between them.
    */
-  private static void writeStreamValidationRefusal(CppWriter w, String opName) {
+  private static void writeStreamValidationRefusal(
+      CppWriter w, String opName, String socketAccess) {
     w.openBlock("if (!validation_failures.empty()) {");
     w.write(
-        "(void)socket.Send(Build$LExceptionMessage("
+        "(void)$LSend(Build$LExceptionMessage("
             + "smithy::Error::Validation(validation_failures.front().message)));",
+        socketAccess,
         opName);
-    w.write("socket.Close();");
-    w.write("return;");
-    w.closeBlock("}");
-  }
-
-  /** {@link #writeStreamValidationRefusal} on the shared seam's owned socket. */
-  private static void writeSessionValidationRefusal(CppWriter w, String opName) {
-    w.openBlock("if (!validation_failures.empty()) {");
-    w.write(
-        "(void)socket->Send(Build$LExceptionMessage("
-            + "smithy::Error::Validation(validation_failures.front().message)));",
-        opName);
-    w.write("socket->Close();");
+    w.write("$LClose();", socketAccess);
     w.write("return;");
     w.closeBlock("}");
   }

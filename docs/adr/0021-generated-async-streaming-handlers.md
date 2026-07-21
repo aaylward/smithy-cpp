@@ -1,8 +1,8 @@
 # ADR-0021: Generated async streaming handlers — the coroutine serve path
 
-**Status:** Accepted (2026-07-20). The follow-up ADR-0019 gates on its
-design doc ("generated async surfaces — coroutine handler signatures"),
-requested as the consumer assessment's named follow-on: a fully-generated
+**Status:** Accepted (2026-07-20). This is the follow-up ADR-0019 gated
+on a design doc ("generated async surfaces — coroutine handler
+signatures"), requested as the consumer assessment's named follow-on: a fully-generated
 handler still pins a thread per stream, and the zero-thread mode has been
 reachable only by hand-mounting a session loop via `AddSession`.
 Implemented: `smithy::eventstream::StreamTask`, the generated
@@ -96,10 +96,10 @@ For a service with streaming operations the generator now also emits:
                                      DecodeConverseEvent);
     auto outcome = co_await handler->Converse(std::move(input), stream);
     if (!outcome.ok()) {
-      // Best-effort, completion-context-safe: never a blocking Send here.
-      socket->SendAsync(BuildConverseExceptionMessage(outcome.error()),
-                        [socket](const Outcome<Unit>&) { socket->Close(); });
-      co_return;
+      // Awaited, and best-effort: the wait keeps this frame — and the
+      // stream it owns — alive until the wire has taken the refusal.
+      (void)co_await smithy::eventstream::SendMessage(
+          socket, BuildConverseExceptionMessage(outcome.error()));
     }
     stream.Close();
   }
@@ -107,25 +107,30 @@ For a service with streaming operations the generator now also emits:
 
   The wrapper is the whole asymmetry between the seams: same parse, same
   refusals, same exception framing, same close — with the handler's
-  blocking wait replaced by `co_await` and the terminal exception sent
-  through `SendAsync` (a blocking `Send` on a completion context could
-  deadlock a single-io-thread transport).
+  blocking wait replaced by `co_await`, and the terminal exception itself
+  *awaited* rather than fired-and-forgotten: destroying the stream closes
+  the session, and a close over a busy wire may cancel the in-flight
+  write (the Beast escalation), so the wrapper's frame must outlive the
+  send. A blocking `Send` here would deadlock a single-io-thread
+  transport; `SendMessage` is the awaitable raw-frame send that exists
+  for exactly this line.
 
 **One server instance serves one seam.** The constructor chosen decides
 whether `stream_router_` carries `Add` or `AddSession` routes; the
 router's existing refuse-to-mix rule and the transport's one-callback
 rule then hold end to end. The header doc on `StreamRouter()` shows both
-two-line mounts, keyed to the constructor used. The blocking constructor,
-surface, and goldens are byte-identical for services that keep using
-them — the async surface is additive, and the blocking API remains the
+two-line mounts, keyed to the constructor used. The blocking constructor
+and its emitted routes are byte-identical; the only pre-existing
+emission that changes is the StreamRouter() mount doc. The async surface
+is additive, and the blocking API remains the
 stable pre-1.0 surface (ADR-0014's ordering, unchanged).
 
 **Both streaming protocols get the same treatment.** The REST-JSON and
 rpcv2Cbor stream-route writers grow `AddSession` siblings sharing the
 launch-wrapper tail; jsonRpc2 continues to refuse event streams
 entirely. Generated BUILD deps are unchanged: `AsyncEventStream`,
-`Detached`, and `StreamTask` are header-only in `:eventstream`, and the
-session seam lives in `:server` — the generated server stays Beast-free.
+`Detached`, and `StreamTask` are header-only in `//runtime:http`, and
+the session seam lives in `:server` — the generated server stays Beast-free.
 
 **The chat hub moves onto the generated surface.** The hand-written
 async hub main — route parsing, envelope codecs, refusal framing — is

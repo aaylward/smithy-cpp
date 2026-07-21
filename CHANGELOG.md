@@ -133,8 +133,9 @@ via `git_override` until then.
   writer threads (per-session fallback for blocking-only sockets). The
   thread-free chat hub (`examples/chat/async_hub_*`) serves the same
   generated wire through the new seam, driven as real shell-commanded
-  processes. Generated handler/client surfaces stay blocking — the
-  coroutine lift for generated code is the follow-up ADR-0019 gates.
+  processes. Generated handler/client surfaces stayed blocking in that
+  slice — the handler half of the coroutine lift landed as ADR-0021
+  (above); the generated client stays blocking.
 - Streaming routes on the shared seam (issue #118): `WebSocketRouter` grows
   `AddSession`/`ServeSession()`, the `on_websocket_session` parallel of
   `Add`/`Serve()` — same pattern grammar, precedence, conflict rules, and

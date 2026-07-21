@@ -246,9 +246,24 @@ Route matching, input parsing, envelope codecs, and refusal framing are all gene
 message — exactly the blocking contract — and a coroutine that throws surfaces as the
 never-leak `InternalFailure` instead of terminating. `input` arrives by value (the
 coroutine's own copy; the upgrade request is gone by the first resumption), and there is
-no `RequestContext` parameter: everything modeled rides the input. One server instance
-serves one seam — the constructor picks it. The thread-free chat hub is the working
-reference ([examples/chat/async_hub_server_main.cc](../examples/chat/async_hub_server_main.cc),
+no `RequestContext` parameter: everything modeled rides the input — model needed headers
+as input members and enforce identity/origin at the gate. Two unmodeled things the
+blocking handler could read from `context.request` are genuinely out of reach on this
+surface today: the peer address and unmodeled trace headers. A small owned launch-info
+parameter can close that gap additively when a consumer needs it; until then those
+belong in the gate. One server instance serves one seam — the constructor picks it; a
+service that wants some streaming operations blocking and some async needs two server
+instances on two transports, each implementing its full handler, so look for a per-route
+knob no further. Execution contexts: code before the handler's first `co_await` runs on
+the launching handler thread (the examples' brief admission-retry blocking is fine
+there); every later resumption is a transport completion context — never block those,
+and reach blocking work through `stream.Share()`. Shutdown reads the same as the
+hand-mount: `registry.Drain(grace)` closes every session, each parked
+`co_await stream.Receive()` completes with the close, the coroutine cleans up and
+returns — and the Detached lifetime rules above (state outlives the transport; more
+than one io thread when sessions mix with handle traffic) apply to generated handlers
+verbatim. The thread-free chat hub is the working reference
+([examples/chat/async_hub_server_main.cc](../examples/chat/async_hub_server_main.cc),
 driven as real shell-commanded processes by `async_hub_cli_test.sh`), and the same
 consumer script passes out of tree against both seams
 (`examples/bazel-consumer/chat_async_reconnect_server_main.cc`).

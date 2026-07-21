@@ -215,16 +215,16 @@ smithy::eventstream::Message BuildConverseExceptionMessage(const smithy::Error& 
 }
 
 // The async route's launch wrapper (ADR-0021): its frame owns the typed
-// session, so the handler may take it by reference; the handler's outcome
-// is framed exactly like the blocking route's, via SendAsync — a blocking
-// Send here would run on a completion context.
+// session, so the handler may take it by reference. A failure outcome is
+// framed like the blocking route's, and the exception send is AWAITED so
+// this frame (and the stream it owns) outlives the write — closing a
+// busy wire can cancel it. Best-effort, like the blocking route: a send
+// the terminated session refuses is discarded.
 smithy::eventstream::Detached ServeConverseAsync(std::shared_ptr<ChatAsyncHandler> handler, ConverseInput input, std::shared_ptr<smithy::http::WebSocket> socket) {
   ConverseAsyncServerStream stream(socket, EncodeConverseEvent, DecodeConverseEvent);
   auto outcome = co_await handler->Converse(std::move(input), stream);
   if (!outcome.ok()) {
-    socket->SendAsync(BuildConverseExceptionMessage(outcome.error()),
-                      [socket](const smithy::Outcome<smithy::Unit>&) { socket->Close(); });
-    co_return;
+    (void)co_await smithy::eventstream::SendMessage(socket, BuildConverseExceptionMessage(outcome.error()));
   }
   stream.Close();
 }
@@ -273,16 +273,16 @@ smithy::eventstream::Message BuildWatchExceptionMessage(const smithy::Error& err
 }
 
 // The async route's launch wrapper (ADR-0021): its frame owns the typed
-// session, so the handler may take it by reference; the handler's outcome
-// is framed exactly like the blocking route's, via SendAsync — a blocking
-// Send here would run on a completion context.
+// session, so the handler may take it by reference. A failure outcome is
+// framed like the blocking route's, and the exception send is AWAITED so
+// this frame (and the stream it owns) outlives the write — closing a
+// busy wire can cancel it. Best-effort, like the blocking route: a send
+// the terminated session refuses is discarded.
 smithy::eventstream::Detached ServeWatchAsync(std::shared_ptr<ChatAsyncHandler> handler, WatchInput input, std::shared_ptr<smithy::http::WebSocket> socket) {
   WatchAsyncServerStream stream(socket, EncodeWatchEvent, DecodeWatchEvent);
   auto outcome = co_await handler->Watch(std::move(input), stream);
   if (!outcome.ok()) {
-    socket->SendAsync(BuildWatchExceptionMessage(outcome.error()),
-                      [socket](const smithy::Outcome<smithy::Unit>&) { socket->Close(); });
-    co_return;
+    (void)co_await smithy::eventstream::SendMessage(socket, BuildWatchExceptionMessage(outcome.error()));
   }
   stream.Close();
 }

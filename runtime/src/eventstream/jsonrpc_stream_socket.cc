@@ -24,8 +24,10 @@ Outcome<Message> TranslateOutbound(const Message& message, const Document& id) {
 // closes right behind it, so nothing meaningful can follow.
 Outcome<std::optional<Message>> TranslateInbound(Outcome<std::optional<Message>> raw,
                                                  const Document& id) {
-  if (!raw.ok() || !raw->has_value()) return raw;
-  const Message& message = **raw;
+  if (!raw.ok()) return raw;
+  const std::optional<Message>& inbound = *raw;
+  if (!inbound.has_value()) return raw;
+  const Message& message = *inbound;
   if (!message.headers.empty()) {
     return Error::Serialization(
         "jsonrpc stream: peer sent an event-stream framed message on the JSON-RPC text wire");

@@ -179,8 +179,7 @@ TEST(JsonRpc2InteropTest, EnvelopeDispatchThreadsTheRequestContext) {
                                          const smithy::server::RequestContext&) override {
       return DivideOutput{.quotient = 0};
     }
-    smithy::Outcome<smithy::Unit> Accumulate(const AccumulateInput&,
-                                             AccumulateServerStream& stream,
+    smithy::Outcome<smithy::Unit> Accumulate(const AccumulateInput&, AccumulateServerStream& stream,
                                              const smithy::server::RequestContext&) override {
       stream.Close();
       return smithy::Unit{};

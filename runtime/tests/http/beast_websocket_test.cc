@@ -805,8 +805,8 @@ TEST(BeastWebSocketTest, ARawTextSendRefusesHeaderedMessagesAndSurvives) {
       {.host = "127.0.0.1", .port = server.port(), .raw_text_frames = true});
   ASSERT_TRUE(dialed.ok()) << dialed.error().message();
 
-  auto refused = (*dialed)->Send(eventstream::MakeEventMessage("chat", "application/json",
-                                                               Blob::FromString("{}")));
+  auto refused = (*dialed)->Send(
+      eventstream::MakeEventMessage("chat", "application/json", Blob::FromString("{}")));
   ASSERT_FALSE(refused.ok());
   EXPECT_EQ(refused.error().kind(), ErrorKind::kValidation);
 

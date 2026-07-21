@@ -196,8 +196,7 @@ Outcome<std::string> EncodeRawTextFrame(const eventstream::Message& message) {
   if (message.payload.size() > eventstream::kMaxMessageBytes) {
     return Error::Validation("websocket: message over the 16 MiB limit");
   }
-  return std::string(reinterpret_cast<const char*>(message.payload.data()),
-                     message.payload.size());
+  return std::string(reinterpret_cast<const char*>(message.payload.data()), message.payload.size());
 }
 
 template <typename WsStream>

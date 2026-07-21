@@ -157,8 +157,9 @@ class BeastServerTransport : public HttpServerTransport {
     // thread (the completion-driven receive and the coroutine adapter in
     // smithy/eventstream/async_event_stream.h are the intended loop).
     // At most one of on_websocket / on_websocket_session may be set
-    // (neither is an HTTP-only server); the gate and the JSON-frames
-    // negotiation apply to both. Runs contained on the handler pool, and
+    // (neither is an HTTP-only server); the gate and the wire mode — the
+    // JSON-frames negotiation or the raw-text flag below — apply to
+    // both. Runs contained on the handler pool, and
     // should return quickly — it is a launch point, not a serve loop.
     std::function<void(const HttpRequest&, std::shared_ptr<WebSocket>)> on_websocket_session;
     // Negotiated JSON-text event-stream frames (ADR-0018): set, a client
@@ -175,6 +176,16 @@ class BeastServerTransport : public HttpServerTransport {
     // (simpleRestJson): a non-JSON event on a negotiated session fails
     // its first Send instead of riding a text frame.
     bool websocket_accept_json_frames = false;
+    // The raw-text wire (ADR-0023): every accepted upgrade carries
+    // headerless messages as verbatim text frames, one JSON-RPC 2.0
+    // envelope per frame — what a generated jsonRpc2 streaming server
+    // mounts. Unnegotiated (a browser connects with plain
+    // `new WebSocket(url)`; the wire IS the protocol), so it claims the
+    // whole listener: Start refuses it together with
+    // websocket_accept_json_frames, and a binary frame fails the session
+    // the way text does on the default wire. Enable it only on a server
+    // whose upgrades all speak jsonRpc2 streams.
+    bool websocket_raw_text_frames = false;
     // How long a silent upgraded connection stays up (keep-alive pings
     // run underneath — a healthy-but-quiet stream survives, a vanished
     // peer is detected). The HTTP request_timeout_seconds governs the

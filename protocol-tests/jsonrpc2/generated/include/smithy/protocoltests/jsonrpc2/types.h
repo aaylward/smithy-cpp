@@ -10,13 +10,105 @@
 #include <optional>
 #include <ostream>
 #include <string>
+#include <utility>
+#include <variant>
 #include <vector>
 
+#include "smithy/core/fatal.h"
 #include "smithy/core/hash.h"
 #include "smithy/core/print.h"
 #include "smithy/core/timestamp.h"
 
 namespace smithy::protocoltests::jsonrpc2 {
+
+struct EchoedNote {
+  std::string text{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "EchoedNote{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".text = ";
+    smithy::DebugAppend(out, this->text);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const EchoedNote& value) {
+    return os << value.DebugString();
+  }
+
+  friend bool operator==(const EchoedNote&, const EchoedNote&) = default;
+  friend auto operator<=>(const EchoedNote&, const EchoedNote&) = default;
+};
+
+
+class DownEvents {
+  public:
+    DownEvents() = default;
+
+    static DownEvents FromEcho(EchoedNote value) {
+      DownEvents result;
+      result.value_.emplace<1>(std::move(value));
+      return result;
+    }
+    bool is_echo() const { return value_.index() == 1; }
+    const EchoedNote& as_echo() const {
+      require_is(1, "echo");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const EchoedNote* as_echo_or_null() const { return std::get_if<1>(&value_); }
+
+    /// True until one of the From* factories has been used.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" until a From* factory has run.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "echo"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "DownEvents(";
+      switch (value_.index()) {
+        case 1:
+          out += "echo = ";
+          smithy::DebugAppend(out, std::get<1>(value_));
+          break;
+        default:
+          break;
+      }
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const DownEvents& value) {
+      return os << value.DebugString();
+    }
+
+    friend bool operator==(const DownEvents&, const DownEvents&) = default;
+    friend auto operator<=>(const DownEvents&, const DownEvents&) = default;
+    friend struct std::hash<DownEvents>;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("DownEvents", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, EchoedNote> value_;
+};
+
 
 struct Nested {
   std::string label{};
@@ -230,6 +322,175 @@ struct ThrottledError {
 };
 
 
+struct Note {
+  std::string text{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "Note{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".text = ";
+    smithy::DebugAppend(out, this->text);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const Note& value) {
+    return os << value.DebugString();
+  }
+
+  friend bool operator==(const Note&, const Note&) = default;
+  friend auto operator<=>(const Note&, const Note&) = default;
+};
+
+
+class UpEvents {
+  public:
+    UpEvents() = default;
+
+    static UpEvents FromNote(Note value) {
+      UpEvents result;
+      result.value_.emplace<1>(std::move(value));
+      return result;
+    }
+    bool is_note() const { return value_.index() == 1; }
+    const Note& as_note() const {
+      require_is(1, "note");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const Note* as_note_or_null() const { return std::get_if<1>(&value_); }
+
+    /// True until one of the From* factories has been used.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" until a From* factory has run.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "note"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "UpEvents(";
+      switch (value_.index()) {
+        case 1:
+          out += "note = ";
+          smithy::DebugAppend(out, std::get<1>(value_));
+          break;
+        default:
+          break;
+      }
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const UpEvents& value) {
+      return os << value.DebugString();
+    }
+
+    friend bool operator==(const UpEvents&, const UpEvents&) = default;
+    friend auto operator<=>(const UpEvents&, const UpEvents&) = default;
+    friend struct std::hash<UpEvents>;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("UpEvents", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, Note> value_;
+};
+
+
+struct EchoStreamInput {
+  std::optional<std::string> prefix{};
+  std::optional<UpEvents> events{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "EchoStreamInput{";
+    const char* sep = "";
+    if (this->prefix.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".prefix = ";
+      smithy::DebugAppend(out, *this->prefix);
+    }
+    if (this->events.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".events = ";
+      smithy::DebugAppend(out, *this->events);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const EchoStreamInput& value) {
+    return os << value.DebugString();
+  }
+
+  friend bool operator==(const EchoStreamInput&, const EchoStreamInput&) = default;
+  friend auto operator<=>(const EchoStreamInput&, const EchoStreamInput&) = default;
+};
+
+
+struct EchoStreamOutput {
+  std::optional<DownEvents> events{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "EchoStreamOutput{";
+    const char* sep = "";
+    if (this->events.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".events = ";
+      smithy::DebugAppend(out, *this->events);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const EchoStreamOutput& value) {
+    return os << value.DebugString();
+  }
+
+  friend bool operator==(const EchoStreamOutput&, const EchoStreamOutput&) = default;
+  friend auto operator<=>(const EchoStreamOutput&, const EchoStreamOutput&) = default;
+};
+
+
+struct StreamAbort {
+  std::string message{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "StreamAbort{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".message = ";
+    smithy::DebugAppend(out, this->message);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const StreamAbort& value) {
+    return os << value.DebugString();
+  }
+
+  friend bool operator==(const StreamAbort&, const StreamAbort&) = default;
+  friend auto operator<=>(const StreamAbort&, const StreamAbort&) = default;
+};
+
+
 struct NoArgsInput {
   /// Debug rendering for logs and tests — for humans, never parse it.
   void AppendDebugTo(std::string& out) const {
@@ -335,6 +596,24 @@ struct PutConstrainedOutput {
 // values are process-local: never persist or compare them across runs.
 
 template <>
+struct std::hash<smithy::protocoltests::jsonrpc2::EchoedNote> {
+  std::size_t operator()(const smithy::protocoltests::jsonrpc2::EchoedNote& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.text));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::jsonrpc2::DownEvents> {
+  std::size_t operator()(const smithy::protocoltests::jsonrpc2::DownEvents& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
+
+template <>
 struct std::hash<smithy::protocoltests::jsonrpc2::Nested> {
   std::size_t operator()(const smithy::protocoltests::jsonrpc2::Nested& value) const noexcept {
     std::size_t seed = 0;
@@ -386,6 +665,52 @@ struct std::hash<smithy::protocoltests::jsonrpc2::NotFoundError> {
 template <>
 struct std::hash<smithy::protocoltests::jsonrpc2::ThrottledError> {
   std::size_t operator()(const smithy::protocoltests::jsonrpc2::ThrottledError& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.message));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::jsonrpc2::Note> {
+  std::size_t operator()(const smithy::protocoltests::jsonrpc2::Note& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.text));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::jsonrpc2::UpEvents> {
+  std::size_t operator()(const smithy::protocoltests::jsonrpc2::UpEvents& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::jsonrpc2::EchoStreamInput> {
+  std::size_t operator()(const smithy::protocoltests::jsonrpc2::EchoStreamInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.prefix));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.events));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::jsonrpc2::EchoStreamOutput> {
+  std::size_t operator()(const smithy::protocoltests::jsonrpc2::EchoStreamOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.events));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::jsonrpc2::StreamAbort> {
+  std::size_t operator()(const smithy::protocoltests::jsonrpc2::StreamAbort& value) const noexcept {
     std::size_t seed = 0;
     seed = smithy::HashCombine(seed, smithy::HashValue(value.message));
     return seed;

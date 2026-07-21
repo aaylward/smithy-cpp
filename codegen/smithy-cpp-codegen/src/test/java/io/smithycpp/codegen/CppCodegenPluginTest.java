@@ -99,9 +99,13 @@ class CppCodegenPluginTest {
     assertTrue(client.contains("envelope.emplace(\"method\", smithy::Document(\"Add\"));"));
     assertTrue(client.contains("request.target = path_prefix_ + \"/\";"));
 
-    // One route for the whole service, dispatching on the envelope's method.
+    // One unary route per constructor (the calculator streams, so the async
+    // constructor exists too), dispatching on the envelope's method; the
+    // shared-endpoint stream route sits beside them on the WebSocket router
+    // (ADR-0023).
     String server = manifest.expectFileString("/src/server.cc");
-    assertEquals(1, server.split("router_->Add\\(", -1).length - 1);
+    assertEquals(2, server.split("\\(void\\)router_->Add\\(", -1).length - 1);
+    assertTrue(server.contains("(void)stream_router_->Add(\"GET\", \"/\","));
     assertTrue(server.contains("if (method_name == \"Divide\")"));
     assertTrue(server.contains("return JsonRpcError(-32601, \"UnknownOperationException\""));
     // Modeled errors: @httpError status as the code, fq shape id in __type.

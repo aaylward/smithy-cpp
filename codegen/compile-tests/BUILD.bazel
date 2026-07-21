@@ -53,11 +53,11 @@ smithy_cpp_server_library(
 )
 
 # The streaming slice of the harness (ADR-0016): a bidirectional chat-like op
-# plus a server-push one, generated for both streaming protocols (jsonRpc2
-# refuses event streams at generation time, so it gets no binding). The
-# clients' binaries link the default Beast dialer, so streaming_compile_test
-# below adds //runtime:http_beast; the libraries themselves stay Beast-free
-# to compile (only linking needs the dialer's definition).
+# plus a server-push one, generated for all three streaming protocols —
+# jsonRpc2 on its JSON-RPC-native wire (ADR-0023). The clients' binaries
+# link the default Beast dialer, so streaming_compile_test below adds
+# //runtime:http_beast; the libraries themselves stay Beast-free to compile
+# (only linking needs the dialer's definition).
 
 STREAMING_MODEL = ["model/streaming.smithy"]
 
@@ -87,6 +87,20 @@ smithy_cpp_server_library(
     srcs = STREAMING_MODEL,
     namespace = "compile::streaming::cbor",
     service = "compile.streaming#Pipe",
+)
+
+smithy_cpp_client_library(
+    name = "streaming_jsonrpc_client",
+    srcs = STREAMING_MODEL,
+    namespace = "compile::streaming::jsonrpc",
+    service = "compile.streaming#Wire",
+)
+
+smithy_cpp_server_library(
+    name = "streaming_jsonrpc_server",
+    srcs = STREAMING_MODEL,
+    namespace = "compile::streaming::jsonrpc",
+    service = "compile.streaming#Wire",
 )
 
 # Linking the test forces every generated TU above through the compiler; the
@@ -129,6 +143,8 @@ cc_test(
     deps = [
         ":streaming_cbor_client",
         ":streaming_cbor_server",
+        ":streaming_jsonrpc_client",
+        ":streaming_jsonrpc_server",
         ":streaming_rest_client",
         ":streaming_rest_server",
         "//runtime:cbor",

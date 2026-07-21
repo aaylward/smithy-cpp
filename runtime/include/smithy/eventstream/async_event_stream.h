@@ -161,6 +161,40 @@ inline SendMessageAwaitable SendMessage(std::shared_ptr<http::WebSocket> socket,
   return SendMessageAwaitable(std::move(socket), std::move(message));
 }
 
+// SendMessage's receive twin (ADR-0023): awaits one raw message from the
+// socket before any stream exists — how the generated jsonRpc2 session
+// route reads the opening request envelope that selects the operation,
+// inside its Detached launch body where blocking is forbidden. Same
+// outcomes as WebSocket::Receive: nullopt is the peer's clean close.
+// One-outstanding-per-class passes through; single-shot like its twin.
+class [[nodiscard]] ReceiveMessageAwaitable {
+ public:
+  explicit ReceiveMessageAwaitable(std::shared_ptr<http::WebSocket> socket)
+      : socket_(std::move(socket)) {}
+  // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
+  bool await_ready() const noexcept { return false; }
+  bool await_suspend(std::coroutine_handle<> coroutine) {
+    // The second-arrival-resumes race, as in AsyncEventStream's awaitables.
+    socket_->ReceiveAsync([this, coroutine](Outcome<std::optional<Message>> message) {
+      received_ = std::move(message);
+      if (arrived_.exchange(true)) coroutine.resume();
+    });
+    return !arrived_.exchange(true);  // suspend iff the callback has not run
+  }
+  Outcome<std::optional<Message>> await_resume() noexcept { return std::move(received_); }
+
+ private:
+  std::shared_ptr<http::WebSocket> socket_;
+  std::atomic<bool> arrived_{false};
+  // Outcome has no default constructor; the placeholder is overwritten
+  // before any resume. NOLINT(readability-redundant-member-init)
+  Outcome<std::optional<Message>> received_ = std::optional<Message>();  // NOLINT
+};
+
+inline ReceiveMessageAwaitable ReceiveMessage(std::shared_ptr<http::WebSocket> socket) {
+  return ReceiveMessageAwaitable(std::move(socket));
+}
+
 // The typed session's coroutine adapter (ADR-0019): EventStream's contract
 // over the completion-driven socket primitives, with `co_await` where the
 // blocking facade parks a thread. Owns its session (shared_ptr — the async

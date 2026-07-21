@@ -60,6 +60,52 @@ struct Rng {
   }
 };
 
+Term RandomTerm(Rng& rng) {
+  Term v{};
+  v.value = static_cast<double>(rng.Int(-8000000LL, 8000000LL)) / static_cast<double>(8);
+  return v;
+}
+
+Terms RandomTerms(Rng& rng) {
+  switch (rng.engine() % 1) {
+    default:
+      return Terms::FromAdd(RandomTerm(rng));
+  }
+}
+
+AccumulateInput RandomAccumulateInput(Rng& rng) {
+  AccumulateInput v{};
+  if (rng.Coin()) v.start = static_cast<double>(rng.Int(-8000000LL, 8000000LL)) / static_cast<double>(8);
+  if (rng.Coin()) v.terms = RandomTerms(rng);
+  return v;
+}
+
+RunningTotal RandomRunningTotal(Rng& rng) {
+  RunningTotal v{};
+  v.value = static_cast<double>(rng.Int(-8000000LL, 8000000LL)) / static_cast<double>(8);
+  return v;
+}
+
+Totals RandomTotals(Rng& rng) {
+  switch (rng.engine() % 1) {
+    default:
+      return Totals::FromTotal(RandomRunningTotal(rng));
+  }
+}
+
+AccumulateOutput RandomAccumulateOutput(Rng& rng) {
+  AccumulateOutput v{};
+  if (rng.Coin()) v.totals = RandomTotals(rng);
+  return v;
+}
+
+Overflow RandomOverflow(Rng& rng) {
+  Overflow v{};
+  v.message = rng.Text(1, 9);
+  v.limit = static_cast<double>(rng.Int(-8000000LL, 8000000LL)) / static_cast<double>(8);
+  return v;
+}
+
 AddInput RandomAddInput(Rng& rng) {
   AddInput v{};
   v.a = static_cast<double>(rng.Int(-8000000LL, 8000000LL)) / static_cast<double>(8);
@@ -95,6 +141,13 @@ DivisionByZero RandomDivisionByZero(Rng& rng) {
 
 class ScriptedHandler final : public CalculatorHandler {
   public:
+    // Streaming operation (ADR-0016): no generated unary-shaped test drives
+    // this; the stub closes the stream so the interface stays implemented.
+    smithy::Outcome<smithy::Unit> Accumulate(const AccumulateInput& input, AccumulateServerStream& stream, const smithy::server::RequestContext&) override {
+      (void)input;
+      stream.Close();
+      return smithy::Unit{};
+    }
     smithy::Outcome<AddOutput> Add(const AddInput& input, const smithy::server::RequestContext&) override {
       lastAdd = input;
       if (nextAddError.has_value()) return *nextAddError;

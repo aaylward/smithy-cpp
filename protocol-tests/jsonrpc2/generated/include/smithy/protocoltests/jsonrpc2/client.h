@@ -16,10 +16,15 @@
 #include "smithy/core/hash.h"
 #include "smithy/core/outcome.h"
 #include "smithy/core/print.h"
+#include "smithy/eventstream/event_stream.h"
 #include "smithy/http/transport.h"
 #include "smithy/protocoltests/jsonrpc2/types.h"
 
 namespace smithy::protocoltests::jsonrpc2 {
+
+/// The typed session EchoStream returns (ADR-0016): Tx = what this client
+/// sends, Rx = what the server sends.
+using EchoStreamClientStream = smithy::eventstream::EventStream<UpEvents, DownEvents>;
 
 /// jsonRpc2 client for smithy.cpp.protocoltests.jsonrpc2#JsonRpc2Protocol.
 /// Modeled service errors surface as smithy::Error with kind kModeled,
@@ -32,6 +37,18 @@ class JsonRpc2ProtocolClient {
     static smithy::Outcome<JsonRpc2ProtocolClient> Create(smithy::ClientConfig config);
 
     smithy::Outcome<EchoPayloadOutput> EchoPayload(const EchoPayloadInput& input) const;
+    /// The stream wire's conformance surface (ADR-0023). The smithy test traits
+    /// are request/response-shaped and cannot express a stream, so the stream
+    /// cases are authored as C++ in ../stream_conformance_test.cc — normative
+    /// for the envelopes (opening call, notification events with the id echoed
+    /// inside params, terminal result/error, the reserved codes) the way the
+    /// trait cases above are for the unary wire.
+    ///
+    /// Opens the operation's event stream over a WebSocket upgrade
+    /// (ADR-0016). Send carries input events, Receive yields output events
+    /// (nullopt on the peer's clean close), and a received exception
+    /// surfaces through Receive() as a modeled error, the unary shape.
+    smithy::Outcome<EchoStreamClientStream> EchoStream(const EchoStreamInput& input) const;
     smithy::Outcome<NoArgsOutput> NoArgs(const NoArgsInput& input = {}) const;
     smithy::Outcome<PutConstrainedOutput> PutConstrained(const PutConstrainedInput& input) const;
 
@@ -139,6 +156,84 @@ class EchoPayloadErrors {
     std::variant<std::monostate, NotFoundError, ThrottledError> value_;
 };
 
+/// The modeled errors of EchoStream, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class EchoStreamErrors {
+  public:
+    EchoStreamErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static EchoStreamErrors FromError(const smithy::Error& error) {
+      EchoStreamErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "StreamAbort") {
+        const auto* detail = error.detail<StreamAbort>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : StreamAbort{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_stream_abort() const { return value_.index() == 1; }
+    const StreamAbort& as_stream_abort() const {
+      require_is(1, "stream_abort");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const StreamAbort* as_stream_abort_or_null() const { return std::get_if<1>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "stream_abort"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "EchoStreamErrors(";
+      switch (value_.index()) {
+        case 1:
+          out += "stream_abort = ";
+          smithy::DebugAppend(out, std::get<1>(value_));
+          break;
+        default:
+          break;
+      }
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const EchoStreamErrors& value) {
+      return os << value.DebugString();
+    }
+
+    friend bool operator==(const EchoStreamErrors&, const EchoStreamErrors&) = default;
+    friend auto operator<=>(const EchoStreamErrors&, const EchoStreamErrors&) = default;
+    friend struct std::hash<EchoStreamErrors>;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("EchoStreamErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, StreamAbort> value_;
+};
+
 }  // namespace smithy::protocoltests::jsonrpc2
 
 // std::hash so generated types key std::unordered_map/std::unordered_set —
@@ -148,6 +243,15 @@ class EchoPayloadErrors {
 template <>
 struct std::hash<smithy::protocoltests::jsonrpc2::EchoPayloadErrors> {
   std::size_t operator()(const smithy::protocoltests::jsonrpc2::EchoPayloadErrors& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::jsonrpc2::EchoStreamErrors> {
+  std::size_t operator()(const smithy::protocoltests::jsonrpc2::EchoStreamErrors& value) const noexcept {
     const std::size_t member =
         std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
     return smithy::HashCombine(value.value_.index(), member);

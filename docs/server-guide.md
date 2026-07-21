@@ -120,8 +120,10 @@ smithy::http::BeastServerTransport transport(options);
 transport.Start(server.Handler());                       // unary routes, same port
 ```
 
-Whatever method the operation models, upgrades are always GET on the modeled URI — a
-WebSocket upgrade is a GET on the wire, and the generated routes register accordingly.
+Whatever method the operation models, upgrades are always GET — a WebSocket upgrade is a
+GET on the wire, and the generated routes register accordingly: on the modeled URI for
+the binding protocols, on the shared `/` endpoint for jsonRpc2 (ADR-0023), whose opening
+envelope carries the routing instead.
 
 Application admission policy (auth, rate limits) composes by wrapping `Gate()`: run your
 refusal first, then defer to the router's (`smithy/server/websocket_router.h` shows the
@@ -353,6 +355,46 @@ and its caveats. The working reference is
 browser-fidelity peer conversing in JSON text beside a binary generated client, the
 origin gate refusing a foreign page, and the modeled `Kicked` error arriving as an
 `"exception"` envelope.
+
+### jsonRpc2 streams (ADR-0023)
+
+`jsonRpc2` streams speak JSON-RPC itself — text envelopes end to end on the protocol's
+shared endpoint, no smithy-specific framing, no subprotocol. The generated server
+registers one `GET /` stream route per seam and dispatches on the **opening request
+envelope's `method`** (exactly how the unary `POST /` routes); the opening call's
+`params` carry the operation's initial-request members, events travel as notifications
+in both directions echoing the opening id inside `params`, and the stream ends with a
+response envelope for the opening id — `result` on a clean handler return, the unary
+error object for a modeled error, the reserved codes (-32700/-32600/-32601/-32602) for
+envelope-level failures — then the close. Handlers, `StreamRouter()`, both serve seams,
+and everything above the socket are unchanged; the mount needs one flag beyond the
+two-liner:
+
+```cpp
+options.websocket_gate = server.StreamRouter()->Gate();
+options.on_websocket_session = server.StreamRouter()->ServeSession();  // or on_websocket
+options.websocket_raw_text_frames = true;  // the JSON-RPC text wire (ADR-0023)
+```
+
+A page needs even less than the negotiated wire above — no subprotocol token:
+
+```js
+const ws = new WebSocket("wss://example.com/?ticket=" + ticket);
+ws.send(JSON.stringify({ jsonrpc: "2.0", method: "Accumulate",
+                         params: { start: 10 }, id: 1 }));
+ws.onmessage = (m) => { const { method, params, result, error } = JSON.parse(m.data); ... };
+ws.send(JSON.stringify({ jsonrpc: "2.0", method: "add",
+                         params: { id: 1, payload: { value: 5 } } }));
+```
+
+The raw-text flag claims the whole listener (it is refused beside
+`websocket_accept_json_frames`), so serve jsonRpc2 streams from their own transport. A
+vanilla JSON-RPC 2.0 client that ignores notifications still observes one well-formed
+call → response pair. The wire is pinned by the authored suite in
+[protocol-tests/jsonrpc2/stream_conformance_test.cc](../protocol-tests/jsonrpc2/stream_conformance_test.cc)
+(normative, per the ADR-0002 precedent); the worked example is the calculator's
+`Accumulate` session ([examples/jsonrpc2](../examples/jsonrpc2)), over the in-memory
+pair and real Beast WebSockets, both seams, TLS included.
 
 ## Generated smoke tests
 

@@ -127,7 +127,8 @@ smithy::http::HttpResponse ValidationErrorResponse(const std::vector<smithy::ser
   return response;
 }
 
-smithy::http::HttpResponse HandlePutSinkRpc(RoundTripJsonRpcHandler& handler, const smithy::Document& params, const smithy::Document& id, const smithy::server::RequestContext& context) {
+template <typename Handler>
+smithy::http::HttpResponse HandlePutSinkRpc(Handler& handler, const smithy::Document& params, const smithy::Document& id, const smithy::server::RequestContext& context) {
   PutSinkRpcInput input{};
   if (!params.is_map()) return JsonRpcError(-32602, "SerializationException", "params must be an object", {}, id);
   auto parsed = DeserializePutSinkRpcInput(params);

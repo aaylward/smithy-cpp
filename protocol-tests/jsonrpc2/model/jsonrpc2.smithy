@@ -21,6 +21,7 @@ service JsonRpc2Protocol {
         EchoPayload
         NoArgs
         PutConstrained
+        EchoStream
     ]
 }
 
@@ -478,4 +479,53 @@ list StringList {
 map StringMap {
     key: String
     value: String
+}
+
+/// The stream wire's conformance surface (ADR-0023). The smithy test traits
+/// are request/response-shaped and cannot express a stream, so the stream
+/// cases are authored as C++ in ../stream_conformance_test.cc — normative
+/// for the envelopes (opening call, notification events with the id echoed
+/// inside params, terminal result/error, the reserved codes) the way the
+/// trait cases above are for the unary wire.
+operation EchoStream {
+    input := {
+        /// Prefixed onto every echo; rides the opening envelope's params —
+        /// a body-bound initial-request member (ADR-0016's seam, realized).
+        prefix: String
+
+        events: UpEvents
+    }
+
+    output := {
+        events: DownEvents
+    }
+
+    errors: [StreamAbort]
+}
+
+@streaming
+union UpEvents {
+    note: Note
+}
+
+@streaming
+union DownEvents {
+    echo: EchoedNote
+}
+
+structure Note {
+    @required
+    text: String
+}
+
+structure EchoedNote {
+    @required
+    text: String
+}
+
+@error("client")
+@httpError(409)
+structure StreamAbort {
+    @required
+    message: String
 }

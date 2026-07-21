@@ -367,32 +367,150 @@ class EventStreamGeneratorTest {
         server.contains("ServeChatAsync(handler, std::move(input), std::move(socket));"), server);
   }
 
+  /**
+   * The jsonRpc2 face (ADR-0023): a shared endpoint, initial-request members riding the opening
+   * envelope's params — the first protocol carrying body-bound initial members.
+   */
+  private static final String JSONRPC_MODEL =
+      """
+      $version: "2.0"
+      namespace test.stream
+      use smithy.cpp.protocols#jsonRpc2
+
+      @jsonRpc2
+      service Svc { version: "1", operations: [Chat, Watch] }
+
+      operation Chat {
+          input := {
+              @required
+              room: String
+
+              events: ClientEvents
+          }
+          output := { events: ServerEvents }
+          errors: [RoomGone]
+      }
+
+      @readonly
+      operation Watch {
+          output := { events: ServerEvents }
+      }
+
+      @streaming
+      union ClientEvents { message: ChatMessage }
+
+      @streaming
+      union ServerEvents { message: ChatMessage }
+
+      structure ChatMessage { @required text: String }
+
+      @error("client")
+      @httpError(410)
+      structure RoomGone { message: String }
+      """;
+
+  private static MockManifest jsonRpc() {
+    return PluginTestHarness.generate(JSONRPC_MODEL, "test.stream#Svc", "test::stream");
+  }
+
   @Test
-  void jsonRpc2RefusesEventStreams() {
-    String model =
-        """
-        $version: "2.0"
-        namespace test.stream
-        use smithy.cpp.protocols#jsonRpc2
+  void jsonRpc2ClientOpensTheStreamWithTheRequestEnvelope() {
+    MockManifest manifest = jsonRpc();
+    String client = manifest.expectFileString("/src/client.cc");
+    // The shared endpoint on the raw-text wire: same target as the unary
+    // POST, the operation rides the opening envelope (ADR-0023).
+    assertTrue(client.contains("request.target = path_prefix_ + \"/\";"), client);
+    assertTrue(client.contains("request.raw_text_frames = true;"), client);
+    // The opening envelope carries the initial-request members as params,
+    // with the stream union erased — it is the session, not a member.
+    assertTrue(
+        client.contains("smithy::DocumentMap params = SerializeChatInput(input).as_map();"),
+        client);
+    assertTrue(client.contains("params.erase(\"events\");"), client);
+    assertTrue(
+        client.contains("envelope.emplace(\"method\", smithy::Document(\"Chat\"));"), client);
+    assertTrue(client.contains("envelope.emplace(\"id\", smithy::Document(1));"), client);
+    // The socket is wrapped in the JSON-RPC translation before the typed
+    // stream sees it; the codecs are the shared JSON pair.
+    assertTrue(
+        client.contains("std::make_shared<smithy::eventstream::JsonRpcStreamSocket>"), client);
+    assertTrue(
+        client.contains(
+            "return smithy::eventstream::MakeEventMessage(\"message\", \"application/json\","
+                + " smithy::Blob::FromString(smithy::json::Encode(SerializeChatMessage("
+                + "event.as_message()))));"),
+        client);
+    // A no-input operation still opens with (empty) params.
+    assertTrue(
+        client.contains("envelope.emplace(\"method\", smithy::Document(\"Watch\"));"), client);
+  }
 
-        @jsonRpc2
-        service Svc { version: "1", operations: [Chat] }
+  @Test
+  void jsonRpc2ServerDispatchesTheOpeningEnvelopeOnBothSeams() {
+    MockManifest manifest = jsonRpc();
+    String server = manifest.expectFileString("/src/server.cc");
+    // One "/" route per seam for the whole service — the unary POST "/"
+    // move, transposed to streams (ADR-0023).
+    assertTrue(server.contains("(void)stream_router_->Add(\"GET\", \"/\","), server);
+    assertTrue(server.contains("(void)stream_router_->AddSession(\"GET\", \"/\","), server);
+    assertTrue(server.contains("ServeJsonRpcStream(*handler, context, socket);"), server);
+    assertTrue(server.contains("ServeJsonRpcSession(handler, std::move(socket));"), server);
+    // The session driver reads the opening envelope inside the Detached
+    // frame — never parking a handler thread — and the blocking driver
+    // blocks in Receive, each dispatching on the envelope's method.
+    assertTrue(
+        server.contains("auto first = co_await smithy::eventstream::ReceiveMessage(socket);"),
+        server);
+    assertTrue(
+        server.contains("const JsonRpcOpening opening = ParseJsonRpcOpening(**first);"), server);
+    assertTrue(server.contains("if (opening.method == \"Chat\") {"), server);
+    // Reserved-code refusals reuse the unary emitter, as raw text.
+    assertTrue(
+        server.contains(
+            "JsonRpcStreamText(JsonRpcError(-32601, \"UnknownOperationException\","
+                + " \"unknown method: \" + opening.method, {}, opening.id))"),
+        server);
+    assertTrue(
+        server.contains(
+            "JsonRpcStreamText(JsonRpcError(-32602, \"SerializationException\","
+                + " parsed.error().message(), {}, opening.id))"),
+        server);
+    // Both seams serve through the wrapped socket and end with the terminal
+    // response envelope — result on a clean completion, the unary error
+    // identity otherwise — never an exception message.
+    assertTrue(
+        server.contains(
+            "smithy::eventstream::JsonRpcStreamSocket wrapped(socket, opening.id,"
+                + " smithy::eventstream::JsonRpcStreamSocket::Role::kServer);"),
+        server);
+    assertTrue(server.contains("BuildJsonRpcTerminalResult(opening.id)"), server);
+    assertTrue(
+        server.contains("JsonRpcStreamText(ErrorToResponse(outcome.error(), opening.id))"), server);
+    assertTrue(
+        server.contains(
+            "smithy::eventstream::Detached ServeChatAsync(std::shared_ptr<SvcAsyncHandler>"
+                + " handler, ChatInput input, std::shared_ptr<smithy::http::WebSocket> socket,"
+                + " smithy::Document id) {"),
+        server);
+    assertFalse(server.contains("BuildChatExceptionMessage"), server);
+    assertFalse(server.contains("MakeExceptionMessage"), server);
+    // The parsed opening input drops the stream union before the handler
+    // sees it — the union is the session.
+    assertTrue(server.contains("input.events.reset();"), server);
+  }
 
-        operation Chat {
-            input := { events: Events }
-        }
-
-        @streaming
-        union Events { message: ChatMessage }
-
-        structure ChatMessage { @required text: String }
-        """;
+  @Test
+  void jsonRpc2RejectsARequiredStreamMember() {
+    // The opening params deserialize through the input's ordinary serde,
+    // and params never carry the union — @required would refuse every
+    // opening (ADR-0023).
+    String model = JSONRPC_MODEL.replace("events: ClientEvents", "@required events: ClientEvents");
     var error =
         assertThrows(
             CodegenException.class,
             () -> PluginTestHarness.generate(model, "test.stream#Svc", "test::stream"));
     assertTrue(error.getMessage().contains("cpp-codegen"), error.getMessage());
-    assertTrue(error.getMessage().contains("jsonRpc2"), error.getMessage());
+    assertTrue(error.getMessage().contains("drop @required"), error.getMessage());
     assertTrue(error.getMessage().contains("test.stream#Chat"), error.getMessage());
   }
 

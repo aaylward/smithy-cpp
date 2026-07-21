@@ -34,6 +34,13 @@ DivideOutput MinimalDivideOutput() {
 
 class SmokeHandler : public CalculatorHandler {
   public:
+    // Streaming operation (ADR-0016): no generated unary-shaped test drives
+    // this; the stub closes the stream so the interface stays implemented.
+    smithy::Outcome<smithy::Unit> Accumulate(const AccumulateInput& input, AccumulateServerStream& stream, const smithy::server::RequestContext&) override {
+      (void)input;
+      stream.Close();
+      return smithy::Unit{};
+    }
     smithy::Outcome<AddOutput> Add(const AddInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalAddOutput();

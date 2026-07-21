@@ -16,6 +16,12 @@ namespace smithy::protocoltests::jsonrpc2 {
 // Serializers never fail; deserializers return smithy::Error on wire
 // mismatches and enforce @required members.
 
+smithy::Document SerializeEchoedNote(const EchoedNote& value);
+smithy::Outcome<EchoedNote> DeserializeEchoedNote(const smithy::Document& doc);
+
+smithy::Document SerializeDownEvents(const DownEvents& value);
+smithy::Outcome<DownEvents> DeserializeDownEvents(const smithy::Document& doc);
+
 smithy::Document SerializeStringMap(const std::map<std::string, std::string>& value);
 smithy::Outcome<std::map<std::string, std::string>> DeserializeStringMap(const smithy::Document& doc);
 
@@ -36,6 +42,21 @@ smithy::Outcome<NotFoundError> DeserializeNotFoundError(const smithy::Document& 
 
 smithy::Document SerializeThrottledError(const ThrottledError& value);
 smithy::Outcome<ThrottledError> DeserializeThrottledError(const smithy::Document& doc);
+
+smithy::Document SerializeNote(const Note& value);
+smithy::Outcome<Note> DeserializeNote(const smithy::Document& doc);
+
+smithy::Document SerializeUpEvents(const UpEvents& value);
+smithy::Outcome<UpEvents> DeserializeUpEvents(const smithy::Document& doc);
+
+smithy::Document SerializeEchoStreamInput(const EchoStreamInput& value);
+smithy::Outcome<EchoStreamInput> DeserializeEchoStreamInput(const smithy::Document& doc);
+
+smithy::Document SerializeEchoStreamOutput(const EchoStreamOutput& value);
+smithy::Outcome<EchoStreamOutput> DeserializeEchoStreamOutput(const smithy::Document& doc);
+
+smithy::Document SerializeStreamAbort(const StreamAbort& value);
+smithy::Outcome<StreamAbort> DeserializeStreamAbort(const smithy::Document& doc);
 
 smithy::Document SerializeNoArgsInput(const NoArgsInput& value);
 smithy::Outcome<NoArgsInput> DeserializeNoArgsInput(const smithy::Document& doc);

@@ -480,15 +480,20 @@ Browsers get their own wire and their own auth path (ADR-0018, issue
 binary event-stream frames without a hand-written codec, and it cannot set
 headers on the upgrade request at all.
 
-**The wire** is the negotiated JSON-text mode: set
-`BeastServerTransport::Options::websocket_accept_json_frames` on a
-`simpleRestJson` service and a page that passes the subprotocol to the
-constructor speaks the stream with `JSON.parse` alone — text frames
-carrying `{"event": "<member>", "payload": {...}}`, `"exception"` in place
+**The wire** depends on the protocol. On `simpleRestJson` it is the
+negotiated JSON-text mode: set
+`BeastServerTransport::Options::websocket_accept_json_frames` and a page
+that passes the subprotocol to the constructor speaks the stream with
+`JSON.parse` alone — text frames carrying
+`{"event": "<member>", "payload": {...}}`, `"exception"` in place
 of `"event"` for the terminal error arm. Native clients are untouched
-(no offer, binary wire, byte-identical 101). The
+(no offer, binary wire, byte-identical 101). On `jsonRpc2` (ADR-0023)
+there is nothing to negotiate: set
+`Options::websocket_raw_text_frames`, and `new WebSocket(url)` with no
+subprotocol at all speaks plain JSON-RPC 2.0 — a request envelope to
+open, notifications both ways, a response envelope to end. The
 [server guide](server-guide.md#browser-clients) has the two-line mount and
-the JS loop.
+the JS loop for both.
 
 **The blessed auth pattern is a short-lived, single-use ticket in an
 `@httpQuery`-bound initial-request member.** The browser `WebSocket`
@@ -511,7 +516,12 @@ Mint the ticket with an authenticated *unary* operation over HTTPS (the
 page can send `Authorization` headers on `fetch`), give it a lifetime of
 seconds and one use, and validate it in a gate composed ahead of the
 router's — admission control stays ahead of the 101, exactly like header
-auth for native clients. The caveat, out loud: **query strings land in
+auth for native clients. On `jsonRpc2` the ticket cannot be a *modeled*
+member at all — the protocol's contract is "no HTTP bindings apply", so
+there is no `@httpQuery` to bind it to; put it in an **unmodeled** query
+parameter on the upgrade URL (`new WebSocket(url + "?ticket=...")`) and
+validate it in the same gate, which sees the raw upgrade request either
+way. The exposure caveat below applies identically. The caveat, out loud: **query strings land in
 access logs** — the transport's own, and every proxy's on the path (a
 Caddy or nginx in front logs the full target of the upgrade GET). A
 short-lived single-use ticket bounds that exposure to a token that is

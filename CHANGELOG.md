@@ -25,7 +25,10 @@ via `git_override` until then.
   Smithy conformance suite, including the recursion and defaults cases.
 - **`smithy.cpp.protocols#jsonRpc2`** (RPC/JSON): JSON-RPC 2.0 over a single
   POST endpoint, defined in-repo with an authored conformance suite; interop
-  pinned against hand-rolled JSON-RPC peers.
+  pinned against hand-rolled JSON-RPC peers. Event streams speak JSON-RPC
+  itself (ADR-0023): text envelopes on the shared endpoint — no
+  smithy-specific framing — with their own authored stream conformance
+  suite.
 
 ### Generator
 
@@ -145,6 +148,38 @@ via `git_override` until then.
   refuse to mix rather than deaden routes silently. The thread-free chat
   hub now mounts its Converse route through the router instead of a
   hand-rolled target parser.
+- jsonRpc2 event streams (ADR-0023, issue #123): the one refusing protocol
+  now streams, on the JSON-RPC-native wire — one WebSocket upgrade on the
+  protocol's shared `/` endpoint, every frame a text JSON-RPC 2.0 envelope.
+  The opening request envelope selects the operation and carries the
+  initial-request members in `params` (the first protocol with body-bound
+  initial members, realizing ADR-0016's reserved seam); events are
+  notifications in both directions echoing the opening id inside `params`
+  (the `eth_subscribe` shape); the stream ends with a response envelope for
+  the opening id — `result` on clean completion, the unary error-object
+  convention unchanged for modeled errors, the reserved codes (-32700,
+  -32600, -32601, -32602) for envelope-level failures — then the close.
+  Mid-stream envelope violations (unparseable text, request or response
+  envelopes after the opening call, foreign-id echoes) are policed by the
+  wrapper per role: the server answers the reserved-code terminal for the
+  opening id before its close, both ends fail closed. A
+  vanilla JSON-RPC client that ignores notifications sees one well-formed
+  call/response pair; a browser consumes the whole session with
+  `JSON.parse` alone (`new WebSocket(url)`, no subprotocol, no codec). The
+  translation lives above the transport (`//runtime:eventstream_jsonrpc`'s
+  `JsonRpcStreamSocket` — so the in-memory pair carries the actual wire
+  text) over a new raw-text transport mode
+  (`Options::websocket_raw_text_frames`, `WebSocketDialRequest::
+  raw_text_frames`); both serve seams dispatch the opening envelope behind
+  one generated `/` stream route, and the terminal envelopes reuse the
+  unary emitters — one error identity. Pinned by an authored stream
+  conformance suite (`protocol-tests/jsonrpc2`), the calculator's
+  `Accumulate` example over pair and real Beast (TLS included), the
+  compile gauntlet's constrained-member validation refusal, and a consumer
+  CLI suite driving the generated tally service as real processes — the
+  generated client for the modeled flows, a raw stdin-to-text-frames peer
+  for the refusal and policing edges the well-behaved client cannot
+  produce.
 - Registry admission primitives (ADR-0022, issue #122):
   `SessionRegistry::ResumeOrAdd(id, mint, deadline)` is the reconnect
   admission recipe as one call — Resume first, fresh Add second, retried
@@ -208,7 +243,8 @@ via `git_override` until then.
   meaningful; handles are how a session fans out).
 - Phase 8 slice 3, generated event streams (ADR-0016): `@streaming` union
   operations generate real streaming code for `simpleRestJson` and
-  `rpcv2Cbor` (`jsonRpc2` refuses with a diagnostic). Clients gain
+  `rpcv2Cbor` (`jsonRpc2` refused with a diagnostic until its native wire
+  landed — ADR-0023 above). Clients gain
   `Outcome<EventStream<In, Out>> Op(input)` — the upgrade GET resolves
   `@http` bindings exactly like a unary request, dialing derives from the
   one `ClientConfig` endpoint (an `https` endpoint dials `wss`), and
@@ -247,8 +283,8 @@ via `git_override` until then.
   sessions so blocked serve callbacks wake. Usable directly ahead of the
   generated streaming API (slice 3).
 - Phase 8 groundwork, wire-format-first (ADR-0014): `//runtime:eventstream`
-  is the event-stream message framing both streaming protocols are defined
-  against — CRC-guarded prelude, ten typed header wire types (headers
+  is the event-stream message framing the binding streaming protocols
+  (simpleRestJson, rpcv2Cbor) are defined against — CRC-guarded prelude, ten typed header wire types (headers
   build from plain values and the timestamp is the runtime's own
   `smithy::Timestamp`), opaque `Blob` payloads, an incremental strict
   fail-closed decoder, and symmetric bounds (Encode refuses whatever

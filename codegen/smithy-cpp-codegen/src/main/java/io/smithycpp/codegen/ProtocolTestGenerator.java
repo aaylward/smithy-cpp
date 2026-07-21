@@ -515,6 +515,9 @@ final class ProtocolTestGenerator {
   /** RecordingHandler: stores the last parsed input per operation, answers minimally. */
   private void writeRecordingHandler(CppWriter w) {
     for (OperationShape operation : operations) {
+      if (EventStreamCodeGen.streaming(context.model(), operation)) {
+        continue; // no unary answer to minimize; the stub below suffices
+      }
       String opName = CppReservedWords.escape(operation.getId().getName());
       w.openBlock(
           "$L Minimal$LOutput() {",
@@ -527,6 +530,13 @@ final class ProtocolTestGenerator {
     w.openBlock("class RecordingHandler : public $L {", handlerType());
     w.write("public:").indent();
     for (OperationShape operation : operations) {
+      if (EventStreamCodeGen.streaming(context.model(), operation)) {
+        // The unary-shaped conformance harness never upgrades; the stub
+        // keeps the interface implemented (the authored stream suite owns
+        // the streaming wire, ADR-0023).
+        EventStreamCodeGen.writeTestHandlerStub(w, context, operation);
+        continue;
+      }
       String opName = CppReservedWords.escape(operation.getId().getName());
       String inputType = context.cppSymbols().toSymbol(inputOf(operation)).getName();
       ProtocolSupport.openTestHandlerOverride(

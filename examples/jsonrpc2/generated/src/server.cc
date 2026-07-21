@@ -9,7 +9,11 @@
 #include "example/calculator/serde.h"
 #include "example/calculator/server.h"
 #include "smithy/core/document.h"
+#include "smithy/eventstream/async_event_stream.h"
+#include "smithy/eventstream/envelope.h"
+#include "smithy/eventstream/jsonrpc_stream_socket.h"
 #include "smithy/http/headers.h"
+#include "smithy/http/websocket.h"
 #include "smithy/json/json.h"
 #include "smithy/server/router.h"
 
@@ -53,6 +57,18 @@ smithy::http::HttpResponse ErrorToResponse(const smithy::Error& error, const smi
       }
       return JsonRpcError(422, "example.calculator#DivisionByZero", "", std::move(body), id);
     }
+    if (error.code() == "Overflow") {
+      smithy::DocumentMap body;
+      if (const auto* detail = error.detail<Overflow>()) {
+        body = SerializeOverflow(*detail).as_map();
+      }
+      // The typed detail's own message member wins over the generic one.
+      const bool has_message = body.count("message") != 0 || body.count("Message") != 0;
+      if (!has_message && !error.message().empty()) {
+        body.emplace("message", smithy::Document(error.message()));
+      }
+      return JsonRpcError(400, "example.calculator#Overflow", "", std::move(body), id);
+    }
     return JsonRpcError(400, error.code(), error.message(), {}, id);
   }
   if (error.kind() == smithy::ErrorKind::kValidation || error.kind() == smithy::ErrorKind::kSerialization) return JsonRpcError(400, "SerializationException", error.message(), {}, id);
@@ -60,7 +76,8 @@ smithy::http::HttpResponse ErrorToResponse(const smithy::Error& error, const smi
   return JsonRpcError(500, "InternalFailure", "internal failure", {}, id);
 }
 
-smithy::http::HttpResponse HandleAdd(CalculatorHandler& handler, const smithy::Document& params, const smithy::Document& id, const smithy::server::RequestContext& context) {
+template <typename Handler>
+smithy::http::HttpResponse HandleAdd(Handler& handler, const smithy::Document& params, const smithy::Document& id, const smithy::server::RequestContext& context) {
   AddInput input{};
   if (!params.is_map()) return JsonRpcError(-32602, "SerializationException", "params must be an object", {}, id);
   auto parsed = DeserializeAddInput(params);
@@ -79,7 +96,8 @@ smithy::http::HttpResponse HandleAdd(CalculatorHandler& handler, const smithy::D
   return response;
 }
 
-smithy::http::HttpResponse HandleDivide(CalculatorHandler& handler, const smithy::Document& params, const smithy::Document& id, const smithy::server::RequestContext& context) {
+template <typename Handler>
+smithy::http::HttpResponse HandleDivide(Handler& handler, const smithy::Document& params, const smithy::Document& id, const smithy::server::RequestContext& context) {
   DivideInput input{};
   if (!params.is_map()) return JsonRpcError(-32602, "SerializationException", "params must be an object", {}, id);
   auto parsed = DeserializeDivideInput(params);
@@ -98,10 +116,200 @@ smithy::http::HttpResponse HandleDivide(CalculatorHandler& handler, const smithy
   return response;
 }
 
+// One JSON-RPC envelope as the raw-text message the stream wire carries
+// (ADR-0023): the unary emitters build the envelope, streams reuse their
+// bodies verbatim — one error identity, one spelling.
+smithy::eventstream::Message JsonRpcStreamText(const smithy::http::HttpResponse& response) {
+  smithy::eventstream::Message message;
+  message.payload = smithy::Blob::FromString(response.body);
+  return message;
+}
+
+// The terminal result envelope that ends a clean stream: result stays {}
+// while initial-response members remain deferred (ADR-0016/0023).
+smithy::eventstream::Message BuildJsonRpcTerminalResult(const smithy::Document& id) {
+  smithy::DocumentMap envelope;
+  envelope.emplace("jsonrpc", smithy::Document("2.0"));
+  envelope.emplace("result", smithy::Document(smithy::DocumentMap{}));
+  envelope.emplace("id", id);
+  smithy::eventstream::Message message;
+  message.payload = smithy::Blob::FromString(smithy::json::Encode(smithy::Document(std::move(envelope))));
+  return message;
+}
+
+// The opening request envelope, parsed and validated (ADR-0023). Refusal
+// strings mirror the unary endpoint's exactly — the conformance suite
+// compares bodies, so no decoder detail leaks into the wire.
+struct JsonRpcOpening {
+  bool ok = false;
+  smithy::Document id;  // null until the envelope yields one (JSON-RPC 2.0 §5)
+  std::string method;
+  smithy::Document params{smithy::DocumentMap{}};
+  smithy::eventstream::Message refusal;  // when !ok: send, then close
+};
+
+JsonRpcOpening ParseJsonRpcOpening(const smithy::eventstream::Message& message) {
+  JsonRpcOpening opening;
+  if (!message.headers.empty()) {
+    // Only the raw-text wire reaches this route; a framed message means a
+    // peer speaking the wrong wire entirely.
+    opening.refusal = JsonRpcStreamText(JsonRpcError(-32600, "SerializationException", "the opening message must be one JSON-RPC request envelope", {}, opening.id));
+    return opening;
+  }
+  auto decoded = smithy::json::Decode(message.payload.ToString());
+  if (!decoded) {
+    opening.refusal = JsonRpcStreamText(JsonRpcError(-32700, "SerializationException", "request body is not valid JSON", {}, opening.id));
+    return opening;
+  }
+  if (!decoded->is_map()) {
+    opening.refusal = JsonRpcStreamText(JsonRpcError(-32600, "SerializationException", "request is not a JSON-RPC 2.0 call", {}, opening.id));
+    return opening;
+  }
+  if (const smithy::Document* id_doc = decoded->Find("id"); id_doc != nullptr) opening.id = *id_doc;
+  const smithy::Document* version = decoded->Find("jsonrpc");
+  if (version == nullptr || !version->is_string() || version->as_string() != "2.0") {
+    opening.refusal = JsonRpcStreamText(JsonRpcError(-32600, "SerializationException", "expected jsonrpc: \"2.0\"", {}, opening.id));
+    return opening;
+  }
+  const smithy::Document* method = decoded->Find("method");
+  if (method == nullptr || !method->is_string()) {
+    opening.refusal = JsonRpcStreamText(JsonRpcError(-32600, "SerializationException", "expected a string method member", {}, opening.id));
+    return opening;
+  }
+  // A call without an id is a notification: nothing to answer, nothing for
+  // the stream's events to echo — refused, unlike the unary endpoint.
+  if (opening.id.is_null()) {
+    opening.refusal = JsonRpcStreamText(JsonRpcError(-32600, "SerializationException", "the opening call must carry an id", {}, opening.id));
+    return opening;
+  }
+  // Absent/null params deserialize like an empty object.
+  const smithy::Document* params = decoded->Find("params");
+  if (params != nullptr && !params->is_null()) opening.params = *params;
+  opening.method = method->as_string();
+  opening.ok = true;
+  return opening;
+}
+
+// One event per message (ADR-0016): the engaged member's structure is the
+// payload, its member name the :event-type.
+smithy::Outcome<smithy::eventstream::Message> EncodeAccumulateEvent(const Totals& event) {
+  if (event.is_total()) {
+    return smithy::eventstream::MakeEventMessage("total", "application/json", smithy::Blob::FromString(smithy::json::Encode(SerializeRunningTotal(event.as_total()))));
+  }
+  return smithy::Error::Validation("Totals: no event member engaged");
+}
+
+smithy::Outcome<Terms> DecodeAccumulateEvent(const smithy::eventstream::Message& message) {
+  auto envelope = smithy::eventstream::ParseEnvelope(message);
+  if (!envelope) return std::move(envelope).error();
+  if (envelope->kind == smithy::eventstream::EventEnvelope::Kind::kException) {
+    // Clients send events, never exceptions; treat one as a terminal protocol
+    // violation carrying the peer's claimed identity.
+    return smithy::Error::Modeled(envelope->type, "peer sent an exception message");
+  }
+  if (envelope->type == "add") {
+    auto doc = smithy::json::Decode(envelope->payload.ToString());
+    if (!doc) return std::move(doc).error();
+    auto event = DeserializeTerm(*doc);
+    if (!event) return std::move(event).error();
+    return Terms::FromAdd(*std::move(event));
+  }
+  return smithy::Error::Serialization("Accumulate: unknown event type: " + envelope->type);
+}
+
+// The async route's launch wrapper (ADR-0021), on the JSON-RPC wire
+// (ADR-0023): the handler speaks envelope messages, the wrapper socket
+// translates, and the terminal response envelope — result on a clean
+// completion, the unary error identity otherwise — is AWAITED so this
+// frame (and the stream it owns) outlives the write. Best-effort, like
+// every terminal send: a send the dead session refuses is discarded.
+smithy::eventstream::Detached ServeAccumulateAsync(std::shared_ptr<CalculatorAsyncHandler> handler, AccumulateInput input, std::shared_ptr<smithy::http::WebSocket> socket, smithy::Document id) {
+  auto wrapped = std::make_shared<smithy::eventstream::JsonRpcStreamSocket>(socket, id, smithy::eventstream::JsonRpcStreamSocket::Role::kServer);
+  AccumulateAsyncServerStream stream(wrapped, EncodeAccumulateEvent, DecodeAccumulateEvent);
+  auto outcome = co_await handler->Accumulate(std::move(input), stream);
+  // Built OUTSIDE the co_await expression on purpose: a conditional
+  // operator inside a co_await full expression miscompiles on GCC (the
+  // branch temporaries become frame slots and the wrong branch runs).
+  smithy::eventstream::Message terminal =
+      outcome.ok() ? BuildJsonRpcTerminalResult(id)
+                   : JsonRpcStreamText(ErrorToResponse(outcome.error(), id));
+  (void)co_await smithy::eventstream::SendMessage(socket, std::move(terminal));
+  stream.Close();
+}
+
+// The blocking seam's shared-endpoint driver (ADR-0023).
+void ServeJsonRpcStream(CalculatorHandler& handler, const smithy::server::RequestContext& context, smithy::http::WebSocket& socket) {
+  auto first = socket.Receive();
+  // A wire that failed or closed before the opening call is a non-event.
+  if (!first.ok() || !first->has_value()) return;
+  const JsonRpcOpening opening = ParseJsonRpcOpening(**first);
+  if (!opening.ok) {
+    (void)socket.Send(opening.refusal);
+    socket.Close();
+    return;
+  }
+  if (opening.method == "Accumulate") {
+    AccumulateInput input{};
+    auto parsed = DeserializeAccumulateInput(opening.params);
+    if (!parsed) {
+      (void)socket.Send(JsonRpcStreamText(JsonRpcError(-32602, "SerializationException", parsed.error().message(), {}, opening.id)));
+      socket.Close();
+      return;
+    }
+    input = *std::move(parsed);
+    // The union is the session, never an opening member (ADR-0023).
+    input.terms.reset();
+    smithy::eventstream::JsonRpcStreamSocket wrapped(socket, opening.id, smithy::eventstream::JsonRpcStreamSocket::Role::kServer);
+    AccumulateServerStream stream(wrapped, EncodeAccumulateEvent, DecodeAccumulateEvent);
+    auto outcome = handler.Accumulate(input, stream, context);
+    // The terminal response rides the raw socket: the wrapper only speaks
+    // notifications, and the envelope is already text.
+    (void)socket.Send(outcome.ok() ? BuildJsonRpcTerminalResult(opening.id)
+                                     : JsonRpcStreamText(ErrorToResponse(outcome.error(), opening.id)));
+    stream.Close();
+    return;
+  }
+  (void)socket.Send(JsonRpcStreamText(JsonRpcError(-32601, "UnknownOperationException", "unknown method: " + opening.method, {}, opening.id)));
+  socket.Close();
+  return;
+}
+
+// The session seam's shared-endpoint driver (ADR-0021/0023): the opening
+// envelope is read inside this Detached frame — a client that upgrades
+// and never calls costs no parked thread.
+smithy::eventstream::Detached ServeJsonRpcSession(std::shared_ptr<CalculatorAsyncHandler> handler, std::shared_ptr<smithy::http::WebSocket> socket) {
+  auto first = co_await smithy::eventstream::ReceiveMessage(socket);
+  if (!first.ok() || !first->has_value()) co_return;
+  const JsonRpcOpening opening = ParseJsonRpcOpening(**first);
+  if (!opening.ok) {
+    (void)co_await smithy::eventstream::SendMessage(socket, opening.refusal);
+    socket->Close();
+    co_return;
+  }
+  if (opening.method == "Accumulate") {
+    AccumulateInput input{};
+    auto parsed = DeserializeAccumulateInput(opening.params);
+    if (!parsed) {
+      (void)co_await smithy::eventstream::SendMessage(socket, JsonRpcStreamText(JsonRpcError(-32602, "SerializationException", parsed.error().message(), {}, opening.id)));
+      socket->Close();
+      co_return;
+    }
+    input = *std::move(parsed);
+    // The union is the session, never an opening member (ADR-0023).
+    input.terms.reset();
+    ServeAccumulateAsync(handler, std::move(input), std::move(socket), opening.id);
+    co_return;
+  }
+  (void)co_await smithy::eventstream::SendMessage(socket, JsonRpcStreamText(JsonRpcError(-32601, "UnknownOperationException", "unknown method: " + opening.method, {}, opening.id)));
+  socket->Close();
+  co_return;
+}
+
 }  // namespace
 
 CalculatorServer::CalculatorServer(std::shared_ptr<CalculatorHandler> handler)
-  : router_(std::make_shared<smithy::server::Router>()) {
+  : router_(std::make_shared<smithy::server::Router>()),
+    stream_router_(std::make_shared<smithy::server::WebSocketRouter>()) {
   // The route table is derived from the model's @http traits; conflicts are
   // a modeling error surfaced by Router::Add (checked at generation time in a
   // later phase), so registration results are intentionally discarded.
@@ -142,11 +350,74 @@ CalculatorServer::CalculatorServer(std::shared_ptr<CalculatorHandler> handler)
     }
     return JsonRpcError(-32601, "UnknownOperationException", "unknown method: " + method_name, {}, id);
   });
+  // Streaming routes (ADR-0016) live on the WebSocket router; the upgrade
+  // path bypasses the HTTP chain (ADR-0015), so they never collide with
+  // the unary table above.
+  // One shared-endpoint stream route (ADR-0023): the wire routes on the
+  // opening envelope's method, exactly like the unary POST "/" above.
+  (void)stream_router_->Add("GET", "/", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, smithy::http::WebSocket& socket) {
+    (void)request;
+    ServeJsonRpcStream(*handler, context, socket);
+  }, "Calculator");
+}
+
+CalculatorServer::CalculatorServer(std::shared_ptr<CalculatorAsyncHandler> handler)
+  : router_(std::make_shared<smithy::server::Router>()),
+    stream_router_(std::make_shared<smithy::server::WebSocketRouter>()) {
+  // The same unary table; every streaming route rides the shared-session
+  // seam (ADR-0021) — an AddSession launch point per operation, so serving
+  // a stream parks no handler thread.
+  (void)router_->Add("POST", "/", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    smithy::Document id;  // null until the envelope yields one (JSON-RPC 2.0 §5)
+    // A present Content-Type must carry application/json (parameters ignored).
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      return JsonRpcError(-32600, "UnsupportedMediaTypeException", "expected content-type: application/json", {}, id);
+    }
+    auto decoded = smithy::json::Decode(request.body);
+    // Envelope failure messages are fixed strings: the conformance suite
+    // compares bodies exactly, so no decoder detail leaks into the wire.
+    if (!decoded) return JsonRpcError(-32700, "SerializationException", "request body is not valid JSON", {}, id);
+    if (!decoded->is_map()) return JsonRpcError(-32600, "SerializationException", "request is not a JSON-RPC 2.0 call", {}, id);
+    if (const smithy::Document* id_doc = decoded->Find("id"); id_doc != nullptr) id = *id_doc;
+    const smithy::Document* version = decoded->Find("jsonrpc");
+    if (version == nullptr || !version->is_string() || version->as_string() != "2.0") {
+      return JsonRpcError(-32600, "SerializationException", "expected jsonrpc: \"2.0\"", {}, id);
+    }
+    const smithy::Document* method = decoded->Find("method");
+    if (method == nullptr || !method->is_string()) {
+      return JsonRpcError(-32600, "SerializationException", "expected a string method member", {}, id);
+    }
+    // Absent/null params deserialize like an empty object.
+    const smithy::Document empty_params{smithy::DocumentMap{}};
+    const smithy::Document* params = decoded->Find("params");
+    if (params == nullptr || params->is_null()) params = &empty_params;
+    const std::string& method_name = method->as_string();
+    if (method_name == "Add") {
+      auto response = HandleAdd(*handler, *params, id, context);
+      response.operation = "Add";
+      return response;
+    }
+    if (method_name == "Divide") {
+      auto response = HandleDivide(*handler, *params, id, context);
+      response.operation = "Divide";
+      return response;
+    }
+    return JsonRpcError(-32601, "UnknownOperationException", "unknown method: " + method_name, {}, id);
+  });
+  (void)stream_router_->AddSession("GET", "/", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::shared_ptr<smithy::http::WebSocket> socket) {
+    (void)request;
+    (void)context;
+    ServeJsonRpcSession(handler, std::move(socket));
+  }, "Calculator");
 }
 
 smithy::http::RequestHandler CalculatorServer::Handler() const {
   auto router = router_;
   return [router](const smithy::http::HttpRequest& request) { return router->Route(request); };
+}
+
+std::shared_ptr<smithy::server::WebSocketRouter> CalculatorServer::StreamRouter() const {
+  return stream_router_;
 }
 
 }  // namespace example::calculator

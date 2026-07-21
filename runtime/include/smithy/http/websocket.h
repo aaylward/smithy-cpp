@@ -15,10 +15,12 @@ namespace smithy::http {
 // A blocking, full-duplex event-stream session over one WebSocket
 // connection (ADR-0015). What travels is eventstream::Message — exactly one
 // frame per binary WebSocket message; text messages and malformed frames
-// fail the session. (On a session negotiated to the JSON-text mode of
-// ADR-0018 the wire encoding flips — one JSON envelope per text message,
-// binary messages fail — but this facade is unchanged: the transport
-// translates, and both modes carry the same Messages.) Both ends of the
+// fail the session. (Two sibling wire modes flip the encoding without
+// touching this facade: a session negotiated to ADR-0018's JSON-text mode
+// carries one JSON envelope per text message, and a raw-text session
+// (ADR-0023, jsonRpc2 streams) carries headerless Messages as verbatim
+// text frames — in both, binary messages fail, the transport translates,
+// and every mode carries the same Messages.) Both ends of the
 // wire speak this type: the server side arrives in
 // BeastServerTransport::Options::on_websocket (borrowed) or
 // on_websocket_session (shared, ADR-0019), the client side from
@@ -137,6 +139,12 @@ struct WebSocketDialRequest {
   std::string target = "/";
   // Extra headers on the upgrade request — bearer tokens, api keys.
   Headers headers;
+  // The raw-text wire (ADR-0023): headerless messages ride as verbatim
+  // text frames, one JSON-RPC envelope each. Set by generated jsonRpc2
+  // streaming clients on every dial — the wire IS the protocol, so there
+  // is no negotiation. Custom dialers that carry Message values without a
+  // wire (the in-memory pair) ignore it.
+  bool raw_text_frames = false;
   // The per-phase budget for the connect, TLS, and upgrade handshakes.
   int handshake_timeout_ms = 30000;
   // After the upgrade: how long a silent connection stays up. Keep-alive
@@ -190,6 +198,11 @@ class BeastWebSocketClient {
     // and native clients should keep the default. A server that answers
     // with a subprotocol never offered fails the dial.
     bool offer_json_frames = false;
+    // The raw-text wire (ADR-0023): headerless messages as verbatim text
+    // frames, one JSON-RPC envelope each — what a generated jsonRpc2
+    // streaming client dials with. Unnegotiated (the wire IS the
+    // protocol), and refused together with offer_json_frames.
+    bool raw_text_frames = false;
     // The per-phase budget for the connect, TLS, and upgrade handshakes.
     int handshake_timeout_ms = 30000;
     // After the upgrade: how long a silent connection stays up. Keep-alive

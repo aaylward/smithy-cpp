@@ -4,7 +4,10 @@
 Implemented: `smithy::eventstream::EventStream<Tx, Rx>` + envelope helpers,
 `smithy::server::WebSocketRouter`, `smithy::http::InMemoryWebSocketPair`,
 generated streaming operations (client + server) for `alloy#simpleRestJson`
-and `smithy.protocols#rpcv2Cbor`.
+and `smithy.protocols#rpcv2Cbor`. Amended by ADR-0023: the jsonRpc2
+generation-time refusal is dead (the protocol streams natively over
+JSON-RPC envelopes), and the reserved `:initial-request` seam is realized
+by jsonRpc2's opening call carrying body-bound initial-request members.
 
 ## Context
 

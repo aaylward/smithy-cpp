@@ -1,5 +1,52 @@
 load("@rules_cc//cc:defs.bzl", "cc_test")
 
+# The stream wire's in-memory half (ADR-0023): generated client and server
+# round-tripping through the JSON-RPC envelopes on both serve seams over an
+# injected InMemoryWebSocketPair dialer — and, because the translation runs
+# above the socket, the same fixture pins the actual envelope text a
+# vanilla JSON-RPC peer exchanges.
+cc_test(
+    name = "stream_e2e_test",
+    size = "small",
+    srcs = [
+        "accumulate_handler.h",
+        "stream_e2e_test.cc",
+        "stream_test_fixture.h",
+    ],
+    deps = [
+        "//examples/jsonrpc2/generated:client",
+        "//examples/jsonrpc2/generated:server",
+        "//runtime:client",
+        "//runtime:http",
+        "//runtime:server",
+        "@googletest//:gtest_main",
+    ],
+)
+
+# The real-WebSocket half: BeastServerTransport in raw-text mode on the
+# StreamRouter (both seams, TLS included), the generated client dialing the
+# shared endpoint through the default Beast dialer, plus a browser-shaped
+# raw-text peer exchanging the pinned envelope bytes on the wire.
+cc_test(
+    name = "stream_e2e_beast_test",
+    size = "small",
+    srcs = [
+        "accumulate_handler.h",
+        "stream_e2e_beast_test.cc",
+    ],
+    tags = ["requires-network"],
+    deps = [
+        "//examples/jsonrpc2/generated:client",
+        "//examples/jsonrpc2/generated:server",
+        "//runtime:client",
+        "//runtime:http",
+        "//runtime:http_beast",
+        "//runtime:server",
+        "//runtime:test_tls_identity",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_test(
     name = "interop_wire_test",
     size = "small",

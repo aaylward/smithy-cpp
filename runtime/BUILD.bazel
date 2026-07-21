@@ -110,6 +110,58 @@ cc_test(
     ],
 )
 
+# The jsonRpc2 stream wire (ADR-0023): the JSON-RPC envelope codec and the
+# translating wrapper socket generated jsonRpc2 streaming code wears over
+# any WebSocket. Depends on :http for the WebSocket facade — unlike the
+# transport-internal ADR-0018 mode, the translation runs above the socket
+# so the in-memory pair exercises the actual JSON text.
+cc_library(
+    name = "eventstream_jsonrpc",
+    srcs = [
+        "src/eventstream/jsonrpc_frame.cc",
+        "src/eventstream/jsonrpc_stream_socket.cc",
+    ],
+    hdrs = [
+        "include/smithy/eventstream/jsonrpc_frame.h",
+        "include/smithy/eventstream/jsonrpc_stream_socket.h",
+    ],
+    copts = COPTS,
+    includes = ["include"],
+    deps = [
+        ":core",
+        ":eventstream",
+        ":http",
+        ":json",
+    ],
+)
+
+cc_test(
+    name = "jsonrpc_frame_test",
+    size = "small",
+    srcs = ["tests/eventstream/jsonrpc_frame_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":eventstream",
+        ":eventstream_jsonrpc",
+        ":json",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "jsonrpc_stream_socket_test",
+    size = "small",
+    srcs = ["tests/eventstream/jsonrpc_stream_socket_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":eventstream",
+        ":eventstream_jsonrpc",
+        ":http",
+        ":json",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_test(
     name = "eventstream_frame_test",
     size = "small",

@@ -16,6 +16,11 @@ FUZZ_TARGETS = {
         "//runtime:eventstream",
         "//runtime:eventstream_json",
     ],
+    "eventstream_jsonrpc_frame": [
+        "//runtime:core",
+        "//runtime:eventstream",
+        "//runtime:eventstream_jsonrpc",
+    ],
     "forwarded": ["//runtime:http"],
     "http1": ["//runtime:http"],
     "regex": ["//runtime:core"],

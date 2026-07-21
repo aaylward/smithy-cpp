@@ -36,6 +36,15 @@ class Handler final : public CalculatorHandler {
     }
     return DivideOutput{.quotient = input.dividend / input.divisor};
   }
+
+  // Streaming rides the WebSocket endpoint, not the POST wire this suite
+  // drives; the stub keeps the interface implemented (stream_e2e_test.cc
+  // owns the real flows).
+  smithy::Outcome<smithy::Unit> Accumulate(const AccumulateInput&, AccumulateServerStream& stream,
+                                           const smithy::server::RequestContext&) override {
+    stream.Close();
+    return smithy::Unit{};
+  }
 };
 
 smithy::http::HttpResponse Call(const std::string& body) {
@@ -169,6 +178,11 @@ TEST(JsonRpc2InteropTest, EnvelopeDispatchThreadsTheRequestContext) {
     smithy::Outcome<DivideOutput> Divide(const DivideInput&,
                                          const smithy::server::RequestContext&) override {
       return DivideOutput{.quotient = 0};
+    }
+    smithy::Outcome<smithy::Unit> Accumulate(const AccumulateInput&, AccumulateServerStream& stream,
+                                             const smithy::server::RequestContext&) override {
+      stream.Close();
+      return smithy::Unit{};
     }
   };
 

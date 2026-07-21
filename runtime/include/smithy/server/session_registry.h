@@ -1,6 +1,7 @@
 #ifndef SMITHY_SERVER_SESSION_REGISTRY_H_
 #define SMITHY_SERVER_SESSION_REGISTRY_H_
 
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
@@ -69,6 +70,9 @@ namespace smithy::server {
 // mutually exclusive with a successful Resume; Drain and the destructor
 // expire detached entries immediately. One lazy expiry thread serves the
 // whole registry — a detached session itself holds zero threads.
+// ResumeOrAdd is the blessed admission call (ADR-0022): resume-or-fresh-
+// join with the brief retry the reconnect race needs, and Close(id) is
+// the kick primitive that makes its refusal actionable.
 //
 // All methods are safe from any thread, including a handler's own (a
 // handler may SendTo itself) and the slow-consumer callback (which runs
@@ -307,6 +311,36 @@ class SessionRegistry {
     return true;
   }
 
+  // The three-way admission outcome ResumeOrAdd reports — every consumer
+  // branches on it: kResumed replays the snapshot (ADR-0020's recovery),
+  // kAdded announces the fresh join, kRefused answers the collision.
+  enum class Admission { kResumed, kAdded, kRefused };
+
+  // The admission recipe as a primitive (ADR-0022, issue #122): Resume
+  // first (the reconnect story), fresh Add second, retried until the
+  // deadline — a reconnect can beat the old wire's failure notice, so for
+  // a beat the id looks live to both paths and only retrying converges.
+  // `mint` runs once per attempt: each needs a fresh Share(). A zero
+  // deadline is the single-shot form. This method BLOCKS up to
+  // `deadline`: call it before a handler's first suspension — on the
+  // launching thread, where brief blocking is fine — never from a
+  // completion context. kRefused after the deadline means the id is
+  // genuinely live on another connection; whether to kick it (Close) is
+  // the application's call — ResumeOrAdd never kicks on its own.
+  Admission ResumeOrAdd(const Id& id, const std::function<Handle()>& mint,
+                        std::chrono::milliseconds deadline) {
+    constexpr auto kRetryInterval = std::chrono::milliseconds(50);
+    const auto give_up = std::chrono::steady_clock::now() + deadline;
+    while (true) {
+      if (Resume(id, mint())) return Admission::kResumed;
+      if (Add(id, mint())) return Admission::kAdded;
+      const auto now = std::chrono::steady_clock::now();
+      if (now >= give_up) return Admission::kRefused;
+      std::this_thread::sleep_for(
+          std::min<std::chrono::steady_clock::duration>(kRetryInterval, give_up - now));
+    }
+  }
+
   // Queues one event for id; delivery is FIFO whichever mode the session
   // runs in. True when queued. False — the event is dropped — for an
   // unknown id; a session whose delivery already failed; an attached
@@ -368,6 +402,29 @@ class SessionRegistry {
   }
   std::size_t Broadcast(const Tx& event) {
     return Broadcast([&event](const Id&) { return event; });
+  }
+
+  // Closes id's current session — the kick primitive (ADR-0022): the
+  // session observes the close, its handler runs its normal exit path
+  // (Remove or Detach), and the id frees for the next dial. Policy stays
+  // with the application: this is how a ResumeOrAdd refusal becomes
+  // actionable when the old session is known dead (a silent partition, an
+  // operator action) instead of waiting out TCP. On a detached entry it
+  // closes an already-closed handle — a harmless no-op (detached ids are
+  // Resume's and Remove's business). False for an unknown id. The handle
+  // copy is taken under the entry lock (the Resume-swap discipline) and
+  // closed outside all locks.
+  bool Close(const Id& id) {
+    std::optional<Handle> doomed;
+    {
+      const std::lock_guard<std::mutex> lock(mutex_);
+      const auto it = sessions_.find(id);
+      if (it == sessions_.end()) return false;
+      const std::lock_guard<std::mutex> entry_lock(it->second->mutex);
+      doomed.emplace(it->second->handle);
+    }
+    doomed->Close();
+    return true;
   }
 
   // Closes every registered session (idempotent, non-blocking): each

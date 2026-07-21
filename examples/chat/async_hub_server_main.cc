@@ -21,7 +21,6 @@
 #include <map>
 #include <memory>
 #include <string>
-#include <thread>
 #include <utility>
 #include <vector>
 
@@ -46,11 +45,7 @@ using example::chat::RoomSummary;
 using example::chat::WatchAsyncServerStream;
 using example::chat::WatchInput;
 
-// A reconnect can beat the old wire's failure notice, so admission retries
-// resume-or-add briefly before refusing the nickname as a live duplicate
-// (the production guide's admission recipe).
-constexpr int kAdmissionAttempts = 20;
-constexpr auto kAdmissionRetryDelay = std::chrono::milliseconds(50);
+using Registry = smithy::server::SessionRegistry<RoomEvents>;
 
 // The fan-out state: ids are "<room>/<name>", exactly the hub_handler
 // scheme, over the async-delivery registry — no writer threads, no parked
@@ -156,17 +151,12 @@ class HubHandler final : public example::chat::ChatAsyncHandler {
     const std::string room = input.room;
     const std::string name = input.nickname.value_or("anonymous");
     const std::string id = room + "/" + name;
-    // Resume first (the reconnect story, ADR-0020), then a fresh join.
-    // Pre-first-suspend this runs on the launching handler thread, so
-    // blocking briefly here is fine.
-    bool resumed = false;
-    bool added = false;
-    for (int attempt = 0; attempt < kAdmissionAttempts && !resumed && !added; ++attempt) {
-      resumed = hub_.registry().Resume(id, stream.Share());
-      if (!resumed) added = hub_.registry().Add(id, stream.Share());
-      if (!resumed && !added) std::this_thread::sleep_for(kAdmissionRetryDelay);
-    }
-    if (!resumed && !added) {
+    // The blessed admission call (ADR-0022): resume-or-fresh-join with the
+    // brief retry the reconnect race needs. It blocks, legally: this runs
+    // pre-first-suspend, on the launching handler thread.
+    const auto admission = hub_.registry().ResumeOrAdd(
+        id, [&stream] { return stream.Share(); }, std::chrono::seconds(1));
+    if (admission == Registry::Admission::kRefused) {
       // The nickname reservation refused: co_return the modeled error and
       // the generated wrapper frames the typed exception — the code the
       // hand-written mount used to carry.
@@ -178,7 +168,7 @@ class HubHandler final : public example::chat::ChatAsyncHandler {
       co_return refusal;
     }
 
-    if (resumed) {
+    if (admission == Registry::Admission::kResumed) {
       // Snapshot replay, the blessed recovery: the roster as it stands now,
       // as this session's first events. Direct sends are the handler's
       // request/reply moment; a collision with a broadcast chain just

@@ -861,6 +861,118 @@ TEST(SessionRegistryGraceTest, DestructorExpiresDetachedEntries) {
   EXPECT_EQ(expired.load(), 1);
 }
 
+TEST(SessionRegistryGraceTest, ResumeOrAddResumesADetachedEntry) {
+  Registry::Options options;
+  options.grace_period = std::chrono::seconds{300};
+  Registry registry(std::move(options));
+  Session session = MakeSession();
+  ASSERT_TRUE(registry.Add("ada", *session.handle));
+  ASSERT_TRUE(registry.Detach("ada"));
+
+  Session fresh = MakeSession();
+  const auto admission =
+      registry.ResumeOrAdd("ada", [&fresh] { return *fresh.handle; }, std::chrono::milliseconds(0));
+  EXPECT_EQ(admission, Registry::Admission::kResumed);
+  EXPECT_TRUE(registry.SendTo("ada", Note{"back"}));
+  EXPECT_EQ(NextAt(fresh), "back");
+}
+
+TEST(SessionRegistryGraceTest, ResumeOrAddAddsAFreshId) {
+  std::atomic<int> expired{0};
+  Registry registry = GraceRegistry(&expired);
+  Session session = MakeSession();
+  const auto admission = registry.ResumeOrAdd(
+      "ada", [&session] { return *session.handle; }, std::chrono::milliseconds(0));
+  EXPECT_EQ(admission, Registry::Admission::kAdded);
+  EXPECT_TRUE(registry.SendTo("ada", Note{"joined"}));
+  EXPECT_EQ(NextAt(session), "joined");
+}
+
+TEST(SessionRegistryGraceTest, ResumeOrAddRefusesALiveIdOnlyAtTheDeadline) {
+  std::atomic<int> expired{0};
+  Registry registry = GraceRegistry(&expired);
+  Session session = MakeSession();
+  ASSERT_TRUE(registry.Add("ada", *session.handle));
+
+  Session imposter = MakeSession();
+  const auto start = std::chrono::steady_clock::now();
+  const auto admission = registry.ResumeOrAdd(
+      "ada", [&imposter] { return *imposter.handle; }, std::chrono::milliseconds(200));
+  EXPECT_EQ(admission, Registry::Admission::kRefused);
+  EXPECT_GE(std::chrono::steady_clock::now() - start, std::chrono::milliseconds(200));
+  // The live session was never touched — refusal, not a kick.
+  EXPECT_TRUE(registry.SendTo("ada", Note{"untouched"}));
+  EXPECT_EQ(NextAt(session), "untouched");
+}
+
+TEST(SessionRegistryGraceTest, AZeroDeadlineAdmissionIsSingleShot) {
+  std::atomic<int> expired{0};
+  Registry registry = GraceRegistry(&expired);
+  Session session = MakeSession();
+  ASSERT_TRUE(registry.Add("ada", *session.handle));
+  Session imposter = MakeSession();
+  const auto start = std::chrono::steady_clock::now();
+  const auto admission = registry.ResumeOrAdd(
+      "ada", [&imposter] { return *imposter.handle; }, std::chrono::milliseconds(0));
+  EXPECT_EQ(admission, Registry::Admission::kRefused);
+  EXPECT_LT(std::chrono::steady_clock::now() - start, std::chrono::seconds(5));
+}
+
+TEST(SessionRegistryGraceTest, ResumeOrAddConvergesWhenDetachLandsMidRetry) {
+  // The race the primitive exists for: the reconnect arrives while the old
+  // handler has not yet noticed its dead wire — the id looks live to both
+  // paths — and the Detach lands mid-retry. ResumeOrAdd must converge on
+  // kResumed, never a refusal and never a duplicate join.
+  Registry::Options options;
+  options.grace_period = std::chrono::seconds{300};
+  Registry registry(std::move(options));
+  Session session = MakeSession();
+  ASSERT_TRUE(registry.Add("ada", *session.handle));
+
+  std::thread late_detach([&registry] {
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    ASSERT_TRUE(registry.Detach("ada"));
+  });
+  Session fresh = MakeSession();
+  const auto admission =
+      registry.ResumeOrAdd("ada", [&fresh] { return *fresh.handle; }, std::chrono::seconds(5));
+  late_detach.join();
+  EXPECT_EQ(admission, Registry::Admission::kResumed);
+  EXPECT_TRUE(registry.SendTo("ada", Note{"converged"}));
+  EXPECT_EQ(NextAt(fresh), "converged");
+}
+
+TEST(SessionRegistryGraceTest, CloseKicksTheLiveSessionAndFreesTheId) {
+  // The kick primitive (ADR-0022): the session observes the close, the
+  // handler side runs its normal exit path, and the id frees.
+  Registry registry;
+  Session session = MakeSession();
+  ASSERT_TRUE(registry.Add("ada", *session.handle));
+
+  EXPECT_TRUE(registry.Close("ada"));
+  EXPECT_EQ(NextAt(session), std::nullopt);  // the kicked wire observes it
+  EXPECT_TRUE(registry.Remove("ada"));       // the exit path the handler runs
+  Session fresh = MakeSession();
+  EXPECT_TRUE(registry.Add("ada", *fresh.handle));  // the id freed
+  EXPECT_FALSE(registry.Close("ghost"));
+}
+
+TEST(SessionRegistryGraceTest, CloseOnADetachedEntryIsAHarmlessNoOp) {
+  Registry::Options options;
+  options.grace_period = std::chrono::seconds{300};
+  Registry registry(std::move(options));
+  Session session = MakeSession();
+  ASSERT_TRUE(registry.Add("ada", *session.handle));
+  ASSERT_TRUE(registry.Detach("ada"));
+
+  EXPECT_TRUE(registry.Close("ada"));  // found; the handle was already closed
+  // The entry stays parked and resumable — Close did not disturb grace.
+  Session fresh = MakeSession();
+  ASSERT_TRUE(registry.Resume("ada", *fresh.handle));
+  EXPECT_TRUE(registry.SendTo("ada", Note{"still-here"}));
+  EXPECT_EQ(NextAt(fresh), "still-here");
+}
+
 TEST(SessionRegistryGraceTest, AThrowingOnExpiredIsSwallowedAndExpiryCompletes) {
   // on_expired runs on the registry's expiry thread (or a Drain caller),
   // where an escaping exception has no caller to land in — it must be

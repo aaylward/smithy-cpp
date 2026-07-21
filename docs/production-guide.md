@@ -576,21 +576,29 @@ succeeds only on a detached session within grace, exactly once, mutually
 exclusive with `on_expired` — and on success sends the **current-state
 snapshot as its first events** before normal traffic. On failure it falls
 back to the fresh-join path (`Add`), because the session expired or never
-existed. A reconnect can beat the old wire's failure notice, so retry the
-resume briefly before refusing the id as a live duplicate — this loop is
-the canonical admission recipe every example mirrors (each attempt mints
-a fresh `Share()`; the wait is legal because admission runs before the
-handler's first suspension, on the launching thread):
+existed. A reconnect can beat the old wire's failure notice, so admission
+must retry briefly before refusing the id as a live duplicate — and that
+whole dance is one registry call (ADR-0022), the blessed admission shape
+every example uses:
 
 ```cpp
-bool resumed = false, added = false;
-for (int attempt = 0; attempt < 20 && !resumed && !added; ++attempt) {
-  resumed = registry.Resume(id, stream.Share());
-  if (!resumed) added = registry.Add(id, stream.Share());
-  if (!resumed && !added) std::this_thread::sleep_for(std::chrono::milliseconds(50));
+const auto admission = registry.ResumeOrAdd(
+    id, [&stream] { return stream.Share(); }, std::chrono::seconds(1));
+switch (admission) {
+  case Registry::Admission::kResumed:  /* snapshot replay */ break;
+  case Registry::Admission::kAdded:    /* announce the join */ break;
+  case Registry::Admission::kRefused:  /* the id is live elsewhere */ break;
 }
-if (!resumed && !added) { /* refuse: the id is live on another connection */ }
 ```
+
+`mint` runs once per attempt (each needs a fresh `Share()`), and the call
+blocks up to the deadline — legal because admission runs before the
+handler's first suspension, on the launching thread. A `kRefused` you
+*know* is wrong — a half-dead session whose wire never sent a FIN — has a
+convergent answer now: `registry.Close(id)` kicks the old session (its
+handler observes the close and runs the normal exit path), freeing the id
+for the client's next dial. Kicking stays the application's call;
+`ResumeOrAdd` never does it on its own.
 
 Say the posture out loud in your protocol docs, because it shapes client
 code: **recovery is snapshot replay, not message replay.** ADR-0016's

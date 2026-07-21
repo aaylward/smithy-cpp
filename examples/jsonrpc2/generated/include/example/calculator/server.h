@@ -6,10 +6,20 @@
 
 #include "example/calculator/types.h"
 #include "smithy/core/outcome.h"
+#include "smithy/eventstream/async_event_stream.h"
+#include "smithy/eventstream/event_stream.h"
 #include "smithy/http/transport.h"
 #include "smithy/server/router.h"
+#include "smithy/server/websocket_router.h"
 
 namespace example::calculator {
+
+/// The typed session a Accumulate handler borrows (ADR-0016): Tx = what this
+/// server sends, Rx = what the client sends.
+using AccumulateServerStream = smithy::eventstream::EventStream<Totals, Terms>;
+/// The same session for an async handler (ADR-0021): co_await where the
+/// blocking sibling parks a thread; identical directions and Share().
+using AccumulateAsyncServerStream = smithy::eventstream::AsyncEventStream<Totals, Terms>;
 
 /// Implement one method per operation. Return a modeled error as
 /// smithy::Error::Modeled("<ErrorShapeName>", message), optionally with the
@@ -22,6 +32,53 @@ class CalculatorHandler {
   public:
     virtual ~CalculatorHandler() = default;
 
+    /// A running-total session over the JSON-RPC stream wire (ADR-0023): the
+    /// opening call's params seed the accumulator, each streamed term answers
+    /// with a running total, and exceeding the modeled limit ends the stream
+    /// with the Overflow error as the terminal response envelope.
+    ///
+    /// Streaming operation (ADR-0016): Send/Receive on `stream` until done,
+    /// then return Unit for a clean close — or an error, which ends the
+    /// stream with an exception message before the close (unless the
+    /// stream already terminated: propagating a failed Receive() closes
+    /// without a message — the peer already observed that failure).
+    /// `stream` is valid only until this method returns; join any helper
+    /// thread still using it. Blocks the transport's handler thread for
+    /// the session's lifetime.
+    virtual smithy::Outcome<smithy::Unit> Accumulate(const AccumulateInput& input, AccumulateServerStream& stream, const smithy::server::RequestContext& context) = 0;
+    /// Adds two numbers.
+    virtual smithy::Outcome<AddOutput> Add(const AddInput& input, const smithy::server::RequestContext& context) = 0;
+    /// Divides dividend by divisor; dividing by zero is a modeled error.
+    virtual smithy::Outcome<DivideOutput> Divide(const DivideInput& input, const smithy::server::RequestContext& context) = 0;
+};
+
+/// CalculatorHandler's zero-thread sibling (ADR-0021): implement this and construct
+/// CalculatorServer with it to serve every streaming route on the shared-session
+/// seam — no parked thread per session. Unary operations keep the blocking
+/// shape (request/response on the handler pool either way). Implementations
+/// must be thread-safe, like CalculatorHandler.
+class CalculatorAsyncHandler {
+  public:
+    virtual ~CalculatorAsyncHandler() = default;
+
+    /// A running-total session over the JSON-RPC stream wire (ADR-0023): the
+    /// opening call's params seed the accumulator, each streamed term answers
+    /// with a running total, and exceeding the modeled limit ends the stream
+    /// with the Overflow error as the terminal response envelope.
+    ///
+    /// Async streaming operation (ADR-0021): a coroutine serving the whole
+    /// session — co_await stream.Receive()/Send() until done.
+    /// co_return smithy::Unit{} for a clean close, or an error — modeled as
+    /// smithy::Error::Modeled("<ErrorShapeName>", message) + set_detail(),
+    /// like a blocking handler — which ends the stream with one best-effort
+    /// exception message before the close. `input` is the coroutine's own
+    /// copy: the upgrade request (and its RequestContext) is gone by the
+    /// first resumption — model what the session needs as input members and
+    /// enforce identity at the gate. `stream` stays valid until the returned
+    /// task completes. Code before the first co_await runs on the launching
+    /// handler thread (brief blocking is fine there); every later resumption
+    /// is a transport completion context — never block those.
+    virtual smithy::eventstream::StreamTask Accumulate(AccumulateInput input, AccumulateAsyncServerStream& stream) = 0;
     /// Adds two numbers.
     virtual smithy::Outcome<AddOutput> Add(const AddInput& input, const smithy::server::RequestContext& context) = 0;
     /// Divides dividend by divisor; dividing by zero is a modeled error.
@@ -34,11 +91,26 @@ class CalculatorHandler {
 class CalculatorServer {
   public:
     explicit CalculatorServer(std::shared_ptr<CalculatorHandler> handler);
+    /// The zero-thread alternative (ADR-0021): the unary table is identical,
+    /// and every streaming route is registered on the shared-session seam,
+    /// served by coroutine. One server instance serves one seam — the
+    /// constructor chosen decides which two-line mount applies (StreamRouter).
+    explicit CalculatorServer(std::shared_ptr<CalculatorAsyncHandler> handler);
 
     smithy::http::RequestHandler Handler() const;
 
+    /// The WebSocket router carrying every streaming route (ADR-0016), ready
+    /// to mount on the transport in two lines — the serve line keyed to the
+    /// constructor used:
+    ///   options.websocket_gate = server.StreamRouter()->Gate();
+    ///   options.on_websocket = server.StreamRouter()->Serve();  // blocking handler
+    ///   options.on_websocket_session =
+    ///       server.StreamRouter()->ServeSession();  // async handler (ADR-0021)
+    std::shared_ptr<smithy::server::WebSocketRouter> StreamRouter() const;
+
   private:
     std::shared_ptr<smithy::server::Router> router_;
+    std::shared_ptr<smithy::server::WebSocketRouter> stream_router_;
 };
 
 }  // namespace example::calculator

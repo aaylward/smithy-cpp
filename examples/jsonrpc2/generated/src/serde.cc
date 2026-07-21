@@ -8,6 +8,197 @@
 
 namespace example::calculator {
 
+smithy::Document SerializeTerm(const Term& value) {
+  smithy::DocumentMap map;
+  map.emplace("value", smithy::Document(static_cast<double>(value.value)));
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<Term> DeserializeTerm(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("Term: expected a map on the wire");
+  Term out;
+  {
+    const smithy::Document* member = doc.Find("value");
+    if (member == nullptr || member->is_null()) {
+      return smithy::Error::Serialization("Term: missing required member: value");
+    }
+    {
+      auto parsed = smithy::DoubleFromDocument(*member);
+      if (!parsed) return smithy::Error::Serialization("Term.value: expected a number");
+      out.value = static_cast<double>(*parsed);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeTerms(const Terms& value) {
+  smithy::DocumentMap map;
+  if (value.is_add()) {
+    map.emplace("add", SerializeTerm(value.as_add()));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<Terms> DeserializeTerms(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("Terms: expected a map on the wire");
+  if (doc.as_map().size() - (doc.Find("__type") != nullptr ? 1 : 0) != 1) return smithy::Error::Serialization("Terms: expected exactly one union member");
+  if (const smithy::Document* member = doc.Find("add"); member != nullptr && !member->is_null()) {
+    Term parsed_member{};
+    {
+      auto parsed = DeserializeTerm(*member);
+      if (!parsed) return std::move(parsed).error();
+      parsed_member = std::move(*parsed);
+    }
+    return Terms::FromAdd(std::move(parsed_member));
+  }
+  return smithy::Error::Serialization("Terms: unknown or missing union member");
+}
+
+smithy::Document SerializeAccumulateInput(const AccumulateInput& value) {
+  smithy::DocumentMap map;
+  if (value.start.has_value()) {
+    map.emplace("start", smithy::Document(static_cast<double>((*value.start))));
+  }
+  if (value.terms.has_value()) {
+    map.emplace("terms", SerializeTerms((*value.terms)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<AccumulateInput> DeserializeAccumulateInput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("AccumulateInput: expected a map on the wire");
+  AccumulateInput out;
+  {
+    const smithy::Document* member = doc.Find("start");
+    if (member != nullptr && !member->is_null()) {
+      double parsed_member{};
+      {
+        auto parsed = smithy::DoubleFromDocument(*member);
+        if (!parsed) return smithy::Error::Serialization("AccumulateInput.start: expected a number");
+        parsed_member = static_cast<double>(*parsed);
+      }
+      out.start = std::move(parsed_member);
+    }
+  }
+  {
+    const smithy::Document* member = doc.Find("terms");
+    if (member != nullptr && !member->is_null()) {
+      Terms parsed_member{};
+      {
+        auto parsed = DeserializeTerms(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.terms = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeRunningTotal(const RunningTotal& value) {
+  smithy::DocumentMap map;
+  map.emplace("value", smithy::Document(static_cast<double>(value.value)));
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<RunningTotal> DeserializeRunningTotal(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("RunningTotal: expected a map on the wire");
+  RunningTotal out;
+  {
+    const smithy::Document* member = doc.Find("value");
+    if (member == nullptr || member->is_null()) {
+      return smithy::Error::Serialization("RunningTotal: missing required member: value");
+    }
+    {
+      auto parsed = smithy::DoubleFromDocument(*member);
+      if (!parsed) return smithy::Error::Serialization("RunningTotal.value: expected a number");
+      out.value = static_cast<double>(*parsed);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeTotals(const Totals& value) {
+  smithy::DocumentMap map;
+  if (value.is_total()) {
+    map.emplace("total", SerializeRunningTotal(value.as_total()));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<Totals> DeserializeTotals(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("Totals: expected a map on the wire");
+  if (doc.as_map().size() - (doc.Find("__type") != nullptr ? 1 : 0) != 1) return smithy::Error::Serialization("Totals: expected exactly one union member");
+  if (const smithy::Document* member = doc.Find("total"); member != nullptr && !member->is_null()) {
+    RunningTotal parsed_member{};
+    {
+      auto parsed = DeserializeRunningTotal(*member);
+      if (!parsed) return std::move(parsed).error();
+      parsed_member = std::move(*parsed);
+    }
+    return Totals::FromTotal(std::move(parsed_member));
+  }
+  return smithy::Error::Serialization("Totals: unknown or missing union member");
+}
+
+smithy::Document SerializeAccumulateOutput(const AccumulateOutput& value) {
+  smithy::DocumentMap map;
+  if (value.totals.has_value()) {
+    map.emplace("totals", SerializeTotals((*value.totals)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<AccumulateOutput> DeserializeAccumulateOutput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("AccumulateOutput: expected a map on the wire");
+  AccumulateOutput out;
+  {
+    const smithy::Document* member = doc.Find("totals");
+    if (member != nullptr && !member->is_null()) {
+      Totals parsed_member{};
+      {
+        auto parsed = DeserializeTotals(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.totals = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializeOverflow(const Overflow& value) {
+  smithy::DocumentMap map;
+  map.emplace("message", smithy::Document(value.message));
+  map.emplace("limit", smithy::Document(static_cast<double>(value.limit)));
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<Overflow> DeserializeOverflow(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("Overflow: expected a map on the wire");
+  Overflow out;
+  {
+    const smithy::Document* member = doc.Find("message");
+    if (member == nullptr || member->is_null()) {
+      return smithy::Error::Serialization("Overflow: missing required member: message");
+    }
+    if (!member->is_string()) return smithy::Error::Serialization("Overflow.message: unexpected type on the wire");
+    out.message = member->as_string();
+  }
+  {
+    const smithy::Document* member = doc.Find("limit");
+    if (member == nullptr || member->is_null()) {
+      return smithy::Error::Serialization("Overflow: missing required member: limit");
+    }
+    {
+      auto parsed = smithy::DoubleFromDocument(*member);
+      if (!parsed) return smithy::Error::Serialization("Overflow.limit: expected a number");
+      out.limit = static_cast<double>(*parsed);
+    }
+  }
+  return out;
+}
+
 smithy::Document SerializeAddInput(const AddInput& value) {
   smithy::DocumentMap map;
   map.emplace("a", smithy::Document(static_cast<double>(value.a)));

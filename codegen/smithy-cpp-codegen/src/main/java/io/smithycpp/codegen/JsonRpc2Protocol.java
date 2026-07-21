@@ -280,26 +280,34 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
             "smithy.framework#ValidationException",
             SPEC);
     for (OperationShape operation : operations) {
+      if (EventStreamCodeGen.streaming(context.model(), operation)) {
+        // Streaming operations never ride the unary POST "/" — their
+        // dispatch lives in the stream drivers (ADR-0023).
+        continue;
+      }
       writeOperationDispatch(w, context, service, operation);
     }
   }
 
-  /** Handle&lt;Op&gt;: params → input → handler → result/error envelope. */
+  /**
+   * Handle&lt;Op&gt;: params → input → handler → result/error envelope. Templated on the handler
+   * class — both server constructors share the unary table (ADR-0021), and both handler classes
+   * declare the unary virtuals.
+   */
   private void writeOperationDispatch(
       CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
     StructureShape input = ProtocolSupport.inputShape(context, operation);
     StructureShape output = ProtocolSupport.outputShape(context, operation);
     String inputType = context.cppSymbols().toSymbol(input).getName();
     String opName = CppReservedWords.escape(operation.getId().getName());
-    String handlerType = CppReservedWords.escape(service.getId().getName()) + "Handler";
 
+    w.write("template <typename Handler>");
     w.openBlock(
-        "smithy::http::HttpResponse Handle$L($L& handler, const smithy::Document& params, "
+        "smithy::http::HttpResponse Handle$L(Handler& handler, const smithy::Document& params, "
             + "const smithy::Document& id, "
             + ProtocolSupport.REQUEST_CONTEXT_PARAM
             + " context) {",
-        opName,
-        handlerType);
+        opName);
     w.write("$L input{};", inputType);
     if (ProtocolSupport.noModeledInput(input)) {
       w.write("(void)params;");

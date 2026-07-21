@@ -130,7 +130,8 @@ smithy::http::HttpResponse ValidationErrorResponse(const std::vector<smithy::ser
   return response;
 }
 
-smithy::http::HttpResponse HandleEchoPayload(JsonRpc2ProtocolHandler& handler, const smithy::Document& params, const smithy::Document& id, const smithy::server::RequestContext& context) {
+template <typename Handler>
+smithy::http::HttpResponse HandleEchoPayload(Handler& handler, const smithy::Document& params, const smithy::Document& id, const smithy::server::RequestContext& context) {
   EchoPayloadInput input{};
   if (!params.is_map()) return JsonRpcError(-32602, "SerializationException", "params must be an object", {}, id);
   auto parsed = DeserializeEchoPayloadInput(params);
@@ -149,7 +150,8 @@ smithy::http::HttpResponse HandleEchoPayload(JsonRpc2ProtocolHandler& handler, c
   return response;
 }
 
-smithy::http::HttpResponse HandleNoArgs(JsonRpc2ProtocolHandler& handler, const smithy::Document& params, const smithy::Document& id, const smithy::server::RequestContext& context) {
+template <typename Handler>
+smithy::http::HttpResponse HandleNoArgs(Handler& handler, const smithy::Document& params, const smithy::Document& id, const smithy::server::RequestContext& context) {
   NoArgsInput input{};
   (void)params;
   auto outcome = handler.NoArgs(input, context);
@@ -165,7 +167,8 @@ smithy::http::HttpResponse HandleNoArgs(JsonRpc2ProtocolHandler& handler, const 
   return response;
 }
 
-smithy::http::HttpResponse HandlePutConstrained(JsonRpc2ProtocolHandler& handler, const smithy::Document& params, const smithy::Document& id, const smithy::server::RequestContext& context) {
+template <typename Handler>
+smithy::http::HttpResponse HandlePutConstrained(Handler& handler, const smithy::Document& params, const smithy::Document& id, const smithy::server::RequestContext& context) {
   PutConstrainedInput input{};
   if (!params.is_map()) return JsonRpcError(-32602, "SerializationException", "params must be an object", {}, id);
   auto parsed = DeserializePutConstrainedInput(params);

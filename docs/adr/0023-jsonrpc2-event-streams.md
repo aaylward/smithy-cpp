@@ -75,9 +75,8 @@ implementation lives.
   JSON, `-32600` not a valid request envelope (including a
   non-notification envelope arriving mid-stream), `-32601` unknown
   method — including a method that names a *unary* operation: the
-  stream endpoint dispatches streaming operations only, and the
-  diagnostic message says so — and `-32602` params that fail
-  deserialization or validation. A vanilla JSON-RPC 2.0 client that
+  stream endpoint dispatches streaming operations only — and `-32602`
+  params that fail deserialization or validation. A vanilla JSON-RPC 2.0 client that
   ignores notifications observes a well-formed call → response pair in
   every case.
 - **One stream per socket.** Unary calls never share the socket; the

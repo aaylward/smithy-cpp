@@ -17,9 +17,14 @@
 #include "smithy/core/hash.h"
 #include "smithy/core/outcome.h"
 #include "smithy/core/print.h"
+#include "smithy/eventstream/event_stream.h"
 #include "smithy/http/transport.h"
 
 namespace example::calculator {
+
+/// The typed session Accumulate returns (ADR-0016): Tx = what this client
+/// sends, Rx = what the server sends.
+using AccumulateClientStream = smithy::eventstream::EventStream<Terms, Totals>;
 
 /// jsonRpc2 client for example.calculator#Calculator.
 /// Modeled service errors surface as smithy::Error with kind kModeled,
@@ -31,6 +36,16 @@ class CalculatorClient {
     /// Fails when the endpoint cannot be parsed and no transport is injected.
     static smithy::Outcome<CalculatorClient> Create(smithy::ClientConfig config);
 
+    /// A running-total session over the JSON-RPC stream wire (ADR-0023): the
+    /// opening call's params seed the accumulator, each streamed term answers
+    /// with a running total, and exceeding the modeled limit ends the stream
+    /// with the Overflow error as the terminal response envelope.
+    ///
+    /// Opens the operation's event stream over a WebSocket upgrade
+    /// (ADR-0016). Send carries input events, Receive yields output events
+    /// (nullopt on the peer's clean close), and a received exception
+    /// surfaces through Receive() as a modeled error, the unary shape.
+    smithy::Outcome<AccumulateClientStream> Accumulate(const AccumulateInput& input) const;
     /// Adds two numbers.
     smithy::Outcome<AddOutput> Add(const AddInput& input) const;
     /// Divides dividend by divisor; dividing by zero is a modeled error.
@@ -43,6 +58,84 @@ class CalculatorClient {
     smithy::ClientConfig config_;
     std::shared_ptr<smithy::http::HttpClient> transport_;
     std::string path_prefix_;
+};
+
+/// The modeled errors of Accumulate, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class AccumulateErrors {
+  public:
+    AccumulateErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static AccumulateErrors FromError(const smithy::Error& error) {
+      AccumulateErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "Overflow") {
+        const auto* detail = error.detail<Overflow>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : Overflow{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_overflow() const { return value_.index() == 1; }
+    const Overflow& as_overflow() const {
+      require_is(1, "overflow");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const Overflow* as_overflow_or_null() const { return std::get_if<1>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "overflow"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "AccumulateErrors(";
+      switch (value_.index()) {
+        case 1:
+          out += "overflow = ";
+          smithy::DebugAppend(out, std::get<1>(value_));
+          break;
+        default:
+          break;
+      }
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const AccumulateErrors& value) {
+      return os << value.DebugString();
+    }
+
+    friend bool operator==(const AccumulateErrors&, const AccumulateErrors&) = default;
+    friend auto operator<=>(const AccumulateErrors&, const AccumulateErrors&) = default;
+    friend struct std::hash<AccumulateErrors>;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("AccumulateErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, Overflow> value_;
 };
 
 /// The modeled errors of Divide, matched from a smithy::Error so dispatch is
@@ -128,6 +221,15 @@ class DivideErrors {
 // std::hash so generated types key std::unordered_map/std::unordered_set —
 // emitted exactly for the types that get operator<=> (issue #49). Hash
 // values are process-local: never persist or compare them across runs.
+
+template <>
+struct std::hash<example::calculator::AccumulateErrors> {
+  std::size_t operator()(const example::calculator::AccumulateErrors& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
 
 template <>
 struct std::hash<example::calculator::DivideErrors> {

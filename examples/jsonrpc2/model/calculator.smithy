@@ -13,7 +13,7 @@ use smithy.cpp.protocols#jsonRpc2
 @jsonRpc2
 service Calculator {
     version: "2026-01-01"
-    operations: [Add, Divide]
+    operations: [Add, Divide, Accumulate]
 }
 
 /// Adds two numbers.
@@ -61,4 +61,56 @@ operation Divide {
 structure DivisionByZero {
     @required
     message: String
+}
+
+/// A running-total session over the JSON-RPC stream wire (ADR-0023): the
+/// opening call's params seed the accumulator, each streamed term answers
+/// with a running total, and exceeding the modeled limit ends the stream
+/// with the Overflow error as the terminal response envelope.
+operation Accumulate {
+    input := {
+        /// The accumulator's starting value; rides the opening envelope's
+        /// params — a body-bound initial-request member (ADR-0016's seam,
+        /// realized by this protocol).
+        start: Double
+
+        terms: Terms
+    }
+
+    output := {
+        totals: Totals
+    }
+
+    errors: [Overflow]
+}
+
+@streaming
+union Terms {
+    add: Term
+}
+
+@streaming
+union Totals {
+    total: RunningTotal
+}
+
+structure Term {
+    @required
+    value: Double
+}
+
+structure RunningTotal {
+    @required
+    value: Double
+}
+
+/// The @error class default (400) — DivisionByZero above carries the
+/// explicit @httpError face.
+@error("client")
+structure Overflow {
+    @required
+    message: String
+
+    @required
+    limit: Double
 }

@@ -12,6 +12,27 @@ namespace example::calculator {
 // Serializers never fail; deserializers return smithy::Error on wire
 // mismatches and enforce @required members.
 
+smithy::Document SerializeTerm(const Term& value);
+smithy::Outcome<Term> DeserializeTerm(const smithy::Document& doc);
+
+smithy::Document SerializeTerms(const Terms& value);
+smithy::Outcome<Terms> DeserializeTerms(const smithy::Document& doc);
+
+smithy::Document SerializeAccumulateInput(const AccumulateInput& value);
+smithy::Outcome<AccumulateInput> DeserializeAccumulateInput(const smithy::Document& doc);
+
+smithy::Document SerializeRunningTotal(const RunningTotal& value);
+smithy::Outcome<RunningTotal> DeserializeRunningTotal(const smithy::Document& doc);
+
+smithy::Document SerializeTotals(const Totals& value);
+smithy::Outcome<Totals> DeserializeTotals(const smithy::Document& doc);
+
+smithy::Document SerializeAccumulateOutput(const AccumulateOutput& value);
+smithy::Outcome<AccumulateOutput> DeserializeAccumulateOutput(const smithy::Document& doc);
+
+smithy::Document SerializeOverflow(const Overflow& value);
+smithy::Outcome<Overflow> DeserializeOverflow(const smithy::Document& doc);
+
 smithy::Document SerializeAddInput(const AddInput& value);
 smithy::Outcome<AddInput> DeserializeAddInput(const smithy::Document& doc);
 

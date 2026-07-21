@@ -159,9 +159,13 @@ final class JsonRpc2StreamCodeGen {
             EventStreamCodeGen.outputInfo(context.model(), operation), operation),
         op);
     w.write("auto outcome = co_await handler->$L(std::move(input), stream);", op);
-    w.write("(void)co_await smithy::eventstream::SendMessage(");
-    w.write("    socket, outcome.ok() ? BuildJsonRpcTerminalResult(id)");
-    w.write("                         : JsonRpcStreamText(ErrorToResponse(outcome.error(), id)));");
+    w.write("// Built OUTSIDE the co_await expression on purpose: a conditional");
+    w.write("// operator inside a co_await full expression miscompiles on GCC (the");
+    w.write("// branch temporaries become frame slots and the wrong branch runs).");
+    w.write("smithy::eventstream::Message terminal =");
+    w.write("    outcome.ok() ? BuildJsonRpcTerminalResult(id)");
+    w.write("                 : JsonRpcStreamText(ErrorToResponse(outcome.error(), id));");
+    w.write("(void)co_await smithy::eventstream::SendMessage(socket, std::move(terminal));");
     w.write("stream.Close();");
     w.closeBlock("}");
     w.write("");

@@ -8,11 +8,279 @@
 #include <optional>
 #include <ostream>
 #include <string>
+#include <utility>
+#include <variant>
 
+#include "smithy/core/fatal.h"
 #include "smithy/core/hash.h"
 #include "smithy/core/print.h"
 
 namespace example::calculator {
+
+struct Term {
+  double value{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "Term{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".value = ";
+    smithy::DebugAppend(out, this->value);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const Term& value) {
+    return os << value.DebugString();
+  }
+
+  friend bool operator==(const Term&, const Term&) = default;
+  friend auto operator<=>(const Term&, const Term&) = default;
+};
+
+
+class Terms {
+  public:
+    Terms() = default;
+
+    static Terms FromAdd(Term value) {
+      Terms result;
+      result.value_.emplace<1>(std::move(value));
+      return result;
+    }
+    bool is_add() const { return value_.index() == 1; }
+    const Term& as_add() const {
+      require_is(1, "add");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const Term* as_add_or_null() const { return std::get_if<1>(&value_); }
+
+    /// True until one of the From* factories has been used.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" until a From* factory has run.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "add"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "Terms(";
+      switch (value_.index()) {
+        case 1:
+          out += "add = ";
+          smithy::DebugAppend(out, std::get<1>(value_));
+          break;
+        default:
+          break;
+      }
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const Terms& value) {
+      return os << value.DebugString();
+    }
+
+    friend bool operator==(const Terms&, const Terms&) = default;
+    friend auto operator<=>(const Terms&, const Terms&) = default;
+    friend struct std::hash<Terms>;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("Terms", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, Term> value_;
+};
+
+
+struct AccumulateInput {
+  std::optional<double> start{};
+  std::optional<Terms> terms{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "AccumulateInput{";
+    const char* sep = "";
+    if (this->start.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".start = ";
+      smithy::DebugAppend(out, *this->start);
+    }
+    if (this->terms.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".terms = ";
+      smithy::DebugAppend(out, *this->terms);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const AccumulateInput& value) {
+    return os << value.DebugString();
+  }
+
+  friend bool operator==(const AccumulateInput&, const AccumulateInput&) = default;
+  friend auto operator<=>(const AccumulateInput&, const AccumulateInput&) = default;
+};
+
+
+struct RunningTotal {
+  double value{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "RunningTotal{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".value = ";
+    smithy::DebugAppend(out, this->value);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const RunningTotal& value) {
+    return os << value.DebugString();
+  }
+
+  friend bool operator==(const RunningTotal&, const RunningTotal&) = default;
+  friend auto operator<=>(const RunningTotal&, const RunningTotal&) = default;
+};
+
+
+class Totals {
+  public:
+    Totals() = default;
+
+    static Totals FromTotal(RunningTotal value) {
+      Totals result;
+      result.value_.emplace<1>(std::move(value));
+      return result;
+    }
+    bool is_total() const { return value_.index() == 1; }
+    const RunningTotal& as_total() const {
+      require_is(1, "total");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const RunningTotal* as_total_or_null() const { return std::get_if<1>(&value_); }
+
+    /// True until one of the From* factories has been used.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" until a From* factory has run.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "total"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "Totals(";
+      switch (value_.index()) {
+        case 1:
+          out += "total = ";
+          smithy::DebugAppend(out, std::get<1>(value_));
+          break;
+        default:
+          break;
+      }
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const Totals& value) {
+      return os << value.DebugString();
+    }
+
+    friend bool operator==(const Totals&, const Totals&) = default;
+    friend auto operator<=>(const Totals&, const Totals&) = default;
+    friend struct std::hash<Totals>;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("Totals", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, RunningTotal> value_;
+};
+
+
+struct AccumulateOutput {
+  std::optional<Totals> totals{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "AccumulateOutput{";
+    const char* sep = "";
+    if (this->totals.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".totals = ";
+      smithy::DebugAppend(out, *this->totals);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const AccumulateOutput& value) {
+    return os << value.DebugString();
+  }
+
+  friend bool operator==(const AccumulateOutput&, const AccumulateOutput&) = default;
+  friend auto operator<=>(const AccumulateOutput&, const AccumulateOutput&) = default;
+};
+
+
+/// The @error class default (400) — DivisionByZero above carries the
+/// explicit @httpError face.
+struct Overflow {
+  std::string message{};
+  double limit{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "Overflow{";
+    const char* sep = "";
+    out += sep;
+    sep = ", ";
+    out += ".message = ";
+    smithy::DebugAppend(out, this->message);
+    out += sep;
+    sep = ", ";
+    out += ".limit = ";
+    smithy::DebugAppend(out, this->limit);
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const Overflow& value) {
+    return os << value.DebugString();
+  }
+
+  friend bool operator==(const Overflow&, const Overflow&) = default;
+  friend auto operator<=>(const Overflow&, const Overflow&) = default;
+};
+
 
 struct AddInput {
   double a{};
@@ -150,6 +418,71 @@ struct DivisionByZero {
 // std::hash so generated types key std::unordered_map/std::unordered_set —
 // emitted exactly for the types that get operator<=> (issue #49). Hash
 // values are process-local: never persist or compare them across runs.
+
+template <>
+struct std::hash<example::calculator::Term> {
+  std::size_t operator()(const example::calculator::Term& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.value));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::calculator::Terms> {
+  std::size_t operator()(const example::calculator::Terms& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
+
+template <>
+struct std::hash<example::calculator::AccumulateInput> {
+  std::size_t operator()(const example::calculator::AccumulateInput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.start));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.terms));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::calculator::RunningTotal> {
+  std::size_t operator()(const example::calculator::RunningTotal& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.value));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::calculator::Totals> {
+  std::size_t operator()(const example::calculator::Totals& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
+
+template <>
+struct std::hash<example::calculator::AccumulateOutput> {
+  std::size_t operator()(const example::calculator::AccumulateOutput& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.totals));
+    return seed;
+  }
+};
+
+template <>
+struct std::hash<example::calculator::Overflow> {
+  std::size_t operator()(const example::calculator::Overflow& value) const noexcept {
+    std::size_t seed = 0;
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.message));
+    seed = smithy::HashCombine(seed, smithy::HashValue(value.limit));
+    return seed;
+  }
+};
 
 template <>
 struct std::hash<example::calculator::AddInput> {

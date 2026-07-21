@@ -74,10 +74,8 @@ class StreamTestFixture : public testing::Test {
     if (session_seam_) {
       server_->StreamRouter()->ServeSession()(upgrade, std::move(session));  // a launch point
     } else {
-      threads_.emplace_back(
-          [serve = server_->StreamRouter()->Serve(), upgrade, session = std::move(session)] {
-            serve(upgrade, *session);
-          });
+      threads_.emplace_back([serve = server_->StreamRouter()->Serve(), upgrade,
+                             session = std::move(session)] { serve(upgrade, *session); });
     }
   }
 

@@ -39,10 +39,10 @@ class AccumulateBeastEndToEndTest : public testing::Test {
   // flip the transport to the raw-text wire — the one flag a jsonRpc2
   // streaming server needs beyond the ADR-0016 two-liner.
   void Start(bool session_seam, bool tls = false) {
-    server_ = session_seam
-                  ? std::make_unique<CalculatorServer>(
-                        std::make_shared<AsyncAccumulatingCalculator>())
-                  : std::make_unique<CalculatorServer>(std::make_shared<AccumulatingCalculator>());
+    server_ =
+        session_seam
+            ? std::make_unique<CalculatorServer>(std::make_shared<AsyncAccumulatingCalculator>())
+            : std::make_unique<CalculatorServer>(std::make_shared<AccumulatingCalculator>());
     smithy::http::BeastServerTransport::Options options;
     options.websocket_gate = server_->StreamRouter()->Gate();
     if (session_seam) {

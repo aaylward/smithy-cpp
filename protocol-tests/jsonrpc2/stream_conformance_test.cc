@@ -163,10 +163,12 @@ TEST_F(StreamConformanceTest, TheOpeningCallStreamsEventsWithTheIdEchoedInParams
   auto peer = OpenSession();
   ASSERT_TRUE(
       peer->Send(RawText(
-              R"({"jsonrpc":"2.0","method":"EchoStream","params":{"prefix":"p:"},"id":42})"))
+                     R"({"jsonrpc":"2.0","method":"EchoStream","params":{"prefix":"p:"},"id":42})"))
           .ok());
   ASSERT_TRUE(
-      peer->Send(RawText(R"({"jsonrpc":"2.0","method":"note","params":{"id":42,"payload":{"text":"hi"}}})"))
+      peer
+          ->Send(RawText(
+              R"({"jsonrpc":"2.0","method":"note","params":{"id":42,"payload":{"text":"hi"}}})"))
           .ok());
   auto echo = peer->Receive();
   ASSERT_TRUE(echo.ok() && echo->has_value());
@@ -180,8 +182,9 @@ TEST_F(StreamConformanceTest, TheTerminalResultEndsTheStreamThenTheClose) {
   ASSERT_TRUE(
       peer->Send(RawText(R"({"jsonrpc":"2.0","method":"EchoStream","params":{},"id":42})")).ok());
   ASSERT_TRUE(
-      peer->Send(
-              RawText(R"({"jsonrpc":"2.0","method":"note","params":{"id":42,"payload":{"text":"done"}}})"))
+      peer
+          ->Send(RawText(
+              R"({"jsonrpc":"2.0","method":"note","params":{"id":42,"payload":{"text":"done"}}})"))
           .ok());
   auto terminal = peer->Receive();
   ASSERT_TRUE(terminal.ok() && terminal->has_value());
@@ -199,8 +202,9 @@ TEST_F(StreamConformanceTest, TheModeledErrorIsTheTerminalErrorEnvelope) {
   ASSERT_TRUE(
       peer->Send(RawText(R"({"jsonrpc":"2.0","method":"EchoStream","params":{},"id":42})")).ok());
   ASSERT_TRUE(
-      peer->Send(
-              RawText(R"({"jsonrpc":"2.0","method":"note","params":{"id":42,"payload":{"text":"abort"}}})"))
+      peer
+          ->Send(RawText(
+              R"({"jsonrpc":"2.0","method":"note","params":{"id":42,"payload":{"text":"abort"}}})"))
           .ok());
   auto terminal = peer->Receive();
   ASSERT_TRUE(terminal.ok() && terminal->has_value());
@@ -281,18 +285,21 @@ TEST_F(StreamConformanceTest, TheBlockingSeamSpeaksTheIdenticalWire) {
 
   ASSERT_TRUE(
       near->Send(RawText(
-              R"({"jsonrpc":"2.0","method":"EchoStream","params":{"prefix":"p:"},"id":42})"))
+                     R"({"jsonrpc":"2.0","method":"EchoStream","params":{"prefix":"p:"},"id":42})"))
           .ok());
   ASSERT_TRUE(
-      near->Send(RawText(R"({"jsonrpc":"2.0","method":"note","params":{"id":42,"payload":{"text":"hi"}}})"))
+      near
+          ->Send(RawText(
+              R"({"jsonrpc":"2.0","method":"note","params":{"id":42,"payload":{"text":"hi"}}})"))
           .ok());
   auto echo = near->Receive();
   ASSERT_TRUE(echo.ok() && echo->has_value());
   EXPECT_EQ((**echo).payload.ToString(),
             R"({"jsonrpc":"2.0","method":"echo","params":{"id":42,"payload":{"text":"p:hi"}}})");
   ASSERT_TRUE(
-      near->Send(
-              RawText(R"({"jsonrpc":"2.0","method":"note","params":{"id":42,"payload":{"text":"done"}}})"))
+      near
+          ->Send(RawText(
+              R"({"jsonrpc":"2.0","method":"note","params":{"id":42,"payload":{"text":"done"}}})"))
           .ok());
   auto terminal = near->Receive();
   ASSERT_TRUE(terminal.ok() && terminal->has_value());
@@ -355,7 +362,9 @@ TEST_F(ClientStreamConformanceTest, TheClientOpensWithThePinnedEnvelopeAndEchoes
             R"({"jsonrpc":"2.0","method":"note","params":{"id":1,"payload":{"text":"hi"}}})");
 
   ASSERT_TRUE(
-      peer_->Send(RawText(R"({"jsonrpc":"2.0","method":"echo","params":{"id":1,"payload":{"text":"p:hi"}}})"))
+      peer_
+          ->Send(RawText(
+              R"({"jsonrpc":"2.0","method":"echo","params":{"id":1,"payload":{"text":"p:hi"}}})"))
           .ok());
   auto echo = stream->Receive();
   ASSERT_TRUE(echo.ok() && echo->has_value());
@@ -382,10 +391,10 @@ TEST_F(ClientStreamConformanceTest, TheTerminalErrorArrivesTypedThroughTheUnaryI
   ASSERT_TRUE(peer_->Receive().ok());  // drain the opening
 
   ASSERT_TRUE(
-      peer_->Send(RawText(
-              R"({"jsonrpc":"2.0","error":{"code":409,"message":"aborted by note",)"
-              R"("data":{"__type":"smithy.cpp.protocoltests.jsonrpc2#StreamAbort",)"
-              R"("message":"aborted by note"}},"id":1})"))
+      peer_
+          ->Send(RawText(R"({"jsonrpc":"2.0","error":{"code":409,"message":"aborted by note",)"
+                         R"("data":{"__type":"smithy.cpp.protocoltests.jsonrpc2#StreamAbort",)"
+                         R"("message":"aborted by note"}},"id":1})"))
           .ok());
   auto outcome = stream->Receive();
   ASSERT_FALSE(outcome.ok());
@@ -403,7 +412,8 @@ TEST_F(ClientStreamConformanceTest, AReservedCodeErrorSurfacesAsTheGenericTermin
   ASSERT_TRUE(peer_->Receive().ok());  // drain the opening
 
   ASSERT_TRUE(
-      peer_->Send(RawText(
+      peer_
+          ->Send(RawText(
               R"({"jsonrpc":"2.0","error":{"code":-32601,"message":"unknown method: EchoStream"},)"
               R"("id":1})"))
           .ok());

@@ -37,6 +37,14 @@ import software.amazon.smithy.model.shapes.StructureShape;
  *       in {@code __type} (the rpcv2Cbor convention); clients strip the namespace. {@code
  *       error.message} is the human-readable message ({@code data}'s own {@code message} member
  *       when the caller supplied none).
+ *   <li>Event streams (ADR-0023, the authored stream conformance suite beside the unary one): one
+ *       WebSocket upgrade GET on the same shared endpoint, every frame a text JSON-RPC envelope —
+ *       the opening request envelope selects the operation and carries initial-request members in
+ *       {@code params}, events are notifications echoing the opening id inside {@code params}, and
+ *       the stream ends with a response envelope for the opening id (result, the error convention
+ *       above, or the reserved codes) then the close. Emission lives in {@link
+ *       JsonRpc2StreamCodeGen}; the mid-stream grammar lives in the runtime's {@code
+ *       eventstream_jsonrpc}.
  * </ul>
  */
 final class JsonRpc2Protocol implements ProtocolGenerator {

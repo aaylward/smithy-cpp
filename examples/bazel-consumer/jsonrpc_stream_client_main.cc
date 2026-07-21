@@ -53,8 +53,7 @@ int Run(int argc, char** argv) {
   // Bumps go out up front (sends and receives interleave freely on a full
   // duplex session); the loop below then drains what comes back.
   for (int i = 3; i < argc; ++i) {
-    if (!stream->Send(acme::tally::Bumps::FromBump(
-                          acme::tally::Bump{.by = std::atoi(argv[i])}))
+    if (!stream->Send(acme::tally::Bumps::FromBump(acme::tally::Bump{.by = std::atoi(argv[i])}))
              .ok()) {
       break;
     }

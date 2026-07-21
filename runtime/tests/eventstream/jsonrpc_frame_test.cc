@@ -73,9 +73,9 @@ TEST(JsonRpcFrameTest, DecodeIsInsensitiveToMemberOrderAndWhitespace) {
   // insertion order, or pretty-printed text. Same Message either way.
   const JsonRpcStreamFrame compact = DecodeOrDie(
       R"({"jsonrpc":"2.0","method":"message","params":{"id":1,"payload":{"text":"hi"}}})");
-  const JsonRpcStreamFrame reordered =
-      DecodeOrDie(" { \"params\" : { \"payload\" : { \"text\" : \"hi\" } , \"id\" : 1 } ,"
-                  " \"method\" : \"message\" , \"jsonrpc\" : \"2.0\" } ");
+  const JsonRpcStreamFrame reordered = DecodeOrDie(
+      " { \"params\" : { \"payload\" : { \"text\" : \"hi\" } , \"id\" : 1 } ,"
+      " \"method\" : \"message\" , \"jsonrpc\" : \"2.0\" } ");
   EXPECT_EQ(compact.message, reordered.message);
 }
 
@@ -136,9 +136,9 @@ TEST(JsonRpcFrameTest, TheTerminalResultClassifiesAsTheCleanEnd) {
 TEST(JsonRpcFrameTest, TheTerminalErrorClassifiesAsTheExceptionMessage) {
   // The unary error-object convention, unchanged (ADR-0023): data.__type
   // names the exception, data is the modeled payload.
-  const JsonRpcStreamFrame frame = DecodeOrDie(
-      R"({"jsonrpc":"2.0","error":{"code":409,"message":"kicked",)"
-      R"("data":{"__type":"example.chat#Kicked","by":"mod"}},"id":1})");
+  const JsonRpcStreamFrame frame =
+      DecodeOrDie(R"({"jsonrpc":"2.0","error":{"code":409,"message":"kicked",)"
+                  R"("data":{"__type":"example.chat#Kicked","by":"mod"}},"id":1})");
   EXPECT_EQ(frame.kind, JsonRpcStreamFrame::Kind::kException);
   ASSERT_NE(frame.message.FindString(":exception-type"), nullptr);
   EXPECT_EQ(*frame.message.FindString(":exception-type"), "example.chat#Kicked");
@@ -149,9 +149,9 @@ TEST(JsonRpcFrameTest, TheTerminalErrorClassifiesAsTheExceptionMessage) {
 }
 
 TEST(JsonRpcFrameTest, ADataMessageMemberIsNotOverwritten) {
-  const JsonRpcStreamFrame frame = DecodeOrDie(
-      R"({"jsonrpc":"2.0","error":{"code":400,"message":"outer",)"
-      R"("data":{"__type":"X","message":"modeled"}},"id":1})");
+  const JsonRpcStreamFrame frame =
+      DecodeOrDie(R"({"jsonrpc":"2.0","error":{"code":400,"message":"outer",)"
+                  R"("data":{"__type":"X","message":"modeled"}},"id":1})");
   EXPECT_EQ(frame.message.payload.ToString(), R"({"__type":"X","message":"modeled"})");
 }
 
@@ -230,8 +230,8 @@ TEST(JsonRpcFrameTest, TheSizeCeilingHoldsInBothDirections) {
   const std::string huge_payload = R"({"blob":")" + std::string(kMaxMessageBytes, 'a') + R"("})";
   ExpectEncodeRefusal(MakeEventMessage("big", "", Blob::FromString(huge_payload)),
                       "oversized encode");
-  const std::string huge_frame = R"({"jsonrpc":"2.0","method":"big","params":{"id":1,"payload":)" +
-                                 huge_payload + "}}";
+  const std::string huge_frame =
+      R"({"jsonrpc":"2.0","method":"big","params":{"id":1,"payload":)" + huge_payload + "}}";
   ExpectDecodeRefusal(huge_frame, "oversized decode");
 }
 

@@ -20,8 +20,7 @@ inline constexpr double kAccumulateLimit = 100.0;
 
 inline smithy::Error MakeOverflowError() {
   smithy::Error overflow = smithy::Error::Modeled("Overflow", "accumulator over the limit");
-  overflow.set_detail(
-      Overflow{.message = "accumulator over the limit", .limit = kAccumulateLimit});
+  overflow.set_detail(Overflow{.message = "accumulator over the limit", .limit = kAccumulateLimit});
   return overflow;
 }
 

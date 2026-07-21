@@ -101,7 +101,8 @@ TEST(JsonRpcStreamSocketTest, TheTerminalErrorArrivesAsTheExceptionMessage) {
   // decoders) applies unchanged.
   ASSERT_NE((**received).FindString(":exception-type"), nullptr);
   EXPECT_EQ(*(**received).FindString(":exception-type"), "Kicked");
-  EXPECT_EQ((**received).payload.ToString(), R"({"__type":"Kicked","by":"mod","message":"kicked"})");
+  EXPECT_EQ((**received).payload.ToString(),
+            R"({"__type":"Kicked","by":"mod","message":"kicked"})");
 }
 
 TEST(JsonRpcStreamSocketTest, ExceptionSendsAreRefusedAndTheSessionSurvives) {
@@ -134,8 +135,8 @@ TEST(JsonRpcStreamSocketTest, EnvelopeFramedInboundMessagesAreRefused) {
   auto [left, right] = http::InMemoryWebSocketPair::Create();
   auto client = Wrap(left);
 
-  ASSERT_TRUE(right->Send(MakeEventMessage("ping", "application/json", Blob::FromString("{}")))
-                  .ok());
+  ASSERT_TRUE(
+      right->Send(MakeEventMessage("ping", "application/json", Blob::FromString("{}"))).ok());
   auto received = client->Receive();
   ASSERT_FALSE(received.ok());
   EXPECT_EQ(received.error().kind(), ErrorKind::kSerialization);

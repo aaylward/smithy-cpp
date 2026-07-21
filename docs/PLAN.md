@@ -659,6 +659,12 @@ clients drive generated streaming servers in CI.
 WebSockets) runs in CI on all platforms; streaming fixtures green in the integration matrix;
 framing fuzzer running nightly.
 
+**Progress notes:** the exit criterion is met (the chat example, ADR-0016); the async
+serving surface shipped as ADR-0019/0021, reconnect grace and admission as ADR-0020/0022,
+the browser wire as ADR-0018 — and streams now cover all three protocols: jsonRpc2's
+JSON-RPC-native wire landed as ADR-0023 (issue #123), retiring the generation-time
+refusal that slice 3 shipped with.
+
 ---
 
 ## 5. Testing strategy (summary)

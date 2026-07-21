@@ -26,8 +26,7 @@ using acme::tally::Totals;
 
 class TallyHandler final : public acme::tally::TallyAsyncHandler {
  public:
-  smithy::eventstream::StreamTask Count(CountInput input,
-                                        CountAsyncServerStream& stream) override {
+  smithy::eventstream::StreamTask Count(CountInput input, CountAsyncServerStream& stream) override {
     int total = input.start.value_or(0);
     while (true) {
       auto bump = co_await stream.Receive();

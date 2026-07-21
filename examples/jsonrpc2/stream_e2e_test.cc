@@ -121,7 +121,8 @@ TEST_F(AccumulateEndToEndTest, TheWireIsPlainJsonRpcTextEndToEnd) {
       near->Send(RawText(R"({"jsonrpc":"2.0","method":"Accumulate","params":{"start":1},"id":7})"))
           .ok());
   ASSERT_TRUE(
-      near->Send(RawText(R"({"jsonrpc":"2.0","method":"add","params":{"id":7,"payload":{"value":2}}})"))
+      near->Send(RawText(
+                     R"({"jsonrpc":"2.0","method":"add","params":{"id":7,"payload":{"value":2}}})"))
           .ok());
   auto total = near->Receive();
   ASSERT_TRUE(total.ok() && total->has_value());
@@ -130,7 +131,8 @@ TEST_F(AccumulateEndToEndTest, TheWireIsPlainJsonRpcTextEndToEnd) {
             R"({"jsonrpc":"2.0","method":"total","params":{"id":7,"payload":{"value":3.0}}})");
 
   ASSERT_TRUE(
-      near->Send(RawText(R"({"jsonrpc":"2.0","method":"add","params":{"id":7,"payload":{"value":0}}})"))
+      near->Send(RawText(
+                     R"({"jsonrpc":"2.0","method":"add","params":{"id":7,"payload":{"value":0}}})"))
           .ok());
   auto terminal = near->Receive();
   ASSERT_TRUE(terminal.ok() && terminal->has_value());

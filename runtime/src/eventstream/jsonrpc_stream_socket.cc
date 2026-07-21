@@ -80,10 +80,9 @@ void JsonRpcStreamSocket::SendAsync(const Message& message, SendCallback callbac
   // The raw message must outlive the call: the facade never promises the
   // transport is done with the reference before the completion fires.
   auto keep_alive = std::make_shared<Message>(*std::move(raw));
-  inner_->SendAsync(*keep_alive,
-                    [keep_alive, callback = std::move(callback)](Outcome<Unit> sent) {
-                      callback(std::move(sent));
-                    });
+  inner_->SendAsync(*keep_alive, [keep_alive, callback = std::move(callback)](Outcome<Unit> sent) {
+    callback(std::move(sent));
+  });
 }
 
 bool JsonRpcStreamSocket::SupportsAsync() const { return inner_->SupportsAsync(); }

@@ -137,6 +137,12 @@ struct WebSocketDialRequest {
   std::string target = "/";
   // Extra headers on the upgrade request — bearer tokens, api keys.
   Headers headers;
+  // The raw-text wire (ADR-0023): headerless messages ride as verbatim
+  // text frames, one JSON-RPC envelope each. Set by generated jsonRpc2
+  // streaming clients on every dial — the wire IS the protocol, so there
+  // is no negotiation. Custom dialers that carry Message values without a
+  // wire (the in-memory pair) ignore it.
+  bool raw_text_frames = false;
   // The per-phase budget for the connect, TLS, and upgrade handshakes.
   int handshake_timeout_ms = 30000;
   // After the upgrade: how long a silent connection stays up. Keep-alive
@@ -190,6 +196,11 @@ class BeastWebSocketClient {
     // and native clients should keep the default. A server that answers
     // with a subprotocol never offered fails the dial.
     bool offer_json_frames = false;
+    // The raw-text wire (ADR-0023): headerless messages as verbatim text
+    // frames, one JSON-RPC envelope each — what a generated jsonRpc2
+    // streaming client dials with. Unnegotiated (the wire IS the
+    // protocol), and refused together with offer_json_frames.
+    bool raw_text_frames = false;
     // The per-phase budget for the connect, TLS, and upgrade handshakes.
     int handshake_timeout_ms = 30000;
     // After the upgrade: how long a silent connection stays up. Keep-alive

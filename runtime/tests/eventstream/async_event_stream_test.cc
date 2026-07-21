@@ -643,6 +643,54 @@ TEST(StreamTaskTest, SubTasksComposeAcrossARealSuspension) {
   client_socket->Close();
 }
 
+// ---------------------------------------------------------------------------
+// ReceiveMessage (ADR-0023): the session route's first-message read.
+// ---------------------------------------------------------------------------
+
+// The generated jsonRpc2 session route's skeleton: one raw message awaited
+// before any stream exists.
+Detached ReceiveOneInto(std::shared_ptr<http::WebSocket> socket,
+                        Mailbox<Outcome<std::optional<Message>>>& received) {
+  received.Post(co_await ReceiveMessage(std::move(socket)));
+}
+
+TEST(ReceiveMessageTest, AwaitsOneRawMessageBeforeAnyStreamExists) {
+  auto [client_socket, server_socket] = http::InMemoryWebSocketPair::Create();
+  Mailbox<Outcome<std::optional<Message>>> received;
+  ReceiveOneInto(server_socket, received);
+  EXPECT_TRUE(received.Empty());  // parked: the opening envelope is not here yet
+
+  ASSERT_TRUE(client_socket->Send(RawPing(7)).ok());
+  auto outcome = received.Wait();
+  ASSERT_TRUE(outcome.ok());
+  ASSERT_TRUE(outcome->has_value());
+  EXPECT_EQ(**outcome, RawPing(7));  // raw: no decode, no stream semantics
+}
+
+TEST(ReceiveMessageTest, CompletesWhenAMessageAlreadyWaits) {
+  // The pair completes inline — the second-arrival race's synchronous arm,
+  // where await_suspend never suspends.
+  auto [client_socket, server_socket] = http::InMemoryWebSocketPair::Create();
+  ASSERT_TRUE(client_socket->Send(RawPing(1)).ok());
+  Mailbox<Outcome<std::optional<Message>>> received;
+  ReceiveOneInto(server_socket, received);
+  auto outcome = received.Wait();
+  ASSERT_TRUE(outcome.ok() && outcome->has_value());
+}
+
+TEST(ReceiveMessageTest, ObservesThePeersCleanCloseAsNullopt) {
+  // A peer that connects and closes without an opening envelope is a
+  // non-event for the route: nullopt, not an error — WebSocket::Receive's
+  // contract, untouched.
+  auto [client_socket, server_socket] = http::InMemoryWebSocketPair::Create();
+  Mailbox<Outcome<std::optional<Message>>> received;
+  ReceiveOneInto(server_socket, received);
+  client_socket->Close();
+  auto outcome = received.Wait();
+  ASSERT_TRUE(outcome.ok());
+  EXPECT_FALSE(outcome->has_value());
+}
+
 TEST(StreamTaskTest, ResumesTheAwaiterAfterARealSuspensionOnTheCompletionThread) {
   // The production shape: the handler parks in co_await Receive, the peer
   // completes it later, and the completion resumes the handler and then —

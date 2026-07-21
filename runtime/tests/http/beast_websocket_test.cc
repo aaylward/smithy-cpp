@@ -722,6 +722,154 @@ TEST(BeastWebSocketTest, StartRefusesJsonFramesWithoutAServeCallback) {
   EXPECT_NE(started.error().message().find("websocket_accept_json_frames"), std::string::npos);
 }
 
+// --- The raw-text wire (ADR-0023) ---
+
+// A headerless message whose payload is the frame — what the jsonRpc2
+// stream layers trade below the envelope wrapper.
+Message RawText(std::string text) {
+  Message message;
+  message.payload = Blob::FromString(std::move(text));
+  return message;
+}
+
+BeastServerTransport::Options RawTextEchoOptions() {
+  BeastServerTransport::Options options;
+  options.websocket_raw_text_frames = true;
+  options.on_websocket = [](const HttpRequest&, WebSocket& socket) {
+    while (true) {
+      auto message = socket.Receive();
+      if (!message.ok() || !message->has_value()) {
+        return;
+      }
+      if (!socket.Send(**message).ok()) {
+        return;
+      }
+    }
+  };
+  return options;
+}
+
+TEST(BeastWebSocketTest, RawTextFramesCarryHeaderlessMessagesTransparently) {
+  // Both ends typed, no negotiation anywhere: the server flag and the dial
+  // flag each flip their own end, and headerless messages round-trip.
+  BeastServerTransport server(RawTextEchoOptions());
+  ASSERT_TRUE(server.Start(NotFoundHandler()).ok());
+  auto dialed = BeastWebSocketClient::Dial(
+      {.host = "127.0.0.1", .port = server.port(), .raw_text_frames = true});
+  ASSERT_TRUE(dialed.ok()) << dialed.error().message();
+
+  const Message sent = RawText(R"({"jsonrpc":"2.0","method":"ping","params":{"id":1}})");
+  ASSERT_TRUE((*dialed)->Send(sent).ok());
+  auto received = (*dialed)->Receive();
+  ASSERT_TRUE(received.ok()) << received.error().message();
+  ASSERT_TRUE(received->has_value());
+  EXPECT_EQ(**received, sent);
+  (*dialed)->Close();
+  server.Stop();
+}
+
+TEST(BeastWebSocketTest, ABrowserFidelityPeerSpeaksTheRawTextWire) {
+  // The issue-#123 story at the transport layer: a peer doing exactly what
+  // a page does — new WebSocket(url) with no subprotocol, text out, text
+  // in — while the serve callback trades headerless Messages.
+  std::promise<Outcome<std::optional<Message>>> serve_saw;
+  BeastServerTransport::Options options;
+  options.websocket_raw_text_frames = true;
+  options.on_websocket = [&serve_saw](const HttpRequest&, WebSocket& socket) {
+    (void)socket.Send(RawText(R"({"jsonrpc":"2.0","result":{},"id":1})"));
+    serve_saw.set_value(socket.Receive());
+  };
+  BeastServerTransport server(options);
+  ASSERT_TRUE(server.Start(NotFoundHandler()).ok());
+
+  RawWsPeer peer(server.port());
+  EXPECT_EQ(peer.selected_subprotocol(), "");  // unnegotiated: headerless 101
+  // Byte-pinned: this is the text a browser's onmessage handler receives.
+  EXPECT_EQ(peer.ReadText(), R"({"jsonrpc":"2.0","result":{},"id":1})");
+
+  peer.SendText(R"({"jsonrpc":"2.0","method":"Chat","params":{},"id":1})");
+  auto result = serve_saw.get_future().get();
+  ASSERT_TRUE(result.ok()) << result.error().message();
+  ASSERT_TRUE(result->has_value());
+  EXPECT_EQ(**result, RawText(R"({"jsonrpc":"2.0","method":"Chat","params":{},"id":1})"));
+  server.Stop();
+}
+
+TEST(BeastWebSocketTest, ARawTextSendRefusesHeaderedMessagesAndSurvives) {
+  // Encode refuses what the wire cannot represent (no header channel, no
+  // envelope), Validation with nothing written — then the session still
+  // carries the next headerless message.
+  BeastServerTransport server(RawTextEchoOptions());
+  ASSERT_TRUE(server.Start(NotFoundHandler()).ok());
+  auto dialed = BeastWebSocketClient::Dial(
+      {.host = "127.0.0.1", .port = server.port(), .raw_text_frames = true});
+  ASSERT_TRUE(dialed.ok()) << dialed.error().message();
+
+  auto refused = (*dialed)->Send(eventstream::MakeEventMessage("chat", "application/json",
+                                                               Blob::FromString("{}")));
+  ASSERT_FALSE(refused.ok());
+  EXPECT_EQ(refused.error().kind(), ErrorKind::kValidation);
+
+  const Message valid = RawText(R"({"jsonrpc":"2.0","method":"m","params":{"id":1}})");
+  ASSERT_TRUE((*dialed)->Send(valid).ok());
+  auto received = (*dialed)->Receive();
+  ASSERT_TRUE(received.ok() && received->has_value());
+  EXPECT_EQ(**received, valid);
+  (*dialed)->Close();
+  server.Stop();
+}
+
+TEST(BeastWebSocketTest, ABinaryFrameOnARawTextSessionFailsTheSession) {
+  // The fail-closed transpose, third application: on the raw-text wire,
+  // binary is the protocol violation.
+  std::promise<Outcome<std::optional<Message>>> serve_saw;
+  BeastServerTransport::Options options;
+  options.websocket_raw_text_frames = true;
+  options.on_websocket = [&serve_saw](const HttpRequest&, WebSocket& socket) {
+    serve_saw.set_value(socket.Receive());
+  };
+  BeastServerTransport server(options);
+  ASSERT_TRUE(server.Start(NotFoundHandler()).ok());
+
+  RawWsPeer peer(server.port());
+  peer.SendBinary("any bytes at all");
+  auto result = serve_saw.get_future().get();
+  ASSERT_FALSE(result.ok());
+  EXPECT_NE(result.error().message().find("binary message on a raw-text"), std::string::npos)
+      << result.error().message();
+  EXPECT_EQ(peer.DrainToCloseCode(), boost::beast::websocket::error::closed);
+  EXPECT_EQ(peer.reason().code, boost::beast::websocket::close_code::protocol_error);
+  server.Stop();
+}
+
+TEST(BeastWebSocketTest, StartRefusesRawTextWithoutAServeCallback) {
+  BeastServerTransport::Options options;
+  options.websocket_raw_text_frames = true;
+  BeastServerTransport server(options);
+  auto started = server.Start(NotFoundHandler());
+  ASSERT_FALSE(started.ok());
+  EXPECT_NE(started.error().message().find("websocket_raw_text_frames"), std::string::npos);
+}
+
+TEST(BeastWebSocketTest, StartRefusesRawTextBesideTheJsonFramesNegotiation) {
+  // One listener speaks one wire family: raw text claims every upgrade,
+  // so the negotiation could never win.
+  BeastServerTransport::Options options = RawTextEchoOptions();
+  options.websocket_accept_json_frames = true;
+  BeastServerTransport server(options);
+  auto started = server.Start(NotFoundHandler());
+  ASSERT_FALSE(started.ok());
+  EXPECT_NE(started.error().message().find("cannot both be set"), std::string::npos);
+}
+
+TEST(BeastWebSocketTest, DialRefusesRawTextBesideTheJsonOffer) {
+  auto dialed = BeastWebSocketClient::Dial(
+      {.host = "127.0.0.1", .port = 1, .offer_json_frames = true, .raw_text_frames = true});
+  ASSERT_FALSE(dialed.ok());
+  EXPECT_EQ(dialed.error().kind(), ErrorKind::kValidation);
+  EXPECT_NE(dialed.error().message().find("cannot both be set"), std::string::npos);
+}
+
 TEST(BeastWebSocketTest, SendRefusesWhatTheCodecRefusesWithoutTouchingTheWire) {
   BeastServerTransport server(EchoOptions());
   ASSERT_TRUE(server.Start(NotFoundHandler()).ok());

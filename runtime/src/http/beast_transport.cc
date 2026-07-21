@@ -182,6 +182,24 @@ class WebSocketSessionBase : public WebSocket {
 // it): it cancels the socket's outstanding ops instead, so the write
 // completes operation_aborted, OnWrite fails the session, and the blocked
 // Send wakes with a transport error (RequestCloseLocked).
+// The raw-text wire's "codec" (ADR-0023): the payload IS the frame, one
+// JSON-RPC envelope per text message minted by the layers above. Refuses
+// what this wire cannot represent — any header at all (there is no header
+// channel and no eventstream envelope here) — and the symmetric size
+// bound, like every encode.
+Outcome<std::string> EncodeRawTextFrame(const eventstream::Message& message) {
+  if (!message.headers.empty()) {
+    return Error::Validation(
+        "websocket: the raw-text wire carries headerless messages only (framing belongs to the "
+        "envelope layer above the transport, ADR-0023)");
+  }
+  if (message.payload.size() > eventstream::kMaxMessageBytes) {
+    return Error::Validation("websocket: message over the 16 MiB limit");
+  }
+  return std::string(reinterpret_cast<const char*>(message.payload.data()),
+                     message.payload.size());
+}
+
 template <typename WsStream>
 class WsSession final : public WebSocketSessionBase,
                         public std::enable_shared_from_this<WsSession<WsStream>> {
@@ -198,9 +216,15 @@ class WsSession final : public WebSocketSessionBase,
 
   // Switches the session to the negotiated JSON-text wire (ADR-0018):
   // messages travel as text frames carrying the JSON envelope, and binary
-  // frames become the protocol violation. Call before Start() — the flag
-  // is read concurrently by the pumps and facade afterwards, unlocked.
-  void EnableJsonFrames() { json_frames_ = true; }
+  // frames become the protocol violation. Call before Start() — the wire
+  // mode is read concurrently by the pumps and facade afterwards, unlocked.
+  void EnableJsonFrames() { wire_ = Wire::kJsonFrames; }
+
+  // Switches the session to the raw-text wire (ADR-0023): headerless
+  // messages ride as verbatim text frames, binary frames are the protocol
+  // violation. Unnegotiated — the application knows its endpoint speaks
+  // JSON-RPC envelopes and says so. Same call-before-Start() rule.
+  void EnableRawTextFrames() { wire_ = Wire::kRawText; }
 
   // Arms the read pump; call once, on the connection's executor.
   void Start() { PumpRead(); }
@@ -279,8 +303,7 @@ class WsSession final : public WebSocketSessionBase,
   }
 
   Outcome<Unit> Send(const eventstream::Message& message) override {
-    auto frame =
-        json_frames_ ? eventstream::EncodeJsonFrame(message) : eventstream::EncodeMessage(message);
+    auto frame = EncodeForWire(message);
     if (!frame.ok()) {
       return std::move(frame).error();  // the codec's Validation, verbatim
     }
@@ -319,8 +342,7 @@ class WsSession final : public WebSocketSessionBase,
   // operation per session; OnWrite fires the completion on the
   // connection's executor.
   void SendAsync(const eventstream::Message& message, WebSocket::SendCallback callback) override {
-    auto frame =
-        json_frames_ ? eventstream::EncodeJsonFrame(message) : eventstream::EncodeMessage(message);
+    auto frame = EncodeForWire(message);
     if (!frame.ok()) {
       callback(std::move(frame).error());  // the codec's Validation, inline
       return;
@@ -445,7 +467,20 @@ class WsSession final : public WebSocketSessionBase,
     }
     const auto data = read_buffer_.data();
     const std::string_view bytes(static_cast<const char*>(data.data()), data.size());
-    if (json_frames_) {
+    if (wire_ == Wire::kRawText) {
+      // The raw-text wire (ADR-0023): the text frame IS the message
+      // payload, headerless — the JSON-RPC envelope layer above decodes
+      // it. A binary message is the protocol violation here.
+      if (ws_.got_binary()) {
+        FailAndClose("binary message on a raw-text websocket");
+        return;
+      }
+      eventstream::Message message;
+      message.payload = Blob::FromString(std::string(bytes));
+      Deliver(std::move(message), n);
+      return;
+    }
+    if (wire_ == Wire::kJsonFrames) {
       // The negotiated JSON-text wire (ADR-0018): one JSON envelope per
       // text message; a binary message is the protocol violation here —
       // the exact mirror of binary mode's posture on text.
@@ -550,7 +585,7 @@ class WsSession final : public WebSocketSessionBase,
     wire_write_busy_ = true;
     write_buffer_ = std::move(frame);
     lock.unlock();
-    ws_.binary(!json_frames_);  // text frames on the negotiated JSON wire
+    ws_.binary(wire_ == Wire::kBinary);  // text frames on the JSON and raw-text wires
     auto self = this->shared_from_this();
     ws_.async_write(asio::buffer(write_buffer_),
                     [self](beast::error_code ec, std::size_t) { self->OnWrite(ec); });
@@ -704,11 +739,27 @@ class WsSession final : public WebSocketSessionBase,
     }
   }
 
+  // The session's wire encoding: one event-stream frame per binary message
+  // (the default), the negotiated JSON envelope on text frames (ADR-0018),
+  // or verbatim raw text (ADR-0023). Set once before Start(), read-only
+  // afterwards — safe unlocked from the pumps and the facade.
+  enum class Wire { kBinary, kJsonFrames, kRawText };
+
+  Outcome<std::string> EncodeForWire(const eventstream::Message& message) const {
+    switch (wire_) {
+      case Wire::kJsonFrames:
+        return eventstream::EncodeJsonFrame(message);
+      case Wire::kRawText:
+        return EncodeRawTextFrame(message);
+      case Wire::kBinary:
+        break;
+    }
+    return eventstream::EncodeMessage(message);
+  }
+
   std::shared_ptr<void> keeper_;
   WsStream ws_;
-  // The negotiated wire encoding (ADR-0018): set once before Start(),
-  // read-only afterwards — safe unlocked from the pumps and the facade.
-  bool json_frames_ = false;
+  Wire wire_ = Wire::kBinary;
   beast::flat_buffer read_buffer_;
   std::string write_buffer_;
 
@@ -1340,7 +1391,13 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
     // The transport refuses what the codec could not represent — the
     // symmetric-bounds line (ADR-0014), extended to the wire.
     session->stream().read_message_max(eventstream::kMaxMessageBytes);
-    if (opts.websocket_accept_json_frames && OffersJsonFrames(request)) {
+    if (opts.websocket_raw_text_frames) {
+      // The raw-text wire (ADR-0023): unnegotiated — the whole listener
+      // speaks it (Start refuses it beside the JSON-frames negotiation),
+      // headerless 101 included, so a browser connects with plain
+      // `new WebSocket(url)`.
+      session->EnableRawTextFrames();
+    } else if (opts.websocket_accept_json_frames && OffersJsonFrames(request)) {
       // The negotiated JSON-text mode (ADR-0018), on the accept-decorator
       // seam ADR-0015 reserved: echo the token in the 101 and flip the
       // session's wire encoding before the pump arms.
@@ -1432,6 +1489,19 @@ Outcome<Unit> BeastServerTransport::Start(RequestHandler handler) {
     return Error::Validation(
         "beast: websocket_accept_json_frames without on_websocket / on_websocket_session never "
         "negotiates");
+  }
+  if (options_.websocket_raw_text_frames && !serves_websockets) {
+    // Same dead-config shape again: the wire mode applies on upgrades only.
+    return Error::Validation(
+        "beast: websocket_raw_text_frames without on_websocket / on_websocket_session never "
+        "applies");
+  }
+  if (options_.websocket_raw_text_frames && options_.websocket_accept_json_frames) {
+    // One listener speaks one wire family: raw text is unnegotiated and
+    // claims every upgrade, so the JSON-frames negotiation could never win.
+    return Error::Validation(
+        "beast: websocket_raw_text_frames and websocket_accept_json_frames cannot both be set "
+        "(raw text claims every upgrade; nothing is left to negotiate)");
   }
 
   const bool has_cert = !options_.tls_certificate_chain_pem.empty();
@@ -2066,6 +2136,13 @@ Outcome<std::shared_ptr<WebSocket>> FinishDial(std::unique_ptr<DialedConnection>
     // fallback (ADR-0018) — both modes carry the same messages.
     session->EnableJsonFrames();
   }
+  if (options.raw_text_frames) {
+    // The raw-text wire (ADR-0023) is unnegotiated: the caller knows the
+    // endpoint speaks JSON-RPC envelopes. (An echoed subprotocol cannot
+    // reach here — Dial refuses raw_text_frames + offer_json_frames, and
+    // an unoffered echo already failed above.)
+    session->EnableRawTextFrames();
+  }
   asio::post(connection->io, [session] { session->Start(); });
   return std::shared_ptr<WebSocket>(
       std::make_shared<DialedWebSocket>(std::move(session), std::move(connection)));
@@ -2076,6 +2153,11 @@ Outcome<std::shared_ptr<WebSocket>> FinishDial(std::unique_ptr<DialedConnection>
 Outcome<std::shared_ptr<WebSocket>> BeastWebSocketClient::Dial(Options options) {
   if (options.host.empty()) {
     return Error::Validation("beast websocket: options need a host");
+  }
+  if (options.raw_text_frames && options.offer_json_frames) {
+    return Error::Validation(
+        "beast websocket: raw_text_frames and offer_json_frames cannot both be set (raw text is "
+        "unnegotiated; the JSON-frames offer would select a different wire)");
   }
   if (options.port == 0) {
     options.port = options.tls ? 443 : 80;  // the scheme default
@@ -2157,6 +2239,7 @@ WebSocketDialer BeastWebSocketClient::Dialer() {
     options.tls_options = request.tls_options;
     options.target = request.target;
     options.headers = request.headers;
+    options.raw_text_frames = request.raw_text_frames;
     options.handshake_timeout_ms = request.handshake_timeout_ms;
     options.idle_timeout_seconds = request.idle_timeout_seconds;
     return Dial(std::move(options));

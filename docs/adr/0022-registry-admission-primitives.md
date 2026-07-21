@@ -41,7 +41,10 @@ once instead of three times.
 missing: closes the id's current session — the handle copy is taken
 under the entry lock (the Resume-swap discipline, ADR-0020's panel
 round) and closed outside all locks. The session's handler observes the
-close, runs its normal exit path (Remove or Detach), and the id frees.
+close and runs its normal exit path, leaving the id admittable on the
+next dial: freed outright after a Remove exit, parked-resumable after a
+Detach exit (where the redial's ResumeOrAdd reports kResumed and the
+snapshot carries the identity across).
 Policy stays with the application: `ResumeOrAdd` never kicks on its
 own, and the chat examples deliberately keep refusing name collisions
 rather than kicking — `Close` exists so an application that *knows* the

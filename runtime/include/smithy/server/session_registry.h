@@ -171,8 +171,10 @@ class SessionRegistry {
   // thread, or with Options::async_delivery on an async-capable socket, a
   // completion chain armed by the first enqueue. False (and nothing
   // changes — in particular the handle is not closed) when id is already
-  // registered; a reconnect under the same id wants Remove first, which is
-  // the application's call to make.
+  // registered. A reconnect under the same id wants ResumeOrAdd; evicting
+  // a live id wants Close, so the old handler observes the end and
+  // unwinds itself — never Remove-then-Add, which leaves the old handler
+  // to tear down the NEW entry on its way out.
   bool Add(Id id, Handle handle) {
     const bool async_mode = options_.async_delivery && handle.SupportsAsync();
     auto entry = std::make_shared<Entry>(std::move(handle));
@@ -317,23 +319,38 @@ class SessionRegistry {
   enum class Admission { kResumed, kAdded, kRefused };
 
   // The admission recipe as a primitive (ADR-0022, issue #122): Resume
-  // first (the reconnect story), fresh Add second, retried until the
-  // deadline — a reconnect can beat the old wire's failure notice, so for
-  // a beat the id looks live to both paths and only retrying converges.
-  // `mint` runs once per attempt: each needs a fresh Share(). A zero
-  // deadline is the single-shot form. This method BLOCKS up to
-  // `deadline`: call it before a handler's first suspension — on the
-  // launching thread, where brief blocking is fine — never from a
-  // completion context. kRefused after the deadline means the id is
-  // genuinely live on another connection; whether to kick it (Close) is
-  // the application's call — ResumeOrAdd never kicks on its own.
+  // first (the reconnect story), fresh Add second, retried every ~50ms
+  // until the deadline — a reconnect can beat the old wire's failure
+  // notice, so for a beat the id looks live to both paths and only
+  // retrying converges. `mint` runs exactly once per attempt: the one
+  // fresh Share() serves both the Resume try and the Add try (handles
+  // are cheap-copy views). A zero deadline is the single-shot form; an
+  // enormous one (milliseconds::max()) is a legal "block until
+  // admitted". This method BLOCKS up to `deadline`: call it before a
+  // handler's first suspension — on the launching thread, where brief
+  // blocking is fine — never from a completion context. On a
+  // grace-disabled registry Resume never succeeds, so the call degrades
+  // to a retried Add — still the right admission shape; kResumed simply
+  // cannot occur. kRefused at the deadline almost always means the id is
+  // live on another connection (rarely: a detached entry past its grace
+  // that expiry has not yet claimed — a beat later the same call would
+  // report kAdded); whether to kick a live one (Close) is the
+  // application's call — ResumeOrAdd never kicks on its own.
   Admission ResumeOrAdd(const Id& id, const std::function<Handle()>& mint,
                         std::chrono::milliseconds deadline) {
     constexpr auto kRetryInterval = std::chrono::milliseconds(50);
-    const auto give_up = std::chrono::steady_clock::now() + deadline;
+    // Clamped, not added blindly: now + milliseconds::max() overflows the
+    // steady clock's representation (UB, and a wrapped deadline would
+    // silently degrade "block until admitted" to single-shot).
+    const auto start = std::chrono::steady_clock::now();
+    const auto headroom = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::time_point::max() - start);
+    const auto give_up =
+        deadline >= headroom ? std::chrono::steady_clock::time_point::max() : start + deadline;
     while (true) {
-      if (Resume(id, mint())) return Admission::kResumed;
-      if (Add(id, mint())) return Admission::kAdded;
+      Handle handle = mint();
+      if (Resume(id, handle)) return Admission::kResumed;
+      if (Add(id, std::move(handle))) return Admission::kAdded;
       const auto now = std::chrono::steady_clock::now();
       if (now >= give_up) return Admission::kRefused;
       std::this_thread::sleep_for(
@@ -405,8 +422,11 @@ class SessionRegistry {
   }
 
   // Closes id's current session — the kick primitive (ADR-0022): the
-  // session observes the close, its handler runs its normal exit path
-  // (Remove or Detach), and the id frees for the next dial. Policy stays
+  // session observes the close and its handler runs its normal exit path,
+  // making the id admittable on the next dial — freed outright on a
+  // Remove exit; parked-resumable on a Detach exit, where the next
+  // ResumeOrAdd reports kResumed and snapshot replay carries the old
+  // session's identity across. Policy stays
   // with the application: this is how a ResumeOrAdd refusal becomes
   // actionable when the old session is known dead (a silent partition, an
   // operator action) instead of waiting out TCP. On a detached entry it

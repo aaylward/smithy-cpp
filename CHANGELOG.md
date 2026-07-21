@@ -153,9 +153,11 @@ via `git_override` until then.
   on (`kResumed` → snapshot replay, `kAdded` → join announce, `kRefused`
   → collision answer). It blocks by contract: call it pre-first-suspend
   on the launching thread, never from a completion context. Its refusal
-  is now actionable: `Close(id)` kicks the id's live session (the
-  handler observes the close and runs its normal exit path), the missing
-  move for silent partitions — policy stays with the application. The
+  is now actionable: `Close(id)` kicks the id's live session — the
+  handler observes the close and runs its normal exit path, leaving the
+  id admittable (freed after a Remove exit, parked-resumable after a
+  Detach exit) — the missing move for silent partitions; policy stays
+  with the application. The
   three example admission loops are deleted in favor of the call.
 - Generated async streaming handlers (ADR-0021): a streaming service now
   also emits `<Service>AsyncHandler` — each streaming operation a coroutine

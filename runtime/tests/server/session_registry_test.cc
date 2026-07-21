@@ -918,6 +918,96 @@ TEST(SessionRegistryGraceTest, AZeroDeadlineAdmissionIsSingleShot) {
   EXPECT_LT(std::chrono::steady_clock::now() - start, std::chrono::seconds(5));
 }
 
+TEST(SessionRegistryGraceTest, AnEffectivelyInfiniteDeadlineNeitherOverflowsNorRefusesEarly) {
+  // milliseconds::max() is the natural "block until admitted" spelling;
+  // naive give_up arithmetic overflows the steady clock's rep (UB, and a
+  // wrapped deadline silently degrades to single-shot). The sanitizer
+  // build is the real referee here.
+  std::atomic<int> expired{0};
+  Registry registry = GraceRegistry(&expired);
+  Session session = MakeSession();
+  const auto admission = registry.ResumeOrAdd(
+      "ada", [&session] { return *session.handle; }, std::chrono::milliseconds::max());
+  EXPECT_EQ(admission, Registry::Admission::kAdded);
+  EXPECT_TRUE(registry.SendTo("ada", Note{"in"}));
+  EXPECT_EQ(NextAt(session), "in");
+}
+
+TEST(SessionRegistryGraceTest, MintRunsOncePerAttempt) {
+  // The documented contract: one fresh handle per attempt serves both the
+  // Resume try and the Add try (handles are cheap-copy views); a mint
+  // with side effects sees exactly one call per attempt.
+  std::atomic<int> expired{0};
+  Registry registry = GraceRegistry(&expired);
+  Session session = MakeSession();
+  ASSERT_TRUE(registry.Add("ada", *session.handle));  // the id is live
+
+  Session imposter = MakeSession();
+  int mints = 0;
+  const auto admission = registry.ResumeOrAdd(
+      "ada",
+      [&] {
+        ++mints;
+        return *imposter.handle;
+      },
+      std::chrono::milliseconds(0));
+  EXPECT_EQ(admission, Registry::Admission::kRefused);
+  EXPECT_EQ(mints, 1);  // single-shot AND single-mint: one attempt, one handle
+}
+
+TEST(SessionRegistryGraceTest, ConcurrentResumeOrAddsAdmitExactlyOne) {
+  // The invariant the primitive inherits from Resume's under-both-locks
+  // swap and Add's emplace: two racers on one id admit exactly once.
+  for (int round = 0; round < 10; ++round) {
+    Registry::Options options;
+    options.grace_period = std::chrono::seconds{300};
+    Registry registry(std::move(options));
+    Session session = MakeSession();
+    ASSERT_TRUE(registry.Add("ada", *session.handle));
+    ASSERT_TRUE(registry.Detach("ada"));  // one resumable seat
+
+    Session first = MakeSession();
+    Session second = MakeSession();
+    Registry::Admission a{};
+    Registry::Admission b{};
+    std::thread racer_a([&] {
+      a = registry.ResumeOrAdd(
+          "ada", [&first] { return *first.handle; }, std::chrono::milliseconds(200));
+    });
+    std::thread racer_b([&] {
+      b = registry.ResumeOrAdd(
+          "ada", [&second] { return *second.handle; }, std::chrono::milliseconds(200));
+    });
+    racer_a.join();
+    racer_b.join();
+    const bool a_won = a == Registry::Admission::kResumed;
+    const bool b_won = b == Registry::Admission::kResumed;
+    EXPECT_NE(a_won, b_won) << "round " << round;  // exactly one resumed
+    EXPECT_EQ(a_won ? b : a, Registry::Admission::kRefused) << "round " << round;
+  }
+}
+
+TEST(SessionRegistryGraceTest, ResumeOrAddDegradesToRetriedAddWithoutGrace) {
+  // grace_period == 0: Resume can never succeed, so the primitive is a
+  // retried Add — still the right admission shape (the retry window lets
+  // the old handler's Remove land), with kResumed unreachable.
+  Registry registry;  // grace disabled
+  Session session = MakeSession();
+  ASSERT_TRUE(registry.Add("ada", *session.handle));
+
+  std::thread late_remove([&registry] {
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    EXPECT_TRUE(registry.Remove("ada"));
+  });
+  Session fresh = MakeSession();
+  const auto admission =
+      registry.ResumeOrAdd("ada", [&fresh] { return *fresh.handle; }, std::chrono::seconds(5));
+  late_remove.join();
+  EXPECT_EQ(admission, Registry::Admission::kAdded);
+  EXPECT_TRUE(registry.SendTo("ada", Note{"fresh-join"}));
+  EXPECT_EQ(NextAt(fresh), "fresh-join");
+}
+
 TEST(SessionRegistryGraceTest, ResumeOrAddConvergesWhenDetachLandsMidRetry) {
   // The race the primitive exists for: the reconnect arrives while the old
   // handler has not yet noticed its dead wire — the id looks live to both
@@ -931,7 +1021,7 @@ TEST(SessionRegistryGraceTest, ResumeOrAddConvergesWhenDetachLandsMidRetry) {
 
   std::thread late_detach([&registry] {
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
-    ASSERT_TRUE(registry.Detach("ada"));
+    EXPECT_TRUE(registry.Detach("ada"));  // EXPECT: fatal asserts cannot halt a sibling thread
   });
   Session fresh = MakeSession();
   const auto admission =
@@ -1032,6 +1122,7 @@ TEST(SessionRegistryGraceTest, DetachResumeChurnUnderBroadcastAndCloseStaysSafe)
   std::thread closer([&] {
     while (!stop) {
       registry.CloseAll();
+      for (int i = 0; i < 4; ++i) registry.Close("p" + std::to_string(i));  // the ADR-0022 path
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
   });

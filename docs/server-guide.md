@@ -153,6 +153,7 @@ per-viewer state — the callback runs once per recipient, outside all registry 
 Reconnects get a grace window on the same registry (ADR-0020): set
 `Options::grace_period`, call `Detach(id)` on abrupt loss instead of `Remove`,
 and `Resume(id, handle)` swaps a reconnecting connection into the parked entry
+(`ResumeOrAdd` is the blessed admission call wrapping both, ADR-0022)
 — `Options::on_expired` runs the deferred cleanup exactly once when nobody
 comes back. The full handshake (resume ticket → gate → `Resume` → snapshot
 replay) and the client redial shape live in the
@@ -255,7 +256,7 @@ belong in the gate. One server instance serves one seam — the constructor pick
 service that wants some streaming operations blocking and some async needs two server
 instances on two transports, each implementing its full handler, so look for a per-route
 knob no further. Execution contexts: code before the handler's first `co_await` runs on
-the launching handler thread (the examples' brief admission-retry blocking is fine
+the launching handler thread (the examples' blocking `ResumeOrAdd` admission is fine
 there); every later resumption is a transport completion context — never block those,
 and reach blocking work through `stream.Share()`. Shutdown reads the same as the
 hand-mount: `registry.Drain(grace)` closes every session, each parked

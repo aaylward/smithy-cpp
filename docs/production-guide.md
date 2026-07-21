@@ -578,10 +578,12 @@ snapshot as its first events** before normal traffic. On failure it falls
 back to the fresh-join path (`Add`), because the session expired or never
 existed. A reconnect can beat the old wire's failure notice, so admission
 must retry briefly before refusing the id as a live duplicate — and that
-whole dance is one registry call (ADR-0022), the blessed admission shape
-every example uses:
+whole dance is one registry call (ADR-0022) — the blessed admission call
+every example makes:
 
 ```cpp
+using Registry = smithy::server::SessionRegistry<RoomEvents>;
+
 const auto admission = registry.ResumeOrAdd(
     id, [&stream] { return stream.Share(); }, std::chrono::seconds(1));
 switch (admission) {
@@ -591,13 +593,18 @@ switch (admission) {
 }
 ```
 
-`mint` runs once per attempt (each needs a fresh `Share()`), and the call
-blocks up to the deadline — legal because admission runs before the
-handler's first suspension, on the launching thread. A `kRefused` you
+`mint` runs exactly once per attempt — the one fresh `Share()` serves the
+Resume try and the Add try — with attempts every ~50ms, so a one-second
+deadline (the old hand-rolled recipe's 20 × 50ms) comfortably covers the
+failure-notice race. The call blocks up to the deadline — legal because
+admission runs before the handler's first suspension, on the launching
+thread. A `kRefused` you
 *know* is wrong — a half-dead session whose wire never sent a FIN — has a
-convergent answer now: `registry.Close(id)` kicks the old session (its
-handler observes the close and runs the normal exit path), freeing the id
-for the client's next dial. Kicking stays the application's call;
+convergent answer now: `registry.Close(id)` kicks the old session — its
+handler observes the close and runs the normal exit path, so the id is
+admittable on the next dial (freed outright after a Remove exit;
+parked-resumable after a Detach exit, where the redial resumes with the
+old identity and gets the snapshot). Kicking stays the application's call;
 `ResumeOrAdd` never does it on its own.
 
 Say the posture out loud in your protocol docs, because it shapes client

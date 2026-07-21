@@ -42,7 +42,10 @@ Outcome<std::optional<Message>> TranslateInbound(Outcome<std::optional<Message>>
 }  // namespace
 
 JsonRpcStreamSocket::JsonRpcStreamSocket(std::shared_ptr<http::WebSocket> inner, Document id)
-    : inner_(std::move(inner)), id_(std::move(id)) {}
+    : owner_(std::move(inner)), inner_(owner_.get()), id_(std::move(id)) {}
+
+JsonRpcStreamSocket::JsonRpcStreamSocket(http::WebSocket& inner, Document id)
+    : inner_(&inner), id_(std::move(id)) {}
 
 Outcome<std::optional<Message>> JsonRpcStreamSocket::Receive() {
   return TranslateInbound(inner_->Receive(), id_);

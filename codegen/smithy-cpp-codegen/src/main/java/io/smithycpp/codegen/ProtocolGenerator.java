@@ -62,11 +62,24 @@ interface ProtocolGenerator {
       CppWriter w, CppContext context, ServiceShape service, OperationShape operation);
 
   /**
-   * Whether the protocol carries event-stream operations over WebSocket (ADR-0016). Protocols that
-   * refuse (jsonRpc2's single-POST envelope has no per-operation URI to upgrade on) get a
-   * generation-time diagnostic naming the operation instead of broken output.
+   * Whether the protocol carries event-stream operations over WebSocket (ADR-0016). Every in-tree
+   * protocol now does — the binding protocols on the framed envelope wire, jsonRpc2 on its native
+   * wire (ADR-0023) — but a future protocol without a story gets a generation-time diagnostic
+   * naming the operation instead of broken output.
    */
   default boolean supportsEventStreams() {
+    return false;
+  }
+
+  /**
+   * Whether streams speak the JSON-RPC-native wire (ADR-0023): text envelopes on the protocol's
+   * shared endpoint — the opening request envelope selecting the operation and carrying
+   * initial-request members in {@code params}, notification events, and a terminal response
+   * envelope in place of the exception message. Drives the third initial-request validation mode,
+   * the generated {@code JsonRpcStreamSocket} translation, and the {@code :eventstream_jsonrpc}
+   * runtime dep.
+   */
+  default boolean streamsRideJsonRpcEnvelopes() {
     return false;
   }
 
@@ -123,6 +136,27 @@ interface ProtocolGenerator {
       CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
     throw new software.amazon.smithy.codegen.core.CodegenException(
         "cpp-codegen: " + name() + " does not support event streams");
+  }
+
+  /**
+   * Emits the constructor statements registering the service's streaming routes. The default
+   * registers one route per operation via {@link #writeStreamServerRoute}; jsonRpc2 overrides this
+   * with one shared-endpoint route that dispatches on the opening envelope's {@code method}
+   * (ADR-0023) — the {@link #writeServerRoutes} move, transposed to streams.
+   */
+  default void writeStreamServerRoutes(
+      CppWriter w, CppContext context, ServiceShape service, List<OperationShape> operations) {
+    for (OperationShape operation : operations) {
+      writeStreamServerRoute(w, context, service, operation);
+    }
+  }
+
+  /** The shared-session sibling of {@link #writeStreamServerRoutes}, same override rule. */
+  default void writeStreamSessionRoutes(
+      CppWriter w, CppContext context, ServiceShape service, List<OperationShape> operations) {
+    for (OperationShape operation : operations) {
+      writeStreamSessionRoute(w, context, service, operation);
+    }
   }
 
   /** Includes server.cc needs beyond the shared set. */

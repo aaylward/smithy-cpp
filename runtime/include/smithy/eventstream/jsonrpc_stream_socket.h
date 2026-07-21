@@ -42,6 +42,12 @@ class JsonRpcStreamSocket final : public http::WebSocket {
   // matched against every inbound frame.
   JsonRpcStreamSocket(std::shared_ptr<http::WebSocket> inner, Document id);
 
+  // The borrowing form, mirroring EventStream's borrowed constructor: the
+  // blocking serve seam owns its socket only for the route callback's
+  // lifetime, and the wrapper must not outlive it — the caller keeps
+  // `inner` alive past every call on this object.
+  JsonRpcStreamSocket(http::WebSocket& inner, Document id);
+
   Outcome<std::optional<Message>> Receive() override;
   Outcome<Unit> Send(const Message& message) override;
   void Close() override;
@@ -50,7 +56,9 @@ class JsonRpcStreamSocket final : public http::WebSocket {
   bool SupportsAsync() const override;
 
  private:
-  std::shared_ptr<http::WebSocket> inner_;
+  // Engaged only by the owning form; every call goes through inner_.
+  std::shared_ptr<http::WebSocket> owner_;
+  http::WebSocket* inner_;
   Document id_;
 };
 

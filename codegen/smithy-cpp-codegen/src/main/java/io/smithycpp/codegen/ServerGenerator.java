@@ -322,9 +322,7 @@ final class ServerGenerator {
       w.write("// Streaming routes (ADR-0016) live on the WebSocket router; the upgrade");
       w.write("// path bypasses the HTTP chain (ADR-0015), so they never collide with");
       w.write("// the unary table above.");
-      for (OperationShape operation : streamingOperations()) {
-        protocol.writeStreamServerRoute(w, context, service, operation);
-      }
+      protocol.writeStreamServerRoutes(w, context, service, streamingOperations());
     }
     w.dedent();
     w.write("}");
@@ -340,9 +338,7 @@ final class ServerGenerator {
       w.write("// seam (ADR-0021) — an AddSession launch point per operation, so serving");
       w.write("// a stream parks no handler thread.");
       protocol.writeServerRoutes(w, context, service, unaryOperations());
-      for (OperationShape operation : streamingOperations()) {
-        protocol.writeStreamSessionRoute(w, context, service, operation);
-      }
+      protocol.writeStreamSessionRoutes(w, context, service, streamingOperations());
       w.dedent();
       w.write("}");
       w.write("");

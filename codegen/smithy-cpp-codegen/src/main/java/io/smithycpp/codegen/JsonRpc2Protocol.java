@@ -167,6 +167,61 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
     w.write("return Deserialize$L(*result);", SerdeCodeGen.serdeFunctionSuffix(context, output));
   }
 
+  @Override
+  public boolean supportsEventStreams() {
+    return true;
+  }
+
+  @Override
+  public boolean streamsRideJsonRpcEnvelopes() {
+    return true;
+  }
+
+  @Override
+  public String eventPayloadEncode(String docExpr) {
+    return "smithy::Blob::FromString(smithy::json::Encode(" + docExpr + "))";
+  }
+
+  @Override
+  public String eventPayloadDecode(String payloadExpr) {
+    return "smithy::json::Decode(" + payloadExpr + ".ToString())";
+  }
+
+  @Override
+  public void writeStreamingOperationBody(
+      CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
+    JsonRpc2StreamCodeGen.writeStreamingOperationBody(w, context, service, this, operation);
+  }
+
+  @Override
+  public void writeStreamServerRoutes(
+      CppWriter w, CppContext context, ServiceShape service, List<OperationShape> operations) {
+    w.write("// One shared-endpoint stream route (ADR-0023): the wire routes on the");
+    w.write("// opening envelope's method, exactly like the unary POST \"/\" above.");
+    w.openBlock(
+        "(void)stream_router_->Add(\"GET\", \"/\", [handler](const smithy::http::HttpRequest&"
+            + " request, "
+            + ProtocolSupport.REQUEST_CONTEXT_PARAM
+            + " context, smithy::http::WebSocket& socket) {");
+    w.write("(void)request;");
+    w.write("ServeJsonRpcStream(*handler, context, socket);");
+    w.closeBlock("}, $S);", service.getId().getName());
+  }
+
+  @Override
+  public void writeStreamSessionRoutes(
+      CppWriter w, CppContext context, ServiceShape service, List<OperationShape> operations) {
+    w.openBlock(
+        "(void)stream_router_->AddSession(\"GET\", \"/\", [handler](const"
+            + " smithy::http::HttpRequest& request, "
+            + ProtocolSupport.REQUEST_CONTEXT_PARAM
+            + " context, std::shared_ptr<smithy::http::WebSocket> socket) {");
+    w.write("(void)request;");
+    w.write("(void)context;");
+    w.write("ServeJsonRpcSession(handler, std::move(socket));");
+    w.closeBlock("}, $S);", service.getId().getName());
+  }
+
   /** jsonRpc2 error identity travels in error.data.__type; every response echoes the id. */
   private static final ProtocolSupport.ErrorResponseSpec SPEC =
       new ProtocolSupport.ErrorResponseSpec(

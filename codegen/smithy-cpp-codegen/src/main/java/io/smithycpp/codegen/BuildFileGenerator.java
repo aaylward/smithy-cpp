@@ -69,6 +69,10 @@ final class BuildFileGenerator {
         // generated streaming operations fall back to.
         deps.add("\"" + pkg + ":eventstream\"");
         deps.add("\"" + pkg + ":http_beast\"");
+        if (protocol.streamsRideJsonRpcEnvelopes()) {
+          // The JSON-RPC stream translation wrapper (ADR-0023).
+          deps.add("\"" + pkg + ":eventstream_jsonrpc\"");
+        }
       }
       for (String dep : protocol.runtimeDeps()) {
         deps.add("\"" + pkg + dep + "\"");
@@ -101,6 +105,9 @@ final class BuildFileGenerator {
         // Servers speak the transport-neutral WebSocket seam only — the
         // router lives in :server, so no Beast dep (ADR-0016).
         serverDeps.add("\"" + pkg + ":eventstream\"");
+        if (protocol.streamsRideJsonRpcEnvelopes()) {
+          serverDeps.add("\"" + pkg + ":eventstream_jsonrpc\"");
+        }
       }
       for (String dep : protocol.runtimeDeps()) {
         serverDeps.add("\"" + pkg + dep + "\"");

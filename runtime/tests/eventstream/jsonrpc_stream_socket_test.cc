@@ -191,6 +191,25 @@ TEST(JsonRpcStreamSocketTest, AnAsyncEncodeRefusalCompletesInline) {
   EXPECT_TRUE(refused);
 }
 
+TEST(JsonRpcStreamSocketTest, TheBorrowingFormTranslatesLikeTheOwningOne) {
+  // The blocking serve seam's shape: the route borrows its socket, so the
+  // wrapper borrows too (EventStream's borrowed-constructor mirror).
+  auto [left, right] = http::InMemoryWebSocketPair::Create();
+  JsonRpcStreamSocket client(*left, Document(1));
+
+  const Message event = MakeEventMessage("ping", "application/json", Blob::FromString("{}"));
+  ASSERT_TRUE(client.Send(event).ok());
+  auto raw = right->Receive();
+  ASSERT_TRUE(raw.ok() && raw->has_value());
+  EXPECT_EQ((**raw).payload.ToString(),
+            R"({"jsonrpc":"2.0","method":"ping","params":{"id":1,"payload":{}}})");
+
+  ASSERT_TRUE(right->Send(Raw(R"({"jsonrpc":"2.0","result":{},"id":1})")).ok());
+  auto received = client.Receive();
+  ASSERT_TRUE(received.ok());
+  EXPECT_FALSE(received->has_value());
+}
+
 TEST(JsonRpcStreamSocketTest, CloseAndThePeersCleanCloseDelegate) {
   auto [left, right] = http::InMemoryWebSocketPair::Create();
   auto client = Wrap(left);

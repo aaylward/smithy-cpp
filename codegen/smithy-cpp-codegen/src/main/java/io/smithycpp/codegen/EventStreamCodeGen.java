@@ -84,13 +84,29 @@ final class EventStreamCodeGen {
                 + protocol.name()
                 + " does not support event-stream operations: "
                 + operation.getId()
-                + " (bind the service to alloy#simpleRestJson or smithy.protocols#rpcv2Cbor,"
-                + " or remove the @streaming union)");
+                + " (bind the service to a protocol with an event-stream wire —"
+                + " alloy#simpleRestJson, smithy.protocols#rpcv2Cbor, or"
+                + " smithy.cpp.protocols#jsonRpc2 — or remove the @streaming union)");
       }
       input.ifPresent(info -> rejectEventBindingTraits(context, info));
       output.ifPresent(info -> rejectEventBindingTraits(context, info));
       if (input.isPresent()) {
         validateInitialRequestMembers(context, protocol, operation, input.get());
+        if (protocol.streamsRideJsonRpcEnvelopes()
+            && input.get().getEventStreamMember().isRequired()) {
+          // The opening envelope's params deserialize through the input's
+          // ordinary serde (ADR-0023), and params never carry the union —
+          // a @required stream member would refuse every opening.
+          throw new CodegenException(
+              "cpp-codegen: streaming operation "
+                  + operation.getId()
+                  + " marks event-stream member '"
+                  + input.get().getEventStreamMember().getMemberName()
+                  + "' @required, but on "
+                  + protocol.name()
+                  + " the union is the session, never an opening-envelope member (ADR-0023);"
+                  + " drop @required");
+        }
       }
       if (output.isPresent() && !output.get().getInitialMessageMembers().isEmpty()) {
         String member = output.get().getInitialMessageMembers().keySet().iterator().next();
@@ -140,6 +156,13 @@ final class EventStreamCodeGen {
       OperationShape operation,
       EventStreamInfo info) {
     if (info.getInitialMessageMembers().isEmpty()) {
+      return;
+    }
+    if (protocol.streamsRideJsonRpcEnvelopes()) {
+      // The third carriage mode (ADR-0023): initial-request members ride
+      // the opening request envelope's params — the first protocol with
+      // body-bound initial members, realizing ADR-0016's reserved seam.
+      // The ordinary input serde covers them, so nothing to check here.
       return;
     }
     if (!protocol.bindsInitialRequestMembers()) {
@@ -286,7 +309,7 @@ final class EventStreamCodeGen {
     w.write("");
   }
 
-  private static String opName(OperationShape operation) {
+  static String opName(OperationShape operation) {
     return CppReservedWords.escape(operation.getId().getName());
   }
 
@@ -295,7 +318,7 @@ final class EventStreamCodeGen {
    * modeled direction, an empty encoder for NoEvents — Send is uncallable there (a compile-time
    * static_assert, event_stream.h), so the slot is never invoked and no stub is emitted.
    */
-  private static String encoderArgument(Optional<EventStreamInfo> tx, OperationShape operation) {
+  static String encoderArgument(Optional<EventStreamInfo> tx, OperationShape operation) {
     return tx.isPresent() ? "Encode" + opName(operation) + "Event" : "{}";
   }
 
@@ -391,6 +414,28 @@ final class EventStreamCodeGen {
     w.addInclude("\"smithy/http/websocket.h\"");
     w.addInclude("\"smithy/eventstream/async_event_stream.h\"");
     w.addInclude("<utility>");
+    if (protocol.streamsRideJsonRpcEnvelopes()) {
+      // The JSON-RPC-native wire (ADR-0023): the codec pairs are the shared
+      // machinery; everything else — terminal envelopes instead of
+      // exception messages, the wrapped sockets, the shared-endpoint
+      // drivers — is the wire's own shape.
+      JsonRpc2StreamCodeGen.writeSharedServerHelpers(w);
+      for (OperationShape operation : streamingOperations) {
+        writeEncodeFunction(
+            w, context, protocol, operation, outputInfo(context.model(), operation));
+        writeDecodeFunction(
+            w,
+            context,
+            service,
+            protocol,
+            operation,
+            inputInfo(context.model(), operation),
+            /* clientSide= */ false);
+        JsonRpc2StreamCodeGen.writeAsyncServeWrapper(w, context, service, operation);
+      }
+      JsonRpc2StreamCodeGen.writeServeDrivers(w, context, service, protocol, streamingOperations);
+      return;
+    }
     for (OperationShape operation : streamingOperations) {
       writeEncodeFunction(w, context, protocol, operation, outputInfo(context.model(), operation));
       writeDecodeFunction(

@@ -30,6 +30,13 @@ class Error {
   static Error Transport(std::string message, bool retryable = true) {
     return Error(ErrorKind::kTransport, "TransportError", std::move(message), retryable);
   }
+  // A deadline the caller set expired before the operation could finish —
+  // a transport failure whose own code separates it from a broken wire
+  // (WebSocket::Receive's timed overload leans on exactly that: nothing
+  // arrived yet, and the session is still usable).
+  static Error Timeout(std::string message) {
+    return Error(ErrorKind::kTransport, "TimeoutError", std::move(message), /*retryable=*/true);
+  }
   static Error Serialization(std::string message) {
     return Error(ErrorKind::kSerialization, "SerializationError", std::move(message));
   }

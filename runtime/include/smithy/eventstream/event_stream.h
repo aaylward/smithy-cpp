@@ -1,6 +1,7 @@
 #ifndef SMITHY_EVENTSTREAM_EVENT_STREAM_H_
 #define SMITHY_EVENTSTREAM_EVENT_STREAM_H_
 
+#include <chrono>
 #include <condition_variable>
 #include <functional>
 #include <memory>
@@ -291,18 +292,23 @@ class EventStream {
   // exception (the decoder returns it as the modeled Error) or an
   // undecodable message — is terminal (ADR-0016): the session is closed
   // and the error returned.
-  Outcome<std::optional<Rx>> Receive() {
-    auto received = socket_->Receive();
-    if (!received.ok()) return std::move(received).error();
-    std::optional<Message>& message = *received;
-    if (!message.has_value()) return std::optional<Rx>();
-    auto event = decode_(*message);
-    if (!event.ok()) {
-      Close();
-      return std::move(event).error();
-    }
-    return std::optional<Rx>(std::move(*event));
+  Outcome<std::optional<Rx>> Receive() { return Decode(socket_->Receive()); }
+
+  // Receive under a deadline (the socket's timed overload, typed): the
+  // event, nullopt for the peer's clean close, the session's error — or
+  // Error::Timeout ("TimeoutError") when `timeout` passes with nothing to
+  // report. A timeout is the one failure here that spares the session: it
+  // closes nothing, so the caller can assert, log, send, or wait again on
+  // a stream that is still live. Decoder failures stay terminal, deadline
+  // or not. Bounded for real only when SupportsReceiveTimeout() is true —
+  // otherwise the socket's base-class default blocks like Receive().
+  Outcome<std::optional<Rx>> Receive(std::chrono::milliseconds timeout) {
+    return Decode(socket_->Receive(timeout));
   }
+
+  // Whether this stream's session bounds Receive(timeout) — both in-repo
+  // transports do.
+  bool SupportsReceiveTimeout() const { return socket_->SupportsReceiveTimeout(); }
 
   // Initiates the close handshake; idempotent and safe from any thread
   // (the WebSocket contract).
@@ -319,6 +325,22 @@ class EventStream {
   EventStreamHandle<Tx> Share() { return EventStreamHandle<Tx>(view_.Ensure(socket_), encode_); }
 
  private:
+  // Both receive overloads: nullopt through, decode the message, and treat
+  // a decoder failure as terminal (ADR-0016). A transport failure —
+  // including the deadline's Error::Timeout — passes through untouched;
+  // only the decoder's verdict ends the session here.
+  Outcome<std::optional<Rx>> Decode(Outcome<std::optional<Message>> received) {
+    if (!received.ok()) return std::move(received).error();
+    std::optional<Message>& message = *received;
+    if (!message.has_value()) return std::optional<Rx>();
+    auto event = decode_(*message);
+    if (!event.ok()) {
+      Close();
+      return std::move(event).error();
+    }
+    return std::optional<Rx>(std::move(*event));
+  }
+
   std::shared_ptr<http::WebSocket> owned_;  // null on the borrowed path
   http::WebSocket* socket_;
   Encoder encode_;

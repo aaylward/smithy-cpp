@@ -119,6 +119,25 @@ via `git_override` until then.
   the production guide now names the blessed browser auth pattern
   (short-lived single-use tickets in an `@httpQuery` member, validated by
   the gate before the 101) with its caveats said out loud.
+- Bounded receives on event streams (issue #128): `WebSocket::Receive` and
+  `EventStream::Receive` grow a `std::chrono::milliseconds` overload, so a
+  consumer waiting for a message the peer never sends gets a verdict
+  instead of a hang — the case that previously burned a CI job's whole
+  timeout with no assertion output. The deadline is a fourth outcome,
+  `Error::Timeout` (code `TimeoutError`), distinct from the peer's clean
+  close (`nullopt`) and from a failed session, and it is the one failure
+  that spares the stream: unlike `Close()` — until now the only way to
+  unblock a parked receive — the session stays usable, so the caller can
+  assert, send, or wait again. Both in-repo transports honor it (`wait` →
+  `wait_for` on the wait they already had; the one-outstanding-receive slot
+  releases exactly as a completed receive releases it), the delegating
+  sockets and typed streams forward it, and `SupportsReceiveTimeout()`
+  reports whether a deadline is real — false for a custom `WebSocket` that
+  never overrode it, where the base-class default forwards to the blocking
+  `Receive()`, in the spirit of the `ReceiveAsync` defaults. **Note for
+  implementors:** overriding only one `Receive` overload hides the other
+  from callers holding the concrete type — override both, or add
+  `using WebSocket::Receive;`.
 - Completion-driven event streams (ADR-0019) — the async adapter ADR-0014
   through ADR-0017 name as future work, runtime slice: `WebSocket` grows
   `ReceiveAsync`/`SendAsync`/`SupportsAsync` (one outstanding per class,

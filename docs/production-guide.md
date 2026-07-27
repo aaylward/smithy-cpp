@@ -429,6 +429,29 @@ An operation that models no client-to-server events returns a receive-only
 stream: its `Send` does not compile (the `NoEvents` direction), so drive it
 with `Receive`/`Close` only.
 
+`Receive()` blocks until *something* happens — a message, the peer's close,
+or a failure. When waiting forever is the wrong answer (a test asserting an
+event, a caller with other work to do), pass a deadline:
+
+```cpp
+auto event = stream->Receive(std::chrono::seconds(2));
+if (!event.ok() && event.error().code() == "TimeoutError") {
+  // Nothing arrived in time. The session is untouched: assert, log, retry
+  // the wait, send, or close — the caller decides.
+}
+```
+
+The timeout is a fourth outcome, distinct from the clean close (`nullopt`)
+and from a broken session (`TransportError`), and it is the only failure that
+leaves the stream usable — which is what separates it from `Close()`, the
+other way to end a wait (that one ends the session for good, and reports the
+peer's own close). `SupportsReceiveTimeout()` says whether the deadline is
+real: true for both in-repo transports and any wrapper over them, false for a
+custom `WebSocket` implementation that never overrode the timed overload — in
+which case the base-class default forwards to the blocking `Receive()` and
+the deadline is ignored. The same overload exists one layer down, on
+`smithy::http::WebSocket` itself, for code holding a raw session.
+
 Not every `ClientConfig` knob reaches a streaming dial — the upgrade GET is
 not a unary request:
 

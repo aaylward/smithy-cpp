@@ -1,5 +1,7 @@
 #include "smithy/eventstream/jsonrpc_stream_socket.h"
 
+#include <chrono>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -93,8 +95,20 @@ JsonRpcStreamSocket::JsonRpcStreamSocket(std::shared_ptr<http::WebSocket> inner,
 JsonRpcStreamSocket::JsonRpcStreamSocket(http::WebSocket& inner, Document id, Role role)
     : inner_(&inner), id_(std::move(id)), role_(role) {}
 
-Outcome<std::optional<Message>> JsonRpcStreamSocket::Receive() {
-  Inbound inbound = ClassifyInbound(inner_->Receive(), id_, role_);
+Outcome<std::optional<Message>> JsonRpcStreamSocket::Receive() { return Police(inner_->Receive()); }
+
+Outcome<std::optional<Message>> JsonRpcStreamSocket::Receive(std::chrono::milliseconds timeout) {
+  // A timeout arrives as !ok() and rides through untouched (no violation,
+  // no close) — the wrapper stays exactly as usable as the socket under it.
+  return Police(inner_->Receive(timeout));
+}
+
+bool JsonRpcStreamSocket::SupportsReceiveTimeout() const {
+  return inner_->SupportsReceiveTimeout();
+}
+
+Outcome<std::optional<Message>> JsonRpcStreamSocket::Police(Outcome<std::optional<Message>> raw) {
+  Inbound inbound = ClassifyInbound(std::move(raw), id_, role_);
   if (inbound.violation_text.has_value()) {
     // Best-effort, blocking: Send returns once the frame is on the wire,
     // so the close below cannot cancel it.

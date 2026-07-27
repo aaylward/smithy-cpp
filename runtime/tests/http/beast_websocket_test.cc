@@ -105,6 +105,91 @@ TEST(BeastWebSocketTest, MessagesRoundTripBothWaysOverTheUpgrade) {
   server.Stop();
 }
 
+TEST(BeastWebSocketTest, AReceiveDeadlineExpiresOnAQuietWireAndSparesTheSession) {
+  // The echo server says nothing unsolicited, so a receive with no deadline
+  // would park here forever — the hang this overload exists to prevent.
+  BeastServerTransport server(EchoOptions());
+  ASSERT_TRUE(server.Start(NotFoundHandler()).ok());
+
+  auto dialed = BeastWebSocketClient::Dial({.host = "127.0.0.1", .port = server.port()});
+  ASSERT_TRUE(dialed.ok()) << dialed.error().message();
+  const std::shared_ptr<WebSocket>& socket = *dialed;
+  EXPECT_TRUE(socket->SupportsReceiveTimeout());
+
+  const auto started = std::chrono::steady_clock::now();
+  auto nothing = socket->Receive(std::chrono::milliseconds(75));
+  const auto waited = std::chrono::steady_clock::now() - started;
+  ASSERT_FALSE(nothing.ok());
+  EXPECT_EQ(nothing.error().code(), "TimeoutError");
+  EXPECT_EQ(nothing.error().kind(), ErrorKind::kTransport);
+  EXPECT_GE(waited, std::chrono::milliseconds(75));
+
+  // The wire is untouched: the same session still round-trips, and the
+  // read pump kept its place (nothing was consumed or dropped).
+  ASSERT_TRUE(socket->Send(Text("chat", "after the deadline")).ok());
+  auto echo = socket->Receive(std::chrono::seconds(5));
+  ASSERT_TRUE(echo.ok()) << echo.error().message();
+  ASSERT_TRUE(echo->has_value());
+  EXPECT_EQ((**echo).payload.ToString(), "echo:after the deadline");
+
+  // And the close still reads as the clean end, never as a deadline.
+  socket->Close();
+  auto end = socket->Receive(std::chrono::seconds(5));
+  ASSERT_TRUE(end.ok()) << end.error().message();
+  EXPECT_FALSE(end->has_value());
+  server.Stop();
+}
+
+TEST(BeastWebSocketTest, AServeLoopBoundsItsReceiveAndKeepsWorkingBetweenMessages) {
+  // The server-side shape the deadline unlocks: a serve loop that gets
+  // control back on a quiet stream (here to push a nudge) instead of
+  // parking until the peer speaks or the idle timeout fires.
+  BeastServerTransport::Options options;
+  options.on_websocket = [](const HttpRequest&, WebSocket& socket) {
+    for (int nudges = 0; nudges < 200;) {
+      auto message = socket.Receive(std::chrono::milliseconds(20));
+      if (!message.ok()) {
+        if (message.error().code() != "TimeoutError") return;  // the wire is gone
+        ++nudges;
+        if (!socket.Send(Text("nudge", std::to_string(nudges))).ok()) return;
+        continue;
+      }
+      if (!message->has_value()) return;  // the client's clean close
+      Message reply = **message;
+      reply.payload = Blob::FromString("echo:" + (*message)->payload.ToString());
+      if (!socket.Send(reply).ok()) return;
+    }
+  };
+  BeastServerTransport server(options);
+  ASSERT_TRUE(server.Start(NotFoundHandler()).ok());
+
+  auto dialed = BeastWebSocketClient::Dial({.host = "127.0.0.1", .port = server.port()});
+  ASSERT_TRUE(dialed.ok()) << dialed.error().message();
+  const std::shared_ptr<WebSocket>& socket = *dialed;
+
+  // A nudge arrives without the client having sent anything: the server's
+  // deadline fired and its session survived it.
+  auto nudge = socket->Receive(std::chrono::seconds(5));
+  ASSERT_TRUE(nudge.ok()) << nudge.error().message();
+  ASSERT_TRUE(nudge->has_value());
+  const std::string* kind = (**nudge).FindString(":event-type");
+  ASSERT_NE(kind, nullptr);
+  EXPECT_EQ(*kind, "nudge");
+
+  // The loop still serves real traffic between its deadlines.
+  ASSERT_TRUE(socket->Send(Text("chat", "hello")).ok());
+  bool echoed = false;
+  for (int i = 0; i < 100 && !echoed; ++i) {
+    auto message = socket->Receive(std::chrono::seconds(5));
+    ASSERT_TRUE(message.ok()) << message.error().message();
+    ASSERT_TRUE(message->has_value());
+    echoed = (**message).payload.ToString() == "echo:hello";
+  }
+  EXPECT_TRUE(echoed);
+  socket->Close();
+  server.Stop();
+}
+
 TEST(BeastWebSocketTest, ServerInitiatedCloseSurfacesAsNulloptClientSide) {
   BeastServerTransport::Options options;
   options.on_websocket = [](const HttpRequest&, WebSocket& socket) {

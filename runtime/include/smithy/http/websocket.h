@@ -1,6 +1,7 @@
 #ifndef SMITHY_HTTP_WEBSOCKET_H_
 #define SMITHY_HTTP_WEBSOCKET_H_
 
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -59,6 +60,41 @@ class WebSocket {
   // message, a binary message that is not exactly one event-stream
   // frame), or Stop()/Close.
   virtual Outcome<std::optional<eventstream::Message>> Receive() = 0;
+
+  // The same receive under a deadline, for a caller that must not wait
+  // forever for a message the peer may never send (a test asserting an
+  // event, a poll loop with other work to do). Four outcomes instead of
+  // three: the message, the peer's clean close (nullopt), the session's
+  // permanent error — and Error::Timeout, whose code ("TimeoutError")
+  // is what separates "nothing yet" from both of those.
+  //
+  // A timeout leaves the session untouched and usable — that is the whole
+  // point of the deadline over Close(), which unblocks a receive by ending
+  // the stream: receive again, send, close, whatever the caller decides
+  // now that it stopped waiting. The one-outstanding-receive rule (below)
+  // is unaffected: a timed-out receive releases its slot exactly as a
+  // completed one does. A non-positive timeout polls — it takes a message
+  // that is already in hand or a terminal state, and otherwise times out
+  // without blocking. The deadline bounds THIS call only; the session's
+  // own idle timeout still governs a quiet wire.
+  //
+  // The base-class default cannot honor a deadline: it forwards to the
+  // blocking Receive() and so may block forever. It exists to keep every
+  // implementor compiling (the ReceiveAsync defaults' spirit), and
+  // SupportsReceiveTimeout() is how a caller that needs the bound to be
+  // real finds out — both in-repo transports honor it, and every wrapper
+  // here forwards its inner session's answer. NOTE for implementors:
+  // overriding only one Receive overload hides the other from callers
+  // holding the concrete type — override both (what this repo does) or
+  // add `using WebSocket::Receive;`.
+  virtual Outcome<std::optional<eventstream::Message>> Receive(std::chrono::milliseconds timeout) {
+    (void)timeout;
+    return Receive();
+  }
+
+  // Whether Receive(timeout) actually bounds its wait. False means the
+  // base-class default is in play and the deadline is ignored.
+  virtual bool SupportsReceiveTimeout() const { return false; }
 
   // Blocks until the message's frame is on the wire (natural backpressure —
   // nothing queues unboundedly). Fails with Error::Validation for a message

@@ -1,6 +1,7 @@
 #ifndef SMITHY_EVENTSTREAM_JSONRPC_STREAM_SOCKET_H_
 #define SMITHY_EVENTSTREAM_JSONRPC_STREAM_SOCKET_H_
 
+#include <chrono>
 #include <memory>
 #include <optional>
 
@@ -67,6 +68,14 @@ class JsonRpcStreamSocket final : public http::WebSocket {
   JsonRpcStreamSocket(http::WebSocket& inner, Document id, Role role);
 
   Outcome<std::optional<Message>> Receive() override;
+  // The inner session's deadline, worn by the wrapper: a timeout is the
+  // inner Error::Timeout verbatim — no envelope classification runs on it,
+  // nothing is closed, and the stream picks up where it left off (a
+  // violation, by contrast, is still fatal). Timing out is only real if
+  // the inner socket honors deadlines, which SupportsReceiveTimeout
+  // forwards.
+  Outcome<std::optional<Message>> Receive(std::chrono::milliseconds timeout) override;
+  bool SupportsReceiveTimeout() const override;
   Outcome<Unit> Send(const Message& message) override;
   void Close() override;
   void ReceiveAsync(ReceiveCallback callback) override;
@@ -74,6 +83,10 @@ class JsonRpcStreamSocket final : public http::WebSocket {
   bool SupportsAsync() const override;
 
  private:
+  // Both receive overloads: police one inbound outcome per ADR-0023 —
+  // answer a violation, close if the frame was fatal, hand back the rest.
+  Outcome<std::optional<Message>> Police(Outcome<std::optional<Message>> raw);
+
   // Engaged only by the owning form; every call goes through inner_.
   std::shared_ptr<http::WebSocket> owner_;
   http::WebSocket* inner_;

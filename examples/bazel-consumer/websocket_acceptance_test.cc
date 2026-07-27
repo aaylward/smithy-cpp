@@ -2,11 +2,13 @@
 // definition-of-done e2e ADR-0014 pinned): a consumer wires a streaming
 // server — gate and serve callback — through the module boundary, dials it
 // with the runtime's own client, and drains real event-stream frames both
-// ways. This is the wiring applications use ahead of slice 3's generated
-// EventStream API.
+// ways — bounded receives included, the deadline a consumer's suite leans
+// on so a missing event fails instead of hanging. This is the wiring
+// applications use ahead of slice 3's generated EventStream API.
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <optional>
 #include <string>
 
@@ -91,6 +93,51 @@ TEST(WebSocketAcceptanceTest, AConsumerServesAndDrainsAStreamThroughTheModuleBou
   auto end = socket->Receive();
   ASSERT_TRUE(end.ok()) << end.error().message();
   EXPECT_FALSE(end->has_value());
+  server.Stop();
+}
+
+TEST(WebSocketAcceptanceTest, AConsumerBoundsAReceiveAndKeepsTheSession) {
+  // The bounded read a consumer's test suite wants: a stream where the
+  // expected event never arrives fails with a verdict instead of hanging
+  // the job, and the session is still there to assert against afterwards.
+  BeastServerTransport::Options options;
+  options.on_websocket = [](const HttpRequest&, WebSocket& socket) {
+    // Deliberately quiet until spoken to — the peer a consumer's wrong
+    // expectation waits on forever without a deadline.
+    while (true) {
+      auto message = socket.Receive();
+      if (!message.ok() || !message->has_value()) return;
+      if (!socket.Send(Event("pong", "echo:" + (*message)->payload.ToString())).ok()) return;
+    }
+  };
+  BeastServerTransport server(options);
+  ASSERT_TRUE(server
+                  .Start([](const HttpRequest&) {
+                    HttpResponse response;
+                    response.status = 404;
+                    return response;
+                  })
+                  .ok());
+
+  auto dialed = BeastWebSocketClient::Dial({.host = "127.0.0.1", .port = server.port()});
+  ASSERT_TRUE(dialed.ok()) << dialed.error().message();
+  const auto& socket = *dialed;
+  EXPECT_TRUE(socket->SupportsReceiveTimeout());  // the Beast session honors it
+
+  auto nothing = socket->Receive(std::chrono::milliseconds(100));
+  ASSERT_FALSE(nothing.ok());
+  // "TimeoutError" is what tells a consumer "nothing arrived yet" apart
+  // from a clean close (nullopt) and a dead wire (TransportError).
+  EXPECT_EQ(nothing.error().code(), "TimeoutError");
+
+  // Carrying on is the whole point: Close() would have ended the stream.
+  ASSERT_TRUE(socket->Send(Event("ping", "still here")).ok());
+  auto echo = socket->Receive(std::chrono::seconds(5));
+  ASSERT_TRUE(echo.ok()) << echo.error().message();
+  ASSERT_TRUE(echo->has_value());
+  EXPECT_EQ((**echo).payload.ToString(), "echo:still here");
+
+  socket->Close();
   server.Stop();
 }
 

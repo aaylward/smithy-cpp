@@ -4,11 +4,12 @@
 // boundary, the streams riding an injected InMemoryWebSocketPair dialer —
 // the documented Boost-free way to test streams (no wire, no sockets; the
 // serve callback is invoked directly with the synthesized upgrade request a
-// real transport would deliver). websocket_acceptance_test covers the
-// real-wire transport underneath.
+// real transport would deliver), with the typed bounded receive alongside
+// it. websocket_acceptance_test covers the real-wire transport underneath.
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <memory>
 #include <string>
 #include <thread>
@@ -89,6 +90,51 @@ TEST_F(StreamingAcceptanceTest, ABidiRoundTripCrossesTheModuleBoundary) {
   auto end = stream->Receive();
   ASSERT_TRUE(end.ok()) << end.error().message();
   EXPECT_FALSE(end->has_value());  // the server's acknowledging clean close
+}
+
+TEST_F(StreamingAcceptanceTest, ABoundedReceiveFailsInsteadOfHangingOnAMissingEvent) {
+  // The consumer-test shape the deadline is for: this handler only ever
+  // answers what it is sent, so a suite expecting an unprompted event would
+  // park in Receive() until the job's timeout killed it — no assertion, no
+  // clue which expectation was wrong. Bounded, the same wait is a red test.
+  smithy::ClientConfig config;
+  config.endpoint = "http://localhost:8080";
+  config.websocket_dialer = [this](const smithy::http::WebSocketDialRequest& request)
+      -> smithy::Outcome<std::shared_ptr<smithy::http::WebSocket>> {
+    auto [near, far] = smithy::http::InMemoryWebSocketPair::Create();
+    smithy::http::HttpRequest upgrade;
+    upgrade.method = "GET";
+    upgrade.target = request.target;
+    upgrade.headers = request.headers;
+    server_session_ = far;
+    serve_thread_ = std::thread([serve = server_.StreamRouter()->Serve(), upgrade, session = far] {
+      serve(upgrade, *session);
+    });
+    return near;
+  };
+  auto client = acme::chat::ChatClient::Create(std::move(config));
+  ASSERT_TRUE(client.ok()) << client.error().message();
+
+  auto stream = client->Exchange({});
+  ASSERT_TRUE(stream.ok()) << stream.error().message();
+  EXPECT_TRUE(stream->SupportsReceiveTimeout());
+
+  auto nothing = stream->Receive(std::chrono::milliseconds(100));
+  ASSERT_FALSE(nothing.ok());
+  EXPECT_EQ(nothing.error().code(), "TimeoutError")
+      << "expected a bounded wait, got: " << nothing.error().message();
+
+  // The stream survived its deadline, so the suite can go on to assert what
+  // the service DOES do — the move Close() would have made impossible.
+  acme::chat::Note note;
+  note.text = "after the deadline";
+  ASSERT_TRUE(stream->Send(acme::chat::Notes::FromNote(note)).ok());
+  auto echo = stream->Receive(std::chrono::seconds(5));
+  ASSERT_TRUE(echo.ok()) << echo.error().message();
+  ASSERT_TRUE(echo->has_value());
+  EXPECT_EQ((**echo).as_note().text, "echo:after the deadline");
+
+  stream->Close();
 }
 
 }  // namespace

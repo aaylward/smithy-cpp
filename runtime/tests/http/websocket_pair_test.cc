@@ -2,7 +2,8 @@
 // the Beast sessions implement: blocking round-trips both ways, full-duplex
 // concurrency, bounded-queue backpressure, and close semantics — clean
 // nullopt after draining, Error::Transport on Send, idempotence, and
-// unblocking blocked calls from another thread.
+// unblocking blocked calls from another thread — plus the bounded receive
+// (Error::Timeout on a deadline that expires, on a session that survives it).
 
 #include "smithy/http/websocket_pair.h"
 
@@ -13,6 +14,7 @@
 #include <cstddef>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <thread>
 
@@ -247,6 +249,126 @@ TEST(WebSocketPairTest, AMessageTheCodecRefusesFailsValidationAndSparesTheSessio
   auto message = b->Receive();
   ASSERT_TRUE(message.ok() && message->has_value());
   EXPECT_EQ((*message)->payload.ToString(), "still alive");
+}
+
+TEST(WebSocketPairTimeoutTest, AReceiveDeadlineExpiresWithTimeoutAndSparesTheSession) {
+  auto [a, b] = InMemoryWebSocketPair::Create();
+  const auto started = std::chrono::steady_clock::now();
+  auto nothing = b->Receive(std::chrono::milliseconds(50));
+  const auto waited = std::chrono::steady_clock::now() - started;
+
+  ASSERT_FALSE(nothing.ok());
+  // The code is what separates "nothing yet" from a broken wire; both are
+  // transport-kind failures.
+  EXPECT_EQ(nothing.error().code(), "TimeoutError");
+  EXPECT_EQ(nothing.error().kind(), ErrorKind::kTransport);
+  EXPECT_GE(waited, std::chrono::milliseconds(50));
+
+  // The point of the deadline over Close(): the session is still live, in
+  // both directions.
+  ASSERT_TRUE(a->Send(Text("chat", "late")).ok());
+  auto arrived = b->Receive(std::chrono::seconds(5));
+  ASSERT_TRUE(arrived.ok() && arrived->has_value());
+  EXPECT_EQ((*arrived)->payload.ToString(), "late");
+  ASSERT_TRUE(b->Send(Text("chat", "reply")).ok());
+  auto at_a = a->Receive(std::chrono::seconds(5));
+  ASSERT_TRUE(at_a.ok() && at_a->has_value());
+  EXPECT_EQ((*at_a)->payload.ToString(), "reply");
+}
+
+TEST(WebSocketPairTimeoutTest, AQueuedMessageBeatsTheDeadlineWithoutWaiting) {
+  auto [a, b] = InMemoryWebSocketPair::Create();
+  ASSERT_TRUE(a->Send(Text("chat", "already here")).ok());
+  // A non-positive timeout polls: what is in hand comes back, nothing
+  // blocks.
+  auto message = b->Receive(std::chrono::milliseconds(0));
+  ASSERT_TRUE(message.ok() && message->has_value());
+  EXPECT_EQ((*message)->payload.ToString(), "already here");
+  // The queue is empty now, so the same poll times out immediately.
+  auto empty = b->Receive(std::chrono::milliseconds(0));
+  ASSERT_FALSE(empty.ok());
+  EXPECT_EQ(empty.error().code(), "TimeoutError");
+}
+
+TEST(WebSocketPairTimeoutTest, ACleanCloseStillReadsAsNulloptNotATimeout) {
+  auto [a, b] = InMemoryWebSocketPair::Create();
+  ASSERT_TRUE(a->Send(Text("chat", "last words")).ok());
+  a->Close();
+  // Queued messages drain first, then the stream's end — the deadline
+  // changes neither, which is why a timeout needs its own outcome.
+  auto drained = b->Receive(std::chrono::seconds(5));
+  ASSERT_TRUE(drained.ok() && drained->has_value());
+  EXPECT_EQ((*drained)->payload.ToString(), "last words");
+  auto end = b->Receive(std::chrono::seconds(5));
+  ASSERT_TRUE(end.ok());
+  EXPECT_FALSE(end->has_value());
+}
+
+TEST(WebSocketPairTimeoutTest, ADeadlineUnblocksOnAnArrivalWithoutBurningIt) {
+  auto [a, b] = InMemoryWebSocketPair::Create();
+  std::thread sender([&a] {
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    EXPECT_TRUE(a->Send(Text("chat", "on its way")).ok());
+  });
+  const auto started = std::chrono::steady_clock::now();
+  auto message = b->Receive(std::chrono::seconds(5));
+  const auto waited = std::chrono::steady_clock::now() - started;
+  sender.join();
+  ASSERT_TRUE(message.ok() && message->has_value());
+  EXPECT_EQ((*message)->payload.ToString(), "on its way");
+  EXPECT_LT(waited, std::chrono::seconds(5));
+}
+
+TEST(WebSocketPairTimeoutTest, ATimedOutReceiveReleasesTheOneOutstandingSlot) {
+  auto [a, b] = InMemoryWebSocketPair::Create();
+  auto nothing = b->Receive(std::chrono::milliseconds(20));
+  ASSERT_FALSE(nothing.ok());
+  EXPECT_EQ(nothing.error().code(), "TimeoutError");
+
+  // The slot the timed-out receive held is free: the async twin arms
+  // instead of refusing with "a receive is already outstanding".
+  std::atomic<bool> delivered{false};
+  b->ReceiveAsync([&delivered](Outcome<std::optional<Message>> message) {
+    EXPECT_TRUE(message.ok() && message->has_value());
+    delivered.store(true);
+  });
+  ASSERT_TRUE(a->Send(Text("chat", "for the parked receive")).ok());
+  EXPECT_TRUE(WaitFor([&delivered] { return delivered.load(); }));
+}
+
+TEST(WebSocketPairTimeoutTest, ThePairReportsTimeoutSupportAndTheDefaultForwards) {
+  auto [a, b] = InMemoryWebSocketPair::Create();
+  EXPECT_TRUE(a->SupportsReceiveTimeout());
+
+  // A WebSocket that overrides only the blocking calls keeps compiling; its
+  // deadline is not real, and SupportsReceiveTimeout says so rather than
+  // letting a caller believe the bound.
+  class BlockingOnly final : public WebSocket {
+   public:
+    // The header's note for implementors, exercised: overriding one Receive
+    // overload hides the other from callers holding the concrete type, so
+    // an implementor that does not override the timed one un-hides it.
+    using WebSocket::Receive;
+    Outcome<std::optional<Message>> Receive() override {
+      ++receives;
+      return std::optional<Message>();
+    }
+    Outcome<Unit> Send(const Message&) override { return Unit{}; }
+    void Close() override {}
+    int receives = 0;
+  };
+  BlockingOnly plain;
+  EXPECT_FALSE(plain.SupportsReceiveTimeout());
+  auto forwarded = plain.Receive(std::chrono::milliseconds(1));
+  ASSERT_TRUE(forwarded.ok());
+  EXPECT_FALSE(forwarded->has_value());
+  EXPECT_EQ(plain.receives, 1);  // the deadline was ignored, not honored
+
+  // Through the base reference (how every layer above holds a session) the
+  // overload is always reachable, override or not.
+  WebSocket& base = plain;
+  EXPECT_TRUE(base.Receive(std::chrono::milliseconds(1)).ok());
+  EXPECT_EQ(plain.receives, 2);
 }
 
 }  // namespace

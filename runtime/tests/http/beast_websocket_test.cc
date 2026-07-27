@@ -121,7 +121,7 @@ TEST(BeastWebSocketTest, AReceiveDeadlineExpiresOnAQuietWireAndSparesTheSession)
   ASSERT_FALSE(nothing.ok());
   EXPECT_EQ(nothing.error().code(), "TimeoutError");
   EXPECT_EQ(nothing.error().kind(), ErrorKind::kTransport);
-  EXPECT_GE(waited, std::chrono::milliseconds(75));
+  EXPECT_GE(waited, std::chrono::milliseconds(60));  // it really waited (loose: see the pair's)
 
   // The wire is untouched: the same session still round-trips, and the
   // read pump kept its place (nothing was consumed or dropped).
@@ -136,6 +136,38 @@ TEST(BeastWebSocketTest, AReceiveDeadlineExpiresOnAQuietWireAndSparesTheSession)
   auto end = socket->Receive(std::chrono::seconds(5));
   ASSERT_TRUE(end.ok()) << end.error().message();
   EXPECT_FALSE(end->has_value());
+  server.Stop();
+}
+
+TEST(BeastWebSocketTest, ATimedOutReceiveReleasesTheOneOutstandingSlotOnTheWire) {
+  // The pair pins the same rule; the Beast session counts its blocked
+  // receivers in its own code, so the wire gets its own proof: a receive
+  // that gave up is not still holding the session's one receive slot.
+  BeastServerTransport server(EchoOptions());
+  ASSERT_TRUE(server.Start(NotFoundHandler()).ok());
+
+  auto dialed = BeastWebSocketClient::Dial({.host = "127.0.0.1", .port = server.port()});
+  ASSERT_TRUE(dialed.ok()) << dialed.error().message();
+  const std::shared_ptr<WebSocket>& socket = *dialed;
+
+  auto nothing = socket->Receive(std::chrono::milliseconds(50));
+  ASSERT_FALSE(nothing.ok());
+  EXPECT_EQ(nothing.error().code(), "TimeoutError");
+
+  // The async twin arms instead of refusing with "a receive is already
+  // outstanding" — which is what a leaked slot would produce.
+  std::promise<Outcome<std::optional<Message>>> armed;
+  socket->ReceiveAsync(
+      [&armed](Outcome<std::optional<Message>> message) { armed.set_value(std::move(message)); });
+  ASSERT_TRUE(socket->Send(Text("chat", "for the parked receive")).ok());
+  auto future = armed.get_future();
+  ASSERT_EQ(future.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+  auto delivered = future.get();
+  ASSERT_TRUE(delivered.ok()) << delivered.error().message();
+  ASSERT_TRUE(delivered->has_value());
+  EXPECT_EQ((**delivered).payload.ToString(), "echo:for the parked receive");
+
+  socket->Close();
   server.Stop();
 }
 

@@ -33,7 +33,11 @@ class Error {
   // A deadline the caller set expired before the operation could finish —
   // a transport failure whose own code separates it from a broken wire
   // (WebSocket::Receive's timed overload leans on exactly that: nothing
-  // arrived yet, and the session is still usable).
+  // arrived yet, and the session is still usable). Retryable in the sense
+  // SendWithRetries means it — a timed-out attempt may be reattempted —
+  // which for a stream receive means "wait again on the same session", NOT
+  // "restart the operation": the session outlived the deadline, so there is
+  // nothing to redo. Branch on code() == "TimeoutError", not on retryable().
   static Error Timeout(std::string message) {
     return Error(ErrorKind::kTransport, "TimeoutError", std::move(message), /*retryable=*/true);
   }

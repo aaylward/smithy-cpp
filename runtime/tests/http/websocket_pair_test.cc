@@ -262,7 +262,12 @@ TEST(WebSocketPairTimeoutTest, AReceiveDeadlineExpiresWithTimeoutAndSparesTheSes
   // transport-kind failures.
   EXPECT_EQ(nothing.error().code(), "TimeoutError");
   EXPECT_EQ(nothing.error().kind(), ErrorKind::kTransport);
-  EXPECT_GE(waited, std::chrono::milliseconds(50));
+  // It really waited — an insta-Timeout on the blocking path would pass
+  // every other assertion here. The floor is loose because the wait's clock
+  // and this measurement's are not guaranteed to be the same one (libc++
+  // times condition_variable::wait_for against the system clock), so a
+  // skew between them must not turn into a flake.
+  EXPECT_GE(waited, std::chrono::milliseconds(40));
 
   // The point of the deadline over Close(): the session is still live, in
   // both directions.

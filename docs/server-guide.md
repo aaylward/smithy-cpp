@@ -120,6 +120,26 @@ smithy::http::BeastServerTransport transport(options);
 transport.Start(server.Handler());                       // unary routes, same port
 ```
 
+A handler that must not park until the client speaks — one with periodic work, or a
+watchdog of its own — bounds the wait instead: `stream.Receive(std::chrono::seconds(1))`
+returns `Error::Timeout` (code `TimeoutError`) when the deadline passes with nothing to
+report, on a session that is untouched and still usable, so the loop does its other work
+and comes back. A clean close is still `nullopt` and a broken wire still a
+`TransportError`; only the timeout spares the stream:
+
+```cpp
+while (true) {
+  auto event = stream.Receive(std::chrono::seconds(1));
+  if (!event.ok()) {
+    if (event.error().code() != "TimeoutError") return smithy::Unit{};  // wire gone
+    if (!PublishHeartbeat(stream)) return smithy::Unit{};
+    continue;                                                           // quiet, not dead
+  }
+  if (!event->has_value()) return smithy::Unit{};                       // clean close
+  /* handle **event */
+}
+```
+
 Whatever method the operation models, upgrades are always GET — a WebSocket upgrade is a
 GET on the wire, and the generated routes register accordingly: on the modeled URI for
 the binding protocols, on the shared `/` endpoint for jsonRpc2 (ADR-0023), whose opening

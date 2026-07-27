@@ -229,15 +229,39 @@ class WsSession final : public WebSocketSessionBase,
   void Start() { PumpRead(); }
 
   Outcome<std::optional<eventstream::Message>> Receive() override {
+    return ReceiveWithin(std::nullopt);
+  }
+
+  // The deadline overload: same outcomes, plus Error::Timeout when the
+  // budget runs out with nothing to report. Only this call ends — the
+  // session, the read pump, and the receive slot are untouched.
+  Outcome<std::optional<eventstream::Message>> Receive(std::chrono::milliseconds timeout) override {
+    return ReceiveWithin(timeout);
+  }
+
+  Outcome<std::optional<eventstream::Message>> ReceiveWithin(
+      std::optional<std::chrono::milliseconds> timeout) {
     std::unique_lock<std::mutex> lock(mutex_);
     // A parked async receive owns the next arrival (Deliver hands it over
     // directly), so a concurrent blocking receiver waits behind it — the
     // serialize-by-waiting half of the ADR-0019 one-outstanding contract.
-    ++blocked_receivers_;
-    wake_.wait(lock, [this] {
+    auto settled = [this] {
       return (!received_.empty() && !pending_receive_) || peer_closed_ || failed_;
-    });
+    };
+    ++blocked_receivers_;
+    bool ready = true;
+    if (timeout.has_value()) {
+      ready = wake_.wait_for(lock, *timeout, settled);
+    } else {
+      wake_.wait(lock, settled);
+    }
+    // Leaving the count is all a timed-out receiver owes the session:
+    // nobody waits on it (ReceiveAsync only reads it to refuse), so there
+    // is nothing to notify and nothing to unwind.
     --blocked_receivers_;
+    if (!ready) {
+      return Error::Timeout("websocket: no message within the receive deadline");
+    }
     if (!received_.empty() && !pending_receive_) {
       // Messages that arrived before a close or failure still belong to
       // the application, in order.
@@ -2013,6 +2037,9 @@ class DialedWebSocket final : public WebSocket {
   }
 
   Outcome<std::optional<eventstream::Message>> Receive() override { return session_->Receive(); }
+  Outcome<std::optional<eventstream::Message>> Receive(std::chrono::milliseconds timeout) override {
+    return session_->Receive(timeout);
+  }
   Outcome<Unit> Send(const eventstream::Message& message) override {
     return session_->Send(message);
   }

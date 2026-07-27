@@ -1,6 +1,7 @@
 #include "smithy/http/websocket_pair.h"
 
 #include <array>
+#include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <deque>
@@ -54,32 +55,11 @@ class PairEnd final : public WebSocket {
       : state_(std::move(state)), send_index_(send_index) {}
 
   Outcome<std::optional<eventstream::Message>> Receive() override {
-    WebSocket::SendCallback absorbed;
-    Outcome<std::optional<eventstream::Message>> result = std::optional<eventstream::Message>();
-    {
-      std::unique_lock<std::mutex> lock(state_->mutex);
-      std::deque<eventstream::Message>& inbound = state_->queues[1 - send_index_];
-      // A parked async receive owns the next arrival (the peer's send hands
-      // it over directly), so a blocking receiver waits behind it — the
-      // serialize-by-waiting half of the one-outstanding contract.
-      ++state_->blocked_receivers[send_index_];
-      state_->changed.wait(lock, [&] {
-        return (!inbound.empty() && !state_->pending_receive[send_index_]) || state_->closed;
-      });
-      --state_->blocked_receivers[send_index_];
-      if (inbound.empty()) {
-        return std::optional<eventstream::Message>();  // the stream's clean end
-      }
-      // Messages queued before a close still belong to the application, in
-      // order (the wire session's drain behavior).
-      eventstream::Message message = std::move(inbound.front());
-      inbound.pop_front();
-      absorbed = AbsorbPeerPendingSendLocked();
-      state_->changed.notify_all();  // wake a sender blocked on the bound
-      result = std::optional<eventstream::Message>(std::move(message));
-    }
-    if (absorbed) absorbed(Unit{});
-    return result;
+    return ReceiveWithin(std::nullopt);
+  }
+
+  Outcome<std::optional<eventstream::Message>> Receive(std::chrono::milliseconds timeout) override {
+    return ReceiveWithin(timeout);
   }
 
   Outcome<Unit> Send(const eventstream::Message& message) override {
@@ -208,6 +188,50 @@ class PairEnd final : public WebSocket {
   bool SupportsAsync() const override { return true; }
 
  private:
+  // Both receive overloads: `timeout` engaged bounds the wait, disengaged
+  // is the unbounded blocking call.
+  Outcome<std::optional<eventstream::Message>> ReceiveWithin(
+      std::optional<std::chrono::milliseconds> timeout) {
+    WebSocket::SendCallback absorbed;
+    Outcome<std::optional<eventstream::Message>> result = std::optional<eventstream::Message>();
+    {
+      std::unique_lock<std::mutex> lock(state_->mutex);
+      std::deque<eventstream::Message>& inbound = state_->queues[1 - send_index_];
+      // A parked async receive owns the next arrival (the peer's send hands
+      // it over directly), so a blocking receiver waits behind it — the
+      // serialize-by-waiting half of the one-outstanding contract.
+      auto arrived = [&] {
+        return (!inbound.empty() && !state_->pending_receive[send_index_]) || state_->closed;
+      };
+      ++state_->blocked_receivers[send_index_];
+      bool ready = true;
+      if (timeout.has_value()) {
+        ready = state_->changed.wait_for(lock, *timeout, arrived);
+      } else {
+        state_->changed.wait(lock, arrived);
+      }
+      // Dropping out of the count is all a timed-out receiver owes the
+      // session: nobody waits on this counter (the async twin only reads it,
+      // to refuse), so there is nothing to notify and nothing to unwind.
+      --state_->blocked_receivers[send_index_];
+      if (!ready) {
+        return Error::Timeout("websocket pair: no message within the receive deadline");
+      }
+      if (inbound.empty()) {
+        return std::optional<eventstream::Message>();  // the stream's clean end
+      }
+      // Messages queued before a close still belong to the application, in
+      // order (the wire session's drain behavior).
+      eventstream::Message message = std::move(inbound.front());
+      inbound.pop_front();
+      absorbed = AbsorbPeerPendingSendLocked();
+      state_->changed.notify_all();  // wake a sender blocked on the bound
+      result = std::optional<eventstream::Message>(std::move(message));
+    }
+    if (absorbed) absorbed(Unit{});
+    return result;
+  }
+
   // With the lock held: if the peer parked an async receive, hand it this
   // message directly (its queue is empty by the parked-receive invariant);
   // the caller fires the returned callback after unlocking.

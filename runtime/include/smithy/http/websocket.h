@@ -1,6 +1,7 @@
 #ifndef SMITHY_HTTP_WEBSOCKET_H_
 #define SMITHY_HTTP_WEBSOCKET_H_
 
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -59,6 +60,36 @@ class WebSocket {
   // message, a binary message that is not exactly one event-stream
   // frame), or Stop()/Close.
   virtual Outcome<std::optional<eventstream::Message>> Receive() = 0;
+
+  // The same receive under a deadline, for a caller that must not wait
+  // forever for a message the peer may never send (a test asserting an
+  // event, a poll loop with other work to do). Four outcomes instead of
+  // three: the message, the peer's clean close (nullopt), the session's
+  // permanent error — and Error::Timeout, whose code ("TimeoutError")
+  // is what separates "nothing yet" from both of those.
+  //
+  // A timeout leaves the session untouched and usable — that is the whole
+  // point of the deadline over Close(), which unblocks a receive by ending
+  // the stream: receive again, send, close, whatever the caller decides
+  // now that it stopped waiting. The one-outstanding-receive rule (below)
+  // is unaffected: a timed-out receive releases its slot exactly as a
+  // completed one does. A non-positive timeout polls — it takes a message
+  // that is already in hand or a terminal state, and otherwise times out
+  // without blocking. The deadline bounds THIS call only; the session's
+  // own idle timeout still governs a quiet wire.
+  //
+  // Pure virtual, unlike the ReceiveAsync defaults below, because there is
+  // no honest default to write: nothing this class can reach bounds a wait.
+  // Wrapping the blocking Receive() in a thread or an async twin leaves the
+  // parked receive holding its slot and eventually eating a message with
+  // no caller left to take it (and cancelling it means Close(), which ends
+  // the session — the very thing the deadline avoids), and stashing that
+  // message for the next call needs per-session state this interface does
+  // not have. So the wait is bounded where the waiting actually happens,
+  // by the implementation, or not offered at all. Delegating sockets pass
+  // the deadline straight through to what they wrap.
+  virtual Outcome<std::optional<eventstream::Message>> Receive(
+      std::chrono::milliseconds timeout) = 0;
 
   // Blocks until the message's frame is on the wire (natural backpressure —
   // nothing queues unboundedly). Fails with Error::Validation for a message

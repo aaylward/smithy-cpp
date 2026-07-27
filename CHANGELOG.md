@@ -119,6 +119,32 @@ via `git_override` until then.
   the production guide now names the blessed browser auth pattern
   (short-lived single-use tickets in an `@httpQuery` member, validated by
   the gate before the 101) with its caveats said out loud.
+- Bounded receives on event streams (issue #128): `WebSocket::Receive` and
+  `EventStream::Receive` grow a `std::chrono::milliseconds` overload, so a
+  consumer waiting for a message the peer never sends gets a verdict
+  instead of a hang — the case that previously burned a CI job's whole
+  timeout with no assertion output. The deadline is a fourth outcome,
+  `Error::Timeout` (code `TimeoutError`), distinct from the peer's clean
+  close (`nullopt`) and from a failed session, and it is the one failure
+  that spares the stream: unlike `Close()` — until now the only way to
+  unblock a parked receive — the session stays usable, so the caller can
+  assert, send, or wait again. Both in-repo transports honor it (`wait` →
+  `wait_for` on the wait they already had; the one-outstanding-receive slot
+  releases exactly as a completed receive releases it), and the delegating
+  sockets and typed streams pass it straight through. The overload is
+  **pure virtual** rather than defaulted: nothing the base class can reach
+  bounds a wait (wrapping the blocking `Receive()` in a thread or the async
+  twin leaves a parked receive holding its slot and eventually eating a
+  message with no caller left to take it), so a default could only have
+  ignored the deadline and blocked forever — the exact failure this
+  overload exists to prevent, delivered to the one caller who asked for a
+  bound. **Breaking** for commit-pinning consumers that implement
+  `smithy::http::WebSocket` themselves (a hand-rolled test fake, an adapter
+  over another WebSocket library): add the overload — honor the deadline
+  and return `Error::Timeout`, or delegate to what you wrap. Consumers
+  using the runtime's own sockets (`InMemoryWebSocketPair`, the Beast
+  transports, an injected `websocket_dialer` returning either) are
+  unaffected.
 - Completion-driven event streams (ADR-0019) — the async adapter ADR-0014
   through ADR-0017 name as future work, runtime slice: `WebSocket` grows
   `ReceiveAsync`/`SendAsync`/`SupportsAsync` (one outstanding per class,

@@ -3,7 +3,8 @@
 // WebSockets — BeastServerTransport upgrades on the StreamRouter's gate and
 // serve callbacks, the generated client dials real loopback WebSockets
 // through the default Beast dialer (no injection anywhere), and the same
-// flows the in-memory chat_e2e_test pins run on the wire, TLS included.
+// flows the in-memory chat_e2e_test pins run on the wire — bounded
+// receives included — TLS and all.
 //
 // CI-only like weather_e2e_beast_test and streaming_compile_test: Boost
 // doesn't fetch behind the documented download-blocking proxy, so the local
@@ -13,6 +14,7 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <memory>
 #include <optional>
 #include <string>
@@ -99,6 +101,43 @@ TEST_F(ChatBeastEndToEndTest, BidiEventsRoundTripOverRealWebSockets) {
 
   stream->Close();
   auto end = stream->Receive();
+  ASSERT_TRUE(end.ok()) << end.error().message();
+  EXPECT_FALSE(end->has_value());
+}
+
+TEST_F(ChatBeastEndToEndTest, ABoundedReceiveExpiresOverRealWebSocketsAndTheStreamLivesOn) {
+  Start(/*tls=*/false);
+  ConverseInput input;
+  input.room = "lobby";
+  input.nickname = "ada";
+  auto stream = client_->Converse(input);
+  ASSERT_TRUE(stream.ok()) << stream.error().message();
+
+  auto joined = stream->Receive(std::chrono::seconds(5));
+  ASSERT_TRUE(joined.ok()) << joined.error().message();
+  ASSERT_TRUE(joined->has_value());
+  ASSERT_TRUE((**joined).is_joined());
+
+  // Nothing follows the greeting until this end speaks; on the wire, that
+  // silence is the hang a deadline turns into a verdict.
+  auto nothing = stream->Receive(std::chrono::milliseconds(100));
+  ASSERT_FALSE(nothing.ok());
+  EXPECT_EQ(nothing.error().code(), "TimeoutError") << nothing.error().message();
+
+  // The WebSocket session is untouched: the round trip still works, and the
+  // close still reads as the stream's clean end.
+  ChatMessage message;
+  message.text = "still connected";
+  message.sender = "ada";
+  ASSERT_TRUE(stream->Send(ChatEvents::FromMessage(message)).ok());
+  auto echo = stream->Receive(std::chrono::seconds(5));
+  ASSERT_TRUE(echo.ok()) << echo.error().message();
+  ASSERT_TRUE(echo->has_value());
+  ASSERT_TRUE((**echo).is_message());
+  EXPECT_EQ((**echo).as_message().text, "still connected");
+
+  stream->Close();
+  auto end = stream->Receive(std::chrono::seconds(5));
   ASSERT_TRUE(end.ok()) << end.error().message();
   EXPECT_FALSE(end->has_value());
 }

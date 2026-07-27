@@ -12,6 +12,7 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <memory>
 #include <optional>
 #include <string>
@@ -296,6 +297,26 @@ TEST(JsonRpcStreamSocketTest, TheBorrowingFormTranslatesLikeTheOwningOne) {
   auto received = client.Receive();
   ASSERT_TRUE(received.ok());
   EXPECT_FALSE(received->has_value());
+}
+
+TEST(JsonRpcStreamSocketTest, ADeadlineDelegatesAndATimeoutIsNotAViolation) {
+  auto [left, right] = http::InMemoryWebSocketPair::Create();
+  auto client = Wrap(left, JsonRpcStreamSocket::Role::kClient);
+  auto server = Wrap(right, JsonRpcStreamSocket::Role::kServer);
+
+  auto nothing = server->Receive(std::chrono::milliseconds(50));
+  ASSERT_FALSE(nothing.ok());
+  EXPECT_EQ(nothing.error().code(), "TimeoutError");
+
+  // Nothing was policed and nothing was closed — an envelope violation
+  // ends the session, a deadline does not.
+  const Message event =
+      MakeEventMessage("message", "application/json", Blob::FromString(R"({"text":"late"})"));
+  ASSERT_TRUE(client->Send(event).ok());
+  auto received = server->Receive(std::chrono::seconds(5));
+  ASSERT_TRUE(received.ok()) << received.error().message();
+  ASSERT_TRUE(received->has_value());
+  EXPECT_EQ(**received, event);
 }
 
 TEST(JsonRpcStreamSocketTest, CloseAndThePeersCleanCloseDelegate) {

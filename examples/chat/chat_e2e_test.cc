@@ -2,10 +2,11 @@
 // drives the generated ChatServer's StreamRouter through an injected
 // InMemoryWebSocketPair dialer — every streaming flow (bidi round trips,
 // server push, clean closes both directions, the typed mid-stream error)
-// plus the unary neighbor, with no wire underneath. The dialer hands the
-// client one end of the pair and serves the other end by invoking the
-// router's Serve() callback directly with the synthesized upgrade request,
-// exactly how the serve callback runs behind a real transport.
+// plus the unary neighbor and the bounded receive, with no wire underneath.
+// The dialer hands the client one end of the pair and serves the other end
+// by invoking the router's Serve() callback directly with the synthesized
+// upgrade request, exactly how the serve callback runs behind a real
+// transport.
 //
 // chat_e2e_beast_test.cc is the real-WebSocket half (the PLAN §Phase 8 exit
 // criterion). Note the link reality: a generated streaming client carries
@@ -15,6 +16,7 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -77,6 +79,45 @@ TEST_F(ChatEndToEndTest, BidiEventsRoundTripThroughTheGeneratedPair) {
   auto end = stream->Receive();
   ASSERT_TRUE(end.ok()) << end.error().message();
   EXPECT_FALSE(end->has_value());
+}
+
+TEST_F(ChatEndToEndTest, ABoundedReceiveNamesTheMissingEventInsteadOfHanging) {
+  // The failure this overload exists for, in the shape a suite meets it:
+  // the room only answers what it is told, so an expectation of an
+  // unprompted event is wrong — and without a deadline, "wrong" is a hung
+  // job instead of a red test.
+  ConverseInput input;
+  input.room = "lobby";
+  input.nickname = "ada";
+  auto stream = client_->Converse(input);
+  ASSERT_TRUE(stream.ok()) << stream.error().message();
+
+  auto joined = stream->Receive(std::chrono::seconds(5));
+  ASSERT_TRUE(joined.ok()) << joined.error().message();
+  ASSERT_TRUE(joined->has_value());
+  ASSERT_TRUE((**joined).is_joined());
+
+  auto nothing = stream->Receive(std::chrono::milliseconds(100));
+  ASSERT_FALSE(nothing.ok());
+  EXPECT_EQ(nothing.error().code(), "TimeoutError")
+      << "no second greeting is coming; the wait must end: " << nothing.error().message();
+
+  // The session outlived the deadline, so the test carries on to what the
+  // room really does — the assertion Close() would have made impossible.
+  ChatMessage message;
+  message.text = "still connected";
+  message.sender = "ada";
+  ASSERT_TRUE(stream->Send(ChatEvents::FromMessage(message)).ok());
+  auto echo = stream->Receive(std::chrono::seconds(5));
+  ASSERT_TRUE(echo.ok()) << echo.error().message();
+  ASSERT_TRUE(echo->has_value());
+  ASSERT_TRUE((**echo).is_message());
+  EXPECT_EQ((**echo).as_message().text, "still connected");
+
+  stream->Close();
+  auto end = stream->Receive(std::chrono::seconds(5));
+  ASSERT_TRUE(end.ok()) << end.error().message();
+  EXPECT_FALSE(end->has_value());  // the close, still not a deadline
 }
 
 TEST_F(ChatEndToEndTest, ServerEndsTheStreamAfterALeaveEvent) {

@@ -358,6 +358,52 @@ TEST(EventStreamHandleTest, TheSharedViewSurvivesAMove) {
   EXPECT_FALSE(handle->Send(Ping{8}).ok());
 }
 
+TEST(EventStreamTest, ATimedReceiveExpiresTypedAndLeavesTheStreamUsable) {
+  auto [client_socket, server_socket] = http::InMemoryWebSocketPair::Create();
+  ClientStream client(client_socket, EncodePing, DecodePong);
+  ServerStream server(server_socket, EncodePong, DecodePing);
+
+  // The event the peer never sends: bounded, so the caller gets a verdict
+  // instead of a hang.
+  auto nothing = client.Receive(std::chrono::milliseconds(50));
+  ASSERT_FALSE(nothing.ok());
+  EXPECT_EQ(nothing.error().code(), "TimeoutError");
+
+  // Unlike a decode failure, the timeout closed nothing: the session picks
+  // up where it left off, both ways.
+  ASSERT_TRUE(server.Send(Pong{"eventually"}).ok());
+  auto pong = client.Receive(std::chrono::seconds(5));
+  ASSERT_TRUE(pong.ok() && pong->has_value());
+  EXPECT_EQ((*pong)->text, "eventually");
+  ASSERT_TRUE(client.Send(Ping{9}).ok());
+  auto ping = server.Receive(std::chrono::seconds(5));
+  ASSERT_TRUE(ping.ok() && ping->has_value());
+  EXPECT_EQ((*ping)->number, 9);
+}
+
+TEST(EventStreamTest, ATimedReceiveStillReportsTheCleanCloseAndTerminalDecodes) {
+  auto [client_socket, server_socket] = http::InMemoryWebSocketPair::Create();
+  {
+    ClientStream client(client_socket, EncodePing, DecodePong);
+    server_socket->Close();
+    auto end = client.Receive(std::chrono::seconds(5));
+    ASSERT_TRUE(end.ok());
+    EXPECT_FALSE(end->has_value());  // the close, not the deadline
+  }
+  // A decoder failure stays terminal under a deadline: the stream closes
+  // and the error surfaces, exactly as the untimed overload does.
+  auto [client_two, server_two] = http::InMemoryWebSocketPair::Create();
+  ClientStream client(client_two, EncodePing, DecodePong);
+  ASSERT_TRUE(server_two
+                  ->Send(Message{.headers = {{":exception-type", "RoomFull"}},
+                                 .payload = Blob::FromString("room is full")})
+                  .ok());
+  auto exception = client.Receive(std::chrono::seconds(5));
+  ASSERT_FALSE(exception.ok());
+  EXPECT_EQ(exception.error().code(), "RoomFull");
+  EXPECT_FALSE(server_two->Send(Message{}).ok());  // the stream closed the session
+}
+
 TEST(EventStreamHandleTest, AReceiveOnlyStreamStillSharesForClose) {
   // A NoEvents transmit direction has nothing to Send (compile-enforced),
   // but a hub still wants Close on watchers.

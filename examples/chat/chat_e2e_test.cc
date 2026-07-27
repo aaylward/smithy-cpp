@@ -91,7 +91,6 @@ TEST_F(ChatEndToEndTest, ABoundedReceiveNamesTheMissingEventInsteadOfHanging) {
   input.nickname = "ada";
   auto stream = client_->Converse(input);
   ASSERT_TRUE(stream.ok()) << stream.error().message();
-  EXPECT_TRUE(stream->SupportsReceiveTimeout());
 
   auto joined = stream->Receive(std::chrono::seconds(5));
   ASSERT_TRUE(joined.ok()) << joined.error().message();

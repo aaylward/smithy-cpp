@@ -303,7 +303,6 @@ TEST(JsonRpcStreamSocketTest, ADeadlineDelegatesAndATimeoutIsNotAViolation) {
   auto [left, right] = http::InMemoryWebSocketPair::Create();
   auto client = Wrap(left, JsonRpcStreamSocket::Role::kClient);
   auto server = Wrap(right, JsonRpcStreamSocket::Role::kServer);
-  EXPECT_TRUE(client->SupportsReceiveTimeout());  // the inner pair's answer
 
   auto nothing = server->Receive(std::chrono::milliseconds(50));
   ASSERT_FALSE(nothing.ok());

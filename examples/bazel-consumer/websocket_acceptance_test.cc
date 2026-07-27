@@ -122,7 +122,6 @@ TEST(WebSocketAcceptanceTest, AConsumerBoundsAReceiveAndKeepsTheSession) {
   auto dialed = BeastWebSocketClient::Dial({.host = "127.0.0.1", .port = server.port()});
   ASSERT_TRUE(dialed.ok()) << dialed.error().message();
   const auto& socket = *dialed;
-  EXPECT_TRUE(socket->SupportsReceiveTimeout());  // the Beast session honors it
 
   auto nothing = socket->Receive(std::chrono::milliseconds(100));
   ASSERT_FALSE(nothing.ok());

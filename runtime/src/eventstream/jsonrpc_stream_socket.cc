@@ -103,10 +103,6 @@ Outcome<std::optional<Message>> JsonRpcStreamSocket::Receive(std::chrono::millis
   return Police(inner_->Receive(timeout));
 }
 
-bool JsonRpcStreamSocket::SupportsReceiveTimeout() const {
-  return inner_->SupportsReceiveTimeout();
-}
-
 Outcome<std::optional<Message>> JsonRpcStreamSocket::Police(Outcome<std::optional<Message>> raw) {
   Inbound inbound = ClassifyInbound(std::move(raw), id_, role_);
   if (inbound.violation_text.has_value()) {

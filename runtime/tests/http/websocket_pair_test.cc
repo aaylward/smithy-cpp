@@ -336,39 +336,33 @@ TEST(WebSocketPairTimeoutTest, ATimedOutReceiveReleasesTheOneOutstandingSlot) {
   EXPECT_TRUE(WaitFor([&delivered] { return delivered.load(); }));
 }
 
-TEST(WebSocketPairTimeoutTest, ThePairReportsTimeoutSupportAndTheDefaultForwards) {
-  auto [a, b] = InMemoryWebSocketPair::Create();
-  EXPECT_TRUE(a->SupportsReceiveTimeout());
-
-  // A WebSocket that overrides only the blocking calls keeps compiling; its
-  // deadline is not real, and SupportsReceiveTimeout says so rather than
-  // letting a caller believe the bound.
-  class BlockingOnly final : public WebSocket {
+TEST(WebSocketPairTimeoutTest, EveryImplementorAnswersTheDeadlineItself) {
+  // The deadline is pure virtual, so there is no default to be wrong
+  // about: a WebSocket implementation — a consumer's test fake, an adapter
+  // over another library — answers it or does not compile. This is the
+  // minimal shape, and what a fake owes its callers: honor the wait, and
+  // report Error::Timeout rather than an unbounded block or a close.
+  class Fake final : public WebSocket {
    public:
-    // The header's note for implementors, exercised: overriding one Receive
-    // overload hides the other from callers holding the concrete type, so
-    // an implementor that does not override the timed one un-hides it.
-    using WebSocket::Receive;
-    Outcome<std::optional<Message>> Receive() override {
-      ++receives;
-      return std::optional<Message>();
+    Outcome<std::optional<Message>> Receive() override { return std::optional<Message>(); }
+    Outcome<std::optional<Message>> Receive(std::chrono::milliseconds timeout) override {
+      last_timeout = timeout;
+      return Error::Timeout("fake: nothing to deliver");
     }
     Outcome<Unit> Send(const Message&) override { return Unit{}; }
     void Close() override {}
-    int receives = 0;
+    std::chrono::milliseconds last_timeout{0};
   };
-  BlockingOnly plain;
-  EXPECT_FALSE(plain.SupportsReceiveTimeout());
-  auto forwarded = plain.Receive(std::chrono::milliseconds(1));
-  ASSERT_TRUE(forwarded.ok());
-  EXPECT_FALSE(forwarded->has_value());
-  EXPECT_EQ(plain.receives, 1);  // the deadline was ignored, not honored
-
-  // Through the base reference (how every layer above holds a session) the
-  // overload is always reachable, override or not.
-  WebSocket& base = plain;
-  EXPECT_TRUE(base.Receive(std::chrono::milliseconds(1)).ok());
-  EXPECT_EQ(plain.receives, 2);
+  Fake fake;
+  // Reachable both on the concrete type and through the base reference
+  // every layer above holds a session by.
+  auto direct = fake.Receive(std::chrono::milliseconds(7));
+  ASSERT_FALSE(direct.ok());
+  EXPECT_EQ(direct.error().code(), "TimeoutError");
+  EXPECT_EQ(fake.last_timeout, std::chrono::milliseconds(7));
+  WebSocket& base = fake;
+  EXPECT_TRUE(base.Receive().ok());
+  EXPECT_FALSE(base.Receive(std::chrono::milliseconds(1)).ok());
 }
 
 }  // namespace

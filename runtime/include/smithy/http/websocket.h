@@ -78,23 +78,18 @@ class WebSocket {
   // without blocking. The deadline bounds THIS call only; the session's
   // own idle timeout still governs a quiet wire.
   //
-  // The base-class default cannot honor a deadline: it forwards to the
-  // blocking Receive() and so may block forever. It exists to keep every
-  // implementor compiling (the ReceiveAsync defaults' spirit), and
-  // SupportsReceiveTimeout() is how a caller that needs the bound to be
-  // real finds out — both in-repo transports honor it, and every wrapper
-  // here forwards its inner session's answer. NOTE for implementors:
-  // overriding only one Receive overload hides the other from callers
-  // holding the concrete type — override both (what this repo does) or
-  // add `using WebSocket::Receive;`.
-  virtual Outcome<std::optional<eventstream::Message>> Receive(std::chrono::milliseconds timeout) {
-    (void)timeout;
-    return Receive();
-  }
-
-  // Whether Receive(timeout) actually bounds its wait. False means the
-  // base-class default is in play and the deadline is ignored.
-  virtual bool SupportsReceiveTimeout() const { return false; }
+  // Pure virtual, unlike the ReceiveAsync defaults below, because there is
+  // no honest default to write: nothing this class can reach bounds a wait.
+  // Wrapping the blocking Receive() in a thread or an async twin leaves the
+  // parked receive holding its slot and eventually eating a message with
+  // no caller left to take it (and cancelling it means Close(), which ends
+  // the session — the very thing the deadline avoids), and stashing that
+  // message for the next call needs per-session state this interface does
+  // not have. So the wait is bounded where the waiting actually happens,
+  // by the implementation, or not offered at all. Delegating sockets pass
+  // the deadline straight through to what they wrap.
+  virtual Outcome<std::optional<eventstream::Message>> Receive(
+      std::chrono::milliseconds timeout) = 0;
 
   // Blocks until the message's frame is on the wire (natural backpressure —
   // nothing queues unboundedly). Fails with Error::Validation for a message

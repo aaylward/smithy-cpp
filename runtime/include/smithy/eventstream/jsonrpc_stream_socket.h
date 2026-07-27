@@ -71,11 +71,8 @@ class JsonRpcStreamSocket final : public http::WebSocket {
   // The inner session's deadline, worn by the wrapper: a timeout is the
   // inner Error::Timeout verbatim — no envelope classification runs on it,
   // nothing is closed, and the stream picks up where it left off (a
-  // violation, by contrast, is still fatal). Timing out is only real if
-  // the inner socket honors deadlines, which SupportsReceiveTimeout
-  // forwards.
+  // violation, by contrast, is still fatal).
   Outcome<std::optional<Message>> Receive(std::chrono::milliseconds timeout) override;
-  bool SupportsReceiveTimeout() const override;
   Outcome<Unit> Send(const Message& message) override;
   void Close() override;
   void ReceiveAsync(ReceiveCallback callback) override;

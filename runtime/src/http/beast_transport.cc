@@ -239,8 +239,6 @@ class WsSession final : public WebSocketSessionBase,
     return ReceiveWithin(timeout);
   }
 
-  bool SupportsReceiveTimeout() const override { return true; }
-
   Outcome<std::optional<eventstream::Message>> ReceiveWithin(
       std::optional<std::chrono::milliseconds> timeout) {
     std::unique_lock<std::mutex> lock(mutex_);
@@ -2042,7 +2040,6 @@ class DialedWebSocket final : public WebSocket {
   Outcome<std::optional<eventstream::Message>> Receive(std::chrono::milliseconds timeout) override {
     return session_->Receive(timeout);
   }
-  bool SupportsReceiveTimeout() const override { return session_->SupportsReceiveTimeout(); }
   Outcome<Unit> Send(const eventstream::Message& message) override {
     return session_->Send(message);
   }

@@ -62,8 +62,6 @@ class PairEnd final : public WebSocket {
     return ReceiveWithin(timeout);
   }
 
-  bool SupportsReceiveTimeout() const override { return true; }
-
   Outcome<Unit> Send(const eventstream::Message& message) override {
     // Encode-validation parity with the wire transports: what the codec
     // refuses never enters the session, and the session stays usable. The

@@ -114,7 +114,6 @@ TEST(BeastWebSocketTest, AReceiveDeadlineExpiresOnAQuietWireAndSparesTheSession)
   auto dialed = BeastWebSocketClient::Dial({.host = "127.0.0.1", .port = server.port()});
   ASSERT_TRUE(dialed.ok()) << dialed.error().message();
   const std::shared_ptr<WebSocket>& socket = *dialed;
-  EXPECT_TRUE(socket->SupportsReceiveTimeout());
 
   const auto started = std::chrono::steady_clock::now();
   auto nothing = socket->Receive(std::chrono::milliseconds(75));

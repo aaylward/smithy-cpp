@@ -90,6 +90,9 @@ class BlockingOnly final : public http::WebSocket {
  public:
   explicit BlockingOnly(std::shared_ptr<http::WebSocket> inner) : inner_(std::move(inner)) {}
   Outcome<std::optional<Message>> Receive() override { return inner_->Receive(); }
+  Outcome<std::optional<Message>> Receive(std::chrono::milliseconds timeout) override {
+    return inner_->Receive(timeout);
+  }
   Outcome<Unit> Send(const Message& message) override { return inner_->Send(message); }
   void Close() override { inner_->Close(); }
 

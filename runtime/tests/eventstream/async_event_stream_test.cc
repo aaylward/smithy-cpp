@@ -262,6 +262,9 @@ TEST(PairAsyncTest, ThePairReportsAsyncSupportAndDefaultsRefuse) {
   class BlockingOnly final : public http::WebSocket {
    public:
     Outcome<std::optional<Message>> Receive() override { return std::optional<Message>(); }
+    Outcome<std::optional<Message>> Receive(std::chrono::milliseconds) override {
+      return std::optional<Message>();
+    }
     Outcome<Unit> Send(const Message&) override { return Unit{}; }
     void Close() override {}
   };

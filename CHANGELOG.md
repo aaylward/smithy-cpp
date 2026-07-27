@@ -130,14 +130,21 @@ via `git_override` until then.
   unblock a parked receive — the session stays usable, so the caller can
   assert, send, or wait again. Both in-repo transports honor it (`wait` →
   `wait_for` on the wait they already had; the one-outstanding-receive slot
-  releases exactly as a completed receive releases it), the delegating
-  sockets and typed streams forward it, and `SupportsReceiveTimeout()`
-  reports whether a deadline is real — false for a custom `WebSocket` that
-  never overrode it, where the base-class default forwards to the blocking
-  `Receive()`, in the spirit of the `ReceiveAsync` defaults. **Note for
-  implementors:** overriding only one `Receive` overload hides the other
-  from callers holding the concrete type — override both, or add
-  `using WebSocket::Receive;`.
+  releases exactly as a completed receive releases it), and the delegating
+  sockets and typed streams pass it straight through. The overload is
+  **pure virtual** rather than defaulted: nothing the base class can reach
+  bounds a wait (wrapping the blocking `Receive()` in a thread or the async
+  twin leaves a parked receive holding its slot and eventually eating a
+  message with no caller left to take it), so a default could only have
+  ignored the deadline and blocked forever — the exact failure this
+  overload exists to prevent, delivered to the one caller who asked for a
+  bound. **Breaking** for commit-pinning consumers that implement
+  `smithy::http::WebSocket` themselves (a hand-rolled test fake, an adapter
+  over another WebSocket library): add the overload — honor the deadline
+  and return `Error::Timeout`, or delegate to what you wrap. Consumers
+  using the runtime's own sockets (`InMemoryWebSocketPair`, the Beast
+  transports, an injected `websocket_dialer` returning either) are
+  unaffected.
 - Completion-driven event streams (ADR-0019) — the async adapter ADR-0014
   through ADR-0017 name as future work, runtime slice: `WebSocket` grows
   `ReceiveAsync`/`SendAsync`/`SupportsAsync` (one outstanding per class,

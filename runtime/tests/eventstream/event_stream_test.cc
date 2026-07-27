@@ -362,7 +362,6 @@ TEST(EventStreamTest, ATimedReceiveExpiresTypedAndLeavesTheStreamUsable) {
   auto [client_socket, server_socket] = http::InMemoryWebSocketPair::Create();
   ClientStream client(client_socket, EncodePing, DecodePong);
   ServerStream server(server_socket, EncodePong, DecodePing);
-  EXPECT_TRUE(client.SupportsReceiveTimeout());
 
   // The event the peer never sends: bounded, so the caller gets a verdict
   // instead of a hang.

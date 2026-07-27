@@ -300,15 +300,11 @@ class EventStream {
   // report. A timeout is the one failure here that spares the session: it
   // closes nothing, so the caller can assert, log, send, or wait again on
   // a stream that is still live. Decoder failures stay terminal, deadline
-  // or not. Bounded for real only when SupportsReceiveTimeout() is true —
-  // otherwise the socket's base-class default blocks like Receive().
+  // or not. Every WebSocket implements the deadline (it is pure virtual
+  // there), so the bound is real whatever session this stream wraps.
   Outcome<std::optional<Rx>> Receive(std::chrono::milliseconds timeout) {
     return Decode(socket_->Receive(timeout));
   }
-
-  // Whether this stream's session bounds Receive(timeout) — both in-repo
-  // transports do.
-  bool SupportsReceiveTimeout() const { return socket_->SupportsReceiveTimeout(); }
 
   // Initiates the close handshake; idempotent and safe from any thread
   // (the WebSocket contract).

@@ -445,12 +445,14 @@ The timeout is a fourth outcome, distinct from the clean close (`nullopt`)
 and from a broken session (`TransportError`), and it is the only failure that
 leaves the stream usable — which is what separates it from `Close()`, the
 other way to end a wait (that one ends the session for good, and reports the
-peer's own close). `SupportsReceiveTimeout()` says whether the deadline is
-real: true for both in-repo transports and any wrapper over them, false for a
-custom `WebSocket` implementation that never overrode the timed overload — in
-which case the base-class default forwards to the blocking `Receive()` and
-the deadline is ignored. The same overload exists one layer down, on
-`smithy::http::WebSocket` itself, for code holding a raw session.
+peer's own close). The bound is always real: the overload is pure virtual on
+`smithy::http::WebSocket`, so every session — the two shipped transports, the
+delegating wrappers, and any socket you implement yourself — answers the
+deadline or does not compile. There is no default that quietly blocks
+forever. The same overload exists one layer down, on `WebSocket` itself, for
+code holding a raw session; a hand-rolled socket (a test fake, an adapter
+over another WebSocket library) owes its callers a wait that actually ends
+and an `Error::Timeout` when it does.
 
 Not every `ClientConfig` knob reaches a streaming dial — the upgrade GET is
 not a unary request:

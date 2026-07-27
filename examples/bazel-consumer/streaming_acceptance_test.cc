@@ -117,7 +117,6 @@ TEST_F(StreamingAcceptanceTest, ABoundedReceiveFailsInsteadOfHangingOnAMissingEv
 
   auto stream = client->Exchange({});
   ASSERT_TRUE(stream.ok()) << stream.error().message();
-  EXPECT_TRUE(stream->SupportsReceiveTimeout());
 
   auto nothing = stream->Receive(std::chrono::milliseconds(100));
   ASSERT_FALSE(nothing.ok());

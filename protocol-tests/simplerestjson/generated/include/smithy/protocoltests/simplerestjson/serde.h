@@ -3,6 +3,7 @@
 #ifndef SMITHY_PROTOCOLTESTS_SIMPLERESTJSON_SERDE_H_
 #define SMITHY_PROTOCOLTESTS_SIMPLERESTJSON_SERDE_H_
 
+#include <cstdint>
 #include <map>
 #include <string>
 #include <vector>
@@ -107,6 +108,9 @@ smithy::Outcome<HttpPayloadWithDefaultInput> DeserializeHttpPayloadWithDefaultIn
 smithy::Document SerializeHttpPayloadWithDefaultOutput(const HttpPayloadWithDefaultOutput& value);
 smithy::Outcome<HttpPayloadWithDefaultOutput> DeserializeHttpPayloadWithDefaultOutput(const smithy::Document& doc);
 
+smithy::Document SerializeMyMap(const std::map<std::string, std::int32_t>& value);
+smithy::Outcome<std::map<std::string, std::int32_t>> DeserializeMyMap(const smithy::Document& doc);
+
 smithy::Document SerializeSmallStruct(const SmallStruct& value);
 smithy::Outcome<SmallStruct> DeserializeSmallStruct(const smithy::Document& doc);
 
@@ -124,6 +128,12 @@ smithy::Outcome<OpenUnionsInput> DeserializeOpenUnionsInput(const smithy::Docume
 
 smithy::Document SerializeOpenUnionsOutput(const OpenUnionsOutput& value);
 smithy::Outcome<OpenUnionsOutput> DeserializeOpenUnionsOutput(const smithy::Document& doc);
+
+smithy::Document SerializePreserveOrderInput(const PreserveOrderInput& value);
+smithy::Outcome<PreserveOrderInput> DeserializePreserveOrderInput(const smithy::Document& doc);
+
+smithy::Document SerializePreserveOrderOutput(const PreserveOrderOutput& value);
+smithy::Outcome<PreserveOrderOutput> DeserializePreserveOrderOutput(const smithy::Document& doc);
 
 smithy::Document SerializeRoundTripInput(const RoundTripInput& value);
 smithy::Outcome<RoundTripInput> DeserializeRoundTripInput(const smithy::Document& doc);

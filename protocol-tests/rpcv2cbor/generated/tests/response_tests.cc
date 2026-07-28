@@ -415,24 +415,6 @@ TEST(RpcV2ProtocolResponseTest, RpcV2CborDeserializesDenseSetMap) {
   EXPECT_EQ(*outcome, expected);
 }
 
-// Clients SHOULD tolerate seeing a null value in a dense map, and they SHOULD
-// drop the null key-value pair.
-TEST(RpcV2ProtocolResponseTest, RpcV2CborDeserializesDenseSetMapAndSkipsNull) {
-  Fixture fixture = MakeFixture();
-  fixture.transport->next_response.status = 200;
-  fixture.transport->next_response.headers.Set("Content-Type", "application/cbor");
-  fixture.transport->next_response.headers.Set("smithy-protocol", "rpc-v2-cbor");
-  fixture.transport->next_response.body = smithy::testing::FromBase64("oWtkZW5zZVNldE1hcKNheIBheYJhYWFiYXr2");
-  const auto outcome = fixture.client.RpcV2CborDenseMaps(RpcV2CborDenseMapsInput{});
-  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
-  const RpcV2CborDenseMapsOutput expected = [] {
-  RpcV2CborDenseMapsOutput v{};
-  v.denseSetMap = std::map<std::string, std::vector<std::string>>{{"x", std::vector<std::string>{}}, {"y", std::vector<std::string>{"a", "b"}}};
-  return v;
-}();
-  EXPECT_EQ(*outcome, expected);
-}
-
 // Serializes RpcV2 Cbor lists
 TEST(RpcV2ProtocolResponseTest, RpcV2CborLists) {
   Fixture fixture = MakeFixture();

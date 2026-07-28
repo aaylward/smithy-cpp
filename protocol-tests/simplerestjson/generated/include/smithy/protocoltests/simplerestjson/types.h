@@ -1413,6 +1413,72 @@ struct OpenUnionsOutput {
 };
 
 
+struct PreserveOrderInput {
+  std::optional<std::map<std::string, std::int32_t>> map{};
+  std::optional<smithy::Document> document{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "PreserveOrderInput{";
+    const char* sep = "";
+    if (this->map.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".map = ";
+      smithy::DebugAppend(out, *this->map);
+    }
+    if (this->document.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".document = ";
+      smithy::DebugAppend(out, *this->document);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const PreserveOrderInput& value) {
+    return os << value.DebugString();
+  }
+
+  friend bool operator==(const PreserveOrderInput&, const PreserveOrderInput&) = default;
+  // Equality-only: a member type has no ordering (smithy::Document or
+  // recursion via smithy::Boxed) — see generated-types.md.
+};
+
+
+struct PreserveOrderOutput {
+  std::optional<std::map<std::string, std::int32_t>> map{};
+  std::optional<smithy::Document> document{};
+
+  /// Debug rendering for logs and tests — for humans, never parse it.
+  void AppendDebugTo(std::string& out) const {
+    out += "PreserveOrderOutput{";
+    const char* sep = "";
+    if (this->map.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".map = ";
+      smithy::DebugAppend(out, *this->map);
+    }
+    if (this->document.has_value()) {
+      out += sep;
+      sep = ", ";
+      out += ".document = ";
+      smithy::DebugAppend(out, *this->document);
+    }
+    out += '}';
+  }
+  std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+  friend std::ostream& operator<<(std::ostream& os, const PreserveOrderOutput& value) {
+    return os << value.DebugString();
+  }
+
+  friend bool operator==(const PreserveOrderOutput&, const PreserveOrderOutput&) = default;
+  // Equality-only: a member type has no ordering (smithy::Document or
+  // recursion via smithy::Boxed) — see generated-types.md.
+};
+
+
 struct RoundTripInput {
   std::string label{};
   std::optional<std::string> header{};

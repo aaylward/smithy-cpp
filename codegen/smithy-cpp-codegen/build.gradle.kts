@@ -141,6 +141,12 @@ val generateSimpleRestJsonProtocolTests = registerProtocolTestTask(
     "alloy.test#PizzaAdminService",
     "smithy::protocoltests::simplerestjson",
     "protocol-tests/simplerestjson/generated",
+    omitOperations = listOf(
+        // alloy-protocol-tests 0.3.32+: PrimitiveEncodings.duration targets
+        // alloy#Duration, a bigDecimal — a type the generator rejects until
+        // bigDecimal support lands.
+        "alloy.test#Primitives",
+    ),
     malformedTests = true,
 )
 

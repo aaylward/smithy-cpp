@@ -45,3 +45,10 @@ smithy.protocoltests.rpcv2Cbor#RpcV2Protocol server-request RpcV2CborSupportsNaN
 # @httpResponseCode with a 3xx value: the client treats only 2xx as success.
 alloy.test#PizzaAdminService response CustomCodeOutput 3xx @httpResponseCode is not treated as a success status
 
+
+# alloy-protocol-tests 0.3.32+ Primitives operation: PrimitiveEncodings.duration
+# targets alloy#Duration, a bigDecimal the generator rejects until bigDecimal
+# support lands — the whole operation is pruned in build.gradle.kts
+# (omitOperations), so its cases cannot generate.
+alloy.test#PizzaAdminService any PrimitivesEncodingRequest Primitives operation pruned: alloy#Duration is bigDecimal-backed, unsupported by the generator
+alloy.test#PizzaAdminService any PrimitivesEncodingResponse Primitives operation pruned: alloy#Duration is bigDecimal-backed, unsupported by the generator

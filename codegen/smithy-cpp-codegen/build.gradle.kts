@@ -218,7 +218,7 @@ dependencies {
     // Trait definitions used by the fixture models.
     // alloy#simpleRestJson — the vendor-neutral REST/JSON protocol (smithy4s).
     // alloy is built against Smithy 1.58, which the whole build now pins to.
-    implementation("com.disneystreaming.alloy:alloy-core:0.3.21")
+    implementation("com.disneystreaming.alloy:alloy-core:0.3.40")
     implementation("software.amazon.smithy:smithy-protocol-traits:1.58.0")
     // smithy.test#http{Request,Response}Tests trait definitions.
     implementation("software.amazon.smithy:smithy-protocol-test-traits:1.58.0")

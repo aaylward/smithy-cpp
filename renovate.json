@@ -39,6 +39,27 @@
         "boost.beast"
       ],
       "groupName": "boost modules"
+    },
+    {
+      "description": "The software.amazon.smithy artifacts ship in lockstep; one PR per Smithy release instead of five.",
+      "matchPackageNames": [
+        "/^software\\.amazon\\.smithy:/"
+      ],
+      "groupName": "smithy packages"
+    },
+    {
+      "description": "The com.disneystreaming.alloy artifacts ship in lockstep; one PR per alloy release.",
+      "matchPackageNames": [
+        "/^com\\.disneystreaming\\.alloy:/"
+      ],
+      "groupName": "alloy packages"
+    },
+    {
+      "description": "smithy_cpp is consumed via local/git override (version 0.0.0 until BCR publication); there is nothing to look up, and the attempt produces a dashboard warning.",
+      "matchPackageNames": [
+        "smithy_cpp"
+      ],
+      "enabled": false
     }
   ],
   "customManagers": [

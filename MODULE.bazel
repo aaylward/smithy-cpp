@@ -6,7 +6,6 @@
 module(
     name = "smithy_cpp",
     version = "0.0.0",
-    compatibility_level = 1,
 )
 
 bazel_dep(name = "platforms", version = "1.0.0")
@@ -59,7 +58,10 @@ use_repo(llvm, "llvm_toolchain")
 
 # The code generator runs inside the build graph as a hermetic Java action
 # (bazel/defs.bzl); rules_jvm_external pins its Smithy dependencies.
-bazel_dep(name = "rules_java", version = "8.16.1")
+# rules_java tracks what Bazel 9's own bazel_tools already forces into the
+# resolved graph — a lower pin here only buys the check_direct_dependencies
+# warning on every invocation.
+bazel_dep(name = "rules_java", version = "9.1.0")
 bazel_dep(name = "rules_jvm_external", version = "6.7")
 
 maven = use_extension("@rules_jvm_external//:extensions.bzl", "maven")

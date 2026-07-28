@@ -83,7 +83,10 @@ common --tool_java_runtime_version=remotejdk_17
 test --test_output=errors
 
 # GitHub's archive hosting intermittently 500s; without retries one failed
-# module download aborts the whole build.
+# module download aborts the whole build. Scope note: this flag only retries
+# truncated or reset transfers (content-length mismatch, socket reset, DNS);
+# a clean HTTP 5xx response is retried solely by Bazel's built-in ~25-second
+# exponential backoff, so a sustained outage still fails the fetch.
 common --experimental_repository_downloader_retries=5
 
 # Warnings are errors for this module's own code (smithy-cpp issue #65): the

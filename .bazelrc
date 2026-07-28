@@ -1,9 +1,12 @@
 # Platform-specific configs (build:linux / build:macos) apply automatically.
 common --enable_platform_specific_config
 
-# Retry transient module-archive download failures (GitHub codeload blips
-# 500 intermittently; one failed GET otherwise kills the whole build — an
-# entire CI matrix died to this on PR #88).
+# Retry transient module-archive download failures (an entire CI matrix
+# died to a GitHub blip on PR #88). Scope note: this flag only retries
+# truncated or reset transfers (content-length mismatch, socket reset, DNS);
+# a server answering a clean HTTP 5xx is retried solely by Bazel's built-in
+# ~25-second exponential backoff, so a sustained GitHub outage still fails
+# the fetch — rerun the job.
 common --experimental_repository_downloader_retries=5
 
 # C++20 everywhere (ADR-0003 baseline; see docs/PLAN.md §2).

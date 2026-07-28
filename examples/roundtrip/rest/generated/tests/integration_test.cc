@@ -60,19 +60,19 @@ struct Rng {
   }
 };
 
-DescribeSinkError RandomDescribeSinkError(Rng& rng) {
+[[maybe_unused]] DescribeSinkError RandomDescribeSinkError([[maybe_unused]] Rng& rng) {
   DescribeSinkError v{};
   v.message = rng.Text(1, 9);
   return v;
 }
 
-DescribeSinkInput RandomDescribeSinkInput(Rng& rng) {
+[[maybe_unused]] DescribeSinkInput RandomDescribeSinkInput([[maybe_unused]] Rng& rng) {
   DescribeSinkInput v{};
   v.sinkId = std::string("0");
   return v;
 }
 
-std::map<std::string, std::string> RandomStringMap(Rng& rng) {
+[[maybe_unused]] std::map<std::string, std::string> RandomStringMap([[maybe_unused]] Rng& rng) {
   std::map<std::string, std::string> v{};
   const std::size_t n = rng.Size(1, 3);
   for (std::size_t i = 0; i < n; ++i) {
@@ -81,14 +81,14 @@ std::map<std::string, std::string> RandomStringMap(Rng& rng) {
   return v;
 }
 
-NestedConfig RandomNestedConfig(Rng& rng) {
+[[maybe_unused]] NestedConfig RandomNestedConfig([[maybe_unused]] Rng& rng) {
   NestedConfig v{};
   v.label = rng.Text(1, 9);
   if (rng.Coin()) v.depth = static_cast<std::int32_t>(rng.Int(-2147483648LL, 2147483647LL));
   return v;
 }
 
-SinkChoice RandomSinkChoice(Rng& rng) {
+[[maybe_unused]] SinkChoice RandomSinkChoice([[maybe_unused]] Rng& rng) {
   switch (rng.engine() % 3) {
     case 0:
       return SinkChoice::FromText(rng.Text(1, 9));
@@ -99,7 +99,7 @@ SinkChoice RandomSinkChoice(Rng& rng) {
   }
 }
 
-std::vector<std::string> RandomStringList(Rng& rng) {
+[[maybe_unused]] std::vector<std::string> RandomStringList([[maybe_unused]] Rng& rng) {
   std::vector<std::string> v{};
   const std::size_t n = rng.Size(1, 3);
   for (std::size_t i = 0; i < n; ++i) {
@@ -108,7 +108,7 @@ std::vector<std::string> RandomStringList(Rng& rng) {
   return v;
 }
 
-std::vector<std::optional<std::int32_t>> RandomSparseIntegerList(Rng& rng) {
+[[maybe_unused]] std::vector<std::optional<std::int32_t>> RandomSparseIntegerList([[maybe_unused]] Rng& rng) {
   std::vector<std::optional<std::int32_t>> v{};
   const std::size_t n = rng.Size(1, 3);
   for (std::size_t i = 0; i < n; ++i) {
@@ -121,7 +121,7 @@ std::vector<std::optional<std::int32_t>> RandomSparseIntegerList(Rng& rng) {
   return v;
 }
 
-std::vector<std::string> RandomUniqueStringList(Rng& rng) {
+[[maybe_unused]] std::vector<std::string> RandomUniqueStringList([[maybe_unused]] Rng& rng) {
   std::vector<std::string> v{};
   const std::size_t n = rng.Size(1, 2);
   for (std::size_t i = 0; i < n; ++i) {
@@ -130,7 +130,7 @@ std::vector<std::string> RandomUniqueStringList(Rng& rng) {
   return v;
 }
 
-KitchenSink RandomKitchenSink(Rng& rng) {
+[[maybe_unused]] KitchenSink RandomKitchenSink([[maybe_unused]] Rng& rng) {
   KitchenSink v{};
   v.name = rng.Text(1, 9);
   if (rng.Coin()) v.flag = (rng.engine() & 1U) != 0;
@@ -155,20 +155,20 @@ KitchenSink RandomKitchenSink(Rng& rng) {
   return v;
 }
 
-DescribeSinkOutput RandomDescribeSinkOutput(Rng& rng) {
+[[maybe_unused]] DescribeSinkOutput RandomDescribeSinkOutput([[maybe_unused]] Rng& rng) {
   DescribeSinkOutput v{};
   if (rng.Coin()) v.sink = RandomKitchenSink(rng);
   return v;
 }
 
-SinkNotFound RandomSinkNotFound(Rng& rng) {
+[[maybe_unused]] SinkNotFound RandomSinkNotFound([[maybe_unused]] Rng& rng) {
   SinkNotFound v{};
   v.message = rng.Text(1, 9);
   if (rng.Coin()) v.resourceType = rng.Text(1, 9);
   return v;
 }
 
-PutSinkInput RandomPutSinkInput(Rng& rng) {
+[[maybe_unused]] PutSinkInput RandomPutSinkInput([[maybe_unused]] Rng& rng) {
   PutSinkInput v{};
   v.sinkId = std::string("0");
   if (rng.Coin()) v.tag = rng.Text(1, 9);
@@ -181,13 +181,13 @@ PutSinkInput RandomPutSinkInput(Rng& rng) {
   return v;
 }
 
-PutSinkResponse RandomPutSinkResponse(Rng& rng) {
+[[maybe_unused]] PutSinkResponse RandomPutSinkResponse([[maybe_unused]] Rng& rng) {
   PutSinkResponse v{};
   if (rng.Coin()) v.note = rng.Text(1, 9);
   return v;
 }
 
-PutSinkOutput RandomPutSinkOutput(Rng& rng) {
+[[maybe_unused]] PutSinkOutput RandomPutSinkOutput([[maybe_unused]] Rng& rng) {
   PutSinkOutput v{};
   v.sinkId = rng.Text(1, 9);
   if (rng.Coin()) v.revision = static_cast<std::int32_t>(rng.Int(-2147483648LL, 2147483647LL));
@@ -197,21 +197,21 @@ PutSinkOutput RandomPutSinkOutput(Rng& rng) {
   return v;
 }
 
-SinkQuotaExceeded RandomSinkQuotaExceeded(Rng& rng) {
+[[maybe_unused]] SinkQuotaExceeded RandomSinkQuotaExceeded([[maybe_unused]] Rng& rng) {
   SinkQuotaExceeded v{};
   if (rng.Coin()) v.message = rng.Text(1, 9);
   if (rng.Coin()) v.retryAfterSeconds = static_cast<std::int32_t>(rng.Int(-2147483648LL, 2147483647LL));
   return v;
 }
 
-Receipt RandomReceipt(Rng& rng) {
+[[maybe_unused]] Receipt RandomReceipt([[maybe_unused]] Rng& rng) {
   Receipt v{};
   v.receiptId = rng.Text(1, 9);
   if (rng.Coin()) v.size = static_cast<std::int64_t>(rng.Int(-4611686018427387904LL, 4611686018427387903LL));
   return v;
 }
 
-UploadAttachmentInput RandomUploadAttachmentInput(Rng& rng) {
+[[maybe_unused]] UploadAttachmentInput RandomUploadAttachmentInput([[maybe_unused]] Rng& rng) {
   UploadAttachmentInput v{};
   v.sinkId = std::string("0");
   if (rng.Coin()) v.name = rng.Text(1, 9);
@@ -219,7 +219,7 @@ UploadAttachmentInput RandomUploadAttachmentInput(Rng& rng) {
   return v;
 }
 
-UploadAttachmentOutput RandomUploadAttachmentOutput(Rng& rng) {
+[[maybe_unused]] UploadAttachmentOutput RandomUploadAttachmentOutput([[maybe_unused]] Rng& rng) {
   UploadAttachmentOutput v{};
   if (rng.Coin()) v.receipt = RandomReceipt(rng);
   return v;

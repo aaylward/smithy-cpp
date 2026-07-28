@@ -71,7 +71,9 @@ smithy::http::HttpResponse JsonError(int status, const std::string& code, const 
   return response;
 }
 
-smithy::http::HttpResponse ErrorToResponse(const smithy::Error& error) {
+// [[maybe_unused]]: only unary routes map handler errors here; a service
+// whose operations all stream reports errors on the stream instead.
+[[maybe_unused]] smithy::http::HttpResponse ErrorToResponse(const smithy::Error& error) {
   std::vector<std::pair<std::string, std::string>> header_values;
   (void)header_values;
   if (error.kind() == smithy::ErrorKind::kModeled) {

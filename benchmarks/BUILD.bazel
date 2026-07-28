@@ -1,4 +1,5 @@
 load("@rules_cc//cc:defs.bzl", "cc_binary")
+load("//bazel:copts.bzl", "SMITHY_COPTS")
 
 # Performance benchmarks (PLAN Phase 7): run with -c opt; CI runs them as an
 # informational job (no pass/fail threshold yet — publish numbers first).
@@ -7,6 +8,7 @@ cc_binary(
     name = "serde_benchmark",
     testonly = True,
     srcs = ["serde_benchmark.cc"],
+    copts = SMITHY_COPTS,
     deps = [
         "//examples/roundtrip/rest/generated:serde",
         "//examples/roundtrip/rest/generated:types",
@@ -21,6 +23,7 @@ cc_binary(
     name = "beast_benchmark",
     testonly = True,
     srcs = ["beast_benchmark.cc"],
+    copts = SMITHY_COPTS,
     deps = [
         "//examples/roundtrip/rest/generated:client",
         "//examples/roundtrip/rest/generated:server",
@@ -36,6 +39,7 @@ cc_binary(
     name = "request_benchmark",
     testonly = True,
     srcs = ["request_benchmark.cc"],
+    copts = SMITHY_COPTS,
     deps = [
         "//examples/roundtrip/jsonrpc/generated:client",
         "//examples/roundtrip/jsonrpc/generated:server",

@@ -45,7 +45,10 @@ the repo** and serves three purposes at once:
 1. **Golden test** — CI regenerates (`gradle generateFixtures`) and fails on any byte diff, so
    every generator change shows its blast radius in review.
 2. **Compile test** — the generated `BUILD.bazel`/`types.h` build as ordinary Bazel targets in
-   `bazel test //...` on every platform, warning-clean.
+   `bazel test //...` on every platform, warning-clean at `-Wall -Wextra` (the generated BUILD
+   files' own `copts`). CI enforces it: `--config=werror` (implied by `--config=ci`, see
+   `.bazelrc`) promotes warnings to errors for every first-party target — generated modules
+   included — on the full matrix (issue #65).
 3. **Behavior test** — hand-written GoogleTests pin the generated API's semantics:
    `examples/*/generated_types_test.cc` (enums, unions, equality, optionality),
    `examples/cafe/generated_client_test.cc` (wire-level rpcv2Cbor request/response shape against

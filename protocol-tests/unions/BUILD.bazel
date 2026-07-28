@@ -1,4 +1,5 @@
 load("@rules_cc//cc:defs.bzl", "cc_test")
+load("//bazel:copts.bzl", "SMITHY_COPTS")
 load("//bazel:defs.bzl", "smithy_cpp_client_library", "smithy_cpp_server_library")
 
 # Union x protocol conformance cells (issue #48): union round-tripping was
@@ -17,6 +18,7 @@ cc_test(
     name = "union_accessor_test",
     size = "small",
     srcs = ["union_accessor_test.cc"],
+    copts = SMITHY_COPTS,
     deps = [
         "//examples/cafe/generated:types",
         "//runtime:core",
@@ -28,6 +30,7 @@ cc_test(
     name = "union_cbor_test",
     size = "small",
     srcs = ["union_cbor_test.cc"],
+    copts = SMITHY_COPTS,
     deps = [
         "//examples/roundtrip/rpc/generated:client",
         "//examples/roundtrip/rpc/generated:server",
@@ -43,6 +46,7 @@ cc_test(
     name = "union_jsonrpc2_test",
     size = "small",
     srcs = ["union_jsonrpc2_test.cc"],
+    copts = SMITHY_COPTS,
     deps = [
         "//examples/roundtrip/jsonrpc/generated:client",
         "//examples/roundtrip/jsonrpc/generated:server",
@@ -93,6 +97,7 @@ cc_test(
     name = "union_gauntlet_cbor_test",
     size = "small",
     srcs = ["union_gauntlet_cbor_test.cc"],
+    copts = SMITHY_COPTS,
     deps = [
         ":gauntlet_cbor_client",
         ":gauntlet_cbor_server",
@@ -108,6 +113,7 @@ cc_test(
     name = "union_gauntlet_jsonrpc2_test",
     size = "small",
     srcs = ["union_gauntlet_jsonrpc2_test.cc"],
+    copts = SMITHY_COPTS,
     deps = [
         ":gauntlet_jsonrpc_client",
         ":gauntlet_jsonrpc_server",

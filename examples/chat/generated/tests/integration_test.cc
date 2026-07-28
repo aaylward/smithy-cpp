@@ -60,20 +60,20 @@ struct Rng {
   }
 };
 
-LeaveNotice RandomLeaveNotice(Rng& rng) {
+[[maybe_unused]] LeaveNotice RandomLeaveNotice([[maybe_unused]] Rng& rng) {
   LeaveNotice v{};
   if (rng.Coin()) v.reason = rng.Text(1, 9);
   return v;
 }
 
-ChatMessage RandomChatMessage(Rng& rng) {
+[[maybe_unused]] ChatMessage RandomChatMessage([[maybe_unused]] Rng& rng) {
   ChatMessage v{};
   v.text = rng.Text(1, 9);
   if (rng.Coin()) v.sender = rng.Text(1, 9);
   return v;
 }
 
-ChatEvents RandomChatEvents(Rng& rng) {
+[[maybe_unused]] ChatEvents RandomChatEvents([[maybe_unused]] Rng& rng) {
   switch (rng.engine() % 2) {
     case 0:
       return ChatEvents::FromMessage(RandomChatMessage(rng));
@@ -82,7 +82,7 @@ ChatEvents RandomChatEvents(Rng& rng) {
   }
 }
 
-ConverseInput RandomConverseInput(Rng& rng) {
+[[maybe_unused]] ConverseInput RandomConverseInput([[maybe_unused]] Rng& rng) {
   ConverseInput v{};
   v.room = rng.Text(1, 9);
   if (rng.Coin()) v.nickname = rng.Text(1, 9);
@@ -90,19 +90,19 @@ ConverseInput RandomConverseInput(Rng& rng) {
   return v;
 }
 
-MemberJoined RandomMemberJoined(Rng& rng) {
+[[maybe_unused]] MemberJoined RandomMemberJoined([[maybe_unused]] Rng& rng) {
   MemberJoined v{};
   v.member = rng.Text(1, 9);
   return v;
 }
 
-MemberLeft RandomMemberLeft(Rng& rng) {
+[[maybe_unused]] MemberLeft RandomMemberLeft([[maybe_unused]] Rng& rng) {
   MemberLeft v{};
   v.member = rng.Text(1, 9);
   return v;
 }
 
-RoomEvents RandomRoomEvents(Rng& rng) {
+[[maybe_unused]] RoomEvents RandomRoomEvents([[maybe_unused]] Rng& rng) {
   switch (rng.engine() % 3) {
     case 0:
       return RoomEvents::FromMessage(RandomChatMessage(rng));
@@ -113,32 +113,32 @@ RoomEvents RandomRoomEvents(Rng& rng) {
   }
 }
 
-ConverseOutput RandomConverseOutput(Rng& rng) {
+[[maybe_unused]] ConverseOutput RandomConverseOutput([[maybe_unused]] Rng& rng) {
   ConverseOutput v{};
   if (rng.Coin()) v.events = RandomRoomEvents(rng);
   return v;
 }
 
-Kicked RandomKicked(Rng& rng) {
+[[maybe_unused]] Kicked RandomKicked([[maybe_unused]] Rng& rng) {
   Kicked v{};
   if (rng.Coin()) v.message = rng.Text(1, 9);
   v.by = rng.Text(1, 9);
   return v;
 }
 
-ListRoomsInput RandomListRoomsInput(Rng& rng) {
+[[maybe_unused]] ListRoomsInput RandomListRoomsInput([[maybe_unused]] Rng& rng) {
   ListRoomsInput v{};
   return v;
 }
 
-RoomSummary RandomRoomSummary(Rng& rng) {
+[[maybe_unused]] RoomSummary RandomRoomSummary([[maybe_unused]] Rng& rng) {
   RoomSummary v{};
   v.name = rng.Text(1, 9);
   v.members = static_cast<std::int32_t>(rng.Int(-2147483648LL, 2147483647LL));
   return v;
 }
 
-std::vector<RoomSummary> RandomRoomSummaries(Rng& rng) {
+[[maybe_unused]] std::vector<RoomSummary> RandomRoomSummaries([[maybe_unused]] Rng& rng) {
   std::vector<RoomSummary> v{};
   const std::size_t n = rng.Size(1, 3);
   for (std::size_t i = 0; i < n; ++i) {
@@ -147,19 +147,19 @@ std::vector<RoomSummary> RandomRoomSummaries(Rng& rng) {
   return v;
 }
 
-ListRoomsOutput RandomListRoomsOutput(Rng& rng) {
+[[maybe_unused]] ListRoomsOutput RandomListRoomsOutput([[maybe_unused]] Rng& rng) {
   ListRoomsOutput v{};
   v.rooms = RandomRoomSummaries(rng);
   return v;
 }
 
-WatchInput RandomWatchInput(Rng& rng) {
+[[maybe_unused]] WatchInput RandomWatchInput([[maybe_unused]] Rng& rng) {
   WatchInput v{};
   v.room = rng.Text(1, 9);
   return v;
 }
 
-WatchOutput RandomWatchOutput(Rng& rng) {
+[[maybe_unused]] WatchOutput RandomWatchOutput([[maybe_unused]] Rng& rng) {
   WatchOutput v{};
   if (rng.Coin()) v.events = RandomRoomEvents(rng);
   return v;

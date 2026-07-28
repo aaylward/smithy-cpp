@@ -41,7 +41,9 @@ smithy::http::HttpResponse JsonRpcError(int code, const std::string& type, const
   return response;
 }
 
-smithy::http::HttpResponse ErrorToResponse(const smithy::Error& error, const smithy::Document& id) {
+// [[maybe_unused]]: only unary routes map handler errors here; a service
+// whose operations all stream reports errors on the stream instead.
+[[maybe_unused]] smithy::http::HttpResponse ErrorToResponse(const smithy::Error& error, const smithy::Document& id) {
   if (error.kind() == smithy::ErrorKind::kModeled) {
     if (error.code() == "SinkNotFound") {
       smithy::DocumentMap body;
@@ -110,7 +112,9 @@ void ValidatePutSinkRpcInput(const PutSinkRpcInput& value, const std::string& pa
   }
 }
 
-smithy::http::HttpResponse ValidationErrorResponse(const std::vector<smithy::server::ValidationFailure>& failures, const smithy::Document& id) {
+// [[maybe_unused]]: only unary routes reject invalid input over HTTP; a
+// service whose operations all stream reports validation on the stream.
+[[maybe_unused]] smithy::http::HttpResponse ValidationErrorResponse(const std::vector<smithy::server::ValidationFailure>& failures, const smithy::Document& id) {
   std::string summary = std::to_string(failures.size()) + " validation error" + (failures.size() == 1 ? "" : "s") + " detected. ";
   smithy::DocumentList field_list;
   for (std::size_t i = 0; i < failures.size(); ++i) {

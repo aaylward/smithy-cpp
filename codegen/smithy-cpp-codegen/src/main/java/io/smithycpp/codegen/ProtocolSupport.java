@@ -85,7 +85,10 @@ final class ProtocolSupport {
   static void writeErrorSupport(CppWriter w, String decodeStatement, String errorTypeHeader) {
     writeSanitizeErrorCode(w);
     writeParsedErrorStruct(w);
-    w.openBlock("ParsedError ParseError(const smithy::http::HttpResponse& response) {");
+    w.write("// [[maybe_unused]]: only unary response paths parse wire errors; a");
+    w.write("// service whose operations all stream never calls this.");
+    w.openBlock(
+        "[[maybe_unused]] ParsedError ParseError(const smithy::http::HttpResponse& response) {");
     w.write("ParsedError parsed;");
     w.write("parsed.status = response.status;");
     w.write("parsed.message = \"HTTP \" + std::to_string(response.status);");
@@ -456,8 +459,12 @@ final class ProtocolSupport {
         errorShapes.put(context.cppSymbols().toSymbol(shape).getName(), shape);
       }
     }
+    w.write("// [[maybe_unused]]: only unary routes map handler errors here; a service");
+    w.write("// whose operations all stream reports errors on the stream instead.");
     w.openBlock(
-        "smithy::http::HttpResponse ErrorToResponse(const smithy::Error& error$L) {", extraParams);
+        "[[maybe_unused]] smithy::http::HttpResponse ErrorToResponse(const smithy::Error& "
+            + "error$L) {",
+        extraParams);
     if (!errortypeHeader.isEmpty()) {
       w.write("std::vector<std::pair<std::string, std::string>> header_values;");
       w.write("(void)header_values;");

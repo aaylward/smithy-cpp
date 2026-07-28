@@ -6,6 +6,10 @@ cc_test(
     name = "smoke_test",
     size = "small",
     srcs = ["smoke_test.cc"],
+    copts = [
+        "-Wall",
+        "-Wextra",
+    ],
     deps = [
         "//examples/roundtrip/jsonrpc/generated:client",
         "//examples/roundtrip/jsonrpc/generated:server",
@@ -19,6 +23,10 @@ cc_test(
     name = "integration_test",
     size = "small",
     srcs = ["integration_test.cc"],
+    copts = [
+        "-Wall",
+        "-Wextra",
+    ],
     deps = [
         "//examples/roundtrip/jsonrpc/generated:client",
         "//examples/roundtrip/jsonrpc/generated:server",

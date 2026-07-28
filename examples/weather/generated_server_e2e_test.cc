@@ -410,7 +410,7 @@ TEST_F(GeneratedServerEndToEndTest, GreedyLabelKeepsSlashesAndDecodes) {
   auto client = example::weather::WeatherClient::Create(std::move(config));
   ASSERT_TRUE(client.ok());
 
-  for (const std::string path : {
+  for (const std::string& path : {
            std::string("2026/q3/summary.pdf"),       // plain multi-segment
            std::string("a b/c%d/e?f"),               // space, percent, question mark
            std::string("weird&seg=ment/#frag/two"),  // ampersand, equals, hash
@@ -437,7 +437,7 @@ TEST_F(GeneratedServerEndToEndTest, HostileLabelValuesSurviveTheRoundTrip) {
   auto client = example::weather::WeatherClient::Create(std::move(config));
   ASSERT_TRUE(client.ok());
 
-  for (const std::string city : {
+  for (const std::string& city : {
            std::string("abc def"),    // %20 in the label segment
            std::string("a  b"),       // consecutive spaces survive
            std::string(" leading"),   // leading space
@@ -450,7 +450,7 @@ TEST_F(GeneratedServerEndToEndTest, HostileLabelValuesSurviveTheRoundTrip) {
     EXPECT_EQ(outcome.error().message(), "no city: " + city);
   }
 
-  for (const std::string city : {
+  for (const std::string& city : {
            std::string("san jos\xc3\xa9"),  // UTF-8 outside the pattern
            std::string("x?y#z&w=v"),        // every URI delimiter
            std::string("100%25 legit"),     // literal percent-escape text

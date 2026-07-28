@@ -3,10 +3,12 @@
 
 // The one test TLS identity every suite shares (//runtime:test_tls_identity):
 // self-signed, CN=localhost with SANs for localhost and 127.0.0.1, valid to
-// 2046. Regenerate here — and only here — with:
+// 2046. Regenerate here — and only here — with the following one-line
+// command (wrapped for readability; a trailing backslash in a // comment
+// would trip -Wall's -Wcomment in every including TU):
 //
-//   openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
-//     -keyout key.pem -out cert.pem -days 7300 -nodes -subj "/CN=localhost" \
+//   openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1
+//     -keyout key.pem -out cert.pem -days 7300 -nodes -subj "/CN=localhost"
 //     -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
 
 namespace smithy::testing {

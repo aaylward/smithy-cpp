@@ -101,7 +101,7 @@ class Parser {
     auto node = ParseAlternation(0);
     if (!node) return std::move(node).error();
     if (!AtEnd()) return Fail("unbalanced ')'");
-    return std::move(node);
+    return node;
   }
 
  private:

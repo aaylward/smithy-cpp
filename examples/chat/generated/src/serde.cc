@@ -290,7 +290,7 @@ smithy::Outcome<Kicked> DeserializeKicked(const smithy::Document& doc) {
   return out;
 }
 
-smithy::Document SerializeListRoomsInput(const ListRoomsInput& value) {
+smithy::Document SerializeListRoomsInput(const ListRoomsInput& /*value*/) {
   smithy::DocumentMap map;
   return smithy::Document(std::move(map));
 }

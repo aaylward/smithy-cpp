@@ -1,4 +1,5 @@
 load("@rules_cc//cc:defs.bzl", "cc_test")
+load("//bazel:copts.bzl", "SMITHY_COPTS")
 load("//bazel:defs.bzl", "smithy_cpp_client_library", "smithy_cpp_server_library")
 
 # The compile-the-output harness (issue #48): run the real generator on the
@@ -112,6 +113,7 @@ cc_test(
     name = "gauntlet_compile_test",
     size = "small",
     srcs = ["gauntlet_compile_test.cc"],
+    copts = SMITHY_COPTS,
     deps = [
         ":gauntlet_cbor_client",
         ":gauntlet_cbor_server",
@@ -140,6 +142,7 @@ cc_test(
     name = "streaming_compile_test",
     size = "small",
     srcs = ["streaming_compile_test.cc"],
+    copts = SMITHY_COPTS,
     deps = [
         ":streaming_cbor_client",
         ":streaming_cbor_server",

@@ -70,9 +70,12 @@ struct Header {
   }
 };
 
+// Both members carry default member initializers so partial aggregate
+// initialization (`Message{{...headers...}}`) is warning-free under -Wextra's
+// -Wmissing-field-initializers — here and in consumer code.
 struct Message {
-  std::vector<Header> headers;
-  Blob payload;
+  std::vector<Header> headers{};
+  Blob payload{};
   friend bool operator==(const Message&, const Message&) = default;
 
   // First header with this name, or nullptr. Linear: header counts are

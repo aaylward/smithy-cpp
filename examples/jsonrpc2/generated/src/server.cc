@@ -43,7 +43,9 @@ smithy::http::HttpResponse JsonRpcError(int code, const std::string& type, const
   return response;
 }
 
-smithy::http::HttpResponse ErrorToResponse(const smithy::Error& error, const smithy::Document& id) {
+// [[maybe_unused]]: only unary routes map handler errors here; a service
+// whose operations all stream reports errors on the stream instead.
+[[maybe_unused]] smithy::http::HttpResponse ErrorToResponse(const smithy::Error& error, const smithy::Document& id) {
   if (error.kind() == smithy::ErrorKind::kModeled) {
     if (error.code() == "DivisionByZero") {
       smithy::DocumentMap body;

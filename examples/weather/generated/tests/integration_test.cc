@@ -60,70 +60,70 @@ struct Rng {
   }
 };
 
-DeleteCityInput RandomDeleteCityInput(Rng& rng) {
+[[maybe_unused]] DeleteCityInput RandomDeleteCityInput([[maybe_unused]] Rng& rng) {
   DeleteCityInput v{};
   v.cityId = std::string("0");
   return v;
 }
 
-DeleteCityOutput RandomDeleteCityOutput(Rng& rng) {
+[[maybe_unused]] DeleteCityOutput RandomDeleteCityOutput([[maybe_unused]] Rng& rng) {
   DeleteCityOutput v{};
   return v;
 }
 
-NoSuchResource RandomNoSuchResource(Rng& rng) {
+[[maybe_unused]] NoSuchResource RandomNoSuchResource([[maybe_unused]] Rng& rng) {
   NoSuchResource v{};
   v.resourceType = rng.Text(1, 9);
   return v;
 }
 
-GetForecastInput RandomGetForecastInput(Rng& rng) {
+[[maybe_unused]] GetForecastInput RandomGetForecastInput([[maybe_unused]] Rng& rng) {
   GetForecastInput v{};
   v.cityId = std::string("0");
   return v;
 }
 
-GetForecastOutput RandomGetForecastOutput(Rng& rng) {
+[[maybe_unused]] GetForecastOutput RandomGetForecastOutput([[maybe_unused]] Rng& rng) {
   GetForecastOutput v{};
   if (rng.Coin()) v.chanceOfRain = static_cast<float>(rng.Int(-8000000LL, 8000000LL)) / static_cast<float>(8);
   return v;
 }
 
-GetCityInput RandomGetCityInput(Rng& rng) {
+[[maybe_unused]] GetCityInput RandomGetCityInput([[maybe_unused]] Rng& rng) {
   GetCityInput v{};
   v.cityId = std::string("0");
   return v;
 }
 
-CityCoordinates RandomCityCoordinates(Rng& rng) {
+[[maybe_unused]] CityCoordinates RandomCityCoordinates([[maybe_unused]] Rng& rng) {
   CityCoordinates v{};
   v.latitude = static_cast<float>(rng.Int(-8000000LL, 8000000LL)) / static_cast<float>(8);
   v.longitude = static_cast<float>(rng.Int(-8000000LL, 8000000LL)) / static_cast<float>(8);
   return v;
 }
 
-GetCityOutput RandomGetCityOutput(Rng& rng) {
+[[maybe_unused]] GetCityOutput RandomGetCityOutput([[maybe_unused]] Rng& rng) {
   GetCityOutput v{};
   v.name = rng.Text(1, 9);
   v.coordinates = RandomCityCoordinates(rng);
   return v;
 }
 
-ListCitiesInput RandomListCitiesInput(Rng& rng) {
+[[maybe_unused]] ListCitiesInput RandomListCitiesInput([[maybe_unused]] Rng& rng) {
   ListCitiesInput v{};
   if (rng.Coin()) v.nextToken = rng.Text(1, 9);
   if (rng.Coin()) v.pageSize = static_cast<std::int32_t>(rng.Int(-2147483648LL, 2147483647LL));
   return v;
 }
 
-CitySummary RandomCitySummary(Rng& rng) {
+[[maybe_unused]] CitySummary RandomCitySummary([[maybe_unused]] Rng& rng) {
   CitySummary v{};
   v.cityId = std::string("0");
   v.name = rng.Text(1, 9);
   return v;
 }
 
-std::vector<CitySummary> RandomCitySummaries(Rng& rng) {
+[[maybe_unused]] std::vector<CitySummary> RandomCitySummaries([[maybe_unused]] Rng& rng) {
   std::vector<CitySummary> v{};
   const std::size_t n = rng.Size(1, 3);
   for (std::size_t i = 0; i < n; ++i) {
@@ -132,31 +132,31 @@ std::vector<CitySummary> RandomCitySummaries(Rng& rng) {
   return v;
 }
 
-ListCitiesOutput RandomListCitiesOutput(Rng& rng) {
+[[maybe_unused]] ListCitiesOutput RandomListCitiesOutput([[maybe_unused]] Rng& rng) {
   ListCitiesOutput v{};
   if (rng.Coin()) v.nextToken = rng.Text(1, 9);
   v.items = RandomCitySummaries(rng);
   return v;
 }
 
-GetCurrentTimeInput RandomGetCurrentTimeInput(Rng& rng) {
+[[maybe_unused]] GetCurrentTimeInput RandomGetCurrentTimeInput([[maybe_unused]] Rng& rng) {
   GetCurrentTimeInput v{};
   return v;
 }
 
-GetCurrentTimeOutput RandomGetCurrentTimeOutput(Rng& rng) {
+[[maybe_unused]] GetCurrentTimeOutput RandomGetCurrentTimeOutput([[maybe_unused]] Rng& rng) {
   GetCurrentTimeOutput v{};
   v.time = smithy::Timestamp::FromEpochMilliseconds(rng.Int(0, 4102444799LL) * 1000);
   return v;
 }
 
-GetReportInput RandomGetReportInput(Rng& rng) {
+[[maybe_unused]] GetReportInput RandomGetReportInput([[maybe_unused]] Rng& rng) {
   GetReportInput v{};
   v.reportPath = rng.Text(1, 9);
   return v;
 }
 
-GetReportOutput RandomGetReportOutput(Rng& rng) {
+[[maybe_unused]] GetReportOutput RandomGetReportOutput([[maybe_unused]] Rng& rng) {
   GetReportOutput v{};
   v.path = rng.Text(1, 9);
   v.sizeBytes = static_cast<std::int64_t>(rng.Int(-4611686018427387904LL, 4611686018427387903LL));

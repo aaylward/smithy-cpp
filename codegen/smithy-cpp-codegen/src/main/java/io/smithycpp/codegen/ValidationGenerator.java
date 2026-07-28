@@ -222,8 +222,10 @@ final class ValidationGenerator {
     w.addInclude("<utility>");
     w.addInclude("<vector>");
     w.addInclude("\"smithy/core/document.h\"");
+    w.write("// [[maybe_unused]]: only unary routes reject invalid input over HTTP; a");
+    w.write("// service whose operations all stream reports validation on the stream.");
     w.openBlock(
-        "smithy::http::HttpResponse ValidationErrorResponse("
+        "[[maybe_unused]] smithy::http::HttpResponse ValidationErrorResponse("
             + "const std::vector<smithy::server::ValidationFailure>& failures$L) {",
         extraParams);
     w.write(
@@ -454,12 +456,24 @@ final class ValidationGenerator {
         || target.getType() == software.amazon.smithy.model.shapes.ShapeType.ENUM) {
       w.addInclude("\"smithy/core/text.h\"");
     }
+    // A 0 lower bound can never fail (member_length is unsigned), and the dead
+    // `< 0ULL` comparison trips -Wextra's -Wtype-limits — drop the arm, not
+    // the constraint text: the failure message keeps the modeled bounds the
+    // conformance suites pin.
     Optional<Long> min = length.getMin();
     Optional<Long> max = length.getMax();
+    boolean minCanFail = min.isPresent() && min.get() != 0;
+    if (!minCanFail && max.isEmpty()) {
+      return;
+    }
     String condition;
     String constraintText;
     if (min.isPresent() && max.isPresent()) {
-      condition = "member_length < " + min.get() + "ULL || member_length > " + max.get() + "ULL";
+      condition =
+          (minCanFail ? "member_length < " + min.get() + "ULL || " : "")
+              + "member_length > "
+              + max.get()
+              + "ULL";
       constraintText =
           "Member must have length between " + min.get() + " and " + max.get() + ", inclusive";
     } else if (min.isPresent()) {

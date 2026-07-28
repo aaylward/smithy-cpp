@@ -23,6 +23,10 @@ final class TestsBuildFileGenerator {
             name = "smoke_test",
             size = "small",
             srcs = ["smoke_test.cc"],
+            copts = [
+                "-Wall",
+                "-Wextra",
+            ],
             deps = [
                 "%s:client",
                 "%s:server",
@@ -42,6 +46,10 @@ final class TestsBuildFileGenerator {
                 name = "%s_tests",
                 size = "small",
                 srcs = ["%s_tests.cc"],
+                copts = [
+                    "-Wall",
+                    "-Wextra",
+                ],
                 deps = [
                     "%s:client",
                     "%s:protocol_test_support",
@@ -59,6 +67,10 @@ final class TestsBuildFileGenerator {
                 name = "%s_tests",
                 size = "small",
                 srcs = ["%s_tests.cc"],
+                copts = [
+                    "-Wall",
+                    "-Wextra",
+                ],
                 deps = [
                     "%s:client",
                     "%s:server",
@@ -78,6 +90,10 @@ final class TestsBuildFileGenerator {
               name = "server_malformed_tests",
               size = "small",
               srcs = ["server_malformed_tests.cc"],
+              copts = [
+                  "-Wall",
+                  "-Wextra",
+              ],
               deps = [
                   "%s:client",
                   "%s:server",
@@ -96,6 +112,10 @@ final class TestsBuildFileGenerator {
               name = "integration_test",
               size = "small",
               srcs = ["integration_test.cc"],
+              copts = [
+                  "-Wall",
+                  "-Wextra",
+              ],
               deps = [
                   "%s:client",
                   "%s:server",

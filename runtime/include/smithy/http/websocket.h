@@ -209,18 +209,18 @@ using WebSocketDialer =
 class BeastWebSocketClient {
  public:
   struct Options {
-    std::string host;
+    std::string host{};
     // 0 means the scheme default: 443 with tls, 80 without.
     int port = 0;
     bool tls = false;
     // Verification knobs when `tls` is true — the same struct ClientConfig
     // carries (beast_transport.h precedent), so wiring cannot drift.
-    TlsOptions tls_options;
+    TlsOptions tls_options{};
     // The request target of the upgrade GET (the streaming endpoint).
     std::string target = "/";
     // Extra headers on the upgrade request — bearer tokens, api keys: the
     // server's websocket_gate sees these before any upgrade completes.
-    Headers headers;
+    Headers headers{};
     // Offer the negotiated JSON-text frame mode (ADR-0018) on the dial:
     // an echoed subprotocol selects text framing, no echo falls back to
     // the binary wire silently — both modes carry the same messages, so

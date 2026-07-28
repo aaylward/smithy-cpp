@@ -91,7 +91,10 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
     // pass through; reserved envelope codes collapse to 400, except -32603
     // which is a retryable 500), error.data becomes the detail document, and
     // data.__type carries the shape identity.
-    w.openBlock("ParsedError ParseError(const smithy::http::HttpResponse& response) {");
+    w.write("// [[maybe_unused]]: only unary response paths parse wire errors; a");
+    w.write("// service whose operations all stream never calls this.");
+    w.openBlock(
+        "[[maybe_unused]] ParsedError ParseError(const smithy::http::HttpResponse& response) {");
     w.write("ParsedError parsed;");
     w.write("parsed.status = response.status;");
     w.write("parsed.message = \"HTTP \" + std::to_string(response.status);");
@@ -345,12 +348,16 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
   public void writeServerRoutes(
       CppWriter w, CppContext context, ServiceShape service, List<OperationShape> operations) {
     boolean anyCompressed = operations.stream().anyMatch(ProtocolSupport::gzipCompressed);
+    // Only the unary dispatch arms consume the context; when every method
+    // streams the table is empty and the parameter stays unnamed (Core
+    // Guidelines F.9) to keep -Wunused-parameter quiet.
     w.openBlock(
         "(void)router_->Add(\"POST\", \"/\", "
             + "[handler](const smithy::http::HttpRequest& $L, "
             + ProtocolSupport.REQUEST_CONTEXT_PARAM
-            + " context) -> smithy::http::HttpResponse {",
-        anyCompressed ? "raw_request" : "request");
+            + " $L) -> smithy::http::HttpResponse {",
+        anyCompressed ? "raw_request" : "request",
+        operations.isEmpty() ? "/*context*/" : "context");
     w.write("smithy::Document id;  // null until the envelope yields one (JSON-RPC 2.0 §5)");
     if (anyCompressed) {
       // The endpoint is shared, so @requestCompression decodes before dispatch

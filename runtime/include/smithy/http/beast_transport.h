@@ -127,14 +127,14 @@ class BeastServerTransport : public HttpServerTransport {
     // thread-safe; a throwing callback is contained and logged. Wire it to
     // the same sink as smithy::server::Observe so over-limit abuse is
     // visible in the same metrics.
-    std::function<void(const RejectedRequest&)> on_rejected;
+    std::function<void(const RejectedRequest&)> on_rejected{};
     // Observation hook for connections the transport terminated without a
     // response (one call per ConnectionEvent; ADR-0013). Same contract as
     // on_rejected: io thread, concurrent across connections, cheap and
     // thread-safe, throwing callbacks contained and logged. Wire it to the
     // same sink so handshake failures, framing garbage, stalls, and drops
     // are visible in the same metrics as served requests.
-    std::function<void(const ConnectionEvent&)> on_connection_event;
+    std::function<void(const ConnectionEvent&)> on_connection_event{};
     // WebSocket upgrade (ADR-0015). Unset, requests that ask for an
     // upgrade remain ordinary HTTP requests for the handler chain to
     // answer (426, 404 — its call). Set, an upgrade request is offered to
@@ -148,8 +148,8 @@ class BeastServerTransport : public HttpServerTransport {
     // join any helper thread still using it before returning. An unset
     // gate accepts every upgrade: admission policy is the application's,
     // composable from the same middleware pieces the HTTP chain uses.
-    std::function<std::optional<HttpResponse>(const HttpRequest&)> websocket_gate;
-    std::function<void(const HttpRequest&, WebSocket&)> on_websocket;
+    std::function<std::optional<HttpResponse>(const HttpRequest&)> websocket_gate{};
+    std::function<void(const HttpRequest&, WebSocket&)> on_websocket{};
     // The shared-session sibling of on_websocket (ADR-0019): receives the
     // accepted session as an owner and may return immediately — the
     // session lives until a Close (any holder or the peer), the idle
@@ -161,7 +161,7 @@ class BeastServerTransport : public HttpServerTransport {
     // JSON-frames negotiation or the raw-text flag below — apply to
     // both. Runs contained on the handler pool, and
     // should return quickly — it is a launch point, not a serve loop.
-    std::function<void(const HttpRequest&, std::shared_ptr<WebSocket>)> on_websocket_session;
+    std::function<void(const HttpRequest&, std::shared_ptr<WebSocket>)> on_websocket_session{};
     // Negotiated JSON-text event-stream frames (ADR-0018): set, a client
     // that offers the `smithy.eventstream.v1+json` subprotocol on the
     // upgrade gets the token echoed in the 101 and a session whose
@@ -196,8 +196,8 @@ class BeastServerTransport : public HttpServerTransport {
     // ECDHE+AEAD cipher suites for 1.2 (every 1.3 suite qualifies), and ALPN
     // that answers http/1.1 — a client offering ALPN without http/1.1 (e.g.
     // h2-only) is refused at the handshake. mTLS is tracked with #90.
-    std::string tls_certificate_chain_pem;
-    std::string tls_private_key_pem;
+    std::string tls_certificate_chain_pem{};
+    std::string tls_private_key_pem{};
   };
 
   BeastServerTransport() : BeastServerTransport(Options{}) {}
@@ -238,12 +238,12 @@ class BeastHttpClient : public HttpClient {
   // configuration should flow through FromConfig so every knob lives on the
   // one ClientConfig (issue #49).
   struct Options {
-    std::string host;
+    std::string host{};
     int port = 80;
     bool tls = false;
     // Verification knobs when `tls` is true — the same struct ClientConfig
     // carries, so FromConfig copies it wholesale and the two can't drift.
-    TlsOptions tls_options;
+    TlsOptions tls_options{};
     int request_timeout_ms = 30000;
     // Idle keep-alive connections retained for reuse.
     std::size_t max_idle_connections = 4;

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Every update PR runs the full CI matrix (including the --config=werror gate), so a bump that breaks a platform or trips a new warning shows up as a red leg, not a surprise on main.",
+  "extends": ["config:recommended"],
+  "labels": ["dependencies"],
+  "ignorePaths": [
+    "**/node_modules/**",
+    "**/bower_components/**",
+    "**/vendor/**",
+    "**/__tests__/**",
+    "**/test/**",
+    "**/tests/**",
+    "**/__fixtures__/**"
+  ],
+  "packageRules": [
+    {
+      "description": "MODULE.bazel carries a single_version_override patching 1.4.0's cc_import load bug (fixed upstream in 1.6.0); a version bump without removing it fails the repo fetch.",
+      "matchManagers": ["bazel-module"],
+      "matchPackageNames": ["toolchains_llvm"],
+      "prBodyNotes": [
+        "**Manual step**: remove the `single_version_override` and `third_party/toolchains_llvm_cc_import_load.patch` from `MODULE.bazel` — the bug it patches is fixed upstream in 1.6.0. Also revisit the pin-rationale comment there: 1.5+ pulls in aspect_bazel_lib's module-level toolchain registrations, which the comment notes break analysis behind download-blocking proxies."
+      ]
+    },
+    {
+      "description": "maven.install artifact bumps invalidate maven_install.json, which Renovate cannot repin; the golden-freshness CI leg stays red until it is regenerated.",
+      "matchManagers": ["bazel-module"],
+      "matchDatasources": ["maven"],
+      "prBodyNotes": [
+        "**Repin required**: run `bazel run @smithy_cpp_codegen_maven//:pin` and commit the updated `maven_install.json` before merging."
+      ]
+    },
+    {
+      "description": "The Boost BCR modules move in lockstep; one PR per Boost release instead of one per module.",
+      "matchManagers": ["bazel-module"],
+      "matchPackageNames": ["boost.asio", "boost.beast"],
+      "groupName": "boost modules"
+    }
+  ]
+}

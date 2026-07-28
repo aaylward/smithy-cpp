@@ -20,7 +20,7 @@ namespace smithy::http {
 // production.
 struct TlsOptions {
   bool verify_peer = true;
-  std::string ca_pem;
+  std::string ca_pem{};
 };
 
 // Client-side transport. Implementations: SocketHttpClient (built-in HTTP/1.1

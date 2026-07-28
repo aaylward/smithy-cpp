@@ -6,7 +6,6 @@
 module(
     name = "smithy_cpp",
     version = "0.0.0",
-    compatibility_level = 1,
 )
 
 bazel_dep(name = "platforms", version = "1.0.0")
@@ -34,21 +33,7 @@ bazel_dep(name = "rules_testing", version = "0.6.0", dev_dependency = True)
 # boost.context std::result_of gap). Dev-only and unregistered by default:
 # the CI job selects it with --extra_toolchains, so ordinary builds keep the
 # autodetected toolchain. libc++ is toolchains_llvm's default stdlib.
-# Pinned to 1.4.0 deliberately: 1.5+ grew an aspect_bazel_lib/tar.bzl
-# dependency whose module-level toolchain registrations break analysis
-# behind download-blocking proxies (same class as the openssl note in
-# development.md) — 1.4.0's graph is already fully contained in ours.
-bazel_dep(name = "toolchains_llvm", version = "1.4.0", dev_dependency = True)
-
-# 1.4.0's generated toolchain BUILD calls cc_import without a load() — a
-# Bazel 9 native-rule removal casualty, fixed upstream in 1.6.0's template.
-# This applies that exact one-line fix to 1.4.0 (moving to 1.6.0 instead
-# would take the aspect_bazel_lib graph this pin exists to avoid).
-single_version_override(
-    module_name = "toolchains_llvm",
-    patch_strip = 1,
-    patches = ["//third_party:toolchains_llvm_cc_import_load.patch"],
-)
+bazel_dep(name = "toolchains_llvm", version = "1.8.0", dev_dependency = True)
 
 llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm", dev_dependency = True)
 llvm.toolchain(
@@ -59,7 +44,10 @@ use_repo(llvm, "llvm_toolchain")
 
 # The code generator runs inside the build graph as a hermetic Java action
 # (bazel/defs.bzl); rules_jvm_external pins its Smithy dependencies.
-bazel_dep(name = "rules_java", version = "8.16.1")
+# rules_java tracks what Bazel 9's own bazel_tools already forces into the
+# resolved graph — a lower pin here only buys the check_direct_dependencies
+# warning on every invocation.
+bazel_dep(name = "rules_java", version = "9.1.0")
 bazel_dep(name = "rules_jvm_external", version = "6.7")
 
 maven = use_extension("@rules_jvm_external//:extensions.bzl", "maven")

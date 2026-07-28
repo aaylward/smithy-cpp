@@ -1,0 +1,44 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Every update PR runs the full CI matrix (including the --config=werror gate), so a bump that breaks a platform or trips a new warning shows up as a red leg, not a surprise on main.",
+  "extends": [
+    "config:recommended"
+  ],
+  "labels": [
+    "dependencies"
+  ],
+  "ignorePaths": [
+    "**/node_modules/**",
+    "**/bower_components/**",
+    "**/vendor/**",
+    "**/__tests__/**",
+    "**/test/**",
+    "**/tests/**",
+    "**/__fixtures__/**"
+  ],
+  "packageRules": [
+    {
+      "description": "maven.install artifact bumps invalidate maven_install.json, which Renovate cannot repin; the golden-freshness CI leg stays red until it is regenerated.",
+      "matchManagers": [
+        "bazel-module"
+      ],
+      "matchDatasources": [
+        "maven"
+      ],
+      "prBodyNotes": [
+        "**Repin required**: run `bazel run @smithy_cpp_codegen_maven//:pin` and commit the updated `maven_install.json` before merging."
+      ]
+    },
+    {
+      "description": "The Boost BCR modules move in lockstep; one PR per Boost release instead of one per module.",
+      "matchManagers": [
+        "bazel-module"
+      ],
+      "matchPackageNames": [
+        "boost.asio",
+        "boost.beast"
+      ],
+      "groupName": "boost modules"
+    }
+  ]
+}

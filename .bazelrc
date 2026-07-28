@@ -20,6 +20,11 @@ test --test_output=errors
 # std::hash (#84), C++20-removed traits like std::result_of — otherwise
 # surface only on the macOS runners or in consumers' toolchains_llvm builds.
 build:llvm --extra_toolchains=@llvm_toolchain//:all
+# toolchains_llvm 1.8's builtin-libc++ mode pairs -stdlib=libc++ with explicit
+# libc++ system-include paths, so clang reports the flag unused on every
+# compile — driver noise from the toolchain's own flag set, which
+# --config=werror would otherwise promote to an error.
+build:llvm --copt=-Wno-unused-command-line-argument
 
 # AddressSanitizer: bazel test //... --config=asan
 build:asan --strip=never

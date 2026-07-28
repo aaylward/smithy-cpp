@@ -96,10 +96,13 @@ final class RandomValueGenerator {
 
   private void writeBuilder(CppWriter w, Shape shape) {
     String type = context.cppSymbols().toSymbol(shape).getName();
-    // [[maybe_unused]]: whether rng is consumed depends on the shape — a
-    // memberless structure, or one whose required members all pin constant
-    // values (bounded @length/@range), never draws from it.
-    w.openBlock("$L $L([[maybe_unused]] Rng& rng) {", type, builderName(shape));
+    // Both [[maybe_unused]]: builders are emitted for every serde shape, but
+    // the round-trip suite only calls the unary operations' ones — a shape
+    // reached solely through streaming operations goes unbuilt. And whether
+    // rng itself is consumed depends on the shape: a memberless structure, or
+    // one whose required members all pin constant values (bounded
+    // @length/@range), never draws from it.
+    w.openBlock("[[maybe_unused]] $L $L([[maybe_unused]] Rng& rng) {", type, builderName(shape));
     if (shape.isStructureShape()) {
       w.write("$L v{};", type);
       for (MemberShape member : shape.members()) {

@@ -60,66 +60,66 @@ struct Rng {
   }
 };
 
-Term RandomTerm([[maybe_unused]] Rng& rng) {
+[[maybe_unused]] Term RandomTerm([[maybe_unused]] Rng& rng) {
   Term v{};
   v.value = static_cast<double>(rng.Int(-8000000LL, 8000000LL)) / static_cast<double>(8);
   return v;
 }
 
-Terms RandomTerms([[maybe_unused]] Rng& rng) {
+[[maybe_unused]] Terms RandomTerms([[maybe_unused]] Rng& rng) {
   switch (rng.engine() % 1) {
     default:
       return Terms::FromAdd(RandomTerm(rng));
   }
 }
 
-AccumulateInput RandomAccumulateInput([[maybe_unused]] Rng& rng) {
+[[maybe_unused]] AccumulateInput RandomAccumulateInput([[maybe_unused]] Rng& rng) {
   AccumulateInput v{};
   if (rng.Coin()) v.start = static_cast<double>(rng.Int(-8000000LL, 8000000LL)) / static_cast<double>(8);
   if (rng.Coin()) v.terms = RandomTerms(rng);
   return v;
 }
 
-RunningTotal RandomRunningTotal([[maybe_unused]] Rng& rng) {
+[[maybe_unused]] RunningTotal RandomRunningTotal([[maybe_unused]] Rng& rng) {
   RunningTotal v{};
   v.value = static_cast<double>(rng.Int(-8000000LL, 8000000LL)) / static_cast<double>(8);
   return v;
 }
 
-Totals RandomTotals([[maybe_unused]] Rng& rng) {
+[[maybe_unused]] Totals RandomTotals([[maybe_unused]] Rng& rng) {
   switch (rng.engine() % 1) {
     default:
       return Totals::FromTotal(RandomRunningTotal(rng));
   }
 }
 
-AccumulateOutput RandomAccumulateOutput([[maybe_unused]] Rng& rng) {
+[[maybe_unused]] AccumulateOutput RandomAccumulateOutput([[maybe_unused]] Rng& rng) {
   AccumulateOutput v{};
   if (rng.Coin()) v.totals = RandomTotals(rng);
   return v;
 }
 
-Overflow RandomOverflow([[maybe_unused]] Rng& rng) {
+[[maybe_unused]] Overflow RandomOverflow([[maybe_unused]] Rng& rng) {
   Overflow v{};
   v.message = rng.Text(1, 9);
   v.limit = static_cast<double>(rng.Int(-8000000LL, 8000000LL)) / static_cast<double>(8);
   return v;
 }
 
-AddInput RandomAddInput([[maybe_unused]] Rng& rng) {
+[[maybe_unused]] AddInput RandomAddInput([[maybe_unused]] Rng& rng) {
   AddInput v{};
   v.a = static_cast<double>(rng.Int(-8000000LL, 8000000LL)) / static_cast<double>(8);
   v.b = static_cast<double>(rng.Int(-8000000LL, 8000000LL)) / static_cast<double>(8);
   return v;
 }
 
-AddOutput RandomAddOutput([[maybe_unused]] Rng& rng) {
+[[maybe_unused]] AddOutput RandomAddOutput([[maybe_unused]] Rng& rng) {
   AddOutput v{};
   v.sum = static_cast<double>(rng.Int(-8000000LL, 8000000LL)) / static_cast<double>(8);
   return v;
 }
 
-DivideInput RandomDivideInput([[maybe_unused]] Rng& rng) {
+[[maybe_unused]] DivideInput RandomDivideInput([[maybe_unused]] Rng& rng) {
   DivideInput v{};
   v.dividend = static_cast<double>(rng.Int(-8000000LL, 8000000LL)) / static_cast<double>(8);
   v.divisor = static_cast<double>(rng.Int(-8000000LL, 8000000LL)) / static_cast<double>(8);
@@ -127,13 +127,13 @@ DivideInput RandomDivideInput([[maybe_unused]] Rng& rng) {
   return v;
 }
 
-DivideOutput RandomDivideOutput([[maybe_unused]] Rng& rng) {
+[[maybe_unused]] DivideOutput RandomDivideOutput([[maybe_unused]] Rng& rng) {
   DivideOutput v{};
   v.quotient = static_cast<double>(rng.Int(-8000000LL, 8000000LL)) / static_cast<double>(8);
   return v;
 }
 
-DivisionByZero RandomDivisionByZero([[maybe_unused]] Rng& rng) {
+[[maybe_unused]] DivisionByZero RandomDivisionByZero([[maybe_unused]] Rng& rng) {
   DivisionByZero v{};
   v.message = rng.Text(1, 9);
   return v;

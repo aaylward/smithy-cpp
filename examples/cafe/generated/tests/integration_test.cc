@@ -61,37 +61,37 @@ struct Rng {
   }
 };
 
-AlternativeMilk RandomAlternativeMilk([[maybe_unused]] Rng& rng) {
+[[maybe_unused]] AlternativeMilk RandomAlternativeMilk([[maybe_unused]] Rng& rng) {
   AlternativeMilk v{};
   v.kind = rng.Text(1, 9);
   return v;
 }
 
-GetOrderInput RandomGetOrderInput([[maybe_unused]] Rng& rng) {
+[[maybe_unused]] GetOrderInput RandomGetOrderInput([[maybe_unused]] Rng& rng) {
   GetOrderInput v{};
   v.orderId = rng.Text(1, 9);
   return v;
 }
 
-CancelledStatus RandomCancelledStatus([[maybe_unused]] Rng& rng) {
+[[maybe_unused]] CancelledStatus RandomCancelledStatus([[maybe_unused]] Rng& rng) {
   CancelledStatus v{};
   if (rng.Coin()) v.reason = rng.Text(1, 9);
   return v;
 }
 
-PendingStatus RandomPendingStatus([[maybe_unused]] Rng& rng) {
+[[maybe_unused]] PendingStatus RandomPendingStatus([[maybe_unused]] Rng& rng) {
   PendingStatus v{};
   v.position = static_cast<std::int32_t>(rng.Int(-2147483648LL, 2147483647LL));
   return v;
 }
 
-ReadyStatus RandomReadyStatus([[maybe_unused]] Rng& rng) {
+[[maybe_unused]] ReadyStatus RandomReadyStatus([[maybe_unused]] Rng& rng) {
   ReadyStatus v{};
   v.readyAt = smithy::Timestamp::FromEpochMilliseconds(rng.Int(0, 4102444799LL) * 1000);
   return v;
 }
 
-OrderStatus RandomOrderStatus([[maybe_unused]] Rng& rng) {
+[[maybe_unused]] OrderStatus RandomOrderStatus([[maybe_unused]] Rng& rng) {
   switch (rng.engine() % 3) {
     case 0:
       return OrderStatus::FromPending(RandomPendingStatus(rng));
@@ -102,7 +102,7 @@ OrderStatus RandomOrderStatus([[maybe_unused]] Rng& rng) {
   }
 }
 
-GetOrderOutput RandomGetOrderOutput([[maybe_unused]] Rng& rng) {
+[[maybe_unused]] GetOrderOutput RandomGetOrderOutput([[maybe_unused]] Rng& rng) {
   GetOrderOutput v{};
   v.orderId = rng.Text(1, 9);
   v.coffeeType = CoffeeType::FromString(std::array<const char*, 4>{"DRIP", "ESPRESSO", "CORTADO", "LATTE"}[rng.engine() % 4]);
@@ -110,19 +110,19 @@ GetOrderOutput RandomGetOrderOutput([[maybe_unused]] Rng& rng) {
   return v;
 }
 
-OrderNotFound RandomOrderNotFound([[maybe_unused]] Rng& rng) {
+[[maybe_unused]] OrderNotFound RandomOrderNotFound([[maybe_unused]] Rng& rng) {
   OrderNotFound v{};
   v.orderId = rng.Text(1, 9);
   return v;
 }
 
-DairyMilk RandomDairyMilk([[maybe_unused]] Rng& rng) {
+[[maybe_unused]] DairyMilk RandomDairyMilk([[maybe_unused]] Rng& rng) {
   DairyMilk v{};
   v.percentFat = static_cast<float>(rng.Int(-8000000LL, 8000000LL)) / static_cast<float>(8);
   return v;
 }
 
-MilkOption RandomMilkOption([[maybe_unused]] Rng& rng) {
+[[maybe_unused]] MilkOption RandomMilkOption([[maybe_unused]] Rng& rng) {
   switch (rng.engine() % 3) {
     case 0:
       return MilkOption::FromNone(smithy::Unit{});
@@ -133,7 +133,7 @@ MilkOption RandomMilkOption([[maybe_unused]] Rng& rng) {
   }
 }
 
-OrderCoffeeInput RandomOrderCoffeeInput([[maybe_unused]] Rng& rng) {
+[[maybe_unused]] OrderCoffeeInput RandomOrderCoffeeInput([[maybe_unused]] Rng& rng) {
   OrderCoffeeInput v{};
   v.coffeeType = CoffeeType::FromString(std::array<const char*, 4>{"DRIP", "ESPRESSO", "CORTADO", "LATTE"}[rng.engine() % 4]);
   if (rng.Coin()) v.milk = RandomMilkOption(rng);
@@ -141,14 +141,14 @@ OrderCoffeeInput RandomOrderCoffeeInput([[maybe_unused]] Rng& rng) {
   return v;
 }
 
-OrderCoffeeOutput RandomOrderCoffeeOutput([[maybe_unused]] Rng& rng) {
+[[maybe_unused]] OrderCoffeeOutput RandomOrderCoffeeOutput([[maybe_unused]] Rng& rng) {
   OrderCoffeeOutput v{};
   v.orderId = rng.Text(1, 9);
   v.status = RandomOrderStatus(rng);
   return v;
 }
 
-OutOfBeans RandomOutOfBeans([[maybe_unused]] Rng& rng) {
+[[maybe_unused]] OutOfBeans RandomOutOfBeans([[maybe_unused]] Rng& rng) {
   OutOfBeans v{};
   if (rng.Coin()) v.message = rng.Text(1, 9);
   return v;

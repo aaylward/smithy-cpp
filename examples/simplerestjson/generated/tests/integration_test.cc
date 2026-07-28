@@ -60,35 +60,35 @@ struct Rng {
   }
 };
 
-AddBookInput RandomAddBookInput([[maybe_unused]] Rng& rng) {
+[[maybe_unused]] AddBookInput RandomAddBookInput([[maybe_unused]] Rng& rng) {
   AddBookInput v{};
   v.isbn = rng.Text(1, 9);
   v.title = rng.Text(1, 9);
   return v;
 }
 
-AddBookOutput RandomAddBookOutput([[maybe_unused]] Rng& rng) {
+[[maybe_unused]] AddBookOutput RandomAddBookOutput([[maybe_unused]] Rng& rng) {
   AddBookOutput v{};
   v.status = static_cast<std::int32_t>(rng.Int(-2147483648LL, 2147483647LL));
   v.isbn = rng.Text(1, 9);
   return v;
 }
 
-BookNotFound RandomBookNotFound([[maybe_unused]] Rng& rng) {
+[[maybe_unused]] BookNotFound RandomBookNotFound([[maybe_unused]] Rng& rng) {
   BookNotFound v{};
   v.message = rng.Text(1, 9);
   v.isbn = rng.Text(1, 9);
   return v;
 }
 
-GetBookInput RandomGetBookInput([[maybe_unused]] Rng& rng) {
+[[maybe_unused]] GetBookInput RandomGetBookInput([[maybe_unused]] Rng& rng) {
   GetBookInput v{};
   v.isbn = rng.Text(1, 9);
   if (rng.Coin()) v.currency = rng.Text(1, 9);
   return v;
 }
 
-GetBookOutput RandomGetBookOutput([[maybe_unused]] Rng& rng) {
+[[maybe_unused]] GetBookOutput RandomGetBookOutput([[maybe_unused]] Rng& rng) {
   GetBookOutput v{};
   v.isbn = rng.Text(1, 9);
   v.title = rng.Text(1, 9);

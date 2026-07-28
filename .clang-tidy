@@ -12,6 +12,12 @@
 # false positive is confined to one area.
 # - bugprone-empty-catch: destructor teardown paths legitimately swallow
 #   exceptions (documented inline); no logging facility exists yet.
+# - readability-redundant-member-init: the "redundant" {} on public aggregate
+#   members is deliberate — a default member initializer is what keeps
+#   partial aggregate initialization (HttpResponse{404, {}, "gone"}) clean
+#   under -Wextra's -Wmissing-field-initializers, here and in consumers
+#   (issue #65). The check and the warning are in direct conflict; the
+#   warning is the one CI enforces with -Werror.
 ---
 Checks: >
   bugprone-*,
@@ -30,7 +36,8 @@ Checks: >
   -readability-magic-numbers,
   -readability-braces-around-statements,
   -readability-function-cognitive-complexity,
-  -readability-else-after-return
+  -readability-else-after-return,
+  -readability-redundant-member-init
 WarningsAsErrors: "*"
 CheckOptions:
   - key: bugprone-unused-return-value.AllowCastToVoid

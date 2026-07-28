@@ -224,7 +224,7 @@ dependencies {
     implementation("software.amazon.smithy:smithy-protocol-test-traits:1.58.0")
     // The official conformance suite models (generateProtocolTests classpath only).
     // alloy's simpleRestJson conformance suite.
-    protocolTestModels("com.disneystreaming.alloy:alloy-protocol-tests:0.3.21")
+    protocolTestModels("com.disneystreaming.alloy:alloy-protocol-tests:0.3.40")
     protocolTestModels("software.amazon.smithy:smithy-protocol-tests:1.58.0")
 
     testImplementation(platform("org.junit:junit-bom:5.11.4"))

@@ -86,6 +86,13 @@ test --test_output=errors
 # module download aborts the whole build.
 common --experimental_repository_downloader_retries=5
 
+# Warnings are errors for this module's own code (smithy-cpp issue #65): the
+# ^// label filter covers the hand-written mains/tests and the generated
+# acme/* libraries (already compiled at -Wall -Wextra by the smithy_cpp_*
+# macros), while @smithy_cpp and every other external module keep their own
+# warning posture. CI runs with --config=werror; optional for your builds.
+build:werror --per_file_copt=^//@-Werror
+
 # Personal overrides stay out of version control.
 try-import %workspace%/.bazelrc.user
 ```

@@ -96,7 +96,10 @@ final class RandomValueGenerator {
 
   private void writeBuilder(CppWriter w, Shape shape) {
     String type = context.cppSymbols().toSymbol(shape).getName();
-    w.openBlock("$L $L(Rng& rng) {", type, builderName(shape));
+    // [[maybe_unused]]: whether rng is consumed depends on the shape — a
+    // memberless structure, or one whose required members all pin constant
+    // values (bounded @length/@range), never draws from it.
+    w.openBlock("$L $L([[maybe_unused]] Rng& rng) {", type, builderName(shape));
     if (shape.isStructureShape()) {
       w.write("$L v{};", type);
       for (MemberShape member : shape.members()) {

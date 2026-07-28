@@ -116,6 +116,13 @@ def _smithy_cpp_library(name, srcs, service, namespace, mode, deps, **kwargs):
     # (ADR-0016; the generated-BUILD path adds it automatically).
     extra_deps = kwargs.pop("deps", [])
 
+    # Generated code compiles at the runtime's own warning level everywhere it
+    # is consumed, so a generator regression that starts emitting warnable code
+    # surfaces in any -Werror build (issue #65; the checked-in golden modules'
+    # BUILD files carry the same flags). Caller copts append, so a consumer can
+    # add but not silently drop the baseline.
+    copts = ["-Wall", "-Wextra"] + kwargs.pop("copts", [])
+
     # tags/testonly apply to the internal targets too, so e.g. tags = ["manual"]
     # keeps every piece of the macro out of wildcard builds.
     inherited = {k: kwargs[k] for k in ("tags", "testonly") if k in kwargs}
@@ -146,6 +153,7 @@ def _smithy_cpp_library(name, srcs, service, namespace, mode, deps, **kwargs):
         name = name,
         hdrs = [":" + gen + "_hdrs"],
         srcs = [":" + gen + "_srcs"] if mode != "types" else [],
+        copts = copts,
         includes = [gen + "/include"],
         deps = [str(d) for d in deps] + extra_deps,
         **kwargs

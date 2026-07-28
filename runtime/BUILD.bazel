@@ -1,11 +1,7 @@
 load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+load("//bazel:copts.bzl", COPTS = "SMITHY_COPTS")
 
 package(default_visibility = ["//visibility:public"])
-
-COPTS = [
-    "-Wall",
-    "-Wextra",
-]
 
 cc_library(
     name = "core",
@@ -275,6 +271,7 @@ cc_library(
     name = "protocol_test_support",
     testonly = True,
     hdrs = ["testing/include/smithy/testing/protocol_test.h"],
+    copts = COPTS,
     includes = ["testing/include"],
     deps = [
         ":cbor",

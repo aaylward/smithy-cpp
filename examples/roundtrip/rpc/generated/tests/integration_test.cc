@@ -61,7 +61,7 @@ struct Rng {
   }
 };
 
-std::map<std::string, std::string> RandomStringMap(Rng& rng) {
+std::map<std::string, std::string> RandomStringMap([[maybe_unused]] Rng& rng) {
   std::map<std::string, std::string> v{};
   const std::size_t n = rng.Size(1, 3);
   for (std::size_t i = 0; i < n; ++i) {
@@ -70,14 +70,14 @@ std::map<std::string, std::string> RandomStringMap(Rng& rng) {
   return v;
 }
 
-NestedConfig RandomNestedConfig(Rng& rng) {
+NestedConfig RandomNestedConfig([[maybe_unused]] Rng& rng) {
   NestedConfig v{};
   v.label = rng.Text(1, 9);
   if (rng.Coin()) v.depth = static_cast<std::int32_t>(rng.Int(-2147483648LL, 2147483647LL));
   return v;
 }
 
-SinkChoice RandomSinkChoice(Rng& rng) {
+SinkChoice RandomSinkChoice([[maybe_unused]] Rng& rng) {
   switch (rng.engine() % 3) {
     case 0:
       return SinkChoice::FromText(rng.Text(1, 9));
@@ -88,7 +88,7 @@ SinkChoice RandomSinkChoice(Rng& rng) {
   }
 }
 
-std::vector<std::string> RandomStringList(Rng& rng) {
+std::vector<std::string> RandomStringList([[maybe_unused]] Rng& rng) {
   std::vector<std::string> v{};
   const std::size_t n = rng.Size(1, 3);
   for (std::size_t i = 0; i < n; ++i) {
@@ -97,7 +97,7 @@ std::vector<std::string> RandomStringList(Rng& rng) {
   return v;
 }
 
-std::vector<std::optional<std::int32_t>> RandomSparseIntegerList(Rng& rng) {
+std::vector<std::optional<std::int32_t>> RandomSparseIntegerList([[maybe_unused]] Rng& rng) {
   std::vector<std::optional<std::int32_t>> v{};
   const std::size_t n = rng.Size(1, 3);
   for (std::size_t i = 0; i < n; ++i) {
@@ -110,7 +110,7 @@ std::vector<std::optional<std::int32_t>> RandomSparseIntegerList(Rng& rng) {
   return v;
 }
 
-std::vector<std::string> RandomUniqueStringList(Rng& rng) {
+std::vector<std::string> RandomUniqueStringList([[maybe_unused]] Rng& rng) {
   std::vector<std::string> v{};
   const std::size_t n = rng.Size(1, 2);
   for (std::size_t i = 0; i < n; ++i) {
@@ -119,7 +119,7 @@ std::vector<std::string> RandomUniqueStringList(Rng& rng) {
   return v;
 }
 
-KitchenSink RandomKitchenSink(Rng& rng) {
+KitchenSink RandomKitchenSink([[maybe_unused]] Rng& rng) {
   KitchenSink v{};
   v.name = rng.Text(1, 9);
   if (rng.Coin()) v.flag = (rng.engine() & 1U) != 0;
@@ -144,38 +144,38 @@ KitchenSink RandomKitchenSink(Rng& rng) {
   return v;
 }
 
-SinkNotFound RandomSinkNotFound(Rng& rng) {
+SinkNotFound RandomSinkNotFound([[maybe_unused]] Rng& rng) {
   SinkNotFound v{};
   v.message = rng.Text(1, 9);
   if (rng.Coin()) v.resourceType = rng.Text(1, 9);
   return v;
 }
 
-PingInput RandomPingInput(Rng& rng) {
+PingInput RandomPingInput([[maybe_unused]] Rng& rng) {
   PingInput v{};
   return v;
 }
 
-PingOutput RandomPingOutput(Rng& rng) {
+PingOutput RandomPingOutput([[maybe_unused]] Rng& rng) {
   PingOutput v{};
   return v;
 }
 
-SinkQuotaExceeded RandomSinkQuotaExceeded(Rng& rng) {
+SinkQuotaExceeded RandomSinkQuotaExceeded([[maybe_unused]] Rng& rng) {
   SinkQuotaExceeded v{};
   if (rng.Coin()) v.message = rng.Text(1, 9);
   if (rng.Coin()) v.retryAfterSeconds = static_cast<std::int32_t>(rng.Int(-2147483648LL, 2147483647LL));
   return v;
 }
 
-PutSinkRpcInput RandomPutSinkRpcInput(Rng& rng) {
+PutSinkRpcInput RandomPutSinkRpcInput([[maybe_unused]] Rng& rng) {
   PutSinkRpcInput v{};
   v.sinkId = rng.Text(1, 9);
   if (rng.Coin()) v.sink = RandomKitchenSink(rng);
   return v;
 }
 
-PutSinkRpcOutput RandomPutSinkRpcOutput(Rng& rng) {
+PutSinkRpcOutput RandomPutSinkRpcOutput([[maybe_unused]] Rng& rng) {
   PutSinkRpcOutput v{};
   v.sinkId = rng.Text(1, 9);
   if (rng.Coin()) v.sink = RandomKitchenSink(rng);

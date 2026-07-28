@@ -1,4 +1,5 @@
 load("@rules_cc//cc:defs.bzl", "cc_test")
+load("//bazel:copts.bzl", "SMITHY_COPTS")
 
 # Behavior tests for the generated cafe types (rpcv2Cbor fixture model).
 
@@ -6,6 +7,7 @@ cc_test(
     name = "generated_client_test",
     size = "small",
     srcs = ["generated_client_test.cc"],
+    copts = SMITHY_COPTS,
     deps = [
         "//examples/cafe/generated:client",
         "//runtime:cbor",
@@ -18,6 +20,7 @@ cc_test(
     name = "generated_types_test",
     size = "small",
     srcs = ["generated_types_test.cc"],
+    copts = SMITHY_COPTS,
     deps = [
         "//examples/cafe/generated:types",
         "@googletest//:gtest_main",

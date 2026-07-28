@@ -140,6 +140,11 @@ final class SerdeGenerator {
 
     w.openBlock("smithy::Document Serialize$L(const $L& value) {", suffix, type);
     w.write("smithy::DocumentMap map;");
+    if (shape.members().isEmpty()) {
+      // A memberless structure serializes to the empty map; the cast keeps the
+      // unused parameter warning-free (-Wextra's -Wunused-parameter).
+      w.write("(void)value;");
+    }
     for (MemberShape member : shape.members()) {
       serde.writeMemberSerialize(w, member, "value", "map");
     }

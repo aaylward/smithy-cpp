@@ -50,8 +50,20 @@ build:fuzz --linkopt=-fsanitize=fuzzer,address
 build:fuzz --strip=never
 build:fuzz --copt=-g
 
+# Warnings are errors for first-party code (issue #65). The ^// label filter
+# scopes -Werror to this repo's own targets: external deps (boost, boringssl,
+# zlib, googletest, ...) keep their toolchain-default warning posture, while
+# everything with a //-label — hand-written code, the checked-in generated
+# modules, and code SmithyCppGenerate emits into bazel-out — must compile
+# clean at the -Wall -Wextra the targets' copts request (bazel/copts.bzl).
+# A config rather than a hard-coded copt so a new compiler version's new
+# warnings surface as a red CI leg here, never as a broken build for
+# consumers compiling from source.
+build:werror --per_file_copt=^//@-Werror
+
 # CI settings.
 build:ci --announce_rc --verbose_failures
+build:ci --config=werror
 
 # Personal overrides stay out of version control.
 try-import %workspace%/.bazelrc.user

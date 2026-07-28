@@ -507,6 +507,7 @@ smithy::Outcome<SinkNotFound> DeserializeSinkNotFound(const smithy::Document& do
 
 smithy::Document SerializePingInput(const PingInput& value) {
   smithy::DocumentMap map;
+  (void)value;
   return smithy::Document(std::move(map));
 }
 
@@ -518,6 +519,7 @@ smithy::Outcome<PingInput> DeserializePingInput(const smithy::Document& doc) {
 
 smithy::Document SerializePingOutput(const PingOutput& value) {
   smithy::DocumentMap map;
+  (void)value;
   return smithy::Document(std::move(map));
 }
 

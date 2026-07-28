@@ -1,5 +1,6 @@
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_test")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("@smithy_cpp//bazel:copts.bzl", "SMITHY_COPTS")
 load("@smithy_cpp//bazel:defs.bzl", "smithy_cpp_client_library", "smithy_cpp_server_library")
 
 # The base model is protocol-agnostic (the upstream Smithy way); each pair of
@@ -74,6 +75,7 @@ cc_test(
     name = "todo_beast_acceptance_test",
     size = "small",
     srcs = ["todo_beast_acceptance_test.cc"],
+    copts = SMITHY_COPTS,
     deps = [
         ":todo_client",
         ":todo_server",
@@ -93,6 +95,7 @@ cc_test(
     name = "todo_integration_test",
     size = "small",
     srcs = ["todo_integration_test.cc"],
+    copts = SMITHY_COPTS,
     deps = [
         ":todo_cbor_client",
         ":todo_cbor_server",
@@ -115,6 +118,7 @@ cc_test(
     name = "eventstream_consumer_test",
     size = "small",
     srcs = ["eventstream_consumer_test.cc"],
+    copts = SMITHY_COPTS,
     deps = [
         "@googletest//:gtest_main",
         "@smithy_cpp//runtime:core",
@@ -131,6 +135,7 @@ cc_test(
     name = "websocket_acceptance_test",
     size = "small",
     srcs = ["websocket_acceptance_test.cc"],
+    copts = SMITHY_COPTS,
     deps = [
         "@googletest//:gtest_main",
         "@smithy_cpp//runtime:eventstream",
@@ -149,6 +154,7 @@ cc_test(
     name = "async_acceptance_test",
     size = "small",
     srcs = ["async_acceptance_test.cc"],
+    copts = SMITHY_COPTS,
     deps = [
         "@googletest//:gtest_main",
         "@smithy_cpp//runtime:eventstream",
@@ -183,6 +189,7 @@ smithy_cpp_server_library(
 cc_binary(
     name = "chat_reconnect_server",
     srcs = ["chat_reconnect_server_main.cc"],
+    copts = SMITHY_COPTS,
     deps = [
         ":chat_stream_server",
         "@smithy_cpp//runtime:core",
@@ -194,6 +201,7 @@ cc_binary(
 cc_binary(
     name = "chat_reconnect_client",
     srcs = ["chat_reconnect_client_main.cc"],
+    copts = SMITHY_COPTS,
     deps = [
         ":chat_stream_client",
         "@smithy_cpp//runtime:client",
@@ -225,6 +233,7 @@ sh_test(
 cc_binary(
     name = "chat_async_reconnect_server",
     srcs = ["chat_async_reconnect_server_main.cc"],
+    copts = SMITHY_COPTS,
     deps = [
         ":chat_stream_server",
         "@smithy_cpp//runtime:core",
@@ -259,6 +268,7 @@ cc_test(
     name = "streaming_acceptance_test",
     size = "small",
     srcs = ["streaming_acceptance_test.cc"],
+    copts = SMITHY_COPTS,
     deps = [
         ":chat_stream_client",
         ":chat_stream_server",
@@ -296,6 +306,7 @@ smithy_cpp_server_library(
 cc_binary(
     name = "jsonrpc_stream_server",
     srcs = ["jsonrpc_stream_server_main.cc"],
+    copts = SMITHY_COPTS,
     deps = [
         ":tally_stream_server",
         "@smithy_cpp//runtime:core",
@@ -307,6 +318,7 @@ cc_binary(
 cc_binary(
     name = "jsonrpc_stream_client",
     srcs = ["jsonrpc_stream_client_main.cc"],
+    copts = SMITHY_COPTS,
     deps = [
         ":tally_stream_client",
         "@smithy_cpp//runtime:client",
@@ -321,6 +333,7 @@ cc_binary(
 cc_binary(
     name = "jsonrpc_raw_peer",
     srcs = ["jsonrpc_raw_peer_main.cc"],
+    copts = SMITHY_COPTS,
     deps = [
         "@smithy_cpp//runtime:core",
         "@smithy_cpp//runtime:eventstream",

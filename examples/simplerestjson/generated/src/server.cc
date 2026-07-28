@@ -70,7 +70,9 @@ smithy::http::HttpResponse JsonError(int status, const std::string& code, const 
   return response;
 }
 
-smithy::http::HttpResponse ErrorToResponse(const smithy::Error& error) {
+// [[maybe_unused]]: only unary routes map handler errors here; a service
+// whose operations all stream reports errors on the stream instead.
+[[maybe_unused]] smithy::http::HttpResponse ErrorToResponse(const smithy::Error& error) {
   std::vector<std::pair<std::string, std::string>> header_values;
   (void)header_values;
   if (error.kind() == smithy::ErrorKind::kModeled) {
@@ -106,7 +108,9 @@ void AddValidationFailure(std::vector<smithy::server::ValidationFailure>* failur
   failures->push_back({std::move(path), std::move(message)});
 }
 
-smithy::http::HttpResponse ValidationErrorResponse(const std::vector<smithy::server::ValidationFailure>& failures) {
+// [[maybe_unused]]: only unary routes reject invalid input over HTTP; a
+// service whose operations all stream reports validation on the stream.
+[[maybe_unused]] smithy::http::HttpResponse ValidationErrorResponse(const std::vector<smithy::server::ValidationFailure>& failures) {
   std::string summary = std::to_string(failures.size()) + " validation error" + (failures.size() == 1 ? "" : "s") + " detected. ";
   smithy::DocumentList field_list;
   for (std::size_t i = 0; i < failures.size(); ++i) {

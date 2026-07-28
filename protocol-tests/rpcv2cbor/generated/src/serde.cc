@@ -676,6 +676,7 @@ smithy::Outcome<std::map<std::string, GreetingStruct>> DeserializeDenseStructMap
 
 smithy::Document SerializeEmptyInputOutputInput(const EmptyInputOutputInput& value) {
   smithy::DocumentMap map;
+  (void)value;
   return smithy::Document(std::move(map));
 }
 
@@ -687,6 +688,7 @@ smithy::Outcome<EmptyInputOutputInput> DeserializeEmptyInputOutputInput(const sm
 
 smithy::Document SerializeEmptyInputOutputOutput(const EmptyInputOutputOutput& value) {
   smithy::DocumentMap map;
+  (void)value;
   return smithy::Document(std::move(map));
 }
 
@@ -698,6 +700,7 @@ smithy::Outcome<EmptyInputOutputOutput> DeserializeEmptyInputOutputOutput(const 
 
 smithy::Document SerializeFloat16Input(const Float16Input& value) {
   smithy::DocumentMap map;
+  (void)value;
   return smithy::Document(std::move(map));
 }
 
@@ -735,6 +738,7 @@ smithy::Outcome<Float16Output> DeserializeFloat16Output(const smithy::Document& 
 
 smithy::Document SerializeFractionalSecondsInput(const FractionalSecondsInput& value) {
   smithy::DocumentMap map;
+  (void)value;
   return smithy::Document(std::move(map));
 }
 
@@ -772,6 +776,7 @@ smithy::Outcome<FractionalSecondsOutput> DeserializeFractionalSecondsOutput(cons
 
 smithy::Document SerializeGreetingWithErrorsInput(const GreetingWithErrorsInput& value) {
   smithy::DocumentMap map;
+  (void)value;
   return smithy::Document(std::move(map));
 }
 
@@ -829,6 +834,7 @@ smithy::Outcome<InvalidGreeting> DeserializeInvalidGreeting(const smithy::Docume
 
 smithy::Document SerializeNoInputOutputInput(const NoInputOutputInput& value) {
   smithy::DocumentMap map;
+  (void)value;
   return smithy::Document(std::move(map));
 }
 
@@ -840,6 +846,7 @@ smithy::Outcome<NoInputOutputInput> DeserializeNoInputOutputInput(const smithy::
 
 smithy::Document SerializeNoInputOutputOutput(const NoInputOutputOutput& value) {
   smithy::DocumentMap map;
+  (void)value;
   return smithy::Document(std::move(map));
 }
 

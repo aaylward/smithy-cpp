@@ -40,7 +40,9 @@ struct ParsedError {
   smithy::Document doc;
 };
 
-ParsedError ParseError(const smithy::http::HttpResponse& response) {
+// [[maybe_unused]]: only unary response paths parse wire errors; a
+// service whose operations all stream never calls this.
+[[maybe_unused]] ParsedError ParseError(const smithy::http::HttpResponse& response) {
   ParsedError parsed;
   parsed.status = response.status;
   parsed.message = "HTTP " + std::to_string(response.status);

@@ -29,8 +29,8 @@ mirror `.github/workflows/ci.yml`, one target per job. The underlying
 commands:
 
 ```sh
-# C++ runtime: build + run all tests
-bazel test //...
+# C++ runtime: build + run all tests, warnings-as-errors like CI
+bazel test //... --config=werror
 
 # With sanitizers (clang recommended: CC=clang CXX=clang++)
 bazel test //... --config=asan --config=ubsan
@@ -38,6 +38,15 @@ bazel test //... --config=asan --config=ubsan
 # Codegen: build + unit tests + format check
 cd codegen && gradle build spotlessCheck
 ```
+
+Every first-party target compiles at `-Wall -Wextra` (`bazel/copts.bzl`;
+the generated modules' BUILD files and the `bazel/defs.bzl` macros carry the
+same flags). `--config=werror` — implied by CI's `--config=ci`, in the main
+module and `examples/bazel-consumer` both — promotes those warnings to
+errors for first-party code only, via a `--per_file_copt` label filter that
+leaves external deps (boost, boringssl, zlib, ...) untouched, so warnings
+gate every PR without a hard-coded `-Werror` ever reaching consumers
+(issue #65).
 
 The Java suite asserts on generated-source substrings; the compile-the-output
 harness under `codegen/compile-tests/` is what proves hostile-but-legal models

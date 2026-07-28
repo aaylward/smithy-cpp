@@ -72,7 +72,7 @@ TEST(JsonTest, RejectsMalformedText) {
 // server). Invalid sequences become U+FFFD and the output stays valid JSON
 // that round-trips.
 TEST(JsonTest, EncodeReplacesInvalidUtf8InsteadOfThrowing) {
-  for (const std::string raw : {
+  for (const std::string& raw : {
            std::string("\xe1"),        // lone 3-byte lead
            std::string("\xff\xfe"),    // never-valid bytes
            std::string("a\x80\x80z"),  // stray continuation bytes

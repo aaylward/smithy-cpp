@@ -6,6 +6,10 @@ cc_test(
     name = "smoke_test",
     size = "small",
     srcs = ["smoke_test.cc"],
+    copts = [
+        "-Wall",
+        "-Wextra",
+    ],
     deps = [
         "//protocol-tests/simplerestjson/generated:client",
         "//protocol-tests/simplerestjson/generated:server",
@@ -19,6 +23,10 @@ cc_test(
     name = "request_tests",
     size = "small",
     srcs = ["request_tests.cc"],
+    copts = [
+        "-Wall",
+        "-Wextra",
+    ],
     deps = [
         "//protocol-tests/simplerestjson/generated:client",
         "//runtime:protocol_test_support",
@@ -30,6 +38,10 @@ cc_test(
     name = "response_tests",
     size = "small",
     srcs = ["response_tests.cc"],
+    copts = [
+        "-Wall",
+        "-Wextra",
+    ],
     deps = [
         "//protocol-tests/simplerestjson/generated:client",
         "//runtime:protocol_test_support",
@@ -41,6 +53,10 @@ cc_test(
     name = "server_request_tests",
     size = "small",
     srcs = ["server_request_tests.cc"],
+    copts = [
+        "-Wall",
+        "-Wextra",
+    ],
     deps = [
         "//protocol-tests/simplerestjson/generated:client",
         "//protocol-tests/simplerestjson/generated:server",
@@ -53,6 +69,10 @@ cc_test(
     name = "server_response_tests",
     size = "small",
     srcs = ["server_response_tests.cc"],
+    copts = [
+        "-Wall",
+        "-Wextra",
+    ],
     deps = [
         "//protocol-tests/simplerestjson/generated:client",
         "//protocol-tests/simplerestjson/generated:server",

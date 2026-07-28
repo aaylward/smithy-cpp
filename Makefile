@@ -20,9 +20,11 @@ verify: test codegen goldens lint
 verify-full: verify sanitize fuzz-smoke consumer tidy
 	@echo "verify-full: OK"
 
+# --config=werror mirrors the CI gate (build:ci implies it): first-party
+# warnings are errors; external deps are exempt (see .bazelrc).
 .PHONY: test
 test:
-	$(BAZEL) test //...
+	$(BAZEL) test //... --config=werror
 
 .PHONY: codegen
 codegen:
@@ -50,7 +52,7 @@ tidy:
 
 .PHONY: sanitize
 sanitize:
-	CC=clang CXX=clang++ $(BAZEL) test //... --config=asan --config=ubsan
+	CC=clang CXX=clang++ $(BAZEL) test //... --config=asan --config=ubsan --config=werror
 
 .PHONY: fuzz-smoke
 fuzz-smoke:
@@ -62,7 +64,7 @@ fuzz-smoke:
 
 .PHONY: consumer
 consumer:
-	cd examples/bazel-consumer && $(BAZEL) test //... && ./model-evolution-check.sh
+	cd examples/bazel-consumer && $(BAZEL) test //... --config=werror && ./model-evolution-check.sh
 
 # Line coverage for the runtime; the combined lcov report path prints at the
 # end (render with genhtml, or read the CI job's artifact).

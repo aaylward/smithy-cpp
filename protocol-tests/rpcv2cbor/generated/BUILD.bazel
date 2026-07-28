@@ -7,6 +7,10 @@ package(default_visibility = ["//visibility:public"])
 cc_library(
     name = "types",
     hdrs = ["include/smithy/protocoltests/rpcv2cbor/types.h"],
+    copts = [
+        "-Wall",
+        "-Wextra",
+    ],
     includes = ["include"],
     deps = ["//runtime:core"],
 )
@@ -15,6 +19,10 @@ cc_library(
     name = "serde",
     srcs = ["src/serde.cc"],
     hdrs = ["include/smithy/protocoltests/rpcv2cbor/serde.h"],
+    copts = [
+        "-Wall",
+        "-Wextra",
+    ],
     includes = ["include"],
     deps = [
         ":types",
@@ -26,6 +34,10 @@ cc_library(
     name = "client",
     srcs = ["src/client.cc"],
     hdrs = ["include/smithy/protocoltests/rpcv2cbor/client.h"],
+    copts = [
+        "-Wall",
+        "-Wextra",
+    ],
     includes = ["include"],
     deps = [
         ":serde",
@@ -41,6 +53,10 @@ cc_library(
     name = "server",
     srcs = ["src/server.cc"],
     hdrs = ["include/smithy/protocoltests/rpcv2cbor/server.h"],
+    copts = [
+        "-Wall",
+        "-Wextra",
+    ],
     includes = ["include"],
     deps = [
         ":serde",

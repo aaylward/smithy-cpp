@@ -1097,9 +1097,8 @@ smithy::Outcome<RoundTripOutput> DeserializeRoundTripOutput(const smithy::Docume
   return out;
 }
 
-smithy::Document SerializeVersionInput(const VersionInput& value) {
+smithy::Document SerializeVersionInput(const VersionInput& /*value*/) {
   smithy::DocumentMap map;
-  (void)value;
   return smithy::Document(std::move(map));
 }
 

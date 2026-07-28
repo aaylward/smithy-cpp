@@ -348,17 +348,16 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
   public void writeServerRoutes(
       CppWriter w, CppContext context, ServiceShape service, List<OperationShape> operations) {
     boolean anyCompressed = operations.stream().anyMatch(ProtocolSupport::gzipCompressed);
+    // Only the unary dispatch arms consume the context; when every method
+    // streams the table is empty and the parameter stays unnamed (Core
+    // Guidelines F.9) to keep -Wunused-parameter quiet.
     w.openBlock(
         "(void)router_->Add(\"POST\", \"/\", "
             + "[handler](const smithy::http::HttpRequest& $L, "
             + ProtocolSupport.REQUEST_CONTEXT_PARAM
-            + " context) -> smithy::http::HttpResponse {",
-        anyCompressed ? "raw_request" : "request");
-    if (operations.isEmpty()) {
-      // Only the unary dispatch arms consume the context; when every method
-      // streams the table below is empty.
-      w.write("(void)context;");
-    }
+            + " $L) -> smithy::http::HttpResponse {",
+        anyCompressed ? "raw_request" : "request",
+        operations.isEmpty() ? "/*context*/" : "context");
     w.write("smithy::Document id;  // null until the envelope yields one (JSON-RPC 2.0 §5)");
     if (anyCompressed) {
       // The endpoint is shared, so @requestCompression decodes before dispatch

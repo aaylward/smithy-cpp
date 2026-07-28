@@ -28,9 +28,8 @@ smithy::Outcome<DeleteCityInput> DeserializeDeleteCityInput(const smithy::Docume
   return out;
 }
 
-smithy::Document SerializeDeleteCityOutput(const DeleteCityOutput& value) {
+smithy::Document SerializeDeleteCityOutput(const DeleteCityOutput& /*value*/) {
   smithy::DocumentMap map;
-  (void)value;
   return smithy::Document(std::move(map));
 }
 
@@ -320,9 +319,8 @@ smithy::Outcome<ListCitiesOutput> DeserializeListCitiesOutput(const smithy::Docu
   return out;
 }
 
-smithy::Document SerializeGetCurrentTimeInput(const GetCurrentTimeInput& value) {
+smithy::Document SerializeGetCurrentTimeInput(const GetCurrentTimeInput& /*value*/) {
   smithy::DocumentMap map;
-  (void)value;
   return smithy::Document(std::move(map));
 }
 

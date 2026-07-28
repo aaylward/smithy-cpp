@@ -138,13 +138,12 @@ final class SerdeGenerator {
     String suffix = SerdeCodeGen.serdeFunctionSuffix(context, shape);
     String type = valueType(shape);
 
-    w.openBlock("smithy::Document Serialize$L(const $L& value) {", suffix, type);
+    // A memberless structure serializes to the empty map without reading the
+    // value; the parameter stays unnamed (Core Guidelines F.9) so the function
+    // is clean under -Wextra's -Wunused-parameter.
+    String valueParam = shape.members().isEmpty() ? "/*value*/" : "value";
+    w.openBlock("smithy::Document Serialize$L(const $L& $L) {", suffix, type, valueParam);
     w.write("smithy::DocumentMap map;");
-    if (shape.members().isEmpty()) {
-      // A memberless structure serializes to the empty map; the cast keeps the
-      // unused parameter warning-free (-Wextra's -Wunused-parameter).
-      w.write("(void)value;");
-    }
     for (MemberShape member : shape.members()) {
       serde.writeMemberSerialize(w, member, "value", "map");
     }

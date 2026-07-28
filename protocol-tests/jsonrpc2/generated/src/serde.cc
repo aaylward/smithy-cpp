@@ -514,9 +514,8 @@ smithy::Outcome<StreamAbort> DeserializeStreamAbort(const smithy::Document& doc)
   return out;
 }
 
-smithy::Document SerializeNoArgsInput(const NoArgsInput& value) {
+smithy::Document SerializeNoArgsInput(const NoArgsInput& /*value*/) {
   smithy::DocumentMap map;
-  (void)value;
   return smithy::Document(std::move(map));
 }
 
@@ -526,9 +525,8 @@ smithy::Outcome<NoArgsInput> DeserializeNoArgsInput(const smithy::Document& doc)
   return out;
 }
 
-smithy::Document SerializeNoArgsOutput(const NoArgsOutput& value) {
+smithy::Document SerializeNoArgsOutput(const NoArgsOutput& /*value*/) {
   smithy::DocumentMap map;
-  (void)value;
   return smithy::Document(std::move(map));
 }
 

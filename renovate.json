@@ -40,5 +40,18 @@
       ],
       "groupName": "boost modules"
     }
+  ],
+  "customManagers": [
+    {
+      "description": "docs/quickstart.md embeds the consumer example's MODULE.bazel snippet, and QuickstartMirrorTest fails the codegen CI leg whenever the two drift \u2014 so the doc's bazel_dep lines version-bump together with the real files.",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^docs/quickstart\\.md$/"
+      ],
+      "matchStrings": [
+        "bazel_dep\\(name = \"(?<depName>[^\"]+)\", version = \"(?<currentValue>[^\"]+)\"\\)"
+      ],
+      "datasourceTemplate": "bazel"
+    }
   ]
 }

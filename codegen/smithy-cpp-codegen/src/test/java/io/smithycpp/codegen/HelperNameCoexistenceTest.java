@@ -7,11 +7,16 @@ import org.junit.jupiter.api.Test;
 import software.amazon.smithy.build.MockManifest;
 
 /**
- * Pins the resolution of issue #64's last item: per-operation helpers stay out of the serde
- * functions' Serialize/Deserialize&lt;Shape&gt; naming pattern (Parse&lt;Op&gt;Error,
- * Build&lt;Op&gt;Response), so a shape named after an operation coexists with the helpers instead
- * of being hidden by them (C++ name hiding) — models #69's guard used to reject now generate, and
- * the guard is gone. Each test uses the model shape that actually materialized the hiding: a
+ * Pins the two structural answers to C++ name hiding between model types and generated file-local
+ * helpers. Issue #64's renames keep per-operation helpers out of the serde functions'
+ * Serialize/Deserialize&lt;Shape&gt; naming pattern (Parse&lt;Op&gt;Error,
+ * Build&lt;Op&gt;Response), so a shape named after an operation coexists with the helpers — models
+ * #69's guard used to reject now generate. Issue #71's helpers namespace covers the complementary
+ * direction those renames can't: every helper lives in {@code helpers::} (nested in the anonymous
+ * namespace) and helper code references model types as {@code types::X}, so a shape named exactly
+ * like a helper coexists too — the compile gauntlet's Shadow operation compiles that closure for
+ * every protocol, and {@link #shapeNamedAfterAHelperCoexistsWithTheHelper} pins the generation
+ * shape here. Each #64 test uses the model shape that actually materialized the hiding: a
  * same-named serde call inside the file that declares the helper.
  */
 class HelperNameCoexistenceTest {
@@ -81,6 +86,47 @@ class HelperNameCoexistenceTest {
   }
 
   @Test
+  void shapeNamedAfterAHelperCoexistsWithTheHelper() {
+    // GenericError is a fixed client.cc helper AND, here, a modeled error
+    // shape. The helpers namespace keeps both alive: the helper is declared
+    // inside helpers::, calls to it are helpers::-qualified, and the type is
+    // referenced as types::GenericError where helper code needs it.
+    String model =
+        """
+        $version: "2.0"
+        namespace test.coexist
+        use smithy.cpp.protocols#jsonRpc2
+
+        @jsonRpc2
+        service Svc { version: "1", operations: [Get] }
+        operation Get {
+            input := { name: String }
+            errors: [GenericError]
+        }
+
+        @error("client")
+        structure GenericError {
+            message: String
+        }
+        """;
+    MockManifest manifest = PluginTestHarness.generate(model, "test.coexist#Svc", "test::coexist");
+    String client = manifest.expectFileString("/src/client.cc");
+    assertTrue(client.contains("namespace helpers {"), client);
+    // The helper's fallback return and the same-named error's factory both
+    // resolve through qualified calls.
+    assertTrue(client.contains("return helpers::GenericError(std::move(parsed));"), client);
+    assertTrue(
+        client.contains(
+            "if (parsed.code == \"GenericError\") return helpers::MakeGenericErrorError("),
+        client);
+    // The mirror direction: helper code references the TYPE through the types
+    // alias, which only files that need it carry.
+    String server = manifest.expectFileString("/src/server.cc");
+    assertTrue(server.contains("namespace types = ::test::coexist;"), server);
+    assertTrue(server.contains("error.detail<types::GenericError>()"), server);
+  }
+
+  @Test
   void errorLessOperationsSkipTheErrorParserAndFallBackToGenericError() {
     // Parse<Op>Error only exists for operations that declare errors; an
     // error-less operation's body returns GenericError(ParseError(...))
@@ -98,6 +144,6 @@ class HelperNameCoexistenceTest {
     MockManifest manifest = PluginTestHarness.generate(model, "test.coexist#Svc", "test::coexist");
     String client = manifest.expectFileString("/src/client.cc");
     assertFalse(client.contains("ParseGetError"), client);
-    assertTrue(client.contains("GenericError(ParseError(*response))"), client);
+    assertTrue(client.contains("helpers::GenericError(helpers::ParseError(*response))"), client);
   }
 }

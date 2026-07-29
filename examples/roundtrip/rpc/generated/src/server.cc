@@ -17,7 +17,10 @@
 
 namespace example::roundtrip::rpc {
 
+namespace types = ::example::roundtrip::rpc;
+
 namespace {
+namespace helpers {
 
 smithy::http::HttpResponse CborError(int status, const std::string& code, const std::string& message, smithy::DocumentMap body) {
   if (!code.empty()) body.insert_or_assign("__type", smithy::Document(code));
@@ -36,7 +39,7 @@ smithy::http::HttpResponse CborError(int status, const std::string& code, const 
   if (error.kind() == smithy::ErrorKind::kModeled) {
     if (error.code() == "SinkNotFound") {
       smithy::DocumentMap body;
-      if (const auto* detail = error.detail<SinkNotFound>()) {
+      if (const auto* detail = error.detail<types::SinkNotFound>()) {
         body = SerializeSinkNotFound(*detail).as_map();
       }
       // The typed detail's own message member wins over the generic one.
@@ -44,11 +47,11 @@ smithy::http::HttpResponse CborError(int status, const std::string& code, const 
       if (!has_message && !error.message().empty()) {
         body.emplace("message", smithy::Document(error.message()));
       }
-      return CborError(404, "example.roundtrip#SinkNotFound", "", std::move(body));
+      return helpers::CborError(404, "example.roundtrip#SinkNotFound", "", std::move(body));
     }
     if (error.code() == "SinkQuotaExceeded") {
       smithy::DocumentMap body;
-      if (const auto* detail = error.detail<SinkQuotaExceeded>()) {
+      if (const auto* detail = error.detail<types::SinkQuotaExceeded>()) {
         body = SerializeSinkQuotaExceeded(*detail).as_map();
       }
       // The typed detail's own message member wins over the generic one.
@@ -56,13 +59,13 @@ smithy::http::HttpResponse CborError(int status, const std::string& code, const 
       if (!has_message && !error.message().empty()) {
         body.emplace("message", smithy::Document(error.message()));
       }
-      return CborError(503, "example.roundtrip#SinkQuotaExceeded", "", std::move(body));
+      return helpers::CborError(503, "example.roundtrip#SinkQuotaExceeded", "", std::move(body));
     }
-    return CborError(400, error.code(), error.message(), {});
+    return helpers::CborError(400, error.code(), error.message(), {});
   }
-  if (error.kind() == smithy::ErrorKind::kValidation || error.kind() == smithy::ErrorKind::kSerialization) return CborError(400, "SerializationException", error.message(), {});
+  if (error.kind() == smithy::ErrorKind::kValidation || error.kind() == smithy::ErrorKind::kSerialization) return helpers::CborError(400, "SerializationException", error.message(), {});
   // Never leak internal detail on unexpected failures.
-  return CborError(500, "InternalFailure", "internal failure", {});
+  return helpers::CborError(500, "InternalFailure", "internal failure", {});
 }
 
 // Constraint validation (smithy.framework#ValidationException): messages
@@ -71,11 +74,11 @@ void AddValidationFailure(std::vector<smithy::server::ValidationFailure>* failur
   failures->push_back({std::move(path), std::move(message)});
 }
 
-void ValidateKitchenSink(const KitchenSink& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
+void ValidateKitchenSink(const types::KitchenSink& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
   if (value.priority.has_value()) {
     const std::string member_path = path + "/priority";
     if ((*value.priority).value() == Priority::Value::kUnknown) {
-      AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy enum value set: [low, medium, high]");
+      helpers::AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy enum value set: [low, medium, high]");
     }
   }
   if (value.uniqueNames.has_value()) {
@@ -88,16 +91,16 @@ void ValidateKitchenSink(const KitchenSink& value, const std::string& path, std:
         }
       }
       if (!unique) {
-        AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must have unique values");
+        helpers::AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must have unique values");
       }
     }
   }
 }
 
-void ValidatePutSinkRpcInput(const PutSinkRpcInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
+void ValidatePutSinkRpcInput(const types::PutSinkRpcInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
   if (value.sink.has_value()) {
     const std::string member_path = path + "/sink";
-    ValidateKitchenSink((*value.sink), member_path, failures);
+    helpers::ValidateKitchenSink((*value.sink), member_path, failures);
   }
 }
 
@@ -116,10 +119,11 @@ void ValidatePutSinkRpcInput(const PutSinkRpcInput& value, const std::string& pa
   }
   smithy::DocumentMap body;
   body.emplace("fieldList", smithy::Document(std::move(field_list)));
-  smithy::http::HttpResponse response = CborError(400, "smithy.framework#ValidationException", summary, std::move(body));
+  smithy::http::HttpResponse response = helpers::CborError(400, "smithy.framework#ValidationException", summary, std::move(body));
   return response;
 }
 
+}  // namespace helpers
 }  // namespace
 
 RoundTripRpcServer::RoundTripRpcServer(std::shared_ptr<RoundTripRpcHandler> handler)
@@ -129,16 +133,16 @@ RoundTripRpcServer::RoundTripRpcServer(std::shared_ptr<RoundTripRpcHandler> hand
   // later phase), so registration results are intentionally discarded.
   (void)router_->Add("POST", "/service/RoundTripRpc/operation/Ping", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
-      return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
+      return helpers::CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
     }
     // Content-Type validation per the rpcv2Cbor spec: a present header must
     // carry application/cbor (parameters ignored); 415 otherwise.
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/cbor") {
-      return CborError(415, "UnsupportedMediaTypeException", "expected content-type: application/cbor", {});
+      return helpers::CborError(415, "UnsupportedMediaTypeException", "expected content-type: application/cbor", {});
     }
     PingInput input{};
     auto outcome = handler->Ping(input, context);
-    if (!outcome) return ErrorToResponse(outcome.error());
+    if (!outcome) return helpers::ErrorToResponse(outcome.error());
     smithy::http::HttpResponse response;
     response.headers.Set("smithy-protocol", "rpc-v2-cbor");
     response.headers.Set("content-type", "application/cbor");
@@ -151,34 +155,34 @@ RoundTripRpcServer::RoundTripRpcServer(std::shared_ptr<RoundTripRpcHandler> hand
     if (const auto request_encoding = request.headers.Get("content-encoding"); request_encoding.has_value() && (*request_encoding == "gzip" || request_encoding->ends_with(", gzip"))) {
       auto decompressed = smithy::GzipDecompress(request.body);
       if (!decompressed) {
-        return CborError(400, "SerializationException", "invalid gzip request body", {});
+        return helpers::CborError(400, "SerializationException", "invalid gzip request body", {});
       }
       request.body = *std::move(decompressed);
     }
     if (request.headers.Get("smithy-protocol").value_or("") != "rpc-v2-cbor") {
-      return CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
+      return helpers::CborError(400, "SerializationException", "expected smithy-protocol: rpc-v2-cbor", {});
     }
     // Content-Type validation per the rpcv2Cbor spec: a present header must
     // carry application/cbor (parameters ignored); 415 otherwise.
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/cbor") {
-      return CborError(415, "UnsupportedMediaTypeException", "expected content-type: application/cbor", {});
+      return helpers::CborError(415, "UnsupportedMediaTypeException", "expected content-type: application/cbor", {});
     }
     PutSinkRpcInput input{};
     // An absent body deserializes like an empty CBOR map.
     smithy::Document body_doc{smithy::DocumentMap{}};
     if (!request.body.empty()) {
       auto decoded = smithy::cbor::Decode(smithy::Blob::FromString(request.body));
-      if (!decoded) return CborError(400, "SerializationException", decoded.error().message(), {});
+      if (!decoded) return helpers::CborError(400, "SerializationException", decoded.error().message(), {});
       body_doc = *std::move(decoded);
     }
     auto parsed = DeserializePutSinkRpcInput(body_doc);
-    if (!parsed) return CborError(400, "SerializationException", parsed.error().message(), {});
+    if (!parsed) return helpers::CborError(400, "SerializationException", parsed.error().message(), {});
     input = *std::move(parsed);
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    ValidatePutSinkRpcInput(input, "", &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
+    helpers::ValidatePutSinkRpcInput(input, "", &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
     auto outcome = handler->PutSinkRpc(input, context);
-    if (!outcome) return ErrorToResponse(outcome.error());
+    if (!outcome) return helpers::ErrorToResponse(outcome.error());
     smithy::http::HttpResponse response;
     response.headers.Set("smithy-protocol", "rpc-v2-cbor");
     response.headers.Set("content-type", "application/cbor");

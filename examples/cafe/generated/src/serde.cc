@@ -8,6 +8,8 @@
 
 namespace example::cafe {
 
+namespace types = ::example::cafe;
+
 smithy::Document SerializeAlternativeMilk(const AlternativeMilk& value) {
   smithy::DocumentMap map;
   map.emplace("kind", smithy::Document(value.kind));
@@ -187,7 +189,7 @@ smithy::Outcome<GetOrderOutput> DeserializeGetOrderOutput(const smithy::Document
       return smithy::Error::Serialization("GetOrderOutput: missing required member: coffeeType");
     }
     if (!member->is_string()) return smithy::Error::Serialization("GetOrderOutput.coffeeType: unexpected type on the wire");
-    out.coffeeType = CoffeeType::FromString(member->as_string());
+    out.coffeeType = types::CoffeeType::FromString(member->as_string());
   }
   {
     const smithy::Document* member = doc.Find("status");
@@ -310,12 +312,12 @@ smithy::Outcome<OrderCoffeeInput> DeserializeOrderCoffeeInput(const smithy::Docu
       return smithy::Error::Serialization("OrderCoffeeInput: missing required member: coffeeType");
     }
     if (!member->is_string()) return smithy::Error::Serialization("OrderCoffeeInput.coffeeType: unexpected type on the wire");
-    out.coffeeType = CoffeeType::FromString(member->as_string());
+    out.coffeeType = types::CoffeeType::FromString(member->as_string());
   }
   {
     const smithy::Document* member = doc.Find("milk");
     if (member != nullptr && !member->is_null()) {
-      MilkOption parsed_member{};
+      types::MilkOption parsed_member{};
       {
         auto parsed = DeserializeMilkOption(*member);
         if (!parsed) return std::move(parsed).error();

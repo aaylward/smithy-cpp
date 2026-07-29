@@ -25,7 +25,10 @@
 
 namespace example::roundtrip::rest {
 
+namespace types = ::example::roundtrip::rest;
+
 namespace {
+namespace helpers {
 
 // The error shape name arrives namespaced ("ns#Shape") and possibly
 // URI-qualified; modeled error codes keep only the shape name.
@@ -51,11 +54,11 @@ struct ParsedError {
   auto doc = smithy::json::Decode(response.body);
   if (doc.ok()) parsed.doc = *std::move(doc);
   const auto type_header = response.headers.Get("x-error-type");
-  if (type_header.has_value()) parsed.code = SanitizeErrorCode(*type_header);
+  if (type_header.has_value()) parsed.code = helpers::SanitizeErrorCode(*type_header);
   if (parsed.doc.is_map()) {
     const smithy::Document* type = parsed.doc.Find("__type");
     if (type == nullptr) type = parsed.doc.Find("code");
-    if (parsed.code == "UnknownError" && type != nullptr && type->is_string()) parsed.code = SanitizeErrorCode(type->as_string());
+    if (parsed.code == "UnknownError" && type != nullptr && type->is_string()) parsed.code = helpers::SanitizeErrorCode(type->as_string());
     const smithy::Document* text = parsed.doc.Find("message");
     if (text != nullptr && text->is_string()) parsed.message = text->as_string();
   }
@@ -131,7 +134,7 @@ smithy::Error MakeSinkQuotaExceededError(const smithy::http::HttpResponse& respo
   smithy::Error error = smithy::Error::Modeled("SinkQuotaExceeded", std::move(parsed.message), retryable);
   if (!parsed.doc.is_map()) parsed.doc = smithy::Document(smithy::DocumentMap{});
   if (const auto header_value = response.headers.Get("x-retry-after-seconds"); header_value.has_value()) {
-    if (auto parsed_num = ParseInt64Text(*header_value, -2147483648LL, 2147483647LL)) parsed.doc.as_map().insert_or_assign("retryAfterSeconds", smithy::Document(*parsed_num));
+    if (auto parsed_num = helpers::ParseInt64Text(*header_value, -2147483648LL, 2147483647LL)) parsed.doc.as_map().insert_or_assign("retryAfterSeconds", smithy::Document(*parsed_num));
   }
   auto detail = DeserializeSinkQuotaExceeded(parsed.doc);
   if (detail.ok()) {
@@ -141,30 +144,31 @@ smithy::Error MakeSinkQuotaExceededError(const smithy::http::HttpResponse& respo
 }
 
 smithy::Error ParseDescribeSinkError(const smithy::http::HttpResponse& response) {
-  ParsedError parsed = ParseError(response);
-  if (parsed.code == "DescribeSinkError") return MakeDescribeSinkErrorError(response, std::move(parsed));
-  if (parsed.code == "SinkNotFound") return MakeSinkNotFoundError(response, std::move(parsed));
-  if (parsed.code == "UnknownError" && parsed.status == 404) return MakeSinkNotFoundError(response, std::move(parsed));
-  if (parsed.code == "UnknownError" && parsed.status == 410) return MakeDescribeSinkErrorError(response, std::move(parsed));
-  return GenericError(std::move(parsed));
+  ParsedError parsed = helpers::ParseError(response);
+  if (parsed.code == "DescribeSinkError") return helpers::MakeDescribeSinkErrorError(response, std::move(parsed));
+  if (parsed.code == "SinkNotFound") return helpers::MakeSinkNotFoundError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 404) return helpers::MakeSinkNotFoundError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 410) return helpers::MakeDescribeSinkErrorError(response, std::move(parsed));
+  return helpers::GenericError(std::move(parsed));
 }
 
 smithy::Error ParsePutSinkError(const smithy::http::HttpResponse& response) {
-  ParsedError parsed = ParseError(response);
-  if (parsed.code == "SinkNotFound") return MakeSinkNotFoundError(response, std::move(parsed));
-  if (parsed.code == "SinkQuotaExceeded") return MakeSinkQuotaExceededError(response, std::move(parsed));
-  if (parsed.code == "UnknownError" && parsed.status == 404) return MakeSinkNotFoundError(response, std::move(parsed));
-  if (parsed.code == "UnknownError" && parsed.status == 503) return MakeSinkQuotaExceededError(response, std::move(parsed));
-  return GenericError(std::move(parsed));
+  ParsedError parsed = helpers::ParseError(response);
+  if (parsed.code == "SinkNotFound") return helpers::MakeSinkNotFoundError(response, std::move(parsed));
+  if (parsed.code == "SinkQuotaExceeded") return helpers::MakeSinkQuotaExceededError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 404) return helpers::MakeSinkNotFoundError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 503) return helpers::MakeSinkQuotaExceededError(response, std::move(parsed));
+  return helpers::GenericError(std::move(parsed));
 }
 
 smithy::Error ParseUploadAttachmentError(const smithy::http::HttpResponse& response) {
-  ParsedError parsed = ParseError(response);
-  if (parsed.code == "SinkNotFound") return MakeSinkNotFoundError(response, std::move(parsed));
-  if (parsed.code == "UnknownError" && parsed.status == 404) return MakeSinkNotFoundError(response, std::move(parsed));
-  return GenericError(std::move(parsed));
+  ParsedError parsed = helpers::ParseError(response);
+  if (parsed.code == "SinkNotFound") return helpers::MakeSinkNotFoundError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 404) return helpers::MakeSinkNotFoundError(response, std::move(parsed));
+  return helpers::GenericError(std::move(parsed));
 }
 
+}  // namespace helpers
 }  // namespace
 
 smithy::Outcome<RoundTripRestClient> RoundTripRestClient::Create(smithy::ClientConfig config) {
@@ -219,7 +223,7 @@ smithy::Outcome<DescribeSinkOutput> RoundTripRestClient::DescribeSink(const Desc
   request.target = std::move(target);
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return ParseDescribeSinkError(*response);
+  if (response->status != 200) return helpers::ParseDescribeSinkError(*response);
   if (response->body.empty()) return DescribeSinkOutput{};
   auto body_doc = smithy::json::Decode(response->body);
   if (!body_doc) return std::move(body_doc).error();
@@ -268,7 +272,7 @@ smithy::Outcome<PutSinkOutput> RoundTripRestClient::PutSink(const PutSinkInput& 
   }
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return ParsePutSinkError(*response);
+  if (response->status != 200) return helpers::ParsePutSinkError(*response);
   PutSinkOutput out{};
   auto body_doc = smithy::json::Decode(response->body);
   if (!body_doc) return std::move(body_doc).error();
@@ -276,7 +280,7 @@ smithy::Outcome<PutSinkOutput> RoundTripRestClient::PutSink(const PutSinkInput& 
   if (!parsed) return std::move(parsed).error();
   out = *std::move(parsed);
   if (const auto header_value = response->headers.Get("x-sink-revision"); header_value.has_value()) {
-    auto parsed_num = ParseInt64Text((*header_value), -2147483648LL, 2147483647LL);
+    auto parsed_num = helpers::ParseInt64Text((*header_value), -2147483648LL, 2147483647LL);
     if (!parsed_num) return std::move(parsed_num).error();
     out.revision = static_cast<std::int32_t>(*parsed_num);
   }
@@ -307,14 +311,14 @@ smithy::Outcome<UploadAttachmentOutput> RoundTripRestClient::UploadAttachment(co
   request.headers.Set("accept", "application/json");
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return ParseUploadAttachmentError(*response);
+  if (response->status != 200) return helpers::ParseUploadAttachmentError(*response);
   UploadAttachmentOutput out{};
   if (!response->body.empty()) {
     auto payload_doc = smithy::json::Decode(response->body);
     if (!payload_doc) return std::move(payload_doc).error();
     const smithy::Document* payload_ptr = &*payload_doc;
     if (!payload_ptr->is_map() || !payload_ptr->as_map().empty()) {
-      Receipt parsed_payload{};
+      types::Receipt parsed_payload{};
       {
         auto parsed = DeserializeReceipt(*payload_ptr);
         if (!parsed) return std::move(parsed).error();

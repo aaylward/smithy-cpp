@@ -112,6 +112,34 @@ class CppSymbolProviderTest {
   }
 
   @Test
+  void escapesTheGeneratedFileLevelIdentifiersOnTypesOnly() {
+    // Generated .cc files claim `helpers` (the file-local helper namespace)
+    // and `types` (the model-type alias), so a TYPE with either name gets the
+    // keyword treatment — while members keep the plain spelling, since member
+    // access never collides with a namespace (issue #71).
+    Model m =
+        model(
+            """
+            structure helpers {
+                helpers: String
+            }
+            structure types {
+                types: String
+            }
+            """);
+    CppSymbolProvider symbols = provider(m);
+    assertEquals(
+        "helpers_", symbols.declaredName(m.expectShape(ShapeId.from("test.smithy#helpers"))));
+    assertEquals("types_", symbols.declaredName(m.expectShape(ShapeId.from("test.smithy#types"))));
+    MemberShape helpersMember =
+        m.expectShape(ShapeId.from("test.smithy#helpers$helpers")).asMemberShape().orElseThrow();
+    assertEquals("helpers", symbols.toMemberName(helpersMember));
+    MemberShape typesMember =
+        m.expectShape(ShapeId.from("test.smithy#types$types")).asMemberShape().orElseThrow();
+    assertEquals("types", symbols.toMemberName(typesMember));
+  }
+
+  @Test
   void rejectsUnsupportedShapesWithClearMessage() {
     Model m = model("bigDecimal Money");
     CodegenException error =

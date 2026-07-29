@@ -8,6 +8,8 @@
 
 namespace example::chat {
 
+namespace types = ::example::chat;
+
 smithy::Document SerializeLeaveNotice(const LeaveNotice& value) {
   smithy::DocumentMap map;
   if (value.reason.has_value()) {
@@ -133,7 +135,7 @@ smithy::Outcome<ConverseInput> DeserializeConverseInput(const smithy::Document& 
   {
     const smithy::Document* member = doc.Find("events");
     if (member != nullptr && !member->is_null()) {
-      ChatEvents parsed_member{};
+      types::ChatEvents parsed_member{};
       {
         auto parsed = DeserializeChatEvents(*member);
         if (!parsed) return std::move(parsed).error();
@@ -246,7 +248,7 @@ smithy::Outcome<ConverseOutput> DeserializeConverseOutput(const smithy::Document
   {
     const smithy::Document* member = doc.Find("events");
     if (member != nullptr && !member->is_null()) {
-      RoomEvents parsed_member{};
+      types::RoomEvents parsed_member{};
       {
         auto parsed = DeserializeRoomEvents(*member);
         if (!parsed) return std::move(parsed).error();
@@ -415,7 +417,7 @@ smithy::Outcome<WatchOutput> DeserializeWatchOutput(const smithy::Document& doc)
   {
     const smithy::Document* member = doc.Find("events");
     if (member != nullptr && !member->is_null()) {
-      RoomEvents parsed_member{};
+      types::RoomEvents parsed_member{};
       {
         auto parsed = DeserializeRoomEvents(*member);
         if (!parsed) return std::move(parsed).error();

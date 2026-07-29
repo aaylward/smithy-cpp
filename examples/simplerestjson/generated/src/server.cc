@@ -25,7 +25,10 @@
 
 namespace example::bookstore {
 
+namespace types = ::example::bookstore;
+
 namespace {
+namespace helpers {
 
 // Strict text parsing for label/query/header bindings ([[maybe_unused]]:
 // emitted for every service; not every service binds numeric values).
@@ -78,7 +81,7 @@ smithy::http::HttpResponse JsonError(int status, const std::string& code, const 
   if (error.kind() == smithy::ErrorKind::kModeled) {
     if (error.code() == "BookNotFound") {
       smithy::DocumentMap body;
-      if (const auto* detail = error.detail<BookNotFound>()) {
+      if (const auto* detail = error.detail<types::BookNotFound>()) {
         body = SerializeBookNotFound(*detail).as_map();
       }
       // The typed detail's own message member wins over the generic one.
@@ -86,20 +89,20 @@ smithy::http::HttpResponse JsonError(int status, const std::string& code, const 
       if (!has_message && !error.message().empty()) {
         body.emplace("message", smithy::Document(error.message()));
       }
-      auto response = JsonError(404, "", "", std::move(body));
+      auto response = helpers::JsonError(404, "", "", std::move(body));
       response.headers.Set("x-error-type", error.code());
       for (const auto& [name, value] : header_values) response.headers.Set(name, value);
       return response;
     }
-    return JsonError(400, error.code(), error.message(), {});
+    return helpers::JsonError(400, error.code(), error.message(), {});
   }
   if (error.kind() == smithy::ErrorKind::kValidation || error.kind() == smithy::ErrorKind::kSerialization) {
-    auto response = JsonError(400, "", error.message(), {});
+    auto response = helpers::JsonError(400, "", error.message(), {});
     response.headers.Set("x-error-type", "SerializationException");
     return response;
   }
   // Never leak internal detail on unexpected failures.
-  return JsonError(500, "InternalFailure", "internal failure", {});
+  return helpers::JsonError(500, "InternalFailure", "internal failure", {});
 }
 
 // Constraint validation (smithy.framework#ValidationException): messages
@@ -123,23 +126,23 @@ void AddValidationFailure(std::vector<smithy::server::ValidationFailure>* failur
   }
   smithy::DocumentMap body;
   body.emplace("fieldList", smithy::Document(std::move(field_list)));
-  smithy::http::HttpResponse response = JsonError(400, "", summary, std::move(body));
+  smithy::http::HttpResponse response = helpers::JsonError(400, "", summary, std::move(body));
   response.headers.Set("x-error-type", "ValidationException");
   return response;
 }
 
-smithy::Outcome<AddBookInput> ParseAddBookInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
+smithy::Outcome<types::AddBookInput> ParseAddBookInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
   (void)request;
   (void)context;
   (void)validation_failures;
-  AddBookInput input{};
+  types::AddBookInput input{};
   auto body_doc = smithy::json::Decode(request.body.empty() ? "{}" : request.body);
   if (!body_doc) return std::move(body_doc).error();
   if (!body_doc->is_map()) return smithy::Error::Serialization("AddBook: expected a JSON object body");
   {
     const smithy::Document* member = body_doc->Find("isbn");
     if (member == nullptr || member->is_null()) {
-      AddValidationFailure(validation_failures, "/isbn", "Value at '/isbn' failed to satisfy constraint: Member must not be null");
+      helpers::AddValidationFailure(validation_failures, "/isbn", "Value at '/isbn' failed to satisfy constraint: Member must not be null");
     } else {
       if (!member->is_string()) return smithy::Error::Serialization("AddBookInput.isbn: unexpected type on the wire");
       input.isbn = member->as_string();
@@ -148,7 +151,7 @@ smithy::Outcome<AddBookInput> ParseAddBookInput(const smithy::http::HttpRequest&
   {
     const smithy::Document* member = body_doc->Find("title");
     if (member == nullptr || member->is_null()) {
-      AddValidationFailure(validation_failures, "/title", "Value at '/title' failed to satisfy constraint: Member must not be null");
+      helpers::AddValidationFailure(validation_failures, "/title", "Value at '/title' failed to satisfy constraint: Member must not be null");
     } else {
       if (!member->is_string()) return smithy::Error::Serialization("AddBookInput.title: unexpected type on the wire");
       input.title = member->as_string();
@@ -157,7 +160,7 @@ smithy::Outcome<AddBookInput> ParseAddBookInput(const smithy::http::HttpRequest&
   return input;
 }
 
-smithy::http::HttpResponse BuildAddBookResponse(const AddBookOutput& output) {
+smithy::http::HttpResponse BuildAddBookResponse(const types::AddBookOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 201;
@@ -169,11 +172,11 @@ smithy::http::HttpResponse BuildAddBookResponse(const AddBookOutput& output) {
   return response;
 }
 
-smithy::Outcome<GetBookInput> ParseGetBookInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
+smithy::Outcome<types::GetBookInput> ParseGetBookInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
   (void)request;
   (void)context;
   (void)validation_failures;
-  GetBookInput input{};
+  types::GetBookInput input{};
   {
     const std::string& label_value = context.labels.at("isbn");
     input.isbn = label_value;
@@ -187,7 +190,7 @@ smithy::Outcome<GetBookInput> ParseGetBookInput(const smithy::http::HttpRequest&
   return input;
 }
 
-smithy::http::HttpResponse BuildGetBookResponse(const GetBookOutput& output) {
+smithy::http::HttpResponse BuildGetBookResponse(const types::GetBookOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -202,6 +205,7 @@ smithy::http::HttpResponse BuildGetBookResponse(const GetBookOutput& output) {
   return response;
 }
 
+}  // namespace helpers
 }  // namespace
 
 BookstoreServer::BookstoreServer(std::shared_ptr<BookstoreHandler> handler)
@@ -215,22 +219,22 @@ BookstoreServer::BookstoreServer(std::shared_ptr<BookstoreHandler> handler)
     // content-type is tolerated, and blob payloads without @mediaType accept
     // any content type / accept.
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
-      auto error_response = JsonError(415, "", "unsupported media type", {});
+      auto error_response = helpers::JsonError(415, "", "unsupported media type", {});
       error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
-      auto error_response = JsonError(406, "", "not acceptable", {});
+      auto error_response = helpers::JsonError(406, "", "not acceptable", {});
       error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    auto input = ParseAddBookInput(request, context, &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    if (!input) return ErrorToResponse(input.error());
+    auto input = helpers::ParseAddBookInput(request, context, &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
+    if (!input) return helpers::ErrorToResponse(input.error());
     auto outcome = handler->AddBook(*input, context);
-    if (!outcome) return ErrorToResponse(outcome.error());
-    return BuildAddBookResponse(*outcome);
+    if (!outcome) return helpers::ErrorToResponse(outcome.error());
+    return helpers::BuildAddBookResponse(*outcome);
   }, "AddBook");
   (void)router_->Add("GET", "/books/{isbn}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -238,22 +242,22 @@ BookstoreServer::BookstoreServer(std::shared_ptr<BookstoreHandler> handler)
     // content-type is tolerated, and blob payloads without @mediaType accept
     // any content type / accept.
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
-      auto error_response = JsonError(415, "", "unsupported media type", {});
+      auto error_response = helpers::JsonError(415, "", "unsupported media type", {});
       error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
-      auto error_response = JsonError(406, "", "not acceptable", {});
+      auto error_response = helpers::JsonError(406, "", "not acceptable", {});
       error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    auto input = ParseGetBookInput(request, context, &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    if (!input) return ErrorToResponse(input.error());
+    auto input = helpers::ParseGetBookInput(request, context, &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
+    if (!input) return helpers::ErrorToResponse(input.error());
     auto outcome = handler->GetBook(*input, context);
-    if (!outcome) return ErrorToResponse(outcome.error());
-    return BuildGetBookResponse(*outcome);
+    if (!outcome) return helpers::ErrorToResponse(outcome.error());
+    return helpers::BuildGetBookResponse(*outcome);
   }, "GetBook");
 }
 

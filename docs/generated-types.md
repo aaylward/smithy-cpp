@@ -29,7 +29,11 @@ compatibility contract: changes to it are breaking for consumers of generated co
 ## Conventions
 
 - **Names**: shape names are used as-is (PascalCase by Smithy convention); member names are used
-  as-is (camelCase). C++ keywords get a trailing underscore (`namespace` → `namespace_`).
+  as-is (camelCase). C++ keywords get a trailing underscore (`namespace` → `namespace_`), and so
+  do the two file-level identifiers generated sources claim for themselves: a *type* named
+  `helpers` or `types` becomes `helpers_`/`types_` (generated `.cc` files keep their file-local
+  helpers in a `helpers` namespace and reference model types through a `types` alias, so a model
+  name can never shadow a helper or vice versa). Member names never need that escape.
 - **Optionality**: `@required` members map to the plain type; everything else is
   `std::optional<T>` — except members with a non-null `@default` (and no `@clientOptional`),
   which are plain members initialized to the default, always serialized, and left at the

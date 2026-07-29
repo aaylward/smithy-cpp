@@ -8,6 +8,8 @@
 
 namespace example::roundtrip::jsonrpc {
 
+namespace types = ::example::roundtrip::jsonrpc;
+
 smithy::Document SerializeStringMap(const std::map<std::string, std::string>& value) {
   smithy::DocumentMap map;
   for (const auto& [key, item] : value) {
@@ -347,18 +349,18 @@ smithy::Outcome<KitchenSink> DeserializeKitchenSink(const smithy::Document& doc)
   {
     const smithy::Document* member = doc.Find("priority");
     if (member != nullptr && !member->is_null()) {
-      Priority parsed_member{};
+      types::Priority parsed_member{};
       if (!member->is_string()) return smithy::Error::Serialization("KitchenSink.priority: unexpected type on the wire");
-      parsed_member = Priority::FromString(member->as_string());
+      parsed_member = types::Priority::FromString(member->as_string());
       out.priority = std::move(parsed_member);
     }
   }
   {
     const smithy::Document* member = doc.Find("weight");
     if (member != nullptr && !member->is_null()) {
-      Weight parsed_member{};
+      types::Weight parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("KitchenSink.weight: unexpected type on the wire");
-      parsed_member = static_cast<Weight>(member->as_int());
+      parsed_member = static_cast<types::Weight>(member->as_int());
       out.weight = std::move(parsed_member);
     }
   }
@@ -449,7 +451,7 @@ smithy::Outcome<KitchenSink> DeserializeKitchenSink(const smithy::Document& doc)
   {
     const smithy::Document* member = doc.Find("nested");
     if (member != nullptr && !member->is_null()) {
-      NestedConfig parsed_member{};
+      types::NestedConfig parsed_member{};
       {
         auto parsed = DeserializeNestedConfig(*member);
         if (!parsed) return std::move(parsed).error();
@@ -461,7 +463,7 @@ smithy::Outcome<KitchenSink> DeserializeKitchenSink(const smithy::Document& doc)
   {
     const smithy::Document* member = doc.Find("choice");
     if (member != nullptr && !member->is_null()) {
-      SinkChoice parsed_member{};
+      types::SinkChoice parsed_member{};
       {
         auto parsed = DeserializeSinkChoice(*member);
         if (!parsed) return std::move(parsed).error();
@@ -564,7 +566,7 @@ smithy::Outcome<PutSinkRpcInput> DeserializePutSinkRpcInput(const smithy::Docume
   {
     const smithy::Document* member = doc.Find("sink");
     if (member != nullptr && !member->is_null()) {
-      KitchenSink parsed_member{};
+      types::KitchenSink parsed_member{};
       {
         auto parsed = DeserializeKitchenSink(*member);
         if (!parsed) return std::move(parsed).error();
@@ -599,7 +601,7 @@ smithy::Outcome<PutSinkRpcOutput> DeserializePutSinkRpcOutput(const smithy::Docu
   {
     const smithy::Document* member = doc.Find("sink");
     if (member != nullptr && !member->is_null()) {
-      KitchenSink parsed_member{};
+      types::KitchenSink parsed_member{};
       {
         auto parsed = DeserializeKitchenSink(*member);
         if (!parsed) return std::move(parsed).error();

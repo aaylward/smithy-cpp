@@ -2,7 +2,6 @@ package io.smithycpp.codegen;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Path;
@@ -12,7 +11,6 @@ import java.util.stream.StreamSupport;
 import org.junit.jupiter.api.Test;
 import software.amazon.smithy.build.MockManifest;
 import software.amazon.smithy.build.SmithyBuildPlugin;
-import software.amazon.smithy.codegen.core.CodegenException;
 import software.amazon.smithy.model.Model;
 
 class CppCodegenPluginTest {
@@ -107,11 +105,12 @@ class CppCodegenPluginTest {
     assertEquals(2, server.split("\\(void\\)router_->Add\\(", -1).length - 1);
     assertTrue(server.contains("(void)stream_router_->Add(\"GET\", \"/\","));
     assertTrue(server.contains("if (method_name == \"Divide\")"));
-    assertTrue(server.contains("return JsonRpcError(-32601, \"UnknownOperationException\""));
+    assertTrue(
+        server.contains("return helpers::JsonRpcError(-32601, \"UnknownOperationException\""));
     // Modeled errors: @httpError status as the code, fq shape id in __type.
     assertTrue(
         server.contains(
-            "return JsonRpcError(422, \"example.calculator#DivisionByZero\", \"\","
+            "return helpers::JsonRpcError(422, \"example.calculator#DivisionByZero\", \"\","
                 + " std::move(body), id);"));
   }
 
@@ -149,67 +148,55 @@ class CppCodegenPluginTest {
   void rejectsBacktrackingOnlyPatterns() {
     // Backreferences and lookaround need a backtracking engine; the
     // linear-time ReDoS-safe matcher refuses them at generation time.
-    CodegenException error =
-        assertThrows(
-            CodegenException.class,
-            () ->
-                PluginTestHarness.generate(
-                    """
-                    $version: "2.0"
-                    namespace test.redos
-                    use smithy.cpp.protocols#jsonRpc2
+    PluginTestHarness.assertRejected(
+        """
+        $version: "2.0"
+        namespace test.redos
+        use smithy.cpp.protocols#jsonRpc2
 
-                    @jsonRpc2
-                    service Svc { version: "1", operations: [Op] }
-                    operation Op {
-                        input := {
-                            @pattern("^(a+)\\\\1$")
-                            doubled: String
-                        }
-                    }
-                    """,
-                    "test.redos#Svc",
-                    "test::redos"));
-    assertTrue(error.getMessage().contains("backreference"));
-    assertTrue(error.getMessage().contains("^(a+)\\1$"));
+        @jsonRpc2
+        service Svc { version: "1", operations: [Op] }
+        operation Op {
+            input := {
+                @pattern("^(a+)\\\\1$")
+                doubled: String
+            }
+        }
+        """,
+        "test.redos#Svc",
+        "test::redos",
+        "backreference",
+        "^(a+)\\1$");
   }
 
   @Test
   void rejectsRecursionThroughUnionMembers() {
-    CodegenException error =
-        assertThrows(
-            CodegenException.class,
-            () ->
-                PluginTestHarness.generate(
-                    """
-                    $version: "2.0"
-                    namespace test.rec
+    PluginTestHarness.assertRejected(
+        """
+        $version: "2.0"
+        namespace test.rec
 
-                    service Svc { version: "1", operations: [Op] }
-                    operation Op { input := { tree: TreeNode } }
+        service Svc { version: "1", operations: [Op] }
+        operation Op { input := { tree: TreeNode } }
 
-                    structure TreeNode {
-                        value: TreeValue
-                    }
-                    union TreeValue {
-                        leaf: String
-                        node: TreeNode
-                    }
-                    """,
-                    "test.rec#Svc",
-                    "test::rec"));
-    assertTrue(error.getMessage().contains("union member"));
-    assertTrue(error.getMessage().contains("TreeValue"));
+        structure TreeNode {
+            value: TreeValue
+        }
+        union TreeValue {
+            leaf: String
+            node: TreeNode
+        }
+        """,
+        "test.rec#Svc",
+        "test::rec",
+        "union member",
+        "TreeValue");
   }
 
   // A jsonRpc2 server generated from an inline model; returns the manifest so a
   // test can assert on the emitted C++.
   private static MockManifest generateJsonRpc2(String modelText, String service) {
     return PluginTestHarness.generate(modelText, service, "test::gen");
-  }
-
-  private static CodegenException assertJsonRpc2Rejected(String modelText, String service) {
-    return assertThrows(CodegenException.class, () -> generateJsonRpc2(modelText, service));
   }
 
   @Test
@@ -243,64 +230,64 @@ class CppCodegenPluginTest {
   void rejectsPatternContainingTheRawStringDelimiter() {
     // A valid regex (balanced group) that nonetheless contains the raw-string
     // closing sequence )__smithy" — emitting it verbatim would break the literal.
-    CodegenException error =
-        assertJsonRpc2Rejected(
-            """
-            $version: "2.0"
-            namespace test.gen
-            use smithy.cpp.protocols#jsonRpc2
+    PluginTestHarness.assertRejected(
+        """
+        $version: "2.0"
+        namespace test.gen
+        use smithy.cpp.protocols#jsonRpc2
 
-            @jsonRpc2
-            service Svc { version: "1", operations: [Op] }
-            operation Op { input := { @pattern("(a)__smithy\\".*") s: String } }
-            """,
-            "test.gen#Svc");
-    assertTrue(error.getMessage().contains("raw-string delimiter"));
+        @jsonRpc2
+        service Svc { version: "1", operations: [Op] }
+        operation Op { input := { @pattern("(a)__smithy\\".*") s: String } }
+        """,
+        "test.gen#Svc",
+        "test::gen",
+        "raw-string delimiter");
   }
 
   @Test
   void rejectsEnumMemberNameCollision() {
-    CodegenException error =
-        assertJsonRpc2Rejected(
-            """
-            $version: "2.0"
-            namespace test.gen
-            use smithy.cpp.protocols#jsonRpc2
+    PluginTestHarness.assertRejected(
+        """
+        $version: "2.0"
+        namespace test.gen
+        use smithy.cpp.protocols#jsonRpc2
 
-            @jsonRpc2
-            service Svc { version: "1", operations: [Op] }
-            operation Op { input := { e: E } }
-            enum E {
-                foo_bar = "1"
-                foo__bar = "2"
-            }
-            """,
-            "test.gen#Svc");
-    assertTrue(error.getMessage().contains("generated name"));
-    assertTrue(error.getMessage().contains("foo_bar"));
-    assertTrue(error.getMessage().contains("foo__bar"));
+        @jsonRpc2
+        service Svc { version: "1", operations: [Op] }
+        operation Op { input := { e: E } }
+        enum E {
+            foo_bar = "1"
+            foo__bar = "2"
+        }
+        """,
+        "test.gen#Svc",
+        "test::gen",
+        "generated name",
+        "foo_bar",
+        "foo__bar");
   }
 
   @Test
   void rejectsEnumMemberCollidingWithTheUnknownSentinel() {
-    CodegenException error =
-        assertJsonRpc2Rejected(
-            """
-            $version: "2.0"
-            namespace test.gen
-            use smithy.cpp.protocols#jsonRpc2
+    PluginTestHarness.assertRejected(
+        """
+        $version: "2.0"
+        namespace test.gen
+        use smithy.cpp.protocols#jsonRpc2
 
-            @jsonRpc2
-            service Svc { version: "1", operations: [Op] }
-            operation Op { input := { e: E } }
-            enum E {
-                unknown = "1"
-                known = "2"
-            }
-            """,
-            "test.gen#Svc");
-    assertTrue(error.getMessage().contains("reserved generated name"));
-    assertTrue(error.getMessage().contains("kUnknown"));
+        @jsonRpc2
+        service Svc { version: "1", operations: [Op] }
+        operation Op { input := { e: E } }
+        enum E {
+            unknown = "1"
+            known = "2"
+        }
+        """,
+        "test.gen#Svc",
+        "test::gen",
+        "reserved generated name",
+        "kUnknown");
   }
 
   @Test

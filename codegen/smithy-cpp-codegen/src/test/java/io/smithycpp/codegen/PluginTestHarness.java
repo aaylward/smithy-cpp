@@ -1,8 +1,12 @@
 package io.smithycpp.codegen;
 
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import java.util.function.Consumer;
 import software.amazon.smithy.build.MockManifest;
 import software.amazon.smithy.build.PluginContext;
+import software.amazon.smithy.codegen.core.CodegenException;
 import software.amazon.smithy.model.Model;
 import software.amazon.smithy.model.node.Node;
 import software.amazon.smithy.model.node.ObjectNode;
@@ -29,6 +33,19 @@ final class PluginTestHarness {
   /** Assembles {@code modelText} and runs the plugin with only the required settings. */
   static MockManifest generate(String modelText, String service, String namespace) {
     return generate(modelText, service, namespace, settings -> {});
+  }
+
+  /**
+   * Asserts generation rejects the model with a diagnostic carrying every {@code fragment} — the
+   * shared shape of every scoping-rejection test.
+   */
+  static void assertRejected(
+      String modelText, String service, String namespace, String... fragments) {
+    CodegenException error =
+        assertThrows(CodegenException.class, () -> generate(modelText, service, namespace));
+    for (String fragment : fragments) {
+      assertTrue(error.getMessage().contains(fragment), error.getMessage());
+    }
   }
 
   /**

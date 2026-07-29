@@ -26,7 +26,10 @@
 
 namespace example::chat {
 
+namespace types = ::example::chat;
+
 namespace {
+namespace helpers {
 
 // Strict text parsing for label/query/header bindings ([[maybe_unused]]:
 // emitted for every service; not every service binds numeric values).
@@ -79,7 +82,7 @@ smithy::http::HttpResponse JsonError(int status, const std::string& code, const 
   if (error.kind() == smithy::ErrorKind::kModeled) {
     if (error.code() == "Kicked") {
       smithy::DocumentMap body;
-      if (const auto* detail = error.detail<Kicked>()) {
+      if (const auto* detail = error.detail<types::Kicked>()) {
         body = SerializeKicked(*detail).as_map();
       }
       // The typed detail's own message member wins over the generic one.
@@ -87,27 +90,27 @@ smithy::http::HttpResponse JsonError(int status, const std::string& code, const 
       if (!has_message && !error.message().empty()) {
         body.emplace("message", smithy::Document(error.message()));
       }
-      auto response = JsonError(403, "", "", std::move(body));
+      auto response = helpers::JsonError(403, "", "", std::move(body));
       response.headers.Set("x-error-type", error.code());
       for (const auto& [name, value] : header_values) response.headers.Set(name, value);
       return response;
     }
-    return JsonError(400, error.code(), error.message(), {});
+    return helpers::JsonError(400, error.code(), error.message(), {});
   }
   if (error.kind() == smithy::ErrorKind::kValidation || error.kind() == smithy::ErrorKind::kSerialization) {
-    auto response = JsonError(400, "", error.message(), {});
+    auto response = helpers::JsonError(400, "", error.message(), {});
     response.headers.Set("x-error-type", "SerializationException");
     return response;
   }
   // Never leak internal detail on unexpected failures.
-  return JsonError(500, "InternalFailure", "internal failure", {});
+  return helpers::JsonError(500, "InternalFailure", "internal failure", {});
 }
 
-smithy::Outcome<ConverseInput> ParseConverseInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
+smithy::Outcome<types::ConverseInput> ParseConverseInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
   (void)request;
   (void)context;
   (void)validation_failures;
-  ConverseInput input{};
+  types::ConverseInput input{};
   {
     const std::string& label_value = context.labels.at("room");
     input.room = label_value;
@@ -118,15 +121,15 @@ smithy::Outcome<ConverseInput> ParseConverseInput(const smithy::http::HttpReques
   return input;
 }
 
-smithy::Outcome<ListRoomsInput> ParseListRoomsInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
+smithy::Outcome<types::ListRoomsInput> ParseListRoomsInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
   (void)request;
   (void)context;
   (void)validation_failures;
-  ListRoomsInput input{};
+  types::ListRoomsInput input{};
   return input;
 }
 
-smithy::http::HttpResponse BuildListRoomsResponse(const ListRoomsOutput& output) {
+smithy::http::HttpResponse BuildListRoomsResponse(const types::ListRoomsOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -137,11 +140,11 @@ smithy::http::HttpResponse BuildListRoomsResponse(const ListRoomsOutput& output)
   return response;
 }
 
-smithy::Outcome<WatchInput> ParseWatchInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
+smithy::Outcome<types::WatchInput> ParseWatchInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
   (void)request;
   (void)context;
   (void)validation_failures;
-  WatchInput input{};
+  types::WatchInput input{};
   {
     const std::string& label_value = context.labels.at("room");
     input.room = label_value;
@@ -151,7 +154,7 @@ smithy::Outcome<WatchInput> ParseWatchInput(const smithy::http::HttpRequest& req
 
 // One event per message (ADR-0016): the engaged member's structure is the
 // payload, its member name the :event-type.
-smithy::Outcome<smithy::eventstream::Message> EncodeConverseEvent(const RoomEvents& event) {
+smithy::Outcome<smithy::eventstream::Message> EncodeConverseEvent(const types::RoomEvents& event) {
   if (event.is_message()) {
     return smithy::eventstream::MakeEventMessage("message", "application/json", smithy::Blob::FromString(smithy::json::Encode(SerializeChatMessage(event.as_message()))));
   }
@@ -164,7 +167,7 @@ smithy::Outcome<smithy::eventstream::Message> EncodeConverseEvent(const RoomEven
   return smithy::Error::Validation("RoomEvents: no event member engaged");
 }
 
-smithy::Outcome<ChatEvents> DecodeConverseEvent(const smithy::eventstream::Message& message) {
+smithy::Outcome<types::ChatEvents> DecodeConverseEvent(const smithy::eventstream::Message& message) {
   auto envelope = smithy::eventstream::ParseEnvelope(message);
   if (!envelope) return std::move(envelope).error();
   if (envelope->kind == smithy::eventstream::EventEnvelope::Kind::kException) {
@@ -177,14 +180,14 @@ smithy::Outcome<ChatEvents> DecodeConverseEvent(const smithy::eventstream::Messa
     if (!doc) return std::move(doc).error();
     auto event = DeserializeChatMessage(*doc);
     if (!event) return std::move(event).error();
-    return ChatEvents::FromMessage(*std::move(event));
+    return types::ChatEvents::FromMessage(*std::move(event));
   }
   if (envelope->type == "leave") {
     auto doc = smithy::json::Decode(envelope->payload.ToString());
     if (!doc) return std::move(doc).error();
     auto event = DeserializeLeaveNotice(*doc);
     if (!event) return std::move(event).error();
-    return ChatEvents::FromLeave(*std::move(event));
+    return types::ChatEvents::FromLeave(*std::move(event));
   }
   return smithy::Error::Serialization("Converse: unknown event type: " + envelope->type);
 }
@@ -200,7 +203,7 @@ smithy::eventstream::Message BuildConverseExceptionMessage(const smithy::Error& 
     type = error.code();
     message = error.message();
     if (error.code() == "Kicked") {
-      if (const auto* detail = error.detail<Kicked>()) {
+      if (const auto* detail = error.detail<types::Kicked>()) {
         body = SerializeKicked(*detail).as_map();
       }
     }
@@ -222,18 +225,18 @@ smithy::eventstream::Message BuildConverseExceptionMessage(const smithy::Error& 
 // this frame (and the stream it owns) outlives the write — closing a
 // busy wire can cancel it. Best-effort, like the blocking route: a send
 // the terminated session refuses is discarded.
-smithy::eventstream::Detached ServeConverseAsync(std::shared_ptr<ChatAsyncHandler> handler, ConverseInput input, std::shared_ptr<smithy::http::WebSocket> socket) {
-  ConverseAsyncServerStream stream(socket, EncodeConverseEvent, DecodeConverseEvent);
+smithy::eventstream::Detached ServeConverseAsync(std::shared_ptr<types::ChatAsyncHandler> handler, types::ConverseInput input, std::shared_ptr<smithy::http::WebSocket> socket) {
+  types::ConverseAsyncServerStream stream(socket, helpers::EncodeConverseEvent, helpers::DecodeConverseEvent);
   auto outcome = co_await handler->Converse(std::move(input), stream);
   if (!outcome.ok()) {
-    (void)co_await smithy::eventstream::SendMessage(socket, BuildConverseExceptionMessage(outcome.error()));
+    (void)co_await smithy::eventstream::SendMessage(socket, helpers::BuildConverseExceptionMessage(outcome.error()));
   }
   stream.Close();
 }
 
 // One event per message (ADR-0016): the engaged member's structure is the
 // payload, its member name the :event-type.
-smithy::Outcome<smithy::eventstream::Message> EncodeWatchEvent(const RoomEvents& event) {
+smithy::Outcome<smithy::eventstream::Message> EncodeWatchEvent(const types::RoomEvents& event) {
   if (event.is_message()) {
     return smithy::eventstream::MakeEventMessage("message", "application/json", smithy::Blob::FromString(smithy::json::Encode(SerializeChatMessage(event.as_message()))));
   }
@@ -280,15 +283,16 @@ smithy::eventstream::Message BuildWatchExceptionMessage(const smithy::Error& err
 // this frame (and the stream it owns) outlives the write — closing a
 // busy wire can cancel it. Best-effort, like the blocking route: a send
 // the terminated session refuses is discarded.
-smithy::eventstream::Detached ServeWatchAsync(std::shared_ptr<ChatAsyncHandler> handler, WatchInput input, std::shared_ptr<smithy::http::WebSocket> socket) {
-  WatchAsyncServerStream stream(socket, EncodeWatchEvent, DecodeWatchEvent);
+smithy::eventstream::Detached ServeWatchAsync(std::shared_ptr<types::ChatAsyncHandler> handler, types::WatchInput input, std::shared_ptr<smithy::http::WebSocket> socket) {
+  types::WatchAsyncServerStream stream(socket, helpers::EncodeWatchEvent, helpers::DecodeWatchEvent);
   auto outcome = co_await handler->Watch(std::move(input), stream);
   if (!outcome.ok()) {
-    (void)co_await smithy::eventstream::SendMessage(socket, BuildWatchExceptionMessage(outcome.error()));
+    (void)co_await smithy::eventstream::SendMessage(socket, helpers::BuildWatchExceptionMessage(outcome.error()));
   }
   stream.Close();
 }
 
+}  // namespace helpers
 }  // namespace
 
 ChatServer::ChatServer(std::shared_ptr<ChatHandler> handler)
@@ -303,52 +307,52 @@ ChatServer::ChatServer(std::shared_ptr<ChatHandler> handler)
     // content-type is tolerated, and blob payloads without @mediaType accept
     // any content type / accept.
     if (request.headers.Get("content-type").has_value()) {
-      auto error_response = JsonError(415, "", "unsupported media type", {});
+      auto error_response = helpers::JsonError(415, "", "unsupported media type", {});
       error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
-      auto error_response = JsonError(406, "", "not acceptable", {});
+      auto error_response = helpers::JsonError(406, "", "not acceptable", {});
       error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    auto input = ParseListRoomsInput(request, context, &validation_failures);
-    if (!input) return ErrorToResponse(input.error());
+    auto input = helpers::ParseListRoomsInput(request, context, &validation_failures);
+    if (!input) return helpers::ErrorToResponse(input.error());
     auto outcome = handler->ListRooms(*input, context);
-    if (!outcome) return ErrorToResponse(outcome.error());
-    return BuildListRoomsResponse(*outcome);
+    if (!outcome) return helpers::ErrorToResponse(outcome.error());
+    return helpers::BuildListRoomsResponse(*outcome);
   }, "ListRooms");
   // Streaming routes (ADR-0016) live on the WebSocket router; the upgrade
   // path bypasses the HTTP chain (ADR-0015), so they never collide with
   // the unary table above.
   (void)stream_router_->Add("GET", "/rooms/{room}/converse", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, smithy::http::WebSocket& socket) {
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    auto input = ParseConverseInput(request, context, &validation_failures);
+    auto input = helpers::ParseConverseInput(request, context, &validation_failures);
     if (!input) {
-      (void)socket.Send(BuildConverseExceptionMessage(input.error()));
+      (void)socket.Send(helpers::BuildConverseExceptionMessage(input.error()));
       socket.Close();
       return;
     }
-    ConverseServerStream stream(socket, EncodeConverseEvent, DecodeConverseEvent);
+    types::ConverseServerStream stream(socket, helpers::EncodeConverseEvent, helpers::DecodeConverseEvent);
     auto outcome = handler->Converse(*input, stream, context);
     if (!outcome) {
-      (void)socket.Send(BuildConverseExceptionMessage(outcome.error()));
+      (void)socket.Send(helpers::BuildConverseExceptionMessage(outcome.error()));
     }
     stream.Close();
   }, "Converse");
   (void)stream_router_->Add("GET", "/rooms/{room}/watch", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, smithy::http::WebSocket& socket) {
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    auto input = ParseWatchInput(request, context, &validation_failures);
+    auto input = helpers::ParseWatchInput(request, context, &validation_failures);
     if (!input) {
-      (void)socket.Send(BuildWatchExceptionMessage(input.error()));
+      (void)socket.Send(helpers::BuildWatchExceptionMessage(input.error()));
       socket.Close();
       return;
     }
-    WatchServerStream stream(socket, EncodeWatchEvent, DecodeWatchEvent);
+    types::WatchServerStream stream(socket, helpers::EncodeWatchEvent, helpers::DecodeWatchEvent);
     auto outcome = handler->Watch(*input, stream, context);
     if (!outcome) {
-      (void)socket.Send(BuildWatchExceptionMessage(outcome.error()));
+      (void)socket.Send(helpers::BuildWatchExceptionMessage(outcome.error()));
     }
     stream.Close();
   }, "Watch");
@@ -366,41 +370,41 @@ ChatServer::ChatServer(std::shared_ptr<ChatAsyncHandler> handler)
     // content-type is tolerated, and blob payloads without @mediaType accept
     // any content type / accept.
     if (request.headers.Get("content-type").has_value()) {
-      auto error_response = JsonError(415, "", "unsupported media type", {});
+      auto error_response = helpers::JsonError(415, "", "unsupported media type", {});
       error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
-      auto error_response = JsonError(406, "", "not acceptable", {});
+      auto error_response = helpers::JsonError(406, "", "not acceptable", {});
       error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    auto input = ParseListRoomsInput(request, context, &validation_failures);
-    if (!input) return ErrorToResponse(input.error());
+    auto input = helpers::ParseListRoomsInput(request, context, &validation_failures);
+    if (!input) return helpers::ErrorToResponse(input.error());
     auto outcome = handler->ListRooms(*input, context);
-    if (!outcome) return ErrorToResponse(outcome.error());
-    return BuildListRoomsResponse(*outcome);
+    if (!outcome) return helpers::ErrorToResponse(outcome.error());
+    return helpers::BuildListRoomsResponse(*outcome);
   }, "ListRooms");
   (void)stream_router_->AddSession("GET", "/rooms/{room}/converse", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::shared_ptr<smithy::http::WebSocket> socket) {
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    auto input = ParseConverseInput(request, context, &validation_failures);
+    auto input = helpers::ParseConverseInput(request, context, &validation_failures);
     if (!input) {
-      (void)socket->Send(BuildConverseExceptionMessage(input.error()));
+      (void)socket->Send(helpers::BuildConverseExceptionMessage(input.error()));
       socket->Close();
       return;
     }
-    ServeConverseAsync(handler, *std::move(input), std::move(socket));
+    helpers::ServeConverseAsync(handler, *std::move(input), std::move(socket));
   }, "Converse");
   (void)stream_router_->AddSession("GET", "/rooms/{room}/watch", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::shared_ptr<smithy::http::WebSocket> socket) {
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    auto input = ParseWatchInput(request, context, &validation_failures);
+    auto input = helpers::ParseWatchInput(request, context, &validation_failures);
     if (!input) {
-      (void)socket->Send(BuildWatchExceptionMessage(input.error()));
+      (void)socket->Send(helpers::BuildWatchExceptionMessage(input.error()));
       socket->Close();
       return;
     }
-    ServeWatchAsync(handler, *std::move(input), std::move(socket));
+    helpers::ServeWatchAsync(handler, *std::move(input), std::move(socket));
   }, "Watch");
 }
 

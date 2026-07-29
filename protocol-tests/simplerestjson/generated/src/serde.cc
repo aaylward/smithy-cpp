@@ -8,6 +8,8 @@
 
 namespace smithy::protocoltests::simplerestjson {
 
+namespace types = ::smithy::protocoltests::simplerestjson;
+
 smithy::Document SerializeIngredients(const std::vector<Ingredient>& value) {
   smithy::DocumentList list;
   list.reserve(value.size());
@@ -26,7 +28,7 @@ smithy::Outcome<std::vector<Ingredient>> DeserializeIngredients(const smithy::Do
     if (item->is_null()) return smithy::Error::Serialization("std::vector<Ingredient>: null element in a dense list");
     Ingredient parsed_item{};
     if (!item->is_string()) return smithy::Error::Serialization("std::vector<Ingredient>[]: unexpected type on the wire");
-    parsed_item = Ingredient::FromString(item->as_string());
+    parsed_item = types::Ingredient::FromString(item->as_string());
     out.push_back(std::move(parsed_item));
   }
   return out;
@@ -57,7 +59,7 @@ smithy::Outcome<Pizza> DeserializePizza(const smithy::Document& doc) {
       return smithy::Error::Serialization("Pizza: missing required member: base");
     }
     if (!member->is_string()) return smithy::Error::Serialization("Pizza.base: unexpected type on the wire");
-    out.base = PizzaBase::FromString(member->as_string());
+    out.base = types::PizzaBase::FromString(member->as_string());
   }
   {
     const smithy::Document* member = doc.Find("toppings");
@@ -375,7 +377,7 @@ smithy::Outcome<UnknownServerError> DeserializeUnknownServerError(const smithy::
       return smithy::Error::Serialization("UnknownServerError: missing required member: errorCode");
     }
     if (!member->is_string()) return smithy::Error::Serialization("UnknownServerError.errorCode: unexpected type on the wire");
-    out.errorCode = UnknownServerErrorCode::FromString(member->as_string());
+    out.errorCode = types::UnknownServerErrorCode::FromString(member->as_string());
   }
   {
     const smithy::Document* member = doc.Find("description");
@@ -433,7 +435,7 @@ smithy::Outcome<GetEnumInput> DeserializeGetEnumInput(const smithy::Document& do
       return smithy::Error::Serialization("GetEnumInput: missing required member: aa");
     }
     if (!member->is_string()) return smithy::Error::Serialization("GetEnumInput.aa: unexpected type on the wire");
-    out.aa = TheEnum::FromString(member->as_string());
+    out.aa = types::TheEnum::FromString(member->as_string());
   }
   return out;
 }
@@ -476,7 +478,7 @@ smithy::Outcome<GetIntEnumInput> DeserializeGetIntEnumInput(const smithy::Docume
       return smithy::Error::Serialization("GetIntEnumInput: missing required member: aa");
     }
     if (!member->is_int()) return smithy::Error::Serialization("GetIntEnumInput.aa: unexpected type on the wire");
-    out.aa = static_cast<EnumResult>(member->as_int());
+    out.aa = static_cast<types::EnumResult>(member->as_int());
   }
   return out;
 }
@@ -496,7 +498,7 @@ smithy::Outcome<GetIntEnumOutput> DeserializeGetIntEnumOutput(const smithy::Docu
       return smithy::Error::Serialization("GetIntEnumOutput: missing required member: result");
     }
     if (!member->is_int()) return smithy::Error::Serialization("GetIntEnumOutput.result: unexpected type on the wire");
-    out.result = static_cast<EnumResult>(member->as_int());
+    out.result = static_cast<types::EnumResult>(member->as_int());
   }
   return out;
 }

@@ -18,6 +18,7 @@
 namespace example::cafe {
 
 namespace {
+namespace helpers {
 
 // The error shape name arrives namespaced ("ns#Shape") and possibly
 // URI-qualified; modeled error codes keep only the shape name.
@@ -45,7 +46,7 @@ struct ParsedError {
   if (parsed.doc.is_map()) {
     const smithy::Document* type = parsed.doc.Find("__type");
     if (type == nullptr) type = parsed.doc.Find("code");
-    if (parsed.code == "UnknownError" && type != nullptr && type->is_string()) parsed.code = SanitizeErrorCode(type->as_string());
+    if (parsed.code == "UnknownError" && type != nullptr && type->is_string()) parsed.code = helpers::SanitizeErrorCode(type->as_string());
     const smithy::Document* text = parsed.doc.Find("message");
     if (text != nullptr && text->is_string()) parsed.message = text->as_string();
   }
@@ -83,17 +84,18 @@ smithy::Error MakeOutOfBeansError(const smithy::http::HttpResponse& response, Pa
 }
 
 smithy::Error ParseGetOrderError(const smithy::http::HttpResponse& response) {
-  ParsedError parsed = ParseError(response);
-  if (parsed.code == "OrderNotFound") return MakeOrderNotFoundError(response, std::move(parsed));
-  return GenericError(std::move(parsed));
+  ParsedError parsed = helpers::ParseError(response);
+  if (parsed.code == "OrderNotFound") return helpers::MakeOrderNotFoundError(response, std::move(parsed));
+  return helpers::GenericError(std::move(parsed));
 }
 
 smithy::Error ParseOrderCoffeeError(const smithy::http::HttpResponse& response) {
-  ParsedError parsed = ParseError(response);
-  if (parsed.code == "OutOfBeans") return MakeOutOfBeansError(response, std::move(parsed));
-  return GenericError(std::move(parsed));
+  ParsedError parsed = helpers::ParseError(response);
+  if (parsed.code == "OutOfBeans") return helpers::MakeOutOfBeansError(response, std::move(parsed));
+  return helpers::GenericError(std::move(parsed));
 }
 
+}  // namespace helpers
 }  // namespace
 
 smithy::Outcome<CafeClient> CafeClient::Create(smithy::ClientConfig config) {
@@ -146,7 +148,7 @@ smithy::Outcome<GetOrderOutput> CafeClient::GetOrder(const GetOrderInput& input)
   request.body = smithy::cbor::Encode(SerializeGetOrderInput(input)).ToString();
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return ParseGetOrderError(*response);
+  if (response->status != 200) return helpers::ParseGetOrderError(*response);
   auto body_doc = smithy::cbor::Decode(smithy::Blob::FromString(response->body));
   if (!body_doc) return std::move(body_doc).error();
   return DeserializeGetOrderOutput(*body_doc);
@@ -171,7 +173,7 @@ smithy::Outcome<OrderCoffeeOutput> CafeClient::OrderCoffee(const OrderCoffeeInpu
   }
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return ParseOrderCoffeeError(*response);
+  if (response->status != 200) return helpers::ParseOrderCoffeeError(*response);
   auto body_doc = smithy::cbor::Decode(smithy::Blob::FromString(response->body));
   if (!body_doc) return std::move(body_doc).error();
   return DeserializeOrderCoffeeOutput(*body_doc);

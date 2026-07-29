@@ -90,13 +90,13 @@ final class HttpJsonClientGenerator {
         // skipped, never failures.
         case BYTE, SHORT, INTEGER, LONG, INT_ENUM ->
             w.write(
-                "if (auto parsed_num = ParseInt64Text(*header_value, $L)) "
+                "if (auto parsed_num = helpers::ParseInt64Text(*header_value, $L)) "
                     + "parsed.doc.as_map().insert_or_assign($S, smithy::Document(*parsed_num));",
                 ProtocolSupport.int64Bounds(target.getType()),
                 wireName);
         case FLOAT, DOUBLE ->
             w.write(
-                "if (auto parsed_num = ParseDoubleText(*header_value)) "
+                "if (auto parsed_num = helpers::ParseDoubleText(*header_value)) "
                     + "parsed.doc.as_map().insert_or_assign($S, smithy::Document(*parsed_num));",
                 wireName);
         case BOOLEAN ->

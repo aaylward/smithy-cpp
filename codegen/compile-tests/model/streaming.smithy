@@ -131,6 +131,35 @@ structure ChatMessage {
     text: String
 
     sender: String
+
+    dial: DialStream
+
+    encode: EncodeConverseEvent
+
+    decode: DecodeConverseEvent
+
+    streamText: JsonRpcStreamText
+}
+
+// Helper-shadowing stress, streaming flavor (issue #71): one type per stream
+// helper family — the shared dial helper, Relay's Encode/Decode codec pair,
+// and a jsonRpc2 stream-driver name — rides an event payload through every
+// wire. Each name matches a real helper in at least one service's build; the
+// others carry it as an ordinary type.
+structure DialStream {
+    value: String
+}
+
+structure EncodeConverseEvent {
+    value: String
+}
+
+structure DecodeConverseEvent {
+    value: String
+}
+
+structure JsonRpcStreamText {
+    value: String
 }
 
 structure TypingNotice {

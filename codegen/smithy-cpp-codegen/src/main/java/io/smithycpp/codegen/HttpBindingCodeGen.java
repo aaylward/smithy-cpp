@@ -338,7 +338,7 @@ final class HttpBindingCodeGen {
         }
       }
       case ENUM -> {
-        String enumType = context.cppSymbols().toSymbol(target).getName();
+        String enumType = context.cppSymbols().typeRef(target);
         if (jsonText) {
           w.write("auto payload_doc = smithy::json::Decode($L);", bodyExpr);
           w.write("if (!payload_doc) return std::move(payload_doc).error();");
@@ -363,8 +363,7 @@ final class HttpBindingCodeGen {
             // an empty JSON object reads back as unset.
             w.openBlock("if (!payload_ptr->is_map() || !payload_ptr->as_map().empty()) {");
           }
-          var targetType = context.cppSymbols().toSymbol(target);
-          w.write("$L parsed_payload{};", targetType.getName());
+          w.write("$L parsed_payload{};", context.cppSymbols().typeRef(target));
           serde.writeDeserializeInto(w, member, "payload_ptr", "parsed_payload", path);
           w.write("$L = std::move(parsed_payload);", field);
           if (structure) {
@@ -446,7 +445,7 @@ final class HttpBindingCodeGen {
     if (target.isListShape()) {
       var list = target.asListShape().orElseThrow();
       MemberShape element = list.getMember();
-      w.write("$L items;", context.cppSymbols().toSymbol(list).getName());
+      w.write("$L items;", context.cppSymbols().typeRef(list));
       String tsFormat = serde.timestampFormat(element, "smithy::TimestampFormat::kHttpDate");
       String splitter =
           context.model().expectShape(element.getTarget()).isTimestampShape()
@@ -570,28 +569,25 @@ final class HttpBindingCodeGen {
           w.write(
               "$L$L::FromString($L)$L",
               open,
-              context.cppSymbols().toSymbol(target).getName(),
+              context.cppSymbols().typeRef(target),
               valueExpr,
               close);
       case BYTE, SHORT, INTEGER, LONG, INT_ENUM -> {
         w.write(
-            "auto parsed_num = ParseInt64Text($L, $L);",
+            "auto parsed_num = helpers::ParseInt64Text($L, $L);",
             valueExpr,
             ProtocolSupport.int64Bounds(target.getType()));
         w.write("if (!parsed_num) return std::move(parsed_num).error();");
         w.write(
-            "$Lstatic_cast<$L>(*parsed_num)$L",
-            open,
-            context.cppSymbols().toSymbol(target).getName(),
-            close);
+            "$Lstatic_cast<$L>(*parsed_num)$L", open, context.cppSymbols().typeRef(target), close);
       }
       case FLOAT -> {
-        w.write("auto parsed_num = ParseDoubleText($L);", valueExpr);
+        w.write("auto parsed_num = helpers::ParseDoubleText($L);", valueExpr);
         w.write("if (!parsed_num) return std::move(parsed_num).error();");
         w.write("$Lstatic_cast<float>(*parsed_num)$L", open, close);
       }
       case DOUBLE -> {
-        w.write("auto parsed_num = ParseDoubleText($L);", valueExpr);
+        w.write("auto parsed_num = helpers::ParseDoubleText($L);", valueExpr);
         w.write("if (!parsed_num) return std::move(parsed_num).error();");
         w.write("$L*parsed_num$L", open, close);
       }

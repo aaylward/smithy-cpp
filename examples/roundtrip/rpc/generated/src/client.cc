@@ -18,6 +18,7 @@
 namespace example::roundtrip::rpc {
 
 namespace {
+namespace helpers {
 
 // The error shape name arrives namespaced ("ns#Shape") and possibly
 // URI-qualified; modeled error codes keep only the shape name.
@@ -45,7 +46,7 @@ struct ParsedError {
   if (parsed.doc.is_map()) {
     const smithy::Document* type = parsed.doc.Find("__type");
     if (type == nullptr) type = parsed.doc.Find("code");
-    if (parsed.code == "UnknownError" && type != nullptr && type->is_string()) parsed.code = SanitizeErrorCode(type->as_string());
+    if (parsed.code == "UnknownError" && type != nullptr && type->is_string()) parsed.code = helpers::SanitizeErrorCode(type->as_string());
     const smithy::Document* text = parsed.doc.Find("message");
     if (text != nullptr && text->is_string()) parsed.message = text->as_string();
   }
@@ -83,12 +84,13 @@ smithy::Error MakeSinkQuotaExceededError(const smithy::http::HttpResponse& respo
 }
 
 smithy::Error ParsePutSinkRpcError(const smithy::http::HttpResponse& response) {
-  ParsedError parsed = ParseError(response);
-  if (parsed.code == "SinkNotFound") return MakeSinkNotFoundError(response, std::move(parsed));
-  if (parsed.code == "SinkQuotaExceeded") return MakeSinkQuotaExceededError(response, std::move(parsed));
-  return GenericError(std::move(parsed));
+  ParsedError parsed = helpers::ParseError(response);
+  if (parsed.code == "SinkNotFound") return helpers::MakeSinkNotFoundError(response, std::move(parsed));
+  if (parsed.code == "SinkQuotaExceeded") return helpers::MakeSinkQuotaExceededError(response, std::move(parsed));
+  return helpers::GenericError(std::move(parsed));
 }
 
+}  // namespace helpers
 }  // namespace
 
 smithy::Outcome<RoundTripRpcClient> RoundTripRpcClient::Create(smithy::ClientConfig config) {
@@ -136,7 +138,7 @@ smithy::Outcome<PingOutput> RoundTripRpcClient::Ping(const PingInput& input) con
   request.headers.Set("smithy-protocol", "rpc-v2-cbor");
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return GenericError(ParseError(*response));
+  if (response->status != 200) return helpers::GenericError(helpers::ParseError(*response));
   return PingOutput{};
 }
 
@@ -157,7 +159,7 @@ smithy::Outcome<PutSinkRpcOutput> RoundTripRpcClient::PutSinkRpc(const PutSinkRp
   }
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return ParsePutSinkRpcError(*response);
+  if (response->status != 200) return helpers::ParsePutSinkRpcError(*response);
   auto body_doc = smithy::cbor::Decode(smithy::Blob::FromString(response->body));
   if (!body_doc) return std::move(body_doc).error();
   return DeserializePutSinkRpcOutput(*body_doc);

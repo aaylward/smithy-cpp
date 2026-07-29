@@ -295,15 +295,13 @@ final class ServerGenerator {
     String name = serviceName();
     boolean hasStreaming = !streamingOperations().isEmpty();
 
-    w.write("namespace {");
-    w.write("");
+    ProtocolSupport.openHelpersNamespace(w);
     protocol.writeServerHelpers(w, context, service, operations);
     if (hasStreaming) {
       EventStreamCodeGen.writeServerStreamHelpers(
           w, context, service, protocol, streamingOperations());
     }
-    w.write("}  // namespace");
-    w.write("");
+    ProtocolSupport.closeHelpersNamespace(w);
 
     w.openBlock("$LServer::$LServer(std::shared_ptr<$LHandler> handler)", name, name, name);
     if (hasStreaming) {

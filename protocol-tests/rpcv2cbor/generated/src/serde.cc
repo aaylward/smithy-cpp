@@ -8,6 +8,8 @@
 
 namespace smithy::protocoltests::rpcv2cbor {
 
+namespace types = ::smithy::protocoltests::rpcv2cbor;
+
 smithy::Document SerializeValidationExceptionField(const ValidationExceptionField& value) {
   smithy::DocumentMap map;
   map.emplace("path", smithy::Document(value.path));
@@ -172,7 +174,7 @@ smithy::Outcome<ComplexError> DeserializeComplexError(const smithy::Document& do
   {
     const smithy::Document* member = doc.Find("Nested");
     if (member != nullptr && !member->is_null()) {
-      ComplexNestedErrorData parsed_member{};
+      types::ComplexNestedErrorData parsed_member{};
       {
         auto parsed = DeserializeComplexNestedErrorData(*member);
         if (!parsed) return std::move(parsed).error();
@@ -394,18 +396,18 @@ smithy::Outcome<Defaults> DeserializeDefaults(const smithy::Document& doc) {
   {
     const smithy::Document* member = doc.Find("defaultEnum");
     if (member != nullptr && !member->is_null()) {
-      TestEnum parsed_member{};
+      types::TestEnum parsed_member{};
       if (!member->is_string()) return smithy::Error::Serialization("Defaults.defaultEnum: unexpected type on the wire");
-      parsed_member = TestEnum::FromString(member->as_string());
+      parsed_member = types::TestEnum::FromString(member->as_string());
       out.defaultEnum = std::move(parsed_member);
     }
   }
   {
     const smithy::Document* member = doc.Find("defaultIntEnum");
     if (member != nullptr && !member->is_null()) {
-      TestIntEnum parsed_member{};
+      types::TestIntEnum parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("Defaults.defaultIntEnum: unexpected type on the wire");
-      parsed_member = static_cast<TestIntEnum>(member->as_int());
+      parsed_member = static_cast<types::TestIntEnum>(member->as_int());
       out.defaultIntEnum = std::move(parsed_member);
     }
   }
@@ -872,7 +874,7 @@ smithy::Outcome<OperationWithDefaultsInput> DeserializeOperationWithDefaultsInpu
   {
     const smithy::Document* member = doc.Find("defaults");
     if (member != nullptr && !member->is_null()) {
-      Defaults parsed_member{};
+      types::Defaults parsed_member{};
       {
         auto parsed = DeserializeDefaults(*member);
         if (!parsed) return std::move(parsed).error();
@@ -884,7 +886,7 @@ smithy::Outcome<OperationWithDefaultsInput> DeserializeOperationWithDefaultsInpu
   {
     const smithy::Document* member = doc.Find("clientOptionalDefaults");
     if (member != nullptr && !member->is_null()) {
-      ClientOptionalDefaults parsed_member{};
+      types::ClientOptionalDefaults parsed_member{};
       {
         auto parsed = DeserializeClientOptionalDefaults(*member);
         if (!parsed) return std::move(parsed).error();
@@ -1082,18 +1084,18 @@ smithy::Outcome<OperationWithDefaultsOutput> DeserializeOperationWithDefaultsOut
   {
     const smithy::Document* member = doc.Find("defaultEnum");
     if (member != nullptr && !member->is_null()) {
-      TestEnum parsed_member{};
+      types::TestEnum parsed_member{};
       if (!member->is_string()) return smithy::Error::Serialization("OperationWithDefaultsOutput.defaultEnum: unexpected type on the wire");
-      parsed_member = TestEnum::FromString(member->as_string());
+      parsed_member = types::TestEnum::FromString(member->as_string());
       out.defaultEnum = std::move(parsed_member);
     }
   }
   {
     const smithy::Document* member = doc.Find("defaultIntEnum");
     if (member != nullptr && !member->is_null()) {
-      TestIntEnum parsed_member{};
+      types::TestIntEnum parsed_member{};
       if (!member->is_int()) return smithy::Error::Serialization("OperationWithDefaultsOutput.defaultIntEnum: unexpected type on the wire");
-      parsed_member = static_cast<TestIntEnum>(member->as_int());
+      parsed_member = static_cast<types::TestIntEnum>(member->as_int());
       out.defaultIntEnum = std::move(parsed_member);
     }
   }
@@ -1480,7 +1482,7 @@ smithy::Outcome<std::vector<FooEnum>> DeserializeFooEnumList(const smithy::Docum
     if (item->is_null()) return smithy::Error::Serialization("std::vector<FooEnum>: null element in a dense list");
     FooEnum parsed_item{};
     if (!item->is_string()) return smithy::Error::Serialization("std::vector<FooEnum>[]: unexpected type on the wire");
-    parsed_item = FooEnum::FromString(item->as_string());
+    parsed_item = types::FooEnum::FromString(item->as_string());
     out.push_back(std::move(parsed_item));
   }
   return out;
@@ -1529,7 +1531,7 @@ smithy::Outcome<std::vector<IntegerEnum>> DeserializeIntegerEnumList(const smith
     if (item->is_null()) return smithy::Error::Serialization("std::vector<IntegerEnum>: null element in a dense list");
     IntegerEnum parsed_item{};
     if (!item->is_int()) return smithy::Error::Serialization("std::vector<IntegerEnum>[]: unexpected type on the wire");
-    parsed_item = static_cast<IntegerEnum>(item->as_int());
+    parsed_item = static_cast<types::IntegerEnum>(item->as_int());
     out.push_back(std::move(parsed_item));
   }
   return out;
@@ -2734,7 +2736,7 @@ smithy::Outcome<RecursiveShapesInput> DeserializeRecursiveShapesInput(const smit
   {
     const smithy::Document* member = doc.Find("nested");
     if (member != nullptr && !member->is_null()) {
-      RecursiveShapesInputOutputNested1 parsed_member{};
+      types::RecursiveShapesInputOutputNested1 parsed_member{};
       {
         auto parsed = DeserializeRecursiveShapesInputOutputNested1(*member);
         if (!parsed) return std::move(parsed).error();
@@ -2772,7 +2774,7 @@ smithy::Outcome<RecursiveShapesInputOutputNested1> DeserializeRecursiveShapesInp
   {
     const smithy::Document* member = doc.Find("nested");
     if (member != nullptr && !member->is_null()) {
-      RecursiveShapesInputOutputNested2 parsed_member{};
+      types::RecursiveShapesInputOutputNested2 parsed_member{};
       {
         auto parsed = DeserializeRecursiveShapesInputOutputNested2(*member);
         if (!parsed) return std::move(parsed).error();
@@ -2810,7 +2812,7 @@ smithy::Outcome<RecursiveShapesInputOutputNested2> DeserializeRecursiveShapesInp
   {
     const smithy::Document* member = doc.Find("recursiveMember");
     if (member != nullptr && !member->is_null()) {
-      RecursiveShapesInputOutputNested1 parsed_member{};
+      types::RecursiveShapesInputOutputNested1 parsed_member{};
       {
         auto parsed = DeserializeRecursiveShapesInputOutputNested1(*member);
         if (!parsed) return std::move(parsed).error();
@@ -2836,7 +2838,7 @@ smithy::Outcome<RecursiveShapesOutput> DeserializeRecursiveShapesOutput(const sm
   {
     const smithy::Document* member = doc.Find("nested");
     if (member != nullptr && !member->is_null()) {
-      RecursiveShapesInputOutputNested1 parsed_member{};
+      types::RecursiveShapesInputOutputNested1 parsed_member{};
       {
         auto parsed = DeserializeRecursiveShapesInputOutputNested1(*member);
         if (!parsed) return std::move(parsed).error();

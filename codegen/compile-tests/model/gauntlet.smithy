@@ -11,7 +11,7 @@ namespace compile.gauntlet
 /// "double quotes", <angle brackets>, and a $dollar sign.
 service Gauntlet {
     version: "2026-07-08"
-    operations: [RunGauntlet, GetReport]
+    operations: [RunGauntlet, GetReport, Shadow]
 }
 
 /// Members named after C++ keywords, int64 extremes, hostile enum values, and
@@ -119,6 +119,136 @@ operation GetReport {
 
         report: String
     }
+}
+
+/// Helper-shadowing stress (issue #71): each type below is named exactly like
+/// a file-local helper in at least one of the six generated variants (three
+/// protocols x client/server) — the fixed error/numeric support, the three
+/// error envelopes, the validation wiring, and Shadow's own per-operation
+/// helpers (ParseShadowError, HandleShadow, ParseShadowInput,
+/// BuildShadowResponse, ValidateShadowInput) — so the matrix covers the union.
+/// The helpers namespace (with helpers::-qualified calls and types::-qualified
+/// type references) is what keeps these compiling. The @length constraint
+/// keeps the validation wiring (and ValidateShadowInput) in every server
+/// build, and the lowercase members pin the helpers_/types_ type-name escape.
+@http(method: "POST", uri: "/shadow")
+operation Shadow {
+    input := {
+        @required
+        @length(min: 1)
+        name: String
+
+        namespaceNamed: helpers
+
+        aliasNamed: types
+
+        parsed: ParsedError
+        parse: ParseError
+        sanitize: SanitizeErrorCode
+        parseInt: ParseInt64Text
+        parseDouble: ParseDoubleText
+        toResponse: ErrorToResponse
+        wiring: ValidationErrorResponse
+        addFailure: AddValidationFailure
+        json: JsonError
+        cbor: CborError
+        jsonRpc: JsonRpcError
+        parseError: ParseShadowError
+        handle: HandleShadow
+        parseInput: ParseShadowInput
+        buildResponse: BuildShadowResponse
+        validate: ValidateShadowInput
+    }
+
+    output := {
+        echo: ParsedError
+    }
+
+    errors: [GenericError]
+}
+
+/// The two file-level identifiers generated .cc files claim for themselves:
+/// these types must escape to helpers_/types_ to stay unambiguous against the
+/// helper namespace and the model-type alias.
+structure helpers {
+    value: String
+}
+
+structure types {
+    value: String
+}
+
+structure ParsedError {
+    value: String
+}
+
+structure ParseError {
+    value: String
+}
+
+structure SanitizeErrorCode {
+    value: String
+}
+
+structure ParseInt64Text {
+    value: String
+}
+
+structure ParseDoubleText {
+    value: String
+}
+
+structure ErrorToResponse {
+    value: String
+}
+
+structure ValidationErrorResponse {
+    value: String
+}
+
+structure AddValidationFailure {
+    value: String
+}
+
+structure JsonError {
+    value: String
+}
+
+structure CborError {
+    value: String
+}
+
+structure JsonRpcError {
+    value: String
+}
+
+structure ParseShadowError {
+    value: String
+}
+
+structure HandleShadow {
+    value: String
+}
+
+structure ParseShadowInput {
+    value: String
+}
+
+structure BuildShadowResponse {
+    value: String
+}
+
+structure ValidateShadowInput {
+    value: String
+}
+
+/// The client-fixed fallback helper's name on a modeled error: the collision
+/// rides both Make&lt;X&gt;Error and the server's typed-detail branch.
+@error("client")
+@httpError(422)
+structure GenericError {
+    @required
+    message: String
 }
 
 /// Wire values that must be escaped wherever they are quoted: in serde string

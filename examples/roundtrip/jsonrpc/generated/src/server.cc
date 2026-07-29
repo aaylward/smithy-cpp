@@ -17,7 +17,10 @@
 
 namespace example::roundtrip::jsonrpc {
 
+namespace types = ::example::roundtrip::jsonrpc;
+
 namespace {
+namespace helpers {
 
 smithy::http::HttpResponse JsonRpcError(int code, const std::string& type, const std::string& message, smithy::DocumentMap data, const smithy::Document& id) {
   if (!type.empty()) data.insert_or_assign("__type", smithy::Document(type));
@@ -47,7 +50,7 @@ smithy::http::HttpResponse JsonRpcError(int code, const std::string& type, const
   if (error.kind() == smithy::ErrorKind::kModeled) {
     if (error.code() == "SinkNotFound") {
       smithy::DocumentMap body;
-      if (const auto* detail = error.detail<SinkNotFound>()) {
+      if (const auto* detail = error.detail<types::SinkNotFound>()) {
         body = SerializeSinkNotFound(*detail).as_map();
       }
       // The typed detail's own message member wins over the generic one.
@@ -55,11 +58,11 @@ smithy::http::HttpResponse JsonRpcError(int code, const std::string& type, const
       if (!has_message && !error.message().empty()) {
         body.emplace("message", smithy::Document(error.message()));
       }
-      return JsonRpcError(404, "example.roundtrip#SinkNotFound", "", std::move(body), id);
+      return helpers::JsonRpcError(404, "example.roundtrip#SinkNotFound", "", std::move(body), id);
     }
     if (error.code() == "SinkQuotaExceeded") {
       smithy::DocumentMap body;
-      if (const auto* detail = error.detail<SinkQuotaExceeded>()) {
+      if (const auto* detail = error.detail<types::SinkQuotaExceeded>()) {
         body = SerializeSinkQuotaExceeded(*detail).as_map();
       }
       // The typed detail's own message member wins over the generic one.
@@ -67,13 +70,13 @@ smithy::http::HttpResponse JsonRpcError(int code, const std::string& type, const
       if (!has_message && !error.message().empty()) {
         body.emplace("message", smithy::Document(error.message()));
       }
-      return JsonRpcError(503, "example.roundtrip#SinkQuotaExceeded", "", std::move(body), id);
+      return helpers::JsonRpcError(503, "example.roundtrip#SinkQuotaExceeded", "", std::move(body), id);
     }
-    return JsonRpcError(400, error.code(), error.message(), {}, id);
+    return helpers::JsonRpcError(400, error.code(), error.message(), {}, id);
   }
-  if (error.kind() == smithy::ErrorKind::kValidation || error.kind() == smithy::ErrorKind::kSerialization) return JsonRpcError(400, "SerializationException", error.message(), {}, id);
+  if (error.kind() == smithy::ErrorKind::kValidation || error.kind() == smithy::ErrorKind::kSerialization) return helpers::JsonRpcError(400, "SerializationException", error.message(), {}, id);
   // Never leak internal detail on unexpected failures.
-  return JsonRpcError(500, "InternalFailure", "internal failure", {}, id);
+  return helpers::JsonRpcError(500, "InternalFailure", "internal failure", {}, id);
 }
 
 // Constraint validation (smithy.framework#ValidationException): messages
@@ -82,11 +85,11 @@ void AddValidationFailure(std::vector<smithy::server::ValidationFailure>* failur
   failures->push_back({std::move(path), std::move(message)});
 }
 
-void ValidateKitchenSink(const KitchenSink& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
+void ValidateKitchenSink(const types::KitchenSink& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
   if (value.priority.has_value()) {
     const std::string member_path = path + "/priority";
     if ((*value.priority).value() == Priority::Value::kUnknown) {
-      AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy enum value set: [low, medium, high]");
+      helpers::AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy enum value set: [low, medium, high]");
     }
   }
   if (value.uniqueNames.has_value()) {
@@ -99,16 +102,16 @@ void ValidateKitchenSink(const KitchenSink& value, const std::string& path, std:
         }
       }
       if (!unique) {
-        AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must have unique values");
+        helpers::AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must have unique values");
       }
     }
   }
 }
 
-void ValidatePutSinkRpcInput(const PutSinkRpcInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
+void ValidatePutSinkRpcInput(const types::PutSinkRpcInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
   if (value.sink.has_value()) {
     const std::string member_path = path + "/sink";
-    ValidateKitchenSink((*value.sink), member_path, failures);
+    helpers::ValidateKitchenSink((*value.sink), member_path, failures);
   }
 }
 
@@ -127,22 +130,22 @@ void ValidatePutSinkRpcInput(const PutSinkRpcInput& value, const std::string& pa
   }
   smithy::DocumentMap body;
   body.emplace("fieldList", smithy::Document(std::move(field_list)));
-  smithy::http::HttpResponse response = JsonRpcError(400, "smithy.framework#ValidationException", summary, std::move(body), id);
+  smithy::http::HttpResponse response = helpers::JsonRpcError(400, "smithy.framework#ValidationException", summary, std::move(body), id);
   return response;
 }
 
 template <typename Handler>
 smithy::http::HttpResponse HandlePutSinkRpc(Handler& handler, const smithy::Document& params, const smithy::Document& id, const smithy::server::RequestContext& context) {
-  PutSinkRpcInput input{};
-  if (!params.is_map()) return JsonRpcError(-32602, "SerializationException", "params must be an object", {}, id);
+  types::PutSinkRpcInput input{};
+  if (!params.is_map()) return helpers::JsonRpcError(-32602, "SerializationException", "params must be an object", {}, id);
   auto parsed = DeserializePutSinkRpcInput(params);
-  if (!parsed) return JsonRpcError(-32602, "SerializationException", parsed.error().message(), {}, id);
+  if (!parsed) return helpers::JsonRpcError(-32602, "SerializationException", parsed.error().message(), {}, id);
   input = *std::move(parsed);
   std::vector<smithy::server::ValidationFailure> validation_failures;
-  ValidatePutSinkRpcInput(input, "", &validation_failures);
-  if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures, id);
+  helpers::ValidatePutSinkRpcInput(input, "", &validation_failures);
+  if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures, id);
   auto outcome = handler.PutSinkRpc(input, context);
-  if (!outcome) return ErrorToResponse(outcome.error(), id);
+  if (!outcome) return helpers::ErrorToResponse(outcome.error(), id);
   smithy::DocumentMap envelope;
   envelope.emplace("jsonrpc", smithy::Document("2.0"));
   envelope.emplace("result", SerializePutSinkRpcOutput(*outcome));
@@ -154,6 +157,7 @@ smithy::http::HttpResponse HandlePutSinkRpc(Handler& handler, const smithy::Docu
   return response;
 }
 
+}  // namespace helpers
 }  // namespace
 
 RoundTripJsonRpcServer::RoundTripJsonRpcServer(std::shared_ptr<RoundTripJsonRpcHandler> handler)
@@ -168,27 +172,27 @@ RoundTripJsonRpcServer::RoundTripJsonRpcServer(std::shared_ptr<RoundTripJsonRpcH
     if (const auto request_encoding = request.headers.Get("content-encoding"); request_encoding.has_value() && (*request_encoding == "gzip" || request_encoding->ends_with(", gzip"))) {
       auto decompressed = smithy::GzipDecompress(request.body);
       if (!decompressed) {
-        return JsonRpcError(-32700, "SerializationException", "invalid gzip request body", {}, id);
+        return helpers::JsonRpcError(-32700, "SerializationException", "invalid gzip request body", {}, id);
       }
       request.body = *std::move(decompressed);
     }
     // A present Content-Type must carry application/json (parameters ignored).
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
-      return JsonRpcError(-32600, "UnsupportedMediaTypeException", "expected content-type: application/json", {}, id);
+      return helpers::JsonRpcError(-32600, "UnsupportedMediaTypeException", "expected content-type: application/json", {}, id);
     }
     auto decoded = smithy::json::Decode(request.body);
     // Envelope failure messages are fixed strings: the conformance suite
     // compares bodies exactly, so no decoder detail leaks into the wire.
-    if (!decoded) return JsonRpcError(-32700, "SerializationException", "request body is not valid JSON", {}, id);
-    if (!decoded->is_map()) return JsonRpcError(-32600, "SerializationException", "request is not a JSON-RPC 2.0 call", {}, id);
+    if (!decoded) return helpers::JsonRpcError(-32700, "SerializationException", "request body is not valid JSON", {}, id);
+    if (!decoded->is_map()) return helpers::JsonRpcError(-32600, "SerializationException", "request is not a JSON-RPC 2.0 call", {}, id);
     if (const smithy::Document* id_doc = decoded->Find("id"); id_doc != nullptr) id = *id_doc;
     const smithy::Document* version = decoded->Find("jsonrpc");
     if (version == nullptr || !version->is_string() || version->as_string() != "2.0") {
-      return JsonRpcError(-32600, "SerializationException", "expected jsonrpc: \"2.0\"", {}, id);
+      return helpers::JsonRpcError(-32600, "SerializationException", "expected jsonrpc: \"2.0\"", {}, id);
     }
     const smithy::Document* method = decoded->Find("method");
     if (method == nullptr || !method->is_string()) {
-      return JsonRpcError(-32600, "SerializationException", "expected a string method member", {}, id);
+      return helpers::JsonRpcError(-32600, "SerializationException", "expected a string method member", {}, id);
     }
     // Absent/null params deserialize like an empty object.
     const smithy::Document empty_params{smithy::DocumentMap{}};
@@ -196,11 +200,11 @@ RoundTripJsonRpcServer::RoundTripJsonRpcServer(std::shared_ptr<RoundTripJsonRpcH
     if (params == nullptr || params->is_null()) params = &empty_params;
     const std::string& method_name = method->as_string();
     if (method_name == "PutSinkRpc") {
-      auto response = HandlePutSinkRpc(*handler, *params, id, context);
+      auto response = helpers::HandlePutSinkRpc(*handler, *params, id, context);
       response.operation = "PutSinkRpc";
       return response;
     }
-    return JsonRpcError(-32601, "UnknownOperationException", "unknown method: " + method_name, {}, id);
+    return helpers::JsonRpcError(-32601, "UnknownOperationException", "unknown method: " + method_name, {}, id);
   });
 }
 

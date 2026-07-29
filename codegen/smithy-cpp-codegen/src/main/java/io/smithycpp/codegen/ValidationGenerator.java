@@ -93,10 +93,10 @@ final class ValidationGenerator {
       return;
     }
     w.write("std::vector<smithy::server::ValidationFailure> validation_failures;");
-    w.write("$L(input, \"\", &validation_failures);", validatorNameFor(operation));
+    w.write("helpers::$L(input, \"\", &validation_failures);", validatorNameFor(operation));
     w.write(
         "if (!validation_failures.empty()) "
-            + "return ValidationErrorResponse(validation_failures$L);",
+            + "return helpers::ValidationErrorResponse(validation_failures$L);",
         extraArgs);
   }
 
@@ -243,7 +243,7 @@ final class ValidationGenerator {
     w.write("smithy::DocumentMap body;");
     w.write("body.emplace(\"fieldList\", smithy::Document(std::move(field_list)));");
     w.write(
-        "smithy::http::HttpResponse response = $L(400, $S, summary, std::move(body)$L);",
+        "smithy::http::HttpResponse response = helpers::$L(400, $S, summary, std::move(body)$L);",
         errorFn,
         errorCode,
         extraArgs);
@@ -275,7 +275,7 @@ final class ValidationGenerator {
           "void $L(const $L& value, const std::string& path, "
               + "std::vector<smithy::server::ValidationFailure>* failures);",
           validatorName(shape),
-          context.cppSymbols().toSymbol(shape).getName());
+          context.cppSymbols().typeRef(shape));
       declared = true;
     }
     if (declared) {
@@ -294,7 +294,7 @@ final class ValidationGenerator {
   }
 
   private void writeValidator(CppWriter w, Shape shape) {
-    String type = context.cppSymbols().toSymbol(shape).getName();
+    String type = context.cppSymbols().typeRef(shape);
     w.openBlock(
         "void $L(const $L& value, const std::string& path, "
             + "std::vector<smithy::server::ValidationFailure>* failures) {",
@@ -382,7 +382,7 @@ final class ValidationGenerator {
   private void writeRecursion(CppWriter w, MemberShape member, String valueExpr, String pathVar) {
     Shape memberTarget = target(member);
     if (constrained.contains(memberTarget.getId())) {
-      w.write("$L($L, $L, failures);", validatorName(memberTarget), valueExpr, pathVar);
+      w.write("helpers::$L($L, $L, failures);", validatorName(memberTarget), valueExpr, pathVar);
     }
   }
 
@@ -487,7 +487,7 @@ final class ValidationGenerator {
     w.write("const std::size_t member_length = $L;", lengthExpr);
     w.openBlock("if ($L) {", condition);
     w.write(
-        "AddValidationFailure(failures, $L, \"Value with length \" + "
+        "helpers::AddValidationFailure(failures, $L, \"Value with length \" + "
             + "std::to_string(member_length) + \" at '\" + $L + \"' failed to satisfy "
             + "constraint: $L\");",
         pathVar,
@@ -526,7 +526,7 @@ final class ValidationGenerator {
     }
     w.openBlock("if ($L) {", condition);
     w.write(
-        "AddValidationFailure(failures, $L, \"Value at '\" + $L + \"' failed to satisfy "
+        "helpers::AddValidationFailure(failures, $L, \"Value at '\" + $L + \"' failed to satisfy "
             + "constraint: $L\");",
         pathVar,
         pathVar,
@@ -553,7 +553,7 @@ final class ValidationGenerator {
         pattern.getValue());
     w.openBlock("if (!$L.ok() || !$L->Search($L)) {", variable, variable, valueExpr);
     w.write(
-        "AddValidationFailure(failures, $L, \"Value at '\" + $L + \"' failed to satisfy "
+        "helpers::AddValidationFailure(failures, $L, \"Value at '\" + $L + \"' failed to satisfy "
             + "constraint: Member must satisfy regular expression pattern: \" + "
             + "std::string($L));",
         pathVar,
@@ -638,7 +638,7 @@ final class ValidationGenerator {
     w.closeBlock("}");
     w.openBlock("if (!unique) {");
     w.write(
-        "AddValidationFailure(failures, $L, \"Value at '\" + $L + \"' failed to satisfy "
+        "helpers::AddValidationFailure(failures, $L, \"Value at '\" + $L + \"' failed to satisfy "
             + "constraint: Member must have unique values\");",
         pathVar,
         pathVar);
@@ -669,7 +669,7 @@ final class ValidationGenerator {
     String type = context.cppSymbols().toSymbol(target).getName();
     w.openBlock("if ($L.value() == $L::Value::kUnknown) {", valueExpr, type);
     w.write(
-        "AddValidationFailure(failures, $L, \"Value at '\" + $L + \"' failed to satisfy "
+        "helpers::AddValidationFailure(failures, $L, \"Value at '\" + $L + \"' failed to satisfy "
             + "constraint: Member must satisfy enum value set: [$L]\");",
         pathVar,
         pathVar,

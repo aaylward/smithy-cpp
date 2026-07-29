@@ -137,8 +137,46 @@ final class CppSymbolProvider implements SymbolProvider {
     if (declaredNames == null) {
       declaredNames = computeDeclaredNames();
     }
-    return declaredNames.getOrDefault(
-        shape.getId(), CppReservedWords.escape(shape.getId().getName()));
+    return declaredNames.getOrDefault(shape.getId(), escapeTypeName(shape.getId().getName()));
+  }
+
+  /**
+   * Keyword escaping plus the two file-level identifiers generated sources claim (issue #71): a
+   * type named {@code helpers} or {@code types} would be ambiguous against the helpers namespace /
+   * the types alias, so it gets the same trailing-underscore treatment as a keyword. Member names
+   * stay on plain {@link CppReservedWords} — member access never collides with a namespace.
+   */
+  private static String escapeTypeName(String name) {
+    String escaped = CppReservedWords.escape(name);
+    return escaped.equals("helpers") || escaped.equals("types") ? escaped + "_" : escaped;
+  }
+
+  /**
+   * The spelling generated .cc code uses to reference a shape's C++ type where a file-local helper
+   * could otherwise shadow it (issue #71): declared model types go through the file-level {@code
+   * types} namespace alias ({@link CppWriter}); builtin mappings (std::string, float, smithy::Blob,
+   * ...) have no model-controlled name and stay bare.
+   */
+  String typeRef(Shape shape) {
+    String name = toSymbol(shape).getName();
+    // declaresType minus lists/maps: those spell std::vector<...>/std::map<...>
+    // inline, so there is no declared identifier to route through the alias.
+    boolean declared = declaresType(shape) && !shape.isListShape() && !shape.isMapShape();
+    return declared ? "types::" + name : name;
+  }
+
+  /**
+   * Whether the shape declares a C++ type name in the generated module — the filter behind {@link
+   * #declaredName}. smithy.api#Unit maps to the runtime's smithy::Unit and declares nothing.
+   */
+  static boolean declaresType(Shape shape) {
+    return (shape.isStructureShape()
+            || shape.isUnionShape()
+            || shape.isEnumShape()
+            || shape.isIntEnumShape()
+            || shape.isListShape()
+            || shape.isMapShape())
+        && !shape.getId().toString().equals("smithy.api#Unit");
   }
 
   private java.util.Map<software.amazon.smithy.model.shapes.ShapeId, String> declaredNames;
@@ -154,19 +192,12 @@ final class CppSymbolProvider implements SymbolProvider {
     for (Shape shape :
         new software.amazon.smithy.model.neighbor.Walker(model)
             .walkShapes(model.expectShape(settings.service()))) {
-      boolean declares =
-          shape.isStructureShape()
-              || shape.isUnionShape()
-              || shape.isEnumShape()
-              || shape.isIntEnumShape()
-              || shape.isListShape()
-              || shape.isMapShape();
-      if (!declares || shape.getId().toString().equals("smithy.api#Unit")) {
+      if (!declaresType(shape)) {
         continue;
       }
       byName
           .computeIfAbsent(
-              CppReservedWords.escape(shape.getId().getName()), key -> new java.util.ArrayList<>())
+              escapeTypeName(shape.getId().getName()), key -> new java.util.ArrayList<>())
           .add(shape);
     }
     String homeNamespace = settings.service().getNamespace();

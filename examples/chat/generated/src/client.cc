@@ -27,7 +27,10 @@
 
 namespace example::chat {
 
+namespace types = ::example::chat;
+
 namespace {
+namespace helpers {
 
 // The error shape name arrives namespaced ("ns#Shape") and possibly
 // URI-qualified; modeled error codes keep only the shape name.
@@ -53,11 +56,11 @@ struct ParsedError {
   auto doc = smithy::json::Decode(response.body);
   if (doc.ok()) parsed.doc = *std::move(doc);
   const auto type_header = response.headers.Get("x-error-type");
-  if (type_header.has_value()) parsed.code = SanitizeErrorCode(*type_header);
+  if (type_header.has_value()) parsed.code = helpers::SanitizeErrorCode(*type_header);
   if (parsed.doc.is_map()) {
     const smithy::Document* type = parsed.doc.Find("__type");
     if (type == nullptr) type = parsed.doc.Find("code");
-    if (parsed.code == "UnknownError" && type != nullptr && type->is_string()) parsed.code = SanitizeErrorCode(type->as_string());
+    if (parsed.code == "UnknownError" && type != nullptr && type->is_string()) parsed.code = helpers::SanitizeErrorCode(type->as_string());
     const smithy::Document* text = parsed.doc.Find("message");
     if (text != nullptr && text->is_string()) parsed.message = text->as_string();
   }
@@ -137,7 +140,7 @@ smithy::Outcome<std::shared_ptr<smithy::http::WebSocket>> DialStream(const smith
 
 // One event per message (ADR-0016): the engaged member's structure is the
 // payload, its member name the :event-type.
-smithy::Outcome<smithy::eventstream::Message> EncodeConverseEvent(const ChatEvents& event) {
+smithy::Outcome<smithy::eventstream::Message> EncodeConverseEvent(const types::ChatEvents& event) {
   if (event.is_message()) {
     return smithy::eventstream::MakeEventMessage("message", "application/json", smithy::Blob::FromString(smithy::json::Encode(SerializeChatMessage(event.as_message()))));
   }
@@ -147,14 +150,14 @@ smithy::Outcome<smithy::eventstream::Message> EncodeConverseEvent(const ChatEven
   return smithy::Error::Validation("ChatEvents: no event member engaged");
 }
 
-smithy::Outcome<RoomEvents> DecodeConverseEvent(const smithy::eventstream::Message& message) {
+smithy::Outcome<types::RoomEvents> DecodeConverseEvent(const smithy::eventstream::Message& message) {
   auto envelope = smithy::eventstream::ParseEnvelope(message);
   if (!envelope) return std::move(envelope).error();
   if (envelope->kind == smithy::eventstream::EventEnvelope::Kind::kException) {
     // A received exception is terminal (ADR-0016): the EventStream closes the
     // session and surfaces this error, exactly the unary shape.
     ParsedError parsed;
-    parsed.code = SanitizeErrorCode(envelope->type);
+    parsed.code = helpers::SanitizeErrorCode(envelope->type);
     auto exception_doc = smithy::json::Decode(envelope->payload.ToString());
     if (exception_doc.ok() && exception_doc->is_map()) {
       parsed.doc = *std::move(exception_doc);
@@ -163,73 +166,74 @@ smithy::Outcome<RoomEvents> DecodeConverseEvent(const smithy::eventstream::Messa
     }
     // Make<Error>Error's header-patch source; exception messages carry none.
     smithy::http::HttpResponse response;
-    if (parsed.code == "Kicked") return MakeKickedError(response, std::move(parsed));
-    return GenericError(std::move(parsed));
+    if (parsed.code == "Kicked") return helpers::MakeKickedError(response, std::move(parsed));
+    return helpers::GenericError(std::move(parsed));
   }
   if (envelope->type == "message") {
     auto doc = smithy::json::Decode(envelope->payload.ToString());
     if (!doc) return std::move(doc).error();
     auto event = DeserializeChatMessage(*doc);
     if (!event) return std::move(event).error();
-    return RoomEvents::FromMessage(*std::move(event));
+    return types::RoomEvents::FromMessage(*std::move(event));
   }
   if (envelope->type == "joined") {
     auto doc = smithy::json::Decode(envelope->payload.ToString());
     if (!doc) return std::move(doc).error();
     auto event = DeserializeMemberJoined(*doc);
     if (!event) return std::move(event).error();
-    return RoomEvents::FromJoined(*std::move(event));
+    return types::RoomEvents::FromJoined(*std::move(event));
   }
   if (envelope->type == "left") {
     auto doc = smithy::json::Decode(envelope->payload.ToString());
     if (!doc) return std::move(doc).error();
     auto event = DeserializeMemberLeft(*doc);
     if (!event) return std::move(event).error();
-    return RoomEvents::FromLeft(*std::move(event));
+    return types::RoomEvents::FromLeft(*std::move(event));
   }
   return smithy::Error::Serialization("Converse: unknown event type: " + envelope->type);
 }
 
-smithy::Outcome<RoomEvents> DecodeWatchEvent(const smithy::eventstream::Message& message) {
+smithy::Outcome<types::RoomEvents> DecodeWatchEvent(const smithy::eventstream::Message& message) {
   auto envelope = smithy::eventstream::ParseEnvelope(message);
   if (!envelope) return std::move(envelope).error();
   if (envelope->kind == smithy::eventstream::EventEnvelope::Kind::kException) {
     // A received exception is terminal (ADR-0016): the EventStream closes the
     // session and surfaces this error, exactly the unary shape.
     ParsedError parsed;
-    parsed.code = SanitizeErrorCode(envelope->type);
+    parsed.code = helpers::SanitizeErrorCode(envelope->type);
     auto exception_doc = smithy::json::Decode(envelope->payload.ToString());
     if (exception_doc.ok() && exception_doc->is_map()) {
       parsed.doc = *std::move(exception_doc);
       const smithy::Document* text = parsed.doc.Find("message");
       if (text != nullptr && text->is_string()) parsed.message = text->as_string();
     }
-    return GenericError(std::move(parsed));
+    return helpers::GenericError(std::move(parsed));
   }
   if (envelope->type == "message") {
     auto doc = smithy::json::Decode(envelope->payload.ToString());
     if (!doc) return std::move(doc).error();
     auto event = DeserializeChatMessage(*doc);
     if (!event) return std::move(event).error();
-    return RoomEvents::FromMessage(*std::move(event));
+    return types::RoomEvents::FromMessage(*std::move(event));
   }
   if (envelope->type == "joined") {
     auto doc = smithy::json::Decode(envelope->payload.ToString());
     if (!doc) return std::move(doc).error();
     auto event = DeserializeMemberJoined(*doc);
     if (!event) return std::move(event).error();
-    return RoomEvents::FromJoined(*std::move(event));
+    return types::RoomEvents::FromJoined(*std::move(event));
   }
   if (envelope->type == "left") {
     auto doc = smithy::json::Decode(envelope->payload.ToString());
     if (!doc) return std::move(doc).error();
     auto event = DeserializeMemberLeft(*doc);
     if (!event) return std::move(event).error();
-    return RoomEvents::FromLeft(*std::move(event));
+    return types::RoomEvents::FromLeft(*std::move(event));
   }
   return smithy::Error::Serialization("Watch: unknown event type: " + envelope->type);
 }
 
+}  // namespace helpers
 }  // namespace
 
 smithy::Outcome<ChatClient> ChatClient::Create(smithy::ClientConfig config) {
@@ -281,9 +285,9 @@ smithy::Outcome<ConverseClientStream> ChatClient::Converse(const ConverseInput& 
     request.headers.Set("x-chat-nickname", (*input.nickname));
   }
   request.headers.Set("user-agent", config_.user_agent);
-  auto socket = DialStream(config_, std::move(request));
+  auto socket = helpers::DialStream(config_, std::move(request));
   if (!socket) return std::move(socket).error();
-  return ConverseClientStream(*std::move(socket), EncodeConverseEvent, DecodeConverseEvent);
+  return ConverseClientStream(*std::move(socket), helpers::EncodeConverseEvent, helpers::DecodeConverseEvent);
 }
 
 smithy::Outcome<ListRoomsOutput> ChatClient::ListRooms(const ListRoomsInput& input) const {
@@ -295,7 +299,7 @@ smithy::Outcome<ListRoomsOutput> ChatClient::ListRooms(const ListRoomsInput& inp
   request.target = std::move(target);
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return GenericError(ParseError(*response));
+  if (response->status != 200) return helpers::GenericError(helpers::ParseError(*response));
   auto body_doc = smithy::json::Decode(response->body);
   if (!body_doc) return std::move(body_doc).error();
   return DeserializeListRoomsOutput(*body_doc);
@@ -310,9 +314,9 @@ smithy::Outcome<WatchClientStream> ChatClient::Watch(const WatchInput& input) co
   smithy::http::WebSocketDialRequest request;
   request.target = std::move(target);
   request.headers.Set("user-agent", config_.user_agent);
-  auto socket = DialStream(config_, std::move(request));
+  auto socket = helpers::DialStream(config_, std::move(request));
   if (!socket) return std::move(socket).error();
-  return WatchClientStream(*std::move(socket), {}, DecodeWatchEvent);
+  return WatchClientStream(*std::move(socket), {}, helpers::DecodeWatchEvent);
 }
 
 }  // namespace example::chat

@@ -101,8 +101,7 @@ final class SerdeCodeGen {
       requiredAbsent.write(w, member, () -> writeDeserializeInto(w, member, "member", field, path));
     } else {
       w.openBlock("if (member != nullptr && !member->is_null()) {");
-      var targetType = context.cppSymbols().toSymbol(target(member));
-      w.write("$L parsed_member{};", targetType.getName());
+      w.write("$L parsed_member{};", context.cppSymbols().typeRef(target(member)));
       writeDeserializeInto(w, member, "member", "parsed_member", path);
       w.write("$L = std::move(parsed_member);", field);
       if (fillDefaults && MemberDefaults.fillOnParse(context.model(), member)) {
@@ -197,7 +196,7 @@ final class SerdeCodeGen {
         w.write("$L = $L->as_bool();", outExpr, docExpr);
       }
       case BYTE, SHORT, INTEGER, LONG -> {
-        String type = context.cppSymbols().toSymbol(shape).getName();
+        String type = context.cppSymbols().typeRef(shape);
         w.write("if (!$L->is_int()) $L", docExpr, wrong);
         if (shape.getType() != software.amazon.smithy.model.shapes.ShapeType.LONG) {
           // Narrower integers reject out-of-range wire values instead of
@@ -218,12 +217,12 @@ final class SerdeCodeGen {
         w.write("$L = static_cast<$L>($L->as_int());", outExpr, type, docExpr);
       }
       case INT_ENUM -> {
-        String type = context.cppSymbols().toSymbol(shape).getName();
+        String type = context.cppSymbols().typeRef(shape);
         w.write("if (!$L->is_int()) $L", docExpr, wrong);
         w.write("$L = static_cast<$L>($L->as_int());", outExpr, type, docExpr);
       }
       case FLOAT, DOUBLE -> {
-        String type = context.cppSymbols().toSymbol(shape).getName();
+        String type = context.cppSymbols().typeRef(shape);
         w.openBlock("{");
         w.write("auto parsed = smithy::DoubleFromDocument(*$L);", docExpr);
         w.write(
@@ -236,7 +235,7 @@ final class SerdeCodeGen {
         w.write("$L = $L->as_string();", outExpr, docExpr);
       }
       case ENUM -> {
-        String type = context.cppSymbols().toSymbol(shape).getName();
+        String type = context.cppSymbols().typeRef(shape);
         w.write("if (!$L->is_string()) $L", docExpr, wrong);
         w.write("$L = $L::FromString($L->as_string());", outExpr, type, docExpr);
       }

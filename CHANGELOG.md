@@ -52,6 +52,24 @@ via `git_override` until then.
 
 ### Runtime
 
+- Outbound header-injection defense (issue #109): every transport write path
+  now rejects control bytes in header names and values before they reach the
+  wire, closing an HTTP response/request-splitting hole. A handler or
+  middleware echoing untrusted data into a header (a `Location`, a request-id
+  echo) could previously smuggle `CR`/`LF` and forge extra headers or a
+  second message — Beast's `fields::insert` and the socket transports'
+  string concatenation both passed the bytes through verbatim, even though
+  the same code already strips the framing headers for the sibling
+  smuggling vector. `ValidHeaderName`/`ValidHeaderValue`/`FindUnsafeHeader`
+  (in `:http`, RFC 9110-aligned: names are control/space/colon/DEL-free
+  tokens, values additionally permit HTAB and obs-text) gate all five
+  paths — Beast server response, Beast client request, Beast WebSocket
+  upgrade, and the socket client/server. Server responses with an unsafe
+  header become a plain synthesized 500 (nothing echoed); client sends and
+  WebSocket dials fail with `Error::Validation` naming the header, before
+  anything is written. The permissive `Headers` container is unchanged
+  (inbound parsing stores into it too); enforcement lives at the transports'
+  write authority.
 - `Timestamp::Format(kEpochSeconds)` renders negative fractional instants
   correctly (issue #109): floor-division formatted −500 ms as `-1.5`, which
   the (correct) parser read back as −1500 ms — every pre-1970 instant with

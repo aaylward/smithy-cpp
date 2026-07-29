@@ -252,6 +252,142 @@ TEST(BeastTransportTest, StripsHandlerSetFramingHeaders) {
   server.Stop();
 }
 
+TEST(BeastTransportTest, AnInjectedResponseHeaderBecomesA500NotASplitResponse) {
+  // The outbound injection defense (issue #109), at the same authority
+  // point as the framing strip above. The handler models the real attack
+  // shape: request-derived text that reached it DECODED (percent-decoding,
+  // a JSON body, a database field) and is echoed into a header value. The
+  // raw wire must carry one plain 500 — never a second field line, never
+  // the smuggled set-cookie.
+  BeastServerTransport server;
+  ASSERT_TRUE(server
+                  .Start([](const HttpRequest&) {
+                    HttpResponse response;
+                    response.status = 302;
+                    response.headers.Set("location", "https://x/\r\nset-cookie: evil=1");
+                    response.body = "redirecting";
+                    return response;
+                  })
+                  .ok());
+  const std::string raw =
+      RawRoundTrip(server.port(), "GET / HTTP/1.1\r\nhost: x\r\nconnection: close\r\n\r\n");
+  ASSERT_FALSE(raw.empty());
+  const std::string wire = AsciiLowerCopy(raw);
+  EXPECT_NE(wire.find("http/1.1 500"), std::string::npos) << raw;
+  EXPECT_EQ(wire.find("set-cookie"), std::string::npos) << raw;
+  EXPECT_EQ(wire.find("location"), std::string::npos) << raw;
+  EXPECT_EQ(wire.find("redirecting"), std::string::npos) << raw;  // body replaced too
+  EXPECT_NE(wire.find("forbidden bytes"), std::string::npos) << raw;
+  server.Stop();
+}
+
+TEST(BeastTransportTest, AnInjectedResponseHeaderNameAlsoBecomesA500) {
+  // The value case above; this pins the name axis end to end — a CR/LF in a
+  // header NAME must not split the response either.
+  BeastServerTransport server;
+  ASSERT_TRUE(server
+                  .Start([](const HttpRequest&) {
+                    HttpResponse response;
+                    response.status = 200;
+                    response.headers.Set("x-app\r\nset-cookie", "evil=1");
+                    response.body = "ok";
+                    return response;
+                  })
+                  .ok());
+  const std::string raw =
+      RawRoundTrip(server.port(), "GET / HTTP/1.1\r\nhost: x\r\nconnection: close\r\n\r\n");
+  ASSERT_FALSE(raw.empty());
+  const std::string wire = AsciiLowerCopy(raw);
+  EXPECT_NE(wire.find("http/1.1 500"), std::string::npos) << raw;
+  EXPECT_EQ(wire.find("set-cookie"), std::string::npos) << raw;
+  server.Stop();
+}
+
+TEST(BeastTransportTest, TheInjectionRejectingResponseFramesCorrectlyOnKeepAlive) {
+  // The 500-replacement must recompute content-length for its own body and
+  // keep the connection in sync — a second request on the same keep-alive
+  // connection must still parse. A stale content-length (the original
+  // body's) would desync the stream and hang or corrupt the next response.
+  BeastServerTransport server({.threads = 2});
+  ASSERT_TRUE(server
+                  .Start([](const HttpRequest& request) {
+                    HttpResponse response;
+                    response.status = 200;
+                    if (request.target == "/inject") {
+                      response.headers.Set("location", "https://x/\r\nset-cookie: evil=1");
+                    }
+                    response.body = request.target == "/inject" ? "redirecting" : "second-ok";
+                    return response;
+                  })
+                  .ok());
+
+  const int fd = ConnectLoopback(server.port());
+  ASSERT_GE(fd, 0);
+  // First request trips the injection guard: a keep-alive 500.
+  const std::string first = "GET /inject HTTP/1.1\r\nhost: x\r\n\r\n";
+  ASSERT_EQ(::send(fd, first.data(), first.size(), 0), static_cast<ssize_t>(first.size()));
+  std::string received;
+  char scratch[512];
+  // Read exactly the first response: headers, then content-length bytes.
+  auto read_more = [&] {
+    const auto n = ::recv(fd, scratch, sizeof(scratch), 0);
+    ASSERT_GT(n, 0) << "connection closed before the first response completed";
+    received.append(scratch, static_cast<std::size_t>(n));
+  };
+  std::size_t header_end = std::string::npos;
+  while ((header_end = received.find("\r\n\r\n")) == std::string::npos) read_more();
+  const std::string lower = AsciiLowerCopy(received.substr(0, header_end));
+  EXPECT_NE(lower.find("http/1.1 500"), std::string::npos) << received;
+  EXPECT_EQ(lower.find("set-cookie"), std::string::npos) << received;
+  // The content-length must match the replacement body — parse it and read
+  // exactly that many body bytes, proving the framing is self-consistent.
+  const std::size_t cl_pos = lower.find("content-length: ");
+  ASSERT_NE(cl_pos, std::string::npos) << received;
+  const std::size_t content_length = static_cast<std::size_t>(std::stoi(lower.substr(cl_pos + 16)));
+  const std::size_t body_start = header_end + 4;
+  while (received.size() < body_start + content_length) read_more();
+  const std::string body = received.substr(body_start, content_length);
+  EXPECT_NE(body.find("forbidden bytes"), std::string::npos) << body;
+
+  // The connection is still framed correctly: a second request is served in
+  // sync. If content-length had been wrong, this read would hang or mis-parse.
+  const std::string second = "GET /next HTTP/1.1\r\nhost: x\r\nconnection: close\r\n\r\n";
+  ASSERT_EQ(::send(fd, second.data(), second.size(), 0), static_cast<ssize_t>(second.size()));
+  std::string tail = received.substr(body_start + content_length);
+  while (tail.find("second-ok") == std::string::npos) {
+    const auto n = ::recv(fd, scratch, sizeof(scratch), 0);
+    ASSERT_GT(n, 0) << "second request never served in sync: " << tail;
+    tail.append(scratch, static_cast<std::size_t>(n));
+  }
+  EXPECT_NE(AsciiLowerCopy(tail).find("http/1.1 200"), std::string::npos) << tail;
+  ::close(fd);
+  server.Stop();
+}
+
+TEST(BeastTransportTest, LegitimateObsTextAndTabHeadersAreNotFalsePositives) {
+  // The guard must not turn valid headers into 500s: HTAB and obs-text
+  // (>= 0x80) are legal in field values and must pass through untouched.
+  BeastServerTransport server;
+  ASSERT_TRUE(server
+                  .Start([](const HttpRequest&) {
+                    HttpResponse response;
+                    response.status = 200;
+                    response.headers.Set("x-tabbed", "a\tb");
+                    response.headers.Set("x-obs", "caf\xc3\xa9");  // UTF-8 é, obs-text
+                    response.body = "ok";
+                    return response;
+                  })
+                  .ok());
+  const std::string raw =
+      RawRoundTrip(server.port(), "GET / HTTP/1.1\r\nhost: x\r\nconnection: close\r\n\r\n");
+  ASSERT_FALSE(raw.empty());
+  const std::string wire = AsciiLowerCopy(raw);
+  EXPECT_NE(wire.find("http/1.1 200"), std::string::npos) << raw;
+  EXPECT_NE(wire.find("x-tabbed: a\tb\r\n"), std::string::npos) << raw;
+  EXPECT_NE(raw.find("caf\xc3\xa9"), std::string::npos) << raw;
+  server.Stop();
+}
+
 TEST(BeastTransportTest, MaxConnectionsBoundsConcurrencyWithoutRejecting) {
   // Issue #46: at the cap the server pauses accepting — new connections wait
   // in the kernel's listen backlog until a session closes — rather than

@@ -228,5 +228,38 @@ TEST(LoopbackTest, AsyncSendUsesSameHandler) {
   EXPECT_EQ(response->status, 204);
 }
 
+TEST(HeadersTest, WireSafetyPredicatesRejectControlBytes) {
+  // The outbound injection defense (issue #109): what may reach a field
+  // line at all. Names are token-shaped...
+  EXPECT_TRUE(ValidHeaderName("x-request-id"));
+  EXPECT_TRUE(ValidHeaderName("X-Weird~Token!"));
+  EXPECT_FALSE(ValidHeaderName(""));
+  EXPECT_FALSE(ValidHeaderName("x-a\r\nevil"));
+  EXPECT_FALSE(ValidHeaderName("x-a\n"));
+  EXPECT_FALSE(ValidHeaderName("x a"));   // space corrupts the line
+  EXPECT_FALSE(ValidHeaderName("x:a"));   // colon corrupts the boundary
+  EXPECT_FALSE(ValidHeaderName("x\ta"));  // HTAB is a value privilege
+  EXPECT_FALSE(ValidHeaderName(std::string_view("x\0y", 3)));
+  EXPECT_FALSE(ValidHeaderName("x\x7f"));
+
+  // ...values admit HTAB and obs-text, never CR/LF/NUL/DEL.
+  EXPECT_TRUE(ValidHeaderValue(""));
+  EXPECT_TRUE(ValidHeaderValue("plain value with spaces"));
+  EXPECT_TRUE(ValidHeaderValue("tab\tseparated"));
+  EXPECT_TRUE(ValidHeaderValue("obs-text \xc3\xa9"));
+  EXPECT_FALSE(ValidHeaderValue("split\r\nevil: y"));
+  EXPECT_FALSE(ValidHeaderValue("bare\rcr"));
+  EXPECT_FALSE(ValidHeaderValue("bare\nlf"));
+  EXPECT_FALSE(ValidHeaderValue(std::string_view("nul\0", 4)));
+  EXPECT_FALSE(ValidHeaderValue("del\x7f"));
+
+  Headers headers;
+  headers.Add("fine", "value");
+  EXPECT_FALSE(FindUnsafeHeader(headers).has_value());
+  headers.Add("location", "https://x/\r\nset-cookie: evil");
+  ASSERT_TRUE(FindUnsafeHeader(headers).has_value());
+  EXPECT_EQ(*FindUnsafeHeader(headers), "location");
+}
+
 }  // namespace
 }  // namespace smithy::http

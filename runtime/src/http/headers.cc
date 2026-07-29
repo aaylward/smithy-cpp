@@ -119,6 +119,33 @@ std::string MediaTypeOf(std::string_view content_type) {
   return out;
 }
 
+bool ValidHeaderName(std::string_view name) {
+  // Control bytes split or corrupt the field line; space and colon corrupt
+  // the name/value boundary. (Full token validation would also exclude
+  // separators like '(' — the defense here is scoped to what breaks the
+  // wire, not to RFC pedantry.)
+  return !name.empty() && std::ranges::none_of(name, [](char c) {
+    const auto byte = static_cast<unsigned char>(c);
+    return byte <= 0x20 || byte == 0x7F || c == ':';
+  });
+}
+
+bool ValidHeaderValue(std::string_view value) {
+  return std::ranges::all_of(value, [](char c) {
+    const auto byte = static_cast<unsigned char>(c);
+    // HTAB is legal inside field values; every other control byte and DEL
+    // is not.
+    return byte == '\t' || (byte >= 0x20 && byte != 0x7F);
+  });
+}
+
+std::optional<std::string> FindUnsafeHeader(const Headers& headers) {
+  for (const auto& [name, value] : headers.entries()) {
+    if (!ValidHeaderName(name) || !ValidHeaderValue(value)) return name;
+  }
+  return std::nullopt;
+}
+
 std::vector<std::string> SplitHttpDateHeaderValues(std::string_view value) {
   std::vector<std::string> tokens = SplitHeaderListValues(value);
   std::vector<std::string> out;

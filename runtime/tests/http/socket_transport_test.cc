@@ -130,6 +130,65 @@ TEST(SocketTransportTest, StripsHandlerSetFramingHeaders) {
   server.Stop();
 }
 
+TEST(SocketTransportTest, AnInjectedResponseHeaderBecomesA500NotASplitResponse) {
+  // The outbound injection defense (issue #109): a handler echoing
+  // CR/LF-bearing text into a header must not split the response. The
+  // transport replaces the whole response with fixed text.
+  SocketHttpServer server;
+  ASSERT_TRUE(server
+                  .Start([](const HttpRequest&) {
+                    HttpResponse response;
+                    response.status = 302;
+                    response.headers.Set("location", "https://x/\r\nset-cookie: evil=1");
+                    response.body = "redirecting";
+                    return response;
+                  })
+                  .ok());
+  SocketHttpClient client("127.0.0.1", server.port());
+  const auto response = client.Send(HttpRequest{});
+  ASSERT_TRUE(response.ok()) << response.error().message();
+  EXPECT_EQ(response->status, 500);
+  EXPECT_FALSE(response->headers.Has("set-cookie"));  // nothing split through
+  EXPECT_FALSE(response->headers.Has("location"));
+  EXPECT_NE(response->body.find("forbidden bytes"), std::string::npos);
+  server.Stop();
+}
+
+TEST(SocketTransportTest, LegitimateObsTextAndTabHeadersAreNotFalsePositives) {
+  // The guard must not turn valid headers into 500s: HTAB and obs-text
+  // (>= 0x80) are legal in field values and must round-trip untouched.
+  SocketHttpServer server;
+  ASSERT_TRUE(server
+                  .Start([](const HttpRequest&) {
+                    HttpResponse response;
+                    response.status = 200;
+                    response.headers.Set("x-tabbed", "a\tb");
+                    response.headers.Set("x-obs", "caf\xc3\xa9");  // UTF-8 é, obs-text
+                    response.body = "ok";
+                    return response;
+                  })
+                  .ok());
+  SocketHttpClient client("127.0.0.1", server.port());
+  const auto response = client.Send(HttpRequest{});
+  ASSERT_TRUE(response.ok()) << response.error().message();
+  EXPECT_EQ(response->status, 200);
+  EXPECT_EQ(response->headers.Get("x-tabbed").value_or(""), "a\tb");
+  EXPECT_EQ(response->headers.Get("x-obs").value_or(""), "caf\xc3\xa9");
+  server.Stop();
+}
+
+TEST(SocketTransportTest, AClientRequestWithInjectedHeaderIsRefusedBeforeConnecting) {
+  // Port 1 is never dialed: the refusal happens before any socket work, so
+  // no listener is needed for this to fail fast with Validation.
+  SocketHttpClient client("127.0.0.1", 1);
+  HttpRequest request;
+  request.headers.Set("x-echo", "a\r\nx-evil: b");
+  const auto outcome = client.Send(request);
+  ASSERT_FALSE(outcome.ok());
+  EXPECT_EQ(outcome.error().kind(), ErrorKind::kValidation);
+  EXPECT_NE(outcome.error().message().find("x-echo"), std::string::npos);
+}
+
 TEST(SocketTransportTest, PeerCloseMidSendIsAnErrorNotSigpipe) {
   SocketHttpServer server;
   ASSERT_TRUE(server.Start([](const HttpRequest&) { return HttpResponse{200, {}, "ok"}; }).ok());

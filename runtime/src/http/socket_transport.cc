@@ -11,6 +11,7 @@
 #include <string_view>
 #include <utility>
 
+#include "smithy/http/headers.h"
 #include "smithy/http/http1.h"
 #include "smithy/http/server_dispatch.h"
 
@@ -66,6 +67,12 @@ Outcome<Http1Message> ReadMessage(SocketFd fd, bool body_until_eof) {
 }  // namespace
 
 Outcome<HttpResponse> SocketHttpClient::Send(const HttpRequest& request) {
+  if (const auto unsafe = FindUnsafeHeader(request.headers); unsafe.has_value()) {
+    // The header-injection defense (issue #109): the writer below splices
+    // names and values between CRLFs verbatim, so an embedded CR/LF would
+    // split the request. Refused before anything connects.
+    return Error::Validation("http: request header \"" + *unsafe + "\" contains forbidden bytes");
+  }
   addrinfo hints{};
   hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;
@@ -197,6 +204,15 @@ void SocketHttpServer::AcceptLoop() {
     response.headers.Remove("content-length");
     response.headers.Remove("transfer-encoding");
     response.headers.Remove("connection");
+    if (FindUnsafeHeader(response.headers).has_value()) {
+      // The header-injection defense (issue #109), at the same authority
+      // point that owns the framing set above: replace the whole response
+      // with fixed text rather than write a splittable field line.
+      response = HttpResponse{};
+      response.status = 500;
+      response.headers.Set("content-type", "text/plain");
+      response.body = "internal error: response header contains forbidden bytes";
+    }
     std::string wire = "HTTP/1.1 " + std::to_string(response.status) + " \r\n";
     wire += "content-length: " + std::to_string(response.body.size()) + "\r\n";
     wire += "connection: close\r\n";

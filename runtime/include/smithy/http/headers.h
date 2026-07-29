@@ -57,6 +57,25 @@ std::string MediaTypeOf(std::string_view content_type);
 // comma-separated tokens are re-joined two at a time.
 std::vector<std::string> SplitHttpDateHeaderValues(std::string_view value);
 
+// The outbound header-injection defense (issue #109): whether a name or
+// value may be written to an HTTP/1.1 wire at all. The line this draws is
+// "cannot split or corrupt a field line", not full RFC 9110 token grammar:
+// a name must be non-empty with no control bytes, space, colon, or DEL (an
+// embedded CR/LF splits the message; space or colon corrupts the line), and
+// a value may additionally contain HTAB (legal in field values). obs-text
+// (>= 0x80) passes in BOTH — it is not strictly a token character in a name,
+// but it cannot break framing, so it is not this defense's concern. The
+// container above deliberately stores anything — inbound parsing reuses it —
+// so the transports enforce these at their write paths, the same authority
+// point that owns the framing headers.
+bool ValidHeaderName(std::string_view name);
+bool ValidHeaderValue(std::string_view value);
+
+// First entry unsafe to serialize, if any: the name (or, for an unprintable
+// name, its size-prefixed form is left to the caller's error text). Every
+// outbound transport path checks this before writing.
+std::optional<std::string> FindUnsafeHeader(const Headers& headers);
+
 }  // namespace smithy::http
 
 #endif  // SMITHY_HTTP_HEADERS_H_

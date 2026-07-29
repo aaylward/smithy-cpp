@@ -1101,6 +1101,19 @@ TEST(BeastWebSocketTest, DialFailuresAreErrorsNotCrashes) {
   EXPECT_FALSE(BeastWebSocketClient::Dial({}).ok());
 }
 
+TEST(BeastWebSocketTest, AnInjectedUpgradeHeaderIsRefusedBeforeConnecting) {
+  // The outbound injection defense (issue #109): Options::headers ride the
+  // upgrade GET verbatim, so CR/LF there is request splitting. Dial refuses
+  // with Validation before it connects — port 1 is never reached.
+  Headers hostile;
+  hostile.Add("x-token", "abc\r\nx-evil: 1");
+  const auto dialed =
+      BeastWebSocketClient::Dial({.host = "127.0.0.1", .port = 1, .headers = hostile});
+  ASSERT_FALSE(dialed.ok());
+  EXPECT_EQ(dialed.error().kind(), ErrorKind::kValidation);
+  EXPECT_NE(dialed.error().message().find("x-token"), std::string::npos);
+}
+
 TEST(BeastWebSocketTest, StartRefusesAServeCallbackWithoutAHandlerPool) {
   BeastServerTransport::Options options = EchoOptions();
   options.handler_threads = 0;

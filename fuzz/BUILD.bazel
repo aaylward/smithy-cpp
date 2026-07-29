@@ -26,6 +26,7 @@ FUZZ_TARGETS = {
     "gzip": ["//runtime:compression"],
     "http1": ["//runtime:http"],
     "regex": ["//runtime:core"],
+    "timestamp": ["//runtime:core"],
     "uri": ["//runtime:http"],
     "server_dispatch": [
         "//examples/weather/generated:server",

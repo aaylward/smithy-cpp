@@ -58,9 +58,16 @@ via `git_override` until then.
   a nonzero millisecond part was mis-rendered and round-trip-broken on the
   epoch-seconds string paths (HTTP label/query/header bindings; JSON and
   CBOR bodies were unaffected, being numeric). Sign and magnitude now
-  format separately, INT64_MIN-safe. The `kHttpDate` weekday/month tables
-  become `const char*` so their `%s` use no longer leans on literal-backed
-  `string_view` NUL termination.
+  format separately, and `Format(kEpochSeconds)` is now total over the
+  unchecked int64 domain — the civil decomposition (whose day arithmetic
+  overflows near the int64 edge, a pre-existing UB for absurd unchecked
+  instants) runs only in the arms that need it, pinned at the extremes
+  under UBSan. The `kHttpDate` weekday/month tables become `const char*`
+  so their `%s` use no longer leans on literal-backed `string_view` NUL
+  termination. The differential suite gains an epoch-seconds sweep (both
+  signs, fractional milliseconds — the domain gap that let the original
+  bug through), and `//fuzz:timestamp_fuzz` fuzzes all three wire-facing
+  parsers with reformat/reparse fixed-point checks.
 - Gzip feeds zlib in bounded slices (issue #109): `avail_in` is 32-bit, and
   the old single feed truncated the length silently — a 4 GiB + N byte
   `@requestCompression` body compressed to a *valid* gzip stream of its

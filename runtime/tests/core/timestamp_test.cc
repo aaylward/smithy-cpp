@@ -144,6 +144,8 @@ TEST(TimestampTest, FormatsNegativeFractionalEpochSeconds) {
   // are now formatted separately.
   EXPECT_EQ(Timestamp::FromEpochMilliseconds(-500).Format(TimestampFormat::kEpochSeconds), "-0.5");
   EXPECT_EQ(Timestamp::FromEpochMilliseconds(-1).Format(TimestampFormat::kEpochSeconds), "-0.001");
+  // A boundary pin, not a corruption pin: whole-second negatives were
+  // rendered correctly by the old code too.
   EXPECT_EQ(Timestamp::FromEpochMilliseconds(-1000).Format(TimestampFormat::kEpochSeconds), "-1");
   EXPECT_EQ(Timestamp::FromEpochMilliseconds(-1500).Format(TimestampFormat::kEpochSeconds), "-1.5");
   EXPECT_EQ(Timestamp::FromEpochMilliseconds(-999).Format(TimestampFormat::kEpochSeconds),
@@ -153,6 +155,30 @@ TEST(TimestampTest, FormatsNegativeFractionalEpochSeconds) {
   EXPECT_EQ(Timestamp::FromEpochMilliseconds(500).Format(TimestampFormat::kEpochSeconds), "0.5");
   EXPECT_EQ(Timestamp::FromEpochMilliseconds(1515531081123).Format(TimestampFormat::kEpochSeconds),
             "1515531081.123");
+}
+
+TEST(TimestampTest, EpochSecondsBoundariesFormatToCanonicalText) {
+  // Exact strings, not just round-trip identity — identity alone cannot
+  // catch a trailing-zero-trim regression (e.g. "-62167219199.9990" reads
+  // back to the same instant).
+  EXPECT_EQ(
+      Timestamp::FromEpochMilliseconds(-62167219200000).Format(TimestampFormat::kEpochSeconds),
+      "-62167219200");
+  EXPECT_EQ(
+      Timestamp::FromEpochMilliseconds(-62167219199999).Format(TimestampFormat::kEpochSeconds),
+      "-62167219199.999");
+}
+
+TEST(TimestampTest, EpochSecondsIsTotalOverTheUncheckedInt64Domain) {
+  // The unchecked factory can mint any int64. The epoch-seconds arm must
+  // format the extremes without UB — the civil decomposition, whose day
+  // arithmetic cannot survive them, runs only in the arms that need it.
+  EXPECT_EQ(Timestamp::FromEpochMilliseconds(std::numeric_limits<std::int64_t>::min())
+                .Format(TimestampFormat::kEpochSeconds),
+            "-9223372036854775.808");
+  EXPECT_EQ(Timestamp::FromEpochMilliseconds(std::numeric_limits<std::int64_t>::max())
+                .Format(TimestampFormat::kEpochSeconds),
+            "9223372036854775.807");
 }
 
 TEST(TimestampTest, NegativeEpochSecondsRoundTripThroughTheirOwnText) {

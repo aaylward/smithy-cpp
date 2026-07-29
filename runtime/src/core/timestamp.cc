@@ -260,7 +260,6 @@ Outcome<Timestamp> Timestamp::FromEpochMillisecondsChecked(std::int64_t ms) {
 }
 
 std::string Timestamp::Format(TimestampFormat format) const {
-  const CivilTime c = Decompose(ms_);
   std::array<char, 40> buffer{};
   std::string out;
   switch (format) {
@@ -270,7 +269,9 @@ std::string Timestamp::Format(TimestampFormat format) const {
       // (correctly) read back as −1500 ms: every pre-1970 instant with a
       // nonzero millisecond part was wire-corrupted (issue #109). Unsigned
       // negation, not std::abs: the unchecked factory can mint INT64_MIN,
-      // whose two's-complement abs is UB.
+      // whose two's-complement abs is UB. Decompose runs only in the arms
+      // that need civil fields — its day arithmetic cannot survive the
+      // int64 extremes — so this arm is total over the unchecked domain.
       const bool negative = ms_ < 0;
       const auto magnitude =
           negative ? 0 - static_cast<std::uint64_t>(ms_) : static_cast<std::uint64_t>(ms_);
@@ -280,6 +281,7 @@ std::string Timestamp::Format(TimestampFormat format) const {
       return out;
     }
     case TimestampFormat::kDateTime: {
+      const CivilTime c = Decompose(ms_);
       std::snprintf(buffer.data(), buffer.size(), "%04d-%02u-%02uT%02d:%02d:%02d", c.year, c.month,
                     c.day, c.hour, c.minute, c.second);
       out = buffer.data();
@@ -288,6 +290,7 @@ std::string Timestamp::Format(TimestampFormat format) const {
       return out;
     }
     case TimestampFormat::kHttpDate: {
+      const CivilTime c = Decompose(ms_);
       const std::size_t weekday = WeekdayIndex(FloorDiv(ms_, kMsPerDay));
       std::snprintf(buffer.data(), buffer.size(), "%s, %02u %s %04d %02d:%02d:%02d GMT",
                     kWeekdays[weekday], c.day, kMonths[c.month - 1], c.year, c.hour, c.minute,

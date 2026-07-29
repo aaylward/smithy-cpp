@@ -33,6 +33,7 @@ class PizzaAdminServiceHandler {
     virtual smithy::Outcome<HttpPayloadRequiredWithDefaultOutput> HttpPayloadRequiredWithDefault(const HttpPayloadRequiredWithDefaultInput& input, const smithy::server::RequestContext& context) = 0;
     virtual smithy::Outcome<HttpPayloadWithDefaultOutput> HttpPayloadWithDefault(const HttpPayloadWithDefaultInput& input, const smithy::server::RequestContext& context) = 0;
     virtual smithy::Outcome<OpenUnionsOutput> OpenUnions(const OpenUnionsInput& input, const smithy::server::RequestContext& context) = 0;
+    virtual smithy::Outcome<PreserveOrderOutput> PreserveOrder(const PreserveOrderInput& input, const smithy::server::RequestContext& context) = 0;
     virtual smithy::Outcome<RoundTripOutput> RoundTrip(const RoundTripInput& input, const smithy::server::RequestContext& context) = 0;
     virtual smithy::Outcome<VersionOutput> Version(const VersionInput& input, const smithy::server::RequestContext& context) = 0;
 };

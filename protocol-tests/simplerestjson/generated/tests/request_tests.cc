@@ -107,13 +107,13 @@ TEST(PizzaAdminServiceRequestTest, GetMenuRequest) {
   Fixture fixture = MakeFixture();
   const GetMenuInput input = [] {
   GetMenuInput v{};
-  v.restaurant = "unclemikes";
+  v.restaurant = "uncle:mikes";
   return v;
 }();
   (void)fixture.client.GetMenu(input);
   const smithy::http::HttpRequest& request = fixture.transport->last_request;
   EXPECT_EQ(request.method, "GET");
-  EXPECT_EQ(smithy::testing::UriPath(request.target), "/restaurant/unclemikes/menu");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/restaurant/uncle%3Amikes/menu");
 }
 
 // tests variety of casing scenarios for writing http headers
@@ -299,6 +299,31 @@ TEST(PizzaAdminServiceRequestTest, OpenUnionsUnknownDiscriminatedUnionCase) {
   EXPECT_EQ(request.headers.Get("Content-Type").value_or("<missing>"), "application/json");
   EXPECT_TRUE(request.headers.Has("Content-Length"));
   EXPECT_TRUE(smithy::testing::JsonBodyEquals("{\"discriminated\": {\"key\": \"mysterious_and_important\", \"extras\": 42}}", request.body));
+}
+
+TEST(PizzaAdminServiceRequestTest, PreserveKeyOrderRequest) {
+  Fixture fixture = MakeFixture();
+  const PreserveOrderInput input = [] {
+  PreserveOrderInput v{};
+  v.map = std::map<std::string, std::int32_t>{{"a", 1}, {"d", 2}, {"e", 3}, {"b", 4}};
+  v.document = [] {
+  smithy::DocumentMap map;
+  map.emplace("foo", smithy::Document(std::int64_t{1}));
+  map.emplace("a", smithy::Document(std::string("b")));
+  map.emplace("c", [] {
+  smithy::DocumentList list;
+  return smithy::Document(std::move(list));
+}());
+  map.emplace("bar", smithy::Document(nullptr));
+  return smithy::Document(std::move(map));
+}();
+  return v;
+}();
+  (void)fixture.client.PreserveOrder(input);
+  const smithy::http::HttpRequest& request = fixture.transport->last_request;
+  EXPECT_EQ(request.method, "POST");
+  EXPECT_EQ(smithy::testing::UriPath(request.target), "/preserveKeyOrder");
+  EXPECT_TRUE(smithy::testing::JsonBodyEquals("{\"map\":{\"a\":1,\"d\":2,\"e\":3,\"b\":4},\"document\":{\"foo\":1,\"a\":\"b\",\"c\":[],\"bar\":null}}", request.body));
 }
 
 TEST(PizzaAdminServiceRequestTest, RoundTripRequest) {

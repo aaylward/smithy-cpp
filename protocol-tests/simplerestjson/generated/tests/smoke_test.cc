@@ -92,6 +92,13 @@ OpenUnionsOutput MinimalOpenUnionsOutput() {
   }();
 }
 
+PreserveOrderOutput MinimalPreserveOrderOutput() {
+    return [] {
+    PreserveOrderOutput v{};
+    return v;
+  }();
+}
+
 RoundTripOutput MinimalRoundTripOutput() {
     return [] {
     RoundTripOutput v{};
@@ -147,6 +154,10 @@ class SmokeHandler : public PizzaAdminServiceHandler {
     smithy::Outcome<OpenUnionsOutput> OpenUnions(const OpenUnionsInput& input, const smithy::server::RequestContext&) override {
       (void)input;
       return MinimalOpenUnionsOutput();
+    }
+    smithy::Outcome<PreserveOrderOutput> PreserveOrder(const PreserveOrderInput& input, const smithy::server::RequestContext&) override {
+      (void)input;
+      return MinimalPreserveOrderOutput();
     }
     smithy::Outcome<RoundTripOutput> RoundTrip(const RoundTripInput& input, const smithy::server::RequestContext&) override {
       (void)input;
@@ -294,6 +305,17 @@ TEST(PizzaAdminServiceSmokeTest, OpenUnionsRoundTrips) {
   const auto outcome = client.OpenUnions(input);
   ASSERT_TRUE(outcome.ok()) << outcome.error().message();
   EXPECT_EQ(*outcome, MinimalOpenUnionsOutput());
+}
+
+TEST(PizzaAdminServiceSmokeTest, PreserveOrderRoundTrips) {
+  PizzaAdminServiceClient client = MakeClient(std::make_shared<SmokeHandler>());
+    const PreserveOrderInput input = [] {
+    PreserveOrderInput v{};
+    return v;
+  }();
+  const auto outcome = client.PreserveOrder(input);
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  EXPECT_EQ(*outcome, MinimalPreserveOrderOutput());
 }
 
 TEST(PizzaAdminServiceSmokeTest, RoundTripRoundTrips) {

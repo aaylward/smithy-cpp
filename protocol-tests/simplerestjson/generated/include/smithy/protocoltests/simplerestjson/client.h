@@ -42,6 +42,7 @@ class PizzaAdminServiceClient {
     smithy::Outcome<HttpPayloadRequiredWithDefaultOutput> HttpPayloadRequiredWithDefault(const HttpPayloadRequiredWithDefaultInput& input) const;
     smithy::Outcome<HttpPayloadWithDefaultOutput> HttpPayloadWithDefault(const HttpPayloadWithDefaultInput& input) const;
     smithy::Outcome<OpenUnionsOutput> OpenUnions(const OpenUnionsInput& input) const;
+    smithy::Outcome<PreserveOrderOutput> PreserveOrder(const PreserveOrderInput& input) const;
     smithy::Outcome<RoundTripOutput> RoundTrip(const RoundTripInput& input) const;
     smithy::Outcome<VersionOutput> Version(const VersionInput& input = {}) const;
 
@@ -1123,6 +1124,101 @@ class OpenUnionsErrors {
     std::variant<std::monostate, GenericServerError, GenericClientError> value_;
 };
 
+/// The modeled errors of PreserveOrder, matched from a smithy::Error so dispatch is
+/// typed and exhaustive instead of string-compared. FromError() is empty()
+/// when the error is none of this operation's modeled errors (transport,
+/// serialization, unknown, or another operation's error).
+class PreserveOrderErrors {
+  public:
+    PreserveOrderErrors() = default;
+
+    /// Matches `error` against this operation's modeled errors. An engaged
+    /// member carries the deserialized error detail, default-initialized when
+    /// the error arrived without one.
+    static PreserveOrderErrors FromError(const smithy::Error& error) {
+      PreserveOrderErrors result;
+      if (error.kind() != smithy::ErrorKind::kModeled) return result;
+      if (error.code() == "GenericServerError") {
+        const auto* detail = error.detail<GenericServerError>();
+        result.value_.emplace<1>(detail != nullptr ? *detail : GenericServerError{});
+        return result;
+      }
+      if (error.code() == "GenericClientError") {
+        const auto* detail = error.detail<GenericClientError>();
+        result.value_.emplace<2>(detail != nullptr ? *detail : GenericClientError{});
+        return result;
+      }
+      return result;
+    }
+
+    bool is_generic_server_error() const { return value_.index() == 1; }
+    const GenericServerError& as_generic_server_error() const {
+      require_is(1, "generic_server_error");
+      return std::get<1>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const GenericServerError* as_generic_server_error_or_null() const { return std::get_if<1>(&value_); }
+
+    bool is_generic_client_error() const { return value_.index() == 2; }
+    const GenericClientError& as_generic_client_error() const {
+      require_is(2, "generic_client_error");
+      return std::get<2>(value_);
+    }
+    /// The engaged member, or nullptr when another member (or none) is set.
+    const GenericClientError* as_generic_client_error_or_null() const { return std::get_if<2>(&value_); }
+
+    /// True when the error is none of this operation's modeled errors.
+    bool empty() const { return value_.index() == 0; }
+
+    /// Name of the engaged member, "(empty)" when none matched.
+    const char* case_name() const {
+      static constexpr const char* kNames[] = {"(empty)", "generic_server_error", "generic_client_error"};
+      return kNames[value_.index()];
+    }
+
+    /// Applies `visitor` to the engaged member. The visitor must also accept
+    /// std::monostate, which represents the empty state.
+    template <typename Visitor>
+    decltype(auto) visit(Visitor&& visitor) const {
+      return std::visit(std::forward<Visitor>(visitor), value_);
+    }
+
+    /// Debug rendering for logs and tests — for humans, never parse it.
+    void AppendDebugTo(std::string& out) const {
+      out += "PreserveOrderErrors(";
+      switch (value_.index()) {
+        case 1:
+          out += "generic_server_error = ";
+          smithy::DebugAppend(out, std::get<1>(value_));
+          break;
+        case 2:
+          out += "generic_client_error = ";
+          smithy::DebugAppend(out, std::get<2>(value_));
+          break;
+        default:
+          break;
+      }
+      out += ')';
+    }
+    std::string DebugString() const { std::string out; AppendDebugTo(out); return out; }
+    friend std::ostream& operator<<(std::ostream& os, const PreserveOrderErrors& value) {
+      return os << value.DebugString();
+    }
+
+    friend bool operator==(const PreserveOrderErrors&, const PreserveOrderErrors&) = default;
+    friend auto operator<=>(const PreserveOrderErrors&, const PreserveOrderErrors&) = default;
+    friend struct std::hash<PreserveOrderErrors>;
+
+  private:
+    void require_is(std::size_t index, const char* requested) const {
+      if (value_.index() != index) {
+        smithy::internal::FatalWrongUnionAccess("PreserveOrderErrors", requested, case_name());
+      }
+    }
+
+    std::variant<std::monostate, GenericServerError, GenericClientError> value_;
+};
+
 /// The modeled errors of RoundTrip, matched from a smithy::Error so dispatch is
 /// typed and exhaustive instead of string-compared. FromError() is empty()
 /// when the error is none of this operation's modeled errors (transport,
@@ -1403,6 +1499,15 @@ struct std::hash<smithy::protocoltests::simplerestjson::HttpPayloadWithDefaultEr
 template <>
 struct std::hash<smithy::protocoltests::simplerestjson::OpenUnionsErrors> {
   std::size_t operator()(const smithy::protocoltests::simplerestjson::OpenUnionsErrors& value) const noexcept {
+    const std::size_t member =
+        std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
+    return smithy::HashCombine(value.value_.index(), member);
+  }
+};
+
+template <>
+struct std::hash<smithy::protocoltests::simplerestjson::PreserveOrderErrors> {
+  std::size_t operator()(const smithy::protocoltests::simplerestjson::PreserveOrderErrors& value) const noexcept {
     const std::size_t member =
         std::visit([](const auto& v) { return smithy::HashValue(v); }, value.value_);
     return smithy::HashCombine(value.value_.index(), member);

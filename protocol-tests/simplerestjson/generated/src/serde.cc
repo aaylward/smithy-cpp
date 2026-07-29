@@ -835,6 +835,30 @@ smithy::Outcome<HttpPayloadWithDefaultOutput> DeserializeHttpPayloadWithDefaultO
   return out;
 }
 
+smithy::Document SerializeMyMap(const std::map<std::string, std::int32_t>& value) {
+  smithy::DocumentMap map;
+  for (const auto& [key, item] : value) {
+    map.emplace(key, smithy::Document(static_cast<std::int64_t>(item)));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<std::map<std::string, std::int32_t>> DeserializeMyMap(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("std::map<std::string, std::int32_t>: expected a map on the wire");
+  std::map<std::string, std::int32_t> out;
+  for (const auto& [key, item_doc] : doc.as_map()) {
+    const smithy::Document* item = &item_doc;
+    // Tolerant read: null values in dense maps are skipped, not errors.
+    if (item->is_null()) continue;
+    std::int32_t parsed_item{};
+    if (!item->is_int()) return smithy::Error::Serialization("std::map<std::string, std::int32_t>{}: unexpected type on the wire");
+    if (item->as_int() < -2147483648LL || item->as_int() > 2147483647LL) return smithy::Error::Serialization("std::map<std::string, std::int32_t>{}: value out of range");
+    parsed_item = static_cast<std::int32_t>(item->as_int());
+    out.emplace(key, std::move(parsed_item));
+  }
+  return out;
+}
+
 smithy::Document SerializeSmallStruct(const SmallStruct& value) {
   smithy::DocumentMap map;
   map.emplace("content", smithy::Document(value.content));
@@ -980,6 +1004,80 @@ smithy::Outcome<OpenUnionsOutput> DeserializeOpenUnionsOutput(const smithy::Docu
       auto parsed = DeserializeOpenUnionsPayload(*member);
       if (!parsed) return std::move(parsed).error();
       out.data = std::move(*parsed);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializePreserveOrderInput(const PreserveOrderInput& value) {
+  smithy::DocumentMap map;
+  if (value.map.has_value()) {
+    map.emplace("map", SerializeMyMap((*value.map)));
+  }
+  if (value.document.has_value()) {
+    map.emplace("document", (*value.document));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<PreserveOrderInput> DeserializePreserveOrderInput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("PreserveOrderInput: expected a map on the wire");
+  PreserveOrderInput out;
+  {
+    const smithy::Document* member = doc.Find("map");
+    if (member != nullptr && !member->is_null()) {
+      std::map<std::string, std::int32_t> parsed_member{};
+      {
+        auto parsed = DeserializeMyMap(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.map = std::move(parsed_member);
+    }
+  }
+  {
+    const smithy::Document* member = doc.Find("document");
+    if (member != nullptr && !member->is_null()) {
+      smithy::Document parsed_member{};
+      parsed_member = *member;
+      out.document = std::move(parsed_member);
+    }
+  }
+  return out;
+}
+
+smithy::Document SerializePreserveOrderOutput(const PreserveOrderOutput& value) {
+  smithy::DocumentMap map;
+  if (value.map.has_value()) {
+    map.emplace("map", SerializeMyMap((*value.map)));
+  }
+  if (value.document.has_value()) {
+    map.emplace("document", (*value.document));
+  }
+  return smithy::Document(std::move(map));
+}
+
+smithy::Outcome<PreserveOrderOutput> DeserializePreserveOrderOutput(const smithy::Document& doc) {
+  if (!doc.is_map()) return smithy::Error::Serialization("PreserveOrderOutput: expected a map on the wire");
+  PreserveOrderOutput out;
+  {
+    const smithy::Document* member = doc.Find("map");
+    if (member != nullptr && !member->is_null()) {
+      std::map<std::string, std::int32_t> parsed_member{};
+      {
+        auto parsed = DeserializeMyMap(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      out.map = std::move(parsed_member);
+    }
+  }
+  {
+    const smithy::Document* member = doc.Find("document");
+    if (member != nullptr && !member->is_null()) {
+      smithy::Document parsed_member{};
+      parsed_member = *member;
+      out.document = std::move(parsed_member);
     }
   }
   return out;

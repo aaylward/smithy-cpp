@@ -278,6 +278,15 @@ smithy::Error ParseOpenUnionsError(const smithy::http::HttpResponse& response) {
   return GenericError(std::move(parsed));
 }
 
+smithy::Error ParsePreserveOrderError(const smithy::http::HttpResponse& response) {
+  ParsedError parsed = ParseError(response);
+  if (parsed.code == "GenericClientError") return MakeGenericClientErrorError(response, std::move(parsed));
+  if (parsed.code == "GenericServerError") return MakeGenericServerErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 418) return MakeGenericClientErrorError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 502) return MakeGenericServerErrorError(response, std::move(parsed));
+  return GenericError(std::move(parsed));
+}
+
 smithy::Error ParseRoundTripError(const smithy::http::HttpResponse& response) {
   ParsedError parsed = ParseError(response);
   if (parsed.code == "GenericClientError") return MakeGenericClientErrorError(response, std::move(parsed));
@@ -569,6 +578,30 @@ smithy::Outcome<OpenUnionsOutput> PizzaAdminServiceClient::OpenUnions(const Open
     }
   }
   return out;
+}
+
+smithy::Outcome<PreserveOrderOutput> PizzaAdminServiceClient::PreserveOrder(const PreserveOrderInput& input) const {
+  std::string target = path_prefix_;
+  target += "/preserveKeyOrder";
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = std::move(target);
+  smithy::DocumentMap body_map;
+  if (input.document.has_value()) {
+    body_map.emplace("document", (*input.document));
+  }
+  if (input.map.has_value()) {
+    body_map.emplace("map", SerializeMyMap((*input.map)));
+  }
+  request.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
+  request.headers.Set("content-type", "application/json");
+  auto response = Send(std::move(request));
+  if (!response) return std::move(response).error();
+  if (response->status != 200) return ParsePreserveOrderError(*response);
+  if (response->body.empty()) return PreserveOrderOutput{};
+  auto body_doc = smithy::json::Decode(response->body);
+  if (!body_doc) return std::move(body_doc).error();
+  return DeserializePreserveOrderOutput(*body_doc);
 }
 
 smithy::Outcome<RoundTripOutput> PizzaAdminServiceClient::RoundTrip(const RoundTripInput& input) const {

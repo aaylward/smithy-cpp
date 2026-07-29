@@ -275,6 +275,31 @@ TEST(PizzaAdminServiceResponseTest, OpenUnionsUnknownDiscriminatedUnionCase) {
   EXPECT_EQ(*outcome, expected);
 }
 
+TEST(PizzaAdminServiceResponseTest, PreserveKeyOrderResponse) {
+  Fixture fixture = MakeFixture();
+  fixture.transport->next_response.status = 200;
+  fixture.transport->next_response.body = "{\"map\":{\"a\":1,\"d\":2,\"e\":3,\"b\":4},\"document\":{\"foo\":1,\"a\":\"b\",\"c\":[],\"bar\":null}}";
+  const auto outcome = fixture.client.PreserveOrder(PreserveOrderInput{});
+  ASSERT_TRUE(outcome.ok()) << outcome.error().message();
+  const PreserveOrderOutput expected = [] {
+  PreserveOrderOutput v{};
+  v.map = std::map<std::string, std::int32_t>{{"a", 1}, {"d", 2}, {"e", 3}, {"b", 4}};
+  v.document = [] {
+  smithy::DocumentMap map;
+  map.emplace("foo", smithy::Document(std::int64_t{1}));
+  map.emplace("a", smithy::Document(std::string("b")));
+  map.emplace("c", [] {
+  smithy::DocumentList list;
+  return smithy::Document(std::move(list));
+}());
+  map.emplace("bar", smithy::Document(nullptr));
+  return smithy::Document(std::move(map));
+}();
+  return v;
+}();
+  EXPECT_EQ(*outcome, expected);
+}
+
 TEST(PizzaAdminServiceResponseTest, RoundTripDataResponse) {
   Fixture fixture = MakeFixture();
   fixture.transport->next_response.status = 200;

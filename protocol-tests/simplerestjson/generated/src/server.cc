@@ -557,6 +557,53 @@ smithy::http::HttpResponse BuildOpenUnionsResponse(const OpenUnionsOutput& outpu
   return response;
 }
 
+smithy::Outcome<PreserveOrderInput> ParsePreserveOrderInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
+  (void)request;
+  (void)context;
+  (void)validation_failures;
+  PreserveOrderInput input{};
+  auto body_doc = smithy::json::Decode(request.body.empty() ? "{}" : request.body);
+  if (!body_doc) return std::move(body_doc).error();
+  if (!body_doc->is_map()) return smithy::Error::Serialization("PreserveOrder: expected a JSON object body");
+  {
+    const smithy::Document* member = body_doc->Find("document");
+    if (member != nullptr && !member->is_null()) {
+      smithy::Document parsed_member{};
+      parsed_member = *member;
+      input.document = std::move(parsed_member);
+    }
+  }
+  {
+    const smithy::Document* member = body_doc->Find("map");
+    if (member != nullptr && !member->is_null()) {
+      std::map<std::string, std::int32_t> parsed_member{};
+      {
+        auto parsed = DeserializeMyMap(*member);
+        if (!parsed) return std::move(parsed).error();
+        parsed_member = std::move(*parsed);
+      }
+      input.map = std::move(parsed_member);
+    }
+  }
+  return input;
+}
+
+smithy::http::HttpResponse BuildPreserveOrderResponse(const PreserveOrderOutput& output) {
+  (void)output;
+  smithy::http::HttpResponse response;
+  response.status = 200;
+  smithy::DocumentMap body_map;
+  if (output.document.has_value()) {
+    body_map.emplace("document", (*output.document));
+  }
+  if (output.map.has_value()) {
+    body_map.emplace("map", SerializeMyMap((*output.map)));
+  }
+  response.headers.Set("content-type", "application/json");
+  response.body = smithy::json::Encode(smithy::Document(std::move(body_map)));
+  return response;
+}
+
 smithy::Outcome<RoundTripInput> ParseRoundTripInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
   (void)request;
   (void)context;
@@ -861,6 +908,29 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     if (!outcome) return ErrorToResponse(outcome.error());
     return BuildOpenUnionsResponse(*outcome);
   }, "OpenUnions");
+  (void)router_->Add("POST", "/preserveKeyOrder", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
+    // Content-Type validation per the HTTP binding spec (415), then Accept (406);
+    // the malformed-request suite pins the error-identity headers. A missing
+    // content-type is tolerated, and blob payloads without @mediaType accept
+    // any content type / accept.
+    if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
+      auto error_response = JsonError(415, "", "unsupported media type", {});
+      error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
+      return error_response;
+    }
+    if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
+      auto error_response = JsonError(406, "", "not acceptable", {});
+      error_response.headers.Set("x-error-type", "NotAcceptableException");
+      return error_response;
+    }
+    std::vector<smithy::server::ValidationFailure> validation_failures;
+    auto input = ParsePreserveOrderInput(request, context, &validation_failures);
+    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
+    if (!input) return ErrorToResponse(input.error());
+    auto outcome = handler->PreserveOrder(*input, context);
+    if (!outcome) return ErrorToResponse(outcome.error());
+    return BuildPreserveOrderResponse(*outcome);
+  }, "PreserveOrder");
   (void)router_->Add("POST", "/roundTrip/{label}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
     // the malformed-request suite pins the error-identity headers. A missing

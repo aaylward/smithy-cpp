@@ -90,6 +90,13 @@ OpenUnionsOutput MinimalOpenUnionsOutput() {
   }();
 }
 
+PreserveOrderOutput MinimalPreserveOrderOutput() {
+    return [] {
+    PreserveOrderOutput v{};
+    return v;
+  }();
+}
+
 RoundTripOutput MinimalRoundTripOutput() {
     return [] {
     RoundTripOutput v{};
@@ -156,6 +163,11 @@ class RecordingHandler : public PizzaAdminServiceHandler {
       return MinimalOpenUnionsOutput();
     }
     std::optional<OpenUnionsInput> lastOpenUnions;
+    smithy::Outcome<PreserveOrderOutput> PreserveOrder(const PreserveOrderInput& input, const smithy::server::RequestContext&) override {
+      lastPreserveOrder = input;
+      return MinimalPreserveOrderOutput();
+    }
+    std::optional<PreserveOrderInput> lastPreserveOrder;
     smithy::Outcome<RoundTripOutput> RoundTrip(const RoundTripInput& input, const smithy::server::RequestContext&) override {
       lastRoundTrip = input;
       return MinimalRoundTripOutput();
@@ -255,12 +267,12 @@ TEST(PizzaAdminServiceServerRequestTest, GetMenuRequest) {
   PizzaAdminServiceServer server(handler);
   smithy::http::HttpRequest request;
   request.method = "GET";
-  request.target = "/restaurant/unclemikes/menu";
+  request.target = "/restaurant/uncle%3Amikes/menu";
   const smithy::http::HttpResponse response = server.Handler()(request);
   ASSERT_TRUE(handler->lastGetMenu.has_value()) << response.status << " " << response.body;
   const GetMenuInput expected = [] {
   GetMenuInput v{};
-  v.restaurant = "unclemikes";
+  v.restaurant = "uncle:mikes";
   return v;
 }();
   EXPECT_EQ(*handler->lastGetMenu, expected);
@@ -470,6 +482,34 @@ TEST(PizzaAdminServiceServerRequestTest, OpenUnionsUnknownDiscriminatedUnionCase
   return v;
 }();
   EXPECT_EQ(*handler->lastOpenUnions, expected);
+}
+
+TEST(PizzaAdminServiceServerRequestTest, PreserveKeyOrderRequest) {
+  auto handler = std::make_shared<RecordingHandler>();
+  PizzaAdminServiceServer server(handler);
+  smithy::http::HttpRequest request;
+  request.method = "POST";
+  request.target = "/preserveKeyOrder";
+  request.body = "{\"map\":{\"a\":1,\"d\":2,\"e\":3,\"b\":4},\"document\":{\"foo\":1,\"a\":\"b\",\"c\":[],\"bar\":null}}";
+  const smithy::http::HttpResponse response = server.Handler()(request);
+  ASSERT_TRUE(handler->lastPreserveOrder.has_value()) << response.status << " " << response.body;
+  const PreserveOrderInput expected = [] {
+  PreserveOrderInput v{};
+  v.map = std::map<std::string, std::int32_t>{{"a", 1}, {"d", 2}, {"e", 3}, {"b", 4}};
+  v.document = [] {
+  smithy::DocumentMap map;
+  map.emplace("foo", smithy::Document(std::int64_t{1}));
+  map.emplace("a", smithy::Document(std::string("b")));
+  map.emplace("c", [] {
+  smithy::DocumentList list;
+  return smithy::Document(std::move(list));
+}());
+  map.emplace("bar", smithy::Document(nullptr));
+  return smithy::Document(std::move(map));
+}();
+  return v;
+}();
+  EXPECT_EQ(*handler->lastPreserveOrder, expected);
 }
 
 TEST(PizzaAdminServiceServerRequestTest, RoundTripRequest) {

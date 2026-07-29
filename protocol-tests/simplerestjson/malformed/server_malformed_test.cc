@@ -71,6 +71,11 @@ class RecordingHandler : public PizzaAdminServiceHandler {
     ++calls;
     return OpenUnionsOutput{};
   }
+  smithy::Outcome<PreserveOrderOutput> PreserveOrder(
+      const PreserveOrderInput&, const smithy::server::RequestContext&) override {
+    ++calls;
+    return PreserveOrderOutput{};
+  }
   smithy::Outcome<RoundTripOutput> RoundTrip(const RoundTripInput&,
                                              const smithy::server::RequestContext&) override {
     ++calls;

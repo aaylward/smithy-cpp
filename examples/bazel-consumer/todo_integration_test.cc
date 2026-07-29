@@ -18,6 +18,7 @@
 #include "acme/todo/jsonrpc/server.h"
 #include "acme/todo/server.h"
 #include "smithy/client/config.h"
+#include "smithy/core/error.h"
 #include "smithy/http/forwarded.h"
 #include "smithy/http/loopback.h"
 #include "smithy/http/socket_transport.h"
@@ -468,6 +469,49 @@ TEST(TodoMiddlewareTest, PerClientRateLimitKeysOnTheDerivedClientAddressNotTheSp
     EXPECT_EQ(seen, "127.0.0.1");
     transport.Stop();
   }
+}
+
+// Out-of-tree acceptance for the request-line injection defense (issue
+// #109): a consumer hand-building an HttpRequest with a CR/LF-bearing
+// target or method must have the client refuse before any bytes reach the
+// wire — the request-line analog of the header-injection guard exercised
+// through the module boundary, with a live server proving nothing is sent.
+TEST(TodoRequestLineInjectionTest, ARawClientRefusesCrlfInTargetOrMethodAndServesCleanOnes) {
+  TodoServer server(std::make_shared<InMemoryHandler>());
+  smithy::http::SocketHttpServer transport;
+  ASSERT_TRUE(transport.Start(server.Handler()).ok());
+  smithy::http::SocketHttpClient client("127.0.0.1", transport.port());
+
+  // A smuggled second request line hidden in the target: refused, not sent.
+  smithy::http::HttpRequest injected_target;
+  injected_target.method = "POST";
+  injected_target.target = "/tasks HTTP/1.1\r\nX-Smuggled: 1\r\n\r\nGET /tasks";
+  injected_target.headers.Set("content-type", "application/json");
+  injected_target.body = R"({"title":"x"})";
+  const auto target_outcome = client.Send(injected_target);
+  ASSERT_FALSE(target_outcome.ok());
+  EXPECT_EQ(target_outcome.error().kind(), smithy::ErrorKind::kValidation);
+
+  // Same in the method.
+  smithy::http::HttpRequest injected_method;
+  injected_method.method = "POST /evil HTTP/1.1\r\nX-Smuggled: 1\r\n\r\nGET";
+  injected_method.target = "/tasks";
+  const auto method_outcome = client.Send(injected_method);
+  ASSERT_FALSE(method_outcome.ok());
+  EXPECT_EQ(method_outcome.error().kind(), smithy::ErrorKind::kValidation);
+
+  // A legitimate request on the same client still works — the guard is not
+  // a false positive.
+  smithy::http::HttpRequest clean;
+  clean.method = "POST";
+  clean.target = "/tasks";
+  clean.headers.Set("content-type", "application/json");
+  clean.body = R"({"title":"clean"})";
+  const auto clean_outcome = client.Send(clean);
+  ASSERT_TRUE(clean_outcome.ok()) << clean_outcome.error().message();
+  EXPECT_EQ(clean_outcome->status, 200);
+
+  transport.Stop();
 }
 
 }  // namespace

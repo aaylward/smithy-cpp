@@ -146,6 +146,16 @@ std::optional<std::string> FindUnsafeHeader(const Headers& headers) {
   return std::nullopt;
 }
 
+bool ValidRequestLineField(std::string_view field) {
+  return std::ranges::none_of(field, [](char c) {
+    const auto byte = static_cast<unsigned char>(c);
+    // Space and every control byte split or corrupt the request line; DEL
+    // too. Colon is allowed (unlike a header name) — it is legal in a
+    // target's path and query.
+    return byte <= 0x20 || byte == 0x7F;
+  });
+}
+
 std::vector<std::string> SplitHttpDateHeaderValues(std::string_view value) {
   std::vector<std::string> tokens = SplitHeaderListValues(value);
   std::vector<std::string> out;

@@ -1961,6 +1961,15 @@ Outcome<HttpResponse> BeastHttpClient::Send(const HttpRequest& request) {
   if (state_->opts.host.empty()) {
     return Error::Validation("beast client: options need a host");
   }
+  // Request-line injection defense (issue #109): Beast's target()/method
+  // do not reject CR/LF, so a raw one would split the request line. Refused
+  // before the dial. (An empty target is Beast-defaulted to "/" below.)
+  if (request.method.empty() || !ValidRequestLineField(request.method)) {
+    return Error::Validation("beast client: request method contains forbidden bytes or is empty");
+  }
+  if (!ValidRequestLineField(request.target)) {
+    return Error::Validation("beast client: request target contains forbidden bytes");
+  }
   if (const auto unsafe = FindUnsafeHeader(request.headers); unsafe.has_value()) {
     // The header-injection defense (issue #109): refused before anything
     // is written — an embedded CR/LF would split the request on the wire.

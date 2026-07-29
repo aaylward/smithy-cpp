@@ -52,6 +52,19 @@ via `git_override` until then.
 
 ### Runtime
 
+- Request-line injection defense (issue #109): the client transports now
+  reject a space, control byte (CR/LF included), or DEL in `HttpRequest`'s
+  `method` and `target` before dialing — the request-line companion to the
+  header defense below. Both clients spliced those fields straight into
+  `"METHOD SP TARGET SP HTTP/1.1"` (the socket client by concatenation,
+  Beast via `target()`/`method_string()`, neither of which rejects CR/LF),
+  so a raw CR/LF in a hand-built target smuggled a second request — verified
+  live: the Beast client had been *sending and echoing* such a request 200.
+  A method is a token and a target is percent-encoded origin-form, so a
+  conformant value is unaffected; colon and other legal target characters
+  still pass (unlike a header name). `ValidRequestLineField` (in `:http`)
+  gates both `Send` paths with `Error::Validation`, before any bytes reach
+  the wire.
 - Outbound header-injection defense (issue #109): every transport write path
   now rejects control bytes in header names and values before they reach the
   wire, closing an HTTP response/request-splitting hole. A handler or

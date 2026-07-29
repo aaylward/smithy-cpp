@@ -189,6 +189,30 @@ TEST(SocketTransportTest, AClientRequestWithInjectedHeaderIsRefusedBeforeConnect
   EXPECT_NE(outcome.error().message().find("x-echo"), std::string::npos);
 }
 
+TEST(SocketTransportTest, AClientRequestWithInjectedTargetIsRefusedBeforeConnecting) {
+  // Request-line injection (issue #109): a raw CR/LF in the target splits
+  // "METHOD SP TARGET SP HTTP/1.1" into a smuggled second request. The
+  // client must refuse before any socket work — port 1 is never dialed.
+  SocketHttpClient client("127.0.0.1", 1);
+  HttpRequest request;
+  request.target = "/x HTTP/1.1\r\nEvil: injected\r\n\r\nGET /y";
+  const auto outcome = client.Send(request);
+  ASSERT_FALSE(outcome.ok());
+  EXPECT_EQ(outcome.error().kind(), ErrorKind::kValidation);
+  EXPECT_NE(outcome.error().message().find("target"), std::string::npos);
+}
+
+TEST(SocketTransportTest, AClientRequestWithInjectedMethodIsRefusedBeforeConnecting) {
+  // The method axis: a space or CR/LF there corrupts the request line too.
+  SocketHttpClient client("127.0.0.1", 1);
+  HttpRequest request;
+  request.method = "GET /smuggled HTTP/1.1\r\nEvil: 1\r\n\r\nHEAD";
+  const auto outcome = client.Send(request);
+  ASSERT_FALSE(outcome.ok());
+  EXPECT_EQ(outcome.error().kind(), ErrorKind::kValidation);
+  EXPECT_NE(outcome.error().message().find("method"), std::string::npos);
+}
+
 TEST(SocketTransportTest, PeerCloseMidSendIsAnErrorNotSigpipe) {
   SocketHttpServer server;
   ASSERT_TRUE(server.Start([](const HttpRequest&) { return HttpResponse{200, {}, "ok"}; }).ok());

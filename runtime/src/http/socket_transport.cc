@@ -67,6 +67,15 @@ Outcome<Http1Message> ReadMessage(SocketFd fd, bool body_until_eof) {
 }  // namespace
 
 Outcome<HttpResponse> SocketHttpClient::Send(const HttpRequest& request) {
+  // Request-line injection defense (issue #109): method and target are
+  // spliced into "METHOD SP TARGET SP HTTP/1.1" below, so a space or CR/LF
+  // in either splits or corrupts the request line. Refused before connect.
+  if (request.method.empty() || !ValidRequestLineField(request.method)) {
+    return Error::Validation("http: request method contains forbidden bytes or is empty");
+  }
+  if (!ValidRequestLineField(request.target)) {
+    return Error::Validation("http: request target contains forbidden bytes");
+  }
   if (const auto unsafe = FindUnsafeHeader(request.headers); unsafe.has_value()) {
     // The header-injection defense (issue #109): the writer below splices
     // names and values between CRLFs verbatim, so an embedded CR/LF would

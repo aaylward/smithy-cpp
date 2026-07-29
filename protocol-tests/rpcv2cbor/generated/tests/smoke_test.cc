@@ -11,8 +11,6 @@
 
 namespace smithy::protocoltests::rpcv2cbor {
 
-namespace types = ::smithy::protocoltests::rpcv2cbor;
-
 // Smoke tests for the generated RpcV2Protocol service: the generated client calls the
 // generated server over the in-memory loopback transport. A passing suite
 // pins routing, serde symmetry, required members, and error mapping; swap the

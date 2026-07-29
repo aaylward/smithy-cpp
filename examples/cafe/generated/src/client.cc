@@ -17,8 +17,6 @@
 
 namespace example::cafe {
 
-namespace types = ::example::cafe;
-
 namespace {
 namespace helpers {
 

@@ -112,14 +112,18 @@ class HelperNameCoexistenceTest {
     MockManifest manifest = PluginTestHarness.generate(model, "test.coexist#Svc", "test::coexist");
     String client = manifest.expectFileString("/src/client.cc");
     assertTrue(client.contains("namespace helpers {"), client);
-    assertTrue(client.contains("namespace types = ::test::coexist;"), client);
     // The helper's fallback return and the same-named error's factory both
-    // resolve through qualified spellings.
+    // resolve through qualified calls.
     assertTrue(client.contains("return helpers::GenericError(std::move(parsed));"), client);
     assertTrue(
         client.contains(
             "if (parsed.code == \"GenericError\") return helpers::MakeGenericErrorError("),
         client);
+    // The mirror direction: helper code references the TYPE through the types
+    // alias, which only files that need it carry.
+    String server = manifest.expectFileString("/src/server.cc");
+    assertTrue(server.contains("namespace types = ::test::coexist;"), server);
+    assertTrue(server.contains("error.detail<types::GenericError>()"), server);
   }
 
   @Test

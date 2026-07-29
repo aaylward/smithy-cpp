@@ -23,8 +23,6 @@
 
 namespace example::bookstore {
 
-namespace types = ::example::bookstore;
-
 namespace {
 namespace helpers {
 

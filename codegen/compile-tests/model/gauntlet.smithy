@@ -121,22 +121,26 @@ operation GetReport {
     }
 }
 
-/// Helper-shadowing stress (issue #71): every type below is named exactly
-/// like a file-local helper the generated client/server declares — the fixed
-/// error/numeric support, the error envelopes of all three protocols, the
-/// validation wiring, and Shadow's own per-operation helpers (ParseShadowError,
-/// HandleShadow, ParseShadowInput, BuildShadowResponse, ValidateShadowInput).
+/// Helper-shadowing stress (issue #71): each type below is named exactly like
+/// a file-local helper in at least one of the six generated variants (three
+/// protocols x client/server) — the fixed error/numeric support, the three
+/// error envelopes, the validation wiring, and Shadow's own per-operation
+/// helpers (ParseShadowError, HandleShadow, ParseShadowInput,
+/// BuildShadowResponse, ValidateShadowInput) — so the matrix covers the union.
 /// The helpers namespace (with helpers::-qualified calls and types::-qualified
-/// type references) is what keeps these compiling; before it, any of these
-/// names broke the generated .cc with a raw C++ name-hiding error. The
-/// @length constraint keeps the validation wiring (and ValidateShadowInput)
-/// in every server build.
+/// type references) is what keeps these compiling. The @length constraint
+/// keeps the validation wiring (and ValidateShadowInput) in every server
+/// build, and the lowercase members pin the helpers_/types_ type-name escape.
 @http(method: "POST", uri: "/shadow")
 operation Shadow {
     input := {
         @required
         @length(min: 1)
         name: String
+
+        namespaceNamed: helpers
+
+        aliasNamed: types
 
         parsed: ParsedError
         parse: ParseError
@@ -161,6 +165,17 @@ operation Shadow {
     }
 
     errors: [GenericError]
+}
+
+/// The two file-level identifiers generated .cc files claim for themselves:
+/// these types must escape to helpers_/types_ to stay unambiguous against the
+/// helper namespace and the model-type alias.
+structure helpers {
+    value: String
+}
+
+structure types {
+    value: String
 }
 
 structure ParsedError {

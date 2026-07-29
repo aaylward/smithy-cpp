@@ -1,8 +1,12 @@
 package io.smithycpp.codegen;
 
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import java.util.function.Consumer;
 import software.amazon.smithy.build.MockManifest;
 import software.amazon.smithy.build.PluginContext;
+import software.amazon.smithy.codegen.core.CodegenException;
 import software.amazon.smithy.model.Model;
 import software.amazon.smithy.model.node.Node;
 import software.amazon.smithy.model.node.ObjectNode;
@@ -32,20 +36,16 @@ final class PluginTestHarness {
   }
 
   /**
-   * Asserts generation rejects the model, checking the diagnostic carries every {@code fragment}
-   * (the shared shape of every scoping-rejection test), and returns it for further assertions.
+   * Asserts generation rejects the model with a diagnostic carrying every {@code fragment} — the
+   * shared shape of every scoping-rejection test.
    */
-  static software.amazon.smithy.codegen.core.CodegenException assertRejected(
+  static void assertRejected(
       String modelText, String service, String namespace, String... fragments) {
-    software.amazon.smithy.codegen.core.CodegenException error =
-        org.junit.jupiter.api.Assertions.assertThrows(
-            software.amazon.smithy.codegen.core.CodegenException.class,
-            () -> generate(modelText, service, namespace));
+    CodegenException error =
+        assertThrows(CodegenException.class, () -> generate(modelText, service, namespace));
     for (String fragment : fragments) {
-      org.junit.jupiter.api.Assertions.assertTrue(
-          error.getMessage().contains(fragment), error.getMessage());
+      assertTrue(error.getMessage().contains(fragment), error.getMessage());
     }
-    return error;
   }
 
   /**

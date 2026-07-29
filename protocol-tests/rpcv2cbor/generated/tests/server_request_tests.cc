@@ -14,8 +14,6 @@
 
 namespace smithy::protocoltests::rpcv2cbor {
 
-namespace types = ::smithy::protocoltests::rpcv2cbor;
-
 // Generated from smithy.test#httpRequestTests (server cases): the wire
 // request is routed into the generated server and the parsed input is
 // compared against the expected params.

@@ -23,8 +23,6 @@
 
 namespace smithy::protocoltests::simplerestjson {
 
-namespace types = ::smithy::protocoltests::simplerestjson;
-
 namespace {
 namespace helpers {
 

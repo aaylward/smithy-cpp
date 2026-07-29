@@ -11,8 +11,6 @@
 
 namespace example::roundtrip::rest {
 
-namespace types = ::example::roundtrip::rest;
-
 // Smoke tests for the generated RoundTripRest service: the generated client calls the
 // generated server over the in-memory loopback transport. A passing suite
 // pins routing, serde symmetry, required members, and error mapping; swap the

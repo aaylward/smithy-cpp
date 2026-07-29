@@ -11,8 +11,6 @@
 
 namespace example::roundtrip::jsonrpc {
 
-namespace types = ::example::roundtrip::jsonrpc;
-
 // Smoke tests for the generated RoundTripJsonRpc service: the generated client calls the
 // generated server over the in-memory loopback transport. A passing suite
 // pins routing, serde symmetry, required members, and error mapping; swap the

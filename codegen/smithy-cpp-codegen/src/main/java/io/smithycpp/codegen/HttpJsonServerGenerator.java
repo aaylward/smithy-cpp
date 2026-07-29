@@ -38,13 +38,9 @@ final class HttpJsonServerGenerator {
   /** Whether the service emits ValidationErrorResponse (constraints or top-level @required). */
   private boolean emitsValidation;
 
-  /** The error-response identity ErrorToResponse and the validation wiring emit through. */
-  private final ProtocolSupport.ErrorResponseSpec spec;
-
   HttpJsonServerGenerator(String errorTypeHeaderName, boolean useJsonName) {
     this.errorTypeHeaderName = errorTypeHeaderName;
     this.useJsonName = useJsonName;
-    this.spec = new ProtocolSupport.ErrorResponseSpec("JsonError", errorTypeHeaderName);
   }
 
   /** The one derivation of the Parse&lt;Op&gt;Input helper name (definition and call sites). */
@@ -79,6 +75,8 @@ final class HttpJsonServerGenerator {
   void writeHelpers(
       CppWriter w, CppContext context, ServiceShape service, List<OperationShape> operations) {
     SerdeCodeGen serde = new SerdeCodeGen(context, useJsonName);
+    ProtocolSupport.ErrorResponseSpec spec =
+        new ProtocolSupport.ErrorResponseSpec("JsonError", errorTypeHeaderName);
     ProtocolSupport.writeNumericParseHelpers(w);
     ProtocolSupport.writeErrorBodyHelper(
         w,

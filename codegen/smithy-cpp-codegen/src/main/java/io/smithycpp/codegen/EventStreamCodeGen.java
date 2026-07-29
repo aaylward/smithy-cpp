@@ -348,8 +348,8 @@ final class EventStreamCodeGen {
   }
 
   /**
-   * Emits the client-side stream support into client.cc's anonymous namespace: the DialStream
-   * helper and one Encode/Decode pair per streaming operation. Must run after {@link
+   * Emits the client-side stream support into client.cc's helpers namespace: the DialStream helper
+   * and one Encode/Decode pair per streaming operation. Must run after {@link
    * ProtocolSupport#writeOperationErrorParsers} — the decoders dispatch exceptions through the
    * Make&lt;Error&gt;Error functions it emits.
    */
@@ -402,7 +402,7 @@ final class EventStreamCodeGen {
   }
 
   /**
-   * Emits the server-side stream support into server.cc's anonymous namespace: per streaming
+   * Emits the server-side stream support into server.cc's helpers namespace: per streaming
    * operation, the Encode/Decode pair (directions swapped) and the exception-message builder a
    * failed handler's error goes out through.
    */
@@ -469,13 +469,13 @@ final class EventStreamCodeGen {
   }
 
   /**
-   * The generated launch wrapper (ADR-0021), one per streaming operation, into server.cc's
-   * anonymous namespace: a Detached coroutine that owns the typed async session, awaits the
-   * handler's StreamTask, and frames a failure outcome exactly like the blocking route. The
-   * exception send is itself awaited (never a blocking Send on a completion context): the wait
-   * keeps the wrapper frame — and the stream it owns — alive until the wire has taken the refusal,
-   * because destroying the stream closes the session and a close over a busy wire can cancel the
-   * in-flight write, silently dropping the typed error.
+   * The generated launch wrapper (ADR-0021), one per streaming operation, into server.cc's helpers
+   * namespace: a Detached coroutine that owns the typed async session, awaits the handler's
+   * StreamTask, and frames a failure outcome exactly like the blocking route. The exception send is
+   * itself awaited (never a blocking Send on a completion context): the wait keeps the wrapper
+   * frame — and the stream it owns — alive until the wire has taken the refusal, because destroying
+   * the stream closes the session and a close over a busy wire can cancel the in-flight write,
+   * silently dropping the typed error.
    */
   static void writeAsyncServeWrapper(
       CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
@@ -530,7 +530,7 @@ final class EventStreamCodeGen {
       CppWriter w, CppContext context, OperationShape operation, String inputExpr) {
     String op = opName(operation);
     w.write(
-        "$L stream(socket, $L, helpers::Decode$LEvent);",
+        "types::$L stream(socket, $L, helpers::Decode$LEvent);",
         serverStreamAlias(operation),
         encoderArgument(outputInfo(context.model(), operation), operation),
         op);

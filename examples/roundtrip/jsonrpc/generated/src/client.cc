@@ -18,8 +18,6 @@
 
 namespace example::roundtrip::jsonrpc {
 
-namespace types = ::example::roundtrip::jsonrpc;
-
 namespace {
 namespace helpers {
 

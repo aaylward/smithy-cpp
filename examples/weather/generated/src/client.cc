@@ -23,8 +23,6 @@
 
 namespace example::weather {
 
-namespace types = ::example::weather;
-
 namespace {
 namespace helpers {
 

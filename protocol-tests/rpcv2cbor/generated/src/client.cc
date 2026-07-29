@@ -15,8 +15,6 @@
 
 namespace smithy::protocoltests::rpcv2cbor {
 
-namespace types = ::smithy::protocoltests::rpcv2cbor;
-
 namespace {
 namespace helpers {
 

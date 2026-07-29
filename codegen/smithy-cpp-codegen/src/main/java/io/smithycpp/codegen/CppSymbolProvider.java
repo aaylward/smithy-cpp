@@ -159,15 +159,9 @@ final class CppSymbolProvider implements SymbolProvider {
    */
   String typeRef(Shape shape) {
     String name = toSymbol(shape).getName();
-    // Only the kinds whose symbol IS a declared identifier: lists/maps spell
-    // std::vector<...>/std::map<...> inline and smithy.api#Unit maps to the
-    // runtime's smithy::Unit — no model-controlled name to protect there.
-    boolean declared =
-        (shape.isStructureShape()
-                || shape.isUnionShape()
-                || shape.isEnumShape()
-                || shape.isIntEnumShape())
-            && !shape.getId().toString().equals("smithy.api#Unit");
+    // declaresType minus lists/maps: those spell std::vector<...>/std::map<...>
+    // inline, so there is no declared identifier to route through the alias.
+    boolean declared = declaresType(shape) && !shape.isListShape() && !shape.isMapShape();
     return declared ? "types::" + name : name;
   }
 

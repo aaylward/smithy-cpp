@@ -2,7 +2,6 @@ package io.smithycpp.codegen;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Path;
@@ -12,7 +11,6 @@ import java.util.stream.StreamSupport;
 import org.junit.jupiter.api.Test;
 import software.amazon.smithy.build.MockManifest;
 import software.amazon.smithy.build.SmithyBuildPlugin;
-import software.amazon.smithy.codegen.core.CodegenException;
 import software.amazon.smithy.model.Model;
 
 class CppCodegenPluginTest {
@@ -201,10 +199,6 @@ class CppCodegenPluginTest {
     return PluginTestHarness.generate(modelText, service, "test::gen");
   }
 
-  private static CodegenException assertJsonRpc2Rejected(String modelText, String service) {
-    return assertThrows(CodegenException.class, () -> generateJsonRpc2(modelText, service));
-  }
-
   @Test
   void escapesEnumValueSetInTheValidationMessage() {
     // An enum wire value containing a quote/backslash must be escaped in the
@@ -236,64 +230,64 @@ class CppCodegenPluginTest {
   void rejectsPatternContainingTheRawStringDelimiter() {
     // A valid regex (balanced group) that nonetheless contains the raw-string
     // closing sequence )__smithy" — emitting it verbatim would break the literal.
-    CodegenException error =
-        assertJsonRpc2Rejected(
-            """
-            $version: "2.0"
-            namespace test.gen
-            use smithy.cpp.protocols#jsonRpc2
+    PluginTestHarness.assertRejected(
+        """
+        $version: "2.0"
+        namespace test.gen
+        use smithy.cpp.protocols#jsonRpc2
 
-            @jsonRpc2
-            service Svc { version: "1", operations: [Op] }
-            operation Op { input := { @pattern("(a)__smithy\\".*") s: String } }
-            """,
-            "test.gen#Svc");
-    assertTrue(error.getMessage().contains("raw-string delimiter"));
+        @jsonRpc2
+        service Svc { version: "1", operations: [Op] }
+        operation Op { input := { @pattern("(a)__smithy\\".*") s: String } }
+        """,
+        "test.gen#Svc",
+        "test::gen",
+        "raw-string delimiter");
   }
 
   @Test
   void rejectsEnumMemberNameCollision() {
-    CodegenException error =
-        assertJsonRpc2Rejected(
-            """
-            $version: "2.0"
-            namespace test.gen
-            use smithy.cpp.protocols#jsonRpc2
+    PluginTestHarness.assertRejected(
+        """
+        $version: "2.0"
+        namespace test.gen
+        use smithy.cpp.protocols#jsonRpc2
 
-            @jsonRpc2
-            service Svc { version: "1", operations: [Op] }
-            operation Op { input := { e: E } }
-            enum E {
-                foo_bar = "1"
-                foo__bar = "2"
-            }
-            """,
-            "test.gen#Svc");
-    assertTrue(error.getMessage().contains("generated name"));
-    assertTrue(error.getMessage().contains("foo_bar"));
-    assertTrue(error.getMessage().contains("foo__bar"));
+        @jsonRpc2
+        service Svc { version: "1", operations: [Op] }
+        operation Op { input := { e: E } }
+        enum E {
+            foo_bar = "1"
+            foo__bar = "2"
+        }
+        """,
+        "test.gen#Svc",
+        "test::gen",
+        "generated name",
+        "foo_bar",
+        "foo__bar");
   }
 
   @Test
   void rejectsEnumMemberCollidingWithTheUnknownSentinel() {
-    CodegenException error =
-        assertJsonRpc2Rejected(
-            """
-            $version: "2.0"
-            namespace test.gen
-            use smithy.cpp.protocols#jsonRpc2
+    PluginTestHarness.assertRejected(
+        """
+        $version: "2.0"
+        namespace test.gen
+        use smithy.cpp.protocols#jsonRpc2
 
-            @jsonRpc2
-            service Svc { version: "1", operations: [Op] }
-            operation Op { input := { e: E } }
-            enum E {
-                unknown = "1"
-                known = "2"
-            }
-            """,
-            "test.gen#Svc");
-    assertTrue(error.getMessage().contains("reserved generated name"));
-    assertTrue(error.getMessage().contains("kUnknown"));
+        @jsonRpc2
+        service Svc { version: "1", operations: [Op] }
+        operation Op { input := { e: E } }
+        enum E {
+            unknown = "1"
+            known = "2"
+        }
+        """,
+        "test.gen#Svc",
+        "test::gen",
+        "reserved generated name",
+        "kUnknown");
   }
 
   @Test

@@ -11,8 +11,6 @@
 
 namespace example::chat {
 
-namespace types = ::example::chat;
-
 // Smoke tests for the generated Chat service: the generated client calls the
 // generated server over the in-memory loopback transport. A passing suite
 // pins routing, serde symmetry, required members, and error mapping; swap the

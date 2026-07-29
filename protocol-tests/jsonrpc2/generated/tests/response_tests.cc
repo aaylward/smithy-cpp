@@ -13,8 +13,6 @@
 
 namespace smithy::protocoltests::jsonrpc2 {
 
-namespace types = ::smithy::protocoltests::jsonrpc2;
-
 // Generated from smithy.test#httpResponseTests (client cases),
 // including the cases attached to modeled error shapes.
 namespace {

@@ -474,7 +474,7 @@ final class ProtocolSupport {
       String extraParams,
       String extraArgs) {
     // Every use below is a call, and helper calls carry one qualified spelling.
-    errorBodyFn = "helpers::" + errorBodyFn;
+    String errorCall = "helpers::" + errorBodyFn;
     Map<String, StructureShape> errorShapes = new TreeMap<>();
     for (OperationShape operation : operations) {
       for (ShapeId errorId : operation.getErrors(service)) {
@@ -555,7 +555,7 @@ final class ProtocolSupport {
         }
         w.write(
             "auto response = $L($L, \"\", \"\", std::move(body)$L);",
-            errorBodyFn,
+            errorCall,
             errorStatus(shape),
             extraArgs);
         w.write("response.headers.Set($S, error.code());", errortypeHeader);
@@ -566,14 +566,14 @@ final class ProtocolSupport {
         // rpcv2Cbor/jsonRpc2: __type carries the fully qualified shape id.
         w.write(
             "return $L($L, $S, \"\", std::move(body)$L);",
-            errorBodyFn,
+            errorCall,
             errorStatus(shape),
             shape.getId().toString(),
             extraArgs);
       }
       w.closeBlock("}");
     }
-    w.write("return $L(400, error.code(), error.message(), {}$L);", errorBodyFn, extraArgs);
+    w.write("return $L(400, error.code(), error.message(), {}$L);", errorCall, extraArgs);
     w.closeBlock("}");
     if (!errortypeHeader.isEmpty()) {
       // restJson1: parse failures answer 400 with the SerializationException
@@ -581,7 +581,7 @@ final class ProtocolSupport {
       w.openBlock(
           "if (error.kind() == smithy::ErrorKind::kValidation || error.kind() == "
               + "smithy::ErrorKind::kSerialization) {");
-      w.write("auto response = $L(400, \"\", error.message(), {}$L);", errorBodyFn, extraArgs);
+      w.write("auto response = $L(400, \"\", error.message(), {}$L);", errorCall, extraArgs);
       w.write("response.headers.Set($S, \"SerializationException\");", errortypeHeader);
       w.write("return response;");
       w.closeBlock("}");
@@ -590,12 +590,12 @@ final class ProtocolSupport {
           "if (error.kind() == smithy::ErrorKind::kValidation || error.kind() == "
               + "smithy::ErrorKind::kSerialization) return $L(400, \"SerializationException\", "
               + "error.message(), {}$L);",
-          errorBodyFn,
+          errorCall,
           extraArgs);
     }
     w.write("// Never leak internal detail on unexpected failures.");
     w.write(
-        "return $L(500, \"InternalFailure\", \"internal failure\", {}$L);", errorBodyFn, extraArgs);
+        "return $L(500, \"InternalFailure\", \"internal failure\", {}$L);", errorCall, extraArgs);
     w.closeBlock("}");
     w.write("");
   }
@@ -616,8 +616,8 @@ final class ProtocolSupport {
   /**
    * Emits Make&lt;Error&gt;Error for every error shape any operation declares (typed detail via the
    * shape's serde, @retryable honored) plus a Parse&lt;Op&gt;Error dispatcher per operation that
-   * has errors. Must run inside the client source's anonymous namespace, after {@link
-   * #writeErrorSupport}.
+   * has errors. Must run inside the client source's helpers namespace (nested in the anonymous
+   * one), after {@link #writeErrorSupport}.
    */
   static void writeOperationErrorParsers(
       CppWriter w,

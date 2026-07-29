@@ -11,8 +11,6 @@
 
 namespace example::calculator {
 
-namespace types = ::example::calculator;
-
 // Smoke tests for the generated Calculator service: the generated client calls the
 // generated server over the in-memory loopback transport. A passing suite
 // pins routing, serde symmetry, required members, and error mapping; swap the

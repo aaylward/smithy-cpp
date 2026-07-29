@@ -17,8 +17,6 @@
 
 namespace example::roundtrip::rpc {
 
-namespace types = ::example::roundtrip::rpc;
-
 namespace {
 namespace helpers {
 

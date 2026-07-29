@@ -334,7 +334,7 @@ ChatServer::ChatServer(std::shared_ptr<ChatHandler> handler)
       socket.Close();
       return;
     }
-    ConverseServerStream stream(socket, helpers::EncodeConverseEvent, helpers::DecodeConverseEvent);
+    types::ConverseServerStream stream(socket, helpers::EncodeConverseEvent, helpers::DecodeConverseEvent);
     auto outcome = handler->Converse(*input, stream, context);
     if (!outcome) {
       (void)socket.Send(helpers::BuildConverseExceptionMessage(outcome.error()));
@@ -349,7 +349,7 @@ ChatServer::ChatServer(std::shared_ptr<ChatHandler> handler)
       socket.Close();
       return;
     }
-    WatchServerStream stream(socket, helpers::EncodeWatchEvent, helpers::DecodeWatchEvent);
+    types::WatchServerStream stream(socket, helpers::EncodeWatchEvent, helpers::DecodeWatchEvent);
     auto outcome = handler->Watch(*input, stream, context);
     if (!outcome) {
       (void)socket.Send(helpers::BuildWatchExceptionMessage(outcome.error()));

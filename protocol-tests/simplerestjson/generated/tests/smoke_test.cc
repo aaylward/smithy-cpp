@@ -11,8 +11,6 @@
 
 namespace smithy::protocoltests::simplerestjson {
 
-namespace types = ::smithy::protocoltests::simplerestjson;
-
 // Smoke tests for the generated PizzaAdminService service: the generated client calls the
 // generated server over the in-memory loopback transport. A passing suite
 // pins routing, serde symmetry, required members, and error mapping; swap the

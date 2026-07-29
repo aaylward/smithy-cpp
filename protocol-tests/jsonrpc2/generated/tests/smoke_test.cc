@@ -11,8 +11,6 @@
 
 namespace smithy::protocoltests::jsonrpc2 {
 
-namespace types = ::smithy::protocoltests::jsonrpc2;
-
 // Smoke tests for the generated JsonRpc2Protocol service: the generated client calls the
 // generated server over the in-memory loopback transport. A passing suite
 // pins routing, serde symmetry, required members, and error mapping; swap the

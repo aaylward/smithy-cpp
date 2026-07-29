@@ -300,12 +300,8 @@ class GeneratedCodeShapeTest {
         @http(method: "POST", uri: "/ping")
         operation Ping { input := { DebugString: String } }
         """;
-    var error =
-        org.junit.jupiter.api.Assertions.assertThrows(
-            software.amazon.smithy.codegen.core.CodegenException.class,
-            () -> PluginTestHarness.generate(model, "test.shape#Svc", "test::shape"));
-    assertTrue(error.getMessage().contains("cpp-codegen"), error.getMessage());
-    assertTrue(error.getMessage().contains("DebugString"), error.getMessage());
+    PluginTestHarness.assertRejected(
+        model, "test.shape#Svc", "test::shape", "cpp-codegen", "DebugString");
   }
 
   @Test
@@ -395,12 +391,8 @@ class GeneratedCodeShapeTest {
         @httpError(404)
         structure NotFound { message: String }
         """;
-    var error =
-        org.junit.jupiter.api.Assertions.assertThrows(
-            software.amazon.smithy.codegen.core.CodegenException.class,
-            () -> PluginTestHarness.generate(model, "test.shape#Svc", "test::shape"));
-    assertTrue(error.getMessage().contains("cpp-codegen"), error.getMessage());
-    assertTrue(error.getMessage().contains("PingErrors"), error.getMessage());
+    PluginTestHarness.assertRejected(
+        model, "test.shape#Svc", "test::shape", "cpp-codegen", "PingErrors");
   }
 
   @Test

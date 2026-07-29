@@ -15,7 +15,7 @@ import software.amazon.smithy.model.shapes.StructureShape;
  * emitters the unary path uses ({@code JsonRpcError}, {@code ErrorToResponse}, {@code
  * ValidationErrorResponse}) — one error identity, one spelling.
  *
- * <p>Server-side emission order (all in server.cc's anonymous namespace, after {@code
+ * <p>Server-side emission order (all in server.cc's helpers namespace, after {@code
  * writeServerHelpers}): the shared helpers here, then per operation the codec pair and the async
  * launch wrapper, then the two shared-endpoint serve drivers the trivial "/" routes call.
  */
@@ -72,23 +72,14 @@ final class JsonRpc2StreamCodeGen {
     w.openBlock("if (!message.headers.empty()) {");
     w.write("// Only the raw-text wire reaches this route; a framed message means a");
     w.write("// peer speaking the wrong wire entirely.");
-    w.write(
-        "opening.refusal = helpers::JsonRpcStreamText(helpers::JsonRpcError(-32600, \"SerializationException\","
-            + " \"the opening message must be one JSON-RPC request envelope\", {}, opening.id));");
-    w.write("return opening;");
+    writeOpeningRefusal(w, "-32600", "the opening message must be one JSON-RPC request envelope");
     w.closeBlock("}");
     w.write("auto decoded = smithy::json::Decode(message.payload.ToString());");
     w.openBlock("if (!decoded) {");
-    w.write(
-        "opening.refusal = helpers::JsonRpcStreamText(helpers::JsonRpcError(-32700, \"SerializationException\","
-            + " \"request body is not valid JSON\", {}, opening.id));");
-    w.write("return opening;");
+    writeOpeningRefusal(w, "-32700", "request body is not valid JSON");
     w.closeBlock("}");
     w.openBlock("if (!decoded->is_map()) {");
-    w.write(
-        "opening.refusal = helpers::JsonRpcStreamText(helpers::JsonRpcError(-32600, \"SerializationException\","
-            + " \"request is not a JSON-RPC 2.0 call\", {}, opening.id));");
-    w.write("return opening;");
+    writeOpeningRefusal(w, "-32600", "request is not a JSON-RPC 2.0 call");
     w.closeBlock("}");
     w.write(
         "if (const smithy::Document* id_doc = decoded->Find(\"id\"); id_doc != nullptr)"
@@ -96,25 +87,16 @@ final class JsonRpc2StreamCodeGen {
     w.write("const smithy::Document* version = decoded->Find(\"jsonrpc\");");
     w.openBlock(
         "if (version == nullptr || !version->is_string() || version->as_string() != \"2.0\") {");
-    w.write(
-        "opening.refusal = helpers::JsonRpcStreamText(helpers::JsonRpcError(-32600, \"SerializationException\","
-            + " \"expected jsonrpc: \\\"2.0\\\"\", {}, opening.id));");
-    w.write("return opening;");
+    writeOpeningRefusal(w, "-32600", "expected jsonrpc: \\\"2.0\\\"");
     w.closeBlock("}");
     w.write("const smithy::Document* method = decoded->Find(\"method\");");
     w.openBlock("if (method == nullptr || !method->is_string()) {");
-    w.write(
-        "opening.refusal = helpers::JsonRpcStreamText(helpers::JsonRpcError(-32600, \"SerializationException\","
-            + " \"expected a string method member\", {}, opening.id));");
-    w.write("return opening;");
+    writeOpeningRefusal(w, "-32600", "expected a string method member");
     w.closeBlock("}");
     w.write("// A call without an id is a notification: nothing to answer, nothing for");
     w.write("// the stream's events to echo — refused, unlike the unary endpoint.");
     w.openBlock("if (opening.id.is_null()) {");
-    w.write(
-        "opening.refusal = helpers::JsonRpcStreamText(helpers::JsonRpcError(-32600, \"SerializationException\","
-            + " \"the opening call must carry an id\", {}, opening.id));");
-    w.write("return opening;");
+    writeOpeningRefusal(w, "-32600", "the opening call must carry an id");
     w.closeBlock("}");
     w.write("// Absent/null params deserialize like an empty object.");
     w.write("const smithy::Document* params = decoded->Find(\"params\");");
@@ -124,6 +106,20 @@ final class JsonRpc2StreamCodeGen {
     w.write("return opening;");
     w.closeBlock("}");
     w.write("");
+  }
+
+  /**
+   * One opening-envelope refusal: set {@code opening.refusal} to the reserved-code envelope (the
+   * unary endpoint's exact SerializationException strings) and return. {@code escapedMessage} is
+   * already C++-string-escaped where it needs to be.
+   */
+  private static void writeOpeningRefusal(CppWriter w, String code, String escapedMessage) {
+    w.write(
+        "opening.refusal = helpers::JsonRpcStreamText(helpers::JsonRpcError($L,"
+            + " \"SerializationException\", \"$L\", {}, opening.id));",
+        code,
+        escapedMessage);
+    w.write("return opening;");
   }
 
   /**

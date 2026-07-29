@@ -8,8 +8,6 @@
 
 namespace example::weather {
 
-namespace types = ::example::weather;
-
 smithy::Document SerializeDeleteCityInput(const DeleteCityInput& value) {
   smithy::DocumentMap map;
   map.emplace("cityId", smithy::Document(value.cityId));

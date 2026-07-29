@@ -464,7 +464,10 @@ cc_test(
 cc_library(
     name = "compression",
     srcs = ["src/compression/gzip.cc"],
-    hdrs = ["include/smithy/compression/gzip.h"],
+    hdrs = [
+        "include/smithy/compression/gzip.h",
+        "include/smithy/compression/gzip_test_peer.h",
+    ],
     copts = COPTS,
     includes = ["include"],
     deps = [

@@ -131,6 +131,38 @@ cd codegen && gradle spotlessApply
   feature-owning test class when one exists (the compression-scoping pin lives in
   `BuildFileGeneratorTest`); `ConditionalWiringCoverageTest` is the fallback for arms with no
   owning class, not the default destination.
+- **Sandboxed sessions (Claude Code on the web, and any proxy that allows
+  git + GitHub release assets but blocks source archives):** run
+  `bazel/make-git-overrides.sh`, then point `.bazelrc.user` at its output —
+  after which the FULL `bazel test` surface works, Beast/openssl targets
+  included, no exclusion list. This class of proxy admits git-over-HTTPS and
+  `github.com/<org>/<repo>/releases/download/...` assets but 403s the
+  on-demand archive endpoints (`/archive/refs/tags/...`,
+  `codeload.github.com`) that most BCR modules (all of Boost, rules_perl via
+  openssl's toolchains, google_benchmark) use as their source URL. The
+  script finds every such module in `MODULE.bazel.lock` (plus the
+  toolchain-registered stragglers the lockfile omits — see `EXTRA_MODULES`
+  in the script), clones each at its pinned tag, replays the BCR's patches
+  and overlay files and registry `MODULE.bazel` from `bcr.bazel.build`
+  (registry metadata is not blocked), and writes one
+  `--override_module` line per module into `<dest>/overrides.bazelrc`:
+
+  ```sh
+  bazel/make-git-overrides.sh            # builds ~/bazel-overrides (idempotent)
+  cat >> .bazelrc.user <<'RC'
+  common --lockfile_mode=off
+  import /root/bazel-overrides/overrides.bazelrc
+  RC
+  ```
+
+  Web sessions run this automatically: `.claude/hooks/session-start.sh`
+  installs bazelisk (npm; the bazel binary itself is a release asset, which
+  downloads fine), runs the script, and writes `.bazelrc.user`. Re-run the
+  script after a dep bump; a 403 on a module it didn't cover means the
+  module is toolchain-fetched and absent from the lockfile — add it to
+  `EXTRA_MODULES`. Known residue: `libpfm` (a benchmark-only dep) downloads
+  from SourceForge, which some proxies block — if `//benchmarks/...`
+  fails to fetch, exclude it and rely on CI.
 - Machine-specific Bazel flags go in `.bazelrc.user` (gitignored), e.g. a
   `--downloader_config` when working behind a proxy that blocks GitHub downloads. A rewrite of
   `github.com/(.*)` to `mirror.bazel.build/github.com/$1` unblocks most module archives; for the
@@ -149,7 +181,9 @@ cd codegen && gradle spotlessApply
   git_override consumer triggers, and air-gapped prefetch) is in
   [quickstart.md](quickstart.md#the-first-build-cost-caching-and-locked-down-networks).
 - The Boost-dependent targets (`//runtime:http_beast` and the tests that use it) fetch ~30
-  modular Boost archives. Behind a proxy that blocks GitHub they won't fetch; exclude them and
+  modular Boost archives. Behind a proxy that blocks GitHub *entirely* they won't fetch
+  (behind one that merely blocks archive endpoints, the git-override recipe above removes
+  this whole exclusion list); exclude them and
   run everything else with
   `bazel test //... -- -//runtime:http_beast -//runtime:connection_event_recorder -//runtime:beast_transport_test -//runtime:beast_client_test -//runtime:beast_websocket_test -//examples/weather:weather_e2e_beast_test -//examples/simplerestjson:bookstore_server -//examples/simplerestjson:bookstore_server_lifecycle_test -//examples/chat/... -//examples/jsonrpc2/... -//protocol-tests/jsonrpc2:stream_conformance_test -//codegen/compile-tests:streaming_compile_test -//benchmarks/...`
   (the consumer module's `//:todo_beast_acceptance_test`, `//:websocket_acceptance_test`,

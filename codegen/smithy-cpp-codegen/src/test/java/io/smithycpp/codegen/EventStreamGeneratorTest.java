@@ -1,12 +1,10 @@
 package io.smithycpp.codegen;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 import software.amazon.smithy.build.MockManifest;
-import software.amazon.smithy.codegen.core.CodegenException;
 
 /**
  * The generated event-stream surface (ADR-0016): streaming detection, the client and server
@@ -175,11 +173,12 @@ class EventStreamGeneratorTest {
     assertTrue(client.contains("smithy::eventstream::ParseEnvelope(message);"), client);
     assertTrue(
         client.contains(
-            "if (parsed.code == \"RoomGone\") return MakeRoomGoneError(response,"
+            "if (parsed.code == \"RoomGone\") return helpers::MakeRoomGoneError(response,"
                 + " std::move(parsed));"),
         client);
-    assertTrue(client.contains("return GenericError(std::move(parsed));"), client);
-    assertTrue(client.contains("return ServerEvents::FromJoined(*std::move(event));"), client);
+    assertTrue(client.contains("return helpers::GenericError(std::move(parsed));"), client);
+    assertTrue(
+        client.contains("return types::ServerEvents::FromJoined(*std::move(event));"), client);
     assertTrue(client.contains("\"Converse: unknown event type: \" + envelope->type"), client);
     // Streaming operations never parse an HTTP error response, so the unary
     // Parse<Op>Error dispatcher must not be emitted for them (dead code).
@@ -188,7 +187,8 @@ class EventStreamGeneratorTest {
     // compile error there (event_stream.h), so the slot rides empty.
     assertFalse(client.contains("EncodeWatchEvent"), client);
     assertTrue(
-        client.contains("return WatchClientStream(*std::move(socket), {}, DecodeWatchEvent);"),
+        client.contains(
+            "return WatchClientStream(*std::move(socket), {}, helpers::DecodeWatchEvent);"),
         client);
   }
 
@@ -219,11 +219,13 @@ class EventStreamGeneratorTest {
     // whatever the operation models) on the WebSocket router.
     assertTrue(
         server.contains("(void)stream_router_->Add(\"GET\", \"/rooms/{room}/converse\","), server);
-    assertTrue(server.contains("auto input = ParseConverseInput(request, context,"), server);
+    assertTrue(
+        server.contains("auto input = helpers::ParseConverseInput(request, context,"), server);
     assertTrue(server.contains("handler->Converse(*input, stream, context);"), server);
     // A handler failure sends the exception message, then the close.
     assertTrue(
-        server.contains("(void)socket.Send(BuildConverseExceptionMessage(outcome.error()));"),
+        server.contains(
+            "(void)socket.Send(helpers::BuildConverseExceptionMessage(outcome.error()));"),
         server);
     assertTrue(server.contains("stream.Close();"), server);
     assertTrue(server.contains("return smithy::eventstream::MakeExceptionMessage(type,"), server);
@@ -240,7 +242,8 @@ class EventStreamGeneratorTest {
     // violation), while its transmit direction still encodes for real.
     assertTrue(server.contains("Watch: no events are modeled in this direction"), server);
     assertTrue(
-        server.contains("WatchServerStream stream(socket, EncodeWatchEvent, DecodeWatchEvent);"),
+        server.contains(
+            "WatchServerStream stream(socket, helpers::EncodeWatchEvent, helpers::DecodeWatchEvent);"),
         server);
   }
 
@@ -287,15 +290,17 @@ class EventStreamGeneratorTest {
     // The launch point parses like the blocking route, refuses on the owned
     // socket, and hands off to the wrapper without blocking.
     assertTrue(
-        server.contains("(void)socket->Send(BuildConverseExceptionMessage(input.error()));"),
-        server);
-    assertTrue(
-        server.contains("ServeConverseAsync(handler, *std::move(input), std::move(socket));"),
+        server.contains(
+            "(void)socket->Send(helpers::BuildConverseExceptionMessage(input.error()));"),
         server);
     assertTrue(
         server.contains(
-            "smithy::eventstream::Detached ServeConverseAsync(std::shared_ptr<SvcAsyncHandler>"
-                + " handler, ConverseInput input,"
+            "helpers::ServeConverseAsync(handler, *std::move(input), std::move(socket));"),
+        server);
+    assertTrue(
+        server.contains(
+            "smithy::eventstream::Detached ServeConverseAsync(std::shared_ptr<types::SvcAsyncHandler>"
+                + " handler, types::ConverseInput input,"
                 + " std::shared_ptr<smithy::http::WebSocket> socket) {"),
         server);
     assertTrue(
@@ -308,7 +313,7 @@ class EventStreamGeneratorTest {
     assertTrue(
         server.contains(
             "(void)co_await smithy::eventstream::SendMessage(socket,"
-                + " BuildConverseExceptionMessage(outcome.error()));"),
+                + " helpers::BuildConverseExceptionMessage(outcome.error()));"),
         server);
     assertFalse(server.contains("socket->SendAsync(BuildConverseExceptionMessage"), server);
   }
@@ -325,16 +330,17 @@ class EventStreamGeneratorTest {
         PluginTestHarness.generate(model, "test.stream#Svc", "test::stream")
             .expectFileString("/src/server.cc");
     assertTrue(
-        server.contains("ValidateConverseInput(*input, \"\", &validation_failures);"), server);
+        server.contains("helpers::ValidateConverseInput(*input, \"\", &validation_failures);"),
+        server);
     assertTrue(
         server.contains(
-            "(void)socket.Send(BuildConverseExceptionMessage("
+            "(void)socket.Send(helpers::BuildConverseExceptionMessage("
                 + "smithy::Error::Validation(validation_failures.front().message)));"),
         server);
     // The session (async) route refuses identically on its owned socket.
     assertTrue(
         server.contains(
-            "(void)socket->Send(BuildConverseExceptionMessage("
+            "(void)socket->Send(helpers::BuildConverseExceptionMessage("
                 + "smithy::Error::Validation(validation_failures.front().message)));"),
         server);
     assertFalse(server.contains("ValidateWatchInput"), server);
@@ -453,8 +459,9 @@ class EventStreamGeneratorTest {
     // move, transposed to streams (ADR-0023).
     assertTrue(server.contains("(void)stream_router_->Add(\"GET\", \"/\","), server);
     assertTrue(server.contains("(void)stream_router_->AddSession(\"GET\", \"/\","), server);
-    assertTrue(server.contains("ServeJsonRpcStream(*handler, context, socket);"), server);
-    assertTrue(server.contains("ServeJsonRpcSession(handler, std::move(socket));"), server);
+    assertTrue(server.contains("helpers::ServeJsonRpcStream(*handler, context, socket);"), server);
+    assertTrue(
+        server.contains("helpers::ServeJsonRpcSession(handler, std::move(socket));"), server);
     // The session driver reads the opening envelope inside the Detached
     // frame — never parking a handler thread — and the blocking driver
     // blocks in Receive, each dispatching on the envelope's method.
@@ -462,17 +469,18 @@ class EventStreamGeneratorTest {
         server.contains("auto first = co_await smithy::eventstream::ReceiveMessage(socket);"),
         server);
     assertTrue(
-        server.contains("const JsonRpcOpening opening = ParseJsonRpcOpening(**first);"), server);
+        server.contains("const JsonRpcOpening opening = helpers::ParseJsonRpcOpening(**first);"),
+        server);
     assertTrue(server.contains("if (opening.method == \"Chat\") {"), server);
     // Reserved-code refusals reuse the unary emitter, as raw text.
     assertTrue(
         server.contains(
-            "JsonRpcStreamText(JsonRpcError(-32601, \"UnknownOperationException\","
+            "helpers::JsonRpcStreamText(helpers::JsonRpcError(-32601, \"UnknownOperationException\","
                 + " \"unknown method: \" + opening.method, {}, opening.id))"),
         server);
     assertTrue(
         server.contains(
-            "JsonRpcStreamText(JsonRpcError(-32602, \"SerializationException\","
+            "helpers::JsonRpcStreamText(helpers::JsonRpcError(-32602, \"SerializationException\","
                 + " parsed.error().message(), {}, opening.id))"),
         server);
     // Both seams serve through the wrapped socket and end with the terminal
@@ -485,11 +493,13 @@ class EventStreamGeneratorTest {
         server);
     assertTrue(server.contains("BuildJsonRpcTerminalResult(opening.id)"), server);
     assertTrue(
-        server.contains("JsonRpcStreamText(ErrorToResponse(outcome.error(), opening.id))"), server);
+        server.contains(
+            "helpers::JsonRpcStreamText(helpers::ErrorToResponse(outcome.error(), opening.id))"),
+        server);
     assertTrue(
         server.contains(
-            "smithy::eventstream::Detached ServeChatAsync(std::shared_ptr<SvcAsyncHandler>"
-                + " handler, ChatInput input, std::shared_ptr<smithy::http::WebSocket> socket,"
+            "smithy::eventstream::Detached ServeChatAsync(std::shared_ptr<types::SvcAsyncHandler>"
+                + " handler, types::ChatInput input, std::shared_ptr<smithy::http::WebSocket> socket,"
                 + " smithy::Document id) {"),
         server);
     assertFalse(server.contains("BuildChatExceptionMessage"), server);
@@ -505,13 +515,13 @@ class EventStreamGeneratorTest {
     // and params never carry the union — @required would refuse every
     // opening (ADR-0023).
     String model = JSONRPC_MODEL.replace("events: ClientEvents", "@required events: ClientEvents");
-    var error =
-        assertThrows(
-            CodegenException.class,
-            () -> PluginTestHarness.generate(model, "test.stream#Svc", "test::stream"));
-    assertTrue(error.getMessage().contains("cpp-codegen"), error.getMessage());
-    assertTrue(error.getMessage().contains("drop @required"), error.getMessage());
-    assertTrue(error.getMessage().contains("test.stream#Chat"), error.getMessage());
+    PluginTestHarness.assertRejected(
+        model,
+        "test.stream#Svc",
+        "test::stream",
+        "cpp-codegen",
+        "drop @required",
+        "test.stream#Chat");
   }
 
   @Test
@@ -520,13 +530,8 @@ class EventStreamGeneratorTest {
         CBOR_MODEL.replace(
             "structure ChatMessage { @required text: String }",
             "structure ChatMessage { @eventHeader id: String, @required text: String }");
-    var error =
-        assertThrows(
-            CodegenException.class,
-            () -> PluginTestHarness.generate(model, "test.stream#Svc", "test::stream"));
-    assertTrue(error.getMessage().contains("cpp-codegen"), error.getMessage());
-    assertTrue(error.getMessage().contains("@eventHeader"), error.getMessage());
-    assertTrue(error.getMessage().contains("ChatMessage$id"), error.getMessage());
+    PluginTestHarness.assertRejected(
+        model, "test.stream#Svc", "test::stream", "cpp-codegen", "@eventHeader", "ChatMessage$id");
   }
 
   @Test
@@ -535,13 +540,13 @@ class EventStreamGeneratorTest {
         CBOR_MODEL.replace(
             "structure ChatMessage { @required text: String }",
             "structure ChatMessage { @eventPayload text: String }");
-    var error =
-        assertThrows(
-            CodegenException.class,
-            () -> PluginTestHarness.generate(model, "test.stream#Svc", "test::stream"));
-    assertTrue(error.getMessage().contains("cpp-codegen"), error.getMessage());
-    assertTrue(error.getMessage().contains("@eventPayload"), error.getMessage());
-    assertTrue(error.getMessage().contains("ChatMessage$text"), error.getMessage());
+    PluginTestHarness.assertRejected(
+        model,
+        "test.stream#Svc",
+        "test::stream",
+        "cpp-codegen",
+        "@eventPayload",
+        "ChatMessage$text");
   }
 
   @Test
@@ -555,13 +560,13 @@ class EventStreamGeneratorTest {
     String model =
         CBOR_MODEL.replace(
             "input := { events: ClientEvents }", "input := { room: String, events: ClientEvents }");
-    var error =
-        assertThrows(
-            CodegenException.class,
-            () -> PluginTestHarness.generate(model, "test.stream#Svc", "test::stream"));
-    assertTrue(error.getMessage().contains("cpp-codegen"), error.getMessage());
-    assertTrue(error.getMessage().contains("initial-request member 'room'"), error.getMessage());
-    assertTrue(error.getMessage().contains("test.stream#Chat"), error.getMessage());
+    PluginTestHarness.assertRejected(
+        model,
+        "test.stream#Svc",
+        "test::stream",
+        "cpp-codegen",
+        "initial-request member 'room'",
+        "test.stream#Chat");
   }
 
   @Test
@@ -570,14 +575,13 @@ class EventStreamGeneratorTest {
         CBOR_MODEL.replace(
             "output := { events: ServerEvents }",
             "output := { greeting: String, events: ServerEvents }");
-    var error =
-        assertThrows(
-            CodegenException.class,
-            () -> PluginTestHarness.generate(model, "test.stream#Svc", "test::stream"));
-    assertTrue(error.getMessage().contains("cpp-codegen"), error.getMessage());
-    assertTrue(
-        error.getMessage().contains("initial-response member 'greeting'"), error.getMessage());
-    assertTrue(error.getMessage().contains("test.stream#Chat"), error.getMessage());
+    PluginTestHarness.assertRejected(
+        model,
+        "test.stream#Svc",
+        "test::stream",
+        "cpp-codegen",
+        "initial-response member 'greeting'",
+        "test.stream#Chat");
   }
 
   @Test

@@ -47,18 +47,13 @@ final class HttpJsonServerGenerator {
     this.spec = new ProtocolSupport.ErrorResponseSpec("JsonError", errorTypeHeaderName);
   }
 
-  /** Exposed through {@link ProtocolGenerator#errorResponseSpec} for the shape-name guard. */
-  ProtocolSupport.ErrorResponseSpec errorSpec() {
-    return spec;
-  }
-
   /** The one derivation of the Parse&lt;Op&gt;Input helper name (definition and call sites). */
-  static String parseInputFunction(String opName) {
+  private static String parseInputFunction(String opName) {
     return "Parse" + opName + "Input";
   }
 
   /** The one derivation of the Build&lt;Op&gt;Response helper name (definition and call sites). */
-  static String buildResponseFunction(String opName) {
+  private static String buildResponseFunction(String opName) {
     return "Build" + opName + "Response";
   }
 
@@ -114,11 +109,9 @@ final class HttpJsonServerGenerator {
   /**
    * Whether any operation has a required top-level body/query/header member: those absences are
    * ValidationException failures ("Member must not be null"), not serialization errors. Absent
-   * labels never route here, and nested required members stay serde-strict. Package-private as
-   * {@link ProtocolGenerator#validationWiringAlsoEmitted}'s source, so the guard's gate and {@link
-   * ValidationGenerator#writeWiring}'s {@code alsoEmit} can never disagree.
+   * labels never route here, and nested required members stay serde-strict.
    */
-  static boolean anyTopLevelRequired(CppContext context, List<OperationShape> operations) {
+  private static boolean anyTopLevelRequired(CppContext context, List<OperationShape> operations) {
     HttpBindingIndex index = HttpBindingIndex.of(context.model());
     for (OperationShape operation : operations) {
       MemberShape streamMember = EventStreamCodeGen.inputStreamMember(context.model(), operation);
@@ -145,7 +138,7 @@ final class HttpJsonServerGenerator {
       CppWriter w, CppContext context, SerdeCodeGen serde, OperationShape operation) {
     HttpBindingIndex index = HttpBindingIndex.of(context.model());
     StructureShape input = ProtocolSupport.inputShape(context, operation);
-    String inputType = context.cppSymbols().toSymbol(input).getName();
+    String inputType = context.cppSymbols().typeRef(input);
     String opName = CppReservedWords.escape(operation.getId().getName());
     HttpBindingCodeGen.RequestBindings req =
         HttpBindingCodeGen.RequestBindings.of(
@@ -285,14 +278,16 @@ final class HttpJsonServerGenerator {
           body,
           "request.body",
           "input.",
-          inputType,
+          // The bare type name: this lands in wire error-message paths
+          // ("GetCityInput.name"), not in code.
+          context.cppSymbols().toSymbol(input).getName(),
           opName,
           (w2, member, deserializeMember) -> {
             // Servers record the absence and keep parsing, so one response
             // carries every validation failure.
             w2.openBlock("if ($L) {", SerdeCodeGen.MEMBER_ABSENT);
             w2.write(
-                "AddValidationFailure(validation_failures, $S, $S);",
+                "helpers::AddValidationFailure(validation_failures, $S, $S);",
                 "/" + member.getMemberName(),
                 ValidationGenerator.memberMustNotBeNull("/" + member.getMemberName()));
             w2.closeBlock("} else {");
@@ -337,7 +332,7 @@ final class HttpJsonServerGenerator {
     HttpBindingIndex index = HttpBindingIndex.of(context.model());
     HttpTrait http = operation.expectTrait(HttpTrait.class);
     StructureShape output = ProtocolSupport.outputShape(context, operation);
-    String outputType = context.cppSymbols().toSymbol(output).getName();
+    String outputType = context.cppSymbols().typeRef(output);
     String opName = CppReservedWords.escape(operation.getId().getName());
     HttpBindingCodeGen.ResponseBindings resp =
         HttpBindingCodeGen.ResponseBindings.of(index, operation);
@@ -445,7 +440,8 @@ final class HttpJsonServerGenerator {
     w.write("// any content type / accept.");
     if (noModeledInput) {
       w.openBlock("if (request.headers.Get(\"content-type\").has_value()) {");
-      w.write("auto error_response = JsonError(415, \"\", \"unsupported media type\", {});");
+      w.write(
+          "auto error_response = helpers::JsonError(415, \"\", \"unsupported media type\", {});");
       writeErrorTypeHeader(w, "error_response", "UnsupportedMediaTypeException");
       w.write("return error_response;");
       w.closeBlock("}");
@@ -467,7 +463,8 @@ final class HttpJsonServerGenerator {
               + condition
               + ") {",
           expected);
-      w.write("auto error_response = JsonError(415, \"\", \"unsupported media type\", {});");
+      w.write(
+          "auto error_response = helpers::JsonError(415, \"\", \"unsupported media type\", {});");
       writeErrorTypeHeader(w, "error_response", "UnsupportedMediaTypeException");
       w.write("return error_response;");
       w.closeBlock("}");
@@ -481,28 +478,32 @@ final class HttpJsonServerGenerator {
           "if (const auto accept = request.headers.Get(\"accept\"); accept.has_value() && "
               + "!smithy::http::AcceptMatches(*accept, $S)) {",
           responseContentType);
-      w.write("auto error_response = JsonError(406, \"\", \"not acceptable\", {});");
+      w.write("auto error_response = helpers::JsonError(406, \"\", \"not acceptable\", {});");
       writeErrorTypeHeader(w, "error_response", "NotAcceptableException");
       w.write("return error_response;");
       w.closeBlock("}");
     }
     w.write("std::vector<smithy::server::ValidationFailure> validation_failures;");
-    w.write("auto input = $L(request, context, &validation_failures);", parseInputFunction(opName));
+    w.write(
+        "auto input = helpers::$L(request, context, &validation_failures);",
+        parseInputFunction(opName));
     if (emitsValidation) {
       w.write(
           "if (!validation_failures.empty()) "
-              + "return ValidationErrorResponse(validation_failures);");
+              + "return helpers::ValidationErrorResponse(validation_failures);");
     }
-    w.write("if (!input) return ErrorToResponse(input.error());");
+    w.write("if (!input) return helpers::ErrorToResponse(input.error());");
     if (validation.validates(operation)) {
-      w.write("$L(*input, \"\", &validation_failures);", validation.validatorNameFor(operation));
+      w.write(
+          "helpers::$L(*input, \"\", &validation_failures);",
+          validation.validatorNameFor(operation));
       w.write(
           "if (!validation_failures.empty()) "
-              + "return ValidationErrorResponse(validation_failures);");
+              + "return helpers::ValidationErrorResponse(validation_failures);");
     }
     w.write("auto outcome = handler->$L(*input, context);", opName);
-    w.write("if (!outcome) return ErrorToResponse(outcome.error());");
-    w.write("return $L(*outcome);", buildResponseFunction(opName));
+    w.write("if (!outcome) return helpers::ErrorToResponse(outcome.error());");
+    w.write("return helpers::$L(*outcome);", buildResponseFunction(opName));
     w.closeBlock("}, $S);", operation.getId().getName());
   }
 
@@ -526,9 +527,11 @@ final class HttpJsonServerGenerator {
             + " context, smithy::http::WebSocket& socket) {",
         routePattern(http));
     w.write("std::vector<smithy::server::ValidationFailure> validation_failures;");
-    w.write("auto input = $L(request, context, &validation_failures);", parseInputFunction(opName));
+    w.write(
+        "auto input = helpers::$L(request, context, &validation_failures);",
+        parseInputFunction(opName));
     w.openBlock("if (!input) {");
-    w.write("(void)socket.Send(Build$LExceptionMessage(input.error()));", opName);
+    w.write("(void)socket.Send(helpers::Build$LExceptionMessage(input.error()));", opName);
     w.write("socket.Close();");
     w.write("return;");
     w.closeBlock("}");
@@ -540,7 +543,9 @@ final class HttpJsonServerGenerator {
       writeStreamValidationRefusal(w, opName, "socket.");
     }
     if (validation.validates(operation)) {
-      w.write("$L(*input, \"\", &validation_failures);", validation.validatorNameFor(operation));
+      w.write(
+          "helpers::$L(*input, \"\", &validation_failures);",
+          validation.validatorNameFor(operation));
       writeStreamValidationRefusal(w, opName, "socket.");
     }
     EventStreamCodeGen.writeServeAndClose(w, context, operation, "*input");
@@ -564,9 +569,11 @@ final class HttpJsonServerGenerator {
             + " context, std::shared_ptr<smithy::http::WebSocket> socket) {",
         routePattern(http));
     w.write("std::vector<smithy::server::ValidationFailure> validation_failures;");
-    w.write("auto input = $L(request, context, &validation_failures);", parseInputFunction(opName));
+    w.write(
+        "auto input = helpers::$L(request, context, &validation_failures);",
+        parseInputFunction(opName));
     w.openBlock("if (!input) {");
-    w.write("(void)socket->Send(Build$LExceptionMessage(input.error()));", opName);
+    w.write("(void)socket->Send(helpers::Build$LExceptionMessage(input.error()));", opName);
     w.write("socket->Close();");
     w.write("return;");
     w.closeBlock("}");
@@ -574,7 +581,9 @@ final class HttpJsonServerGenerator {
       writeStreamValidationRefusal(w, opName, "socket->");
     }
     if (validation.validates(operation)) {
-      w.write("$L(*input, \"\", &validation_failures);", validation.validatorNameFor(operation));
+      w.write(
+          "helpers::$L(*input, \"\", &validation_failures);",
+          validation.validatorNameFor(operation));
       writeStreamValidationRefusal(w, opName, "socket->");
     }
     EventStreamCodeGen.writeLaunchAsync(w, operation, "*std::move(input)");
@@ -591,7 +600,7 @@ final class HttpJsonServerGenerator {
       CppWriter w, String opName, String socketAccess) {
     w.openBlock("if (!validation_failures.empty()) {");
     w.write(
-        "(void)$LSend(Build$LExceptionMessage("
+        "(void)$LSend(helpers::Build$LExceptionMessage("
             + "smithy::Error::Validation(validation_failures.front().message)));",
         socketAccess,
         opName);

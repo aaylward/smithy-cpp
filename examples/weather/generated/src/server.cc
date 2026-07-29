@@ -26,7 +26,10 @@
 
 namespace example::weather {
 
+namespace types = ::example::weather;
+
 namespace {
+namespace helpers {
 
 // Strict text parsing for label/query/header bindings ([[maybe_unused]]:
 // emitted for every service; not every service binds numeric values).
@@ -79,7 +82,7 @@ smithy::http::HttpResponse JsonError(int status, const std::string& code, const 
   if (error.kind() == smithy::ErrorKind::kModeled) {
     if (error.code() == "NoSuchResource") {
       smithy::DocumentMap body;
-      if (const auto* detail = error.detail<NoSuchResource>()) {
+      if (const auto* detail = error.detail<types::NoSuchResource>()) {
         body = SerializeNoSuchResource(*detail).as_map();
       }
       // The typed detail's own message member wins over the generic one.
@@ -87,20 +90,20 @@ smithy::http::HttpResponse JsonError(int status, const std::string& code, const 
       if (!has_message && !error.message().empty()) {
         body.emplace("message", smithy::Document(error.message()));
       }
-      auto response = JsonError(404, "", "", std::move(body));
+      auto response = helpers::JsonError(404, "", "", std::move(body));
       response.headers.Set("x-error-type", error.code());
       for (const auto& [name, value] : header_values) response.headers.Set(name, value);
       return response;
     }
-    return JsonError(400, error.code(), error.message(), {});
+    return helpers::JsonError(400, error.code(), error.message(), {});
   }
   if (error.kind() == smithy::ErrorKind::kValidation || error.kind() == smithy::ErrorKind::kSerialization) {
-    auto response = JsonError(400, "", error.message(), {});
+    auto response = helpers::JsonError(400, "", error.message(), {});
     response.headers.Set("x-error-type", "SerializationException");
     return response;
   }
   // Never leak internal detail on unexpected failures.
-  return JsonError(500, "InternalFailure", "internal failure", {});
+  return helpers::JsonError(500, "InternalFailure", "internal failure", {});
 }
 
 // Constraint validation (smithy.framework#ValidationException): messages
@@ -109,32 +112,32 @@ void AddValidationFailure(std::vector<smithy::server::ValidationFailure>* failur
   failures->push_back({std::move(path), std::move(message)});
 }
 
-void ValidateDeleteCityInput(const DeleteCityInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
+void ValidateDeleteCityInput(const types::DeleteCityInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
   {
     const std::string member_path = path + "/cityId";
     static const smithy::Outcome<smithy::Regex> kPattern0 = smithy::Regex::Compile(R"__smithy(^[A-Za-z0-9 ]+$)__smithy");
     if (!kPattern0.ok() || !kPattern0->Search(value.cityId)) {
-      AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy regular expression pattern: " + std::string("^[A-Za-z0-9 ]+$"));
+      helpers::AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy regular expression pattern: " + std::string("^[A-Za-z0-9 ]+$"));
     }
   }
 }
 
-void ValidateGetForecastInput(const GetForecastInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
+void ValidateGetForecastInput(const types::GetForecastInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
   {
     const std::string member_path = path + "/cityId";
     static const smithy::Outcome<smithy::Regex> kPattern1 = smithy::Regex::Compile(R"__smithy(^[A-Za-z0-9 ]+$)__smithy");
     if (!kPattern1.ok() || !kPattern1->Search(value.cityId)) {
-      AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy regular expression pattern: " + std::string("^[A-Za-z0-9 ]+$"));
+      helpers::AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy regular expression pattern: " + std::string("^[A-Za-z0-9 ]+$"));
     }
   }
 }
 
-void ValidateGetCityInput(const GetCityInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
+void ValidateGetCityInput(const types::GetCityInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
   {
     const std::string member_path = path + "/cityId";
     static const smithy::Outcome<smithy::Regex> kPattern2 = smithy::Regex::Compile(R"__smithy(^[A-Za-z0-9 ]+$)__smithy");
     if (!kPattern2.ok() || !kPattern2->Search(value.cityId)) {
-      AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy regular expression pattern: " + std::string("^[A-Za-z0-9 ]+$"));
+      helpers::AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy regular expression pattern: " + std::string("^[A-Za-z0-9 ]+$"));
     }
   }
 }
@@ -154,16 +157,16 @@ void ValidateGetCityInput(const GetCityInput& value, const std::string& path, st
   }
   smithy::DocumentMap body;
   body.emplace("fieldList", smithy::Document(std::move(field_list)));
-  smithy::http::HttpResponse response = JsonError(400, "", summary, std::move(body));
+  smithy::http::HttpResponse response = helpers::JsonError(400, "", summary, std::move(body));
   response.headers.Set("x-error-type", "ValidationException");
   return response;
 }
 
-smithy::Outcome<DeleteCityInput> ParseDeleteCityInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
+smithy::Outcome<types::DeleteCityInput> ParseDeleteCityInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
   (void)request;
   (void)context;
   (void)validation_failures;
-  DeleteCityInput input{};
+  types::DeleteCityInput input{};
   {
     const std::string& label_value = context.labels.at("cityId");
     input.cityId = label_value;
@@ -171,18 +174,18 @@ smithy::Outcome<DeleteCityInput> ParseDeleteCityInput(const smithy::http::HttpRe
   return input;
 }
 
-smithy::http::HttpResponse BuildDeleteCityResponse(const DeleteCityOutput& output) {
+smithy::http::HttpResponse BuildDeleteCityResponse(const types::DeleteCityOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 204;
   return response;
 }
 
-smithy::Outcome<GetCityInput> ParseGetCityInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
+smithy::Outcome<types::GetCityInput> ParseGetCityInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
   (void)request;
   (void)context;
   (void)validation_failures;
-  GetCityInput input{};
+  types::GetCityInput input{};
   {
     const std::string& label_value = context.labels.at("cityId");
     input.cityId = label_value;
@@ -190,7 +193,7 @@ smithy::Outcome<GetCityInput> ParseGetCityInput(const smithy::http::HttpRequest&
   return input;
 }
 
-smithy::http::HttpResponse BuildGetCityResponse(const GetCityOutput& output) {
+smithy::http::HttpResponse BuildGetCityResponse(const types::GetCityOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -202,15 +205,15 @@ smithy::http::HttpResponse BuildGetCityResponse(const GetCityOutput& output) {
   return response;
 }
 
-smithy::Outcome<GetCurrentTimeInput> ParseGetCurrentTimeInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
+smithy::Outcome<types::GetCurrentTimeInput> ParseGetCurrentTimeInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
   (void)request;
   (void)context;
   (void)validation_failures;
-  GetCurrentTimeInput input{};
+  types::GetCurrentTimeInput input{};
   return input;
 }
 
-smithy::http::HttpResponse BuildGetCurrentTimeResponse(const GetCurrentTimeOutput& output) {
+smithy::http::HttpResponse BuildGetCurrentTimeResponse(const types::GetCurrentTimeOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -221,11 +224,11 @@ smithy::http::HttpResponse BuildGetCurrentTimeResponse(const GetCurrentTimeOutpu
   return response;
 }
 
-smithy::Outcome<GetForecastInput> ParseGetForecastInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
+smithy::Outcome<types::GetForecastInput> ParseGetForecastInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
   (void)request;
   (void)context;
   (void)validation_failures;
-  GetForecastInput input{};
+  types::GetForecastInput input{};
   {
     const std::string& label_value = context.labels.at("cityId");
     input.cityId = label_value;
@@ -233,7 +236,7 @@ smithy::Outcome<GetForecastInput> ParseGetForecastInput(const smithy::http::Http
   return input;
 }
 
-smithy::http::HttpResponse BuildGetForecastResponse(const GetForecastOutput& output) {
+smithy::http::HttpResponse BuildGetForecastResponse(const types::GetForecastOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -246,11 +249,11 @@ smithy::http::HttpResponse BuildGetForecastResponse(const GetForecastOutput& out
   return response;
 }
 
-smithy::Outcome<GetReportInput> ParseGetReportInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
+smithy::Outcome<types::GetReportInput> ParseGetReportInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
   (void)request;
   (void)context;
   (void)validation_failures;
-  GetReportInput input{};
+  types::GetReportInput input{};
   {
     const std::string& label_value = context.labels.at("reportPath");
     input.reportPath = label_value;
@@ -258,7 +261,7 @@ smithy::Outcome<GetReportInput> ParseGetReportInput(const smithy::http::HttpRequ
   return input;
 }
 
-smithy::http::HttpResponse BuildGetReportResponse(const GetReportOutput& output) {
+smithy::http::HttpResponse BuildGetReportResponse(const types::GetReportOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -270,18 +273,18 @@ smithy::http::HttpResponse BuildGetReportResponse(const GetReportOutput& output)
   return response;
 }
 
-smithy::Outcome<ListCitiesInput> ParseListCitiesInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
+smithy::Outcome<types::ListCitiesInput> ParseListCitiesInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
   (void)request;
   (void)context;
   (void)validation_failures;
-  ListCitiesInput input{};
+  types::ListCitiesInput input{};
   for (const auto& [key, value] : context.query_params) {
     if (key == "nextToken") {
       input.nextToken = value;
       continue;
     }
     if (key == "pageSize") {
-      auto parsed_num = ParseInt64Text(value, -2147483648LL, 2147483647LL);
+      auto parsed_num = helpers::ParseInt64Text(value, -2147483648LL, 2147483647LL);
       if (!parsed_num) return std::move(parsed_num).error();
       input.pageSize = static_cast<std::int32_t>(*parsed_num);
       continue;
@@ -290,7 +293,7 @@ smithy::Outcome<ListCitiesInput> ParseListCitiesInput(const smithy::http::HttpRe
   return input;
 }
 
-smithy::http::HttpResponse BuildListCitiesResponse(const ListCitiesOutput& output) {
+smithy::http::HttpResponse BuildListCitiesResponse(const types::ListCitiesOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -304,6 +307,7 @@ smithy::http::HttpResponse BuildListCitiesResponse(const ListCitiesOutput& outpu
   return response;
 }
 
+}  // namespace helpers
 }  // namespace
 
 WeatherServer::WeatherServer(std::shared_ptr<WeatherHandler> handler)
@@ -317,19 +321,19 @@ WeatherServer::WeatherServer(std::shared_ptr<WeatherHandler> handler)
     // content-type is tolerated, and blob payloads without @mediaType accept
     // any content type / accept.
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
-      auto error_response = JsonError(415, "", "unsupported media type", {});
+      auto error_response = helpers::JsonError(415, "", "unsupported media type", {});
       error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    auto input = ParseDeleteCityInput(request, context, &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    if (!input) return ErrorToResponse(input.error());
-    ValidateDeleteCityInput(*input, "", &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
+    auto input = helpers::ParseDeleteCityInput(request, context, &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
+    if (!input) return helpers::ErrorToResponse(input.error());
+    helpers::ValidateDeleteCityInput(*input, "", &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
     auto outcome = handler->DeleteCity(*input, context);
-    if (!outcome) return ErrorToResponse(outcome.error());
-    return BuildDeleteCityResponse(*outcome);
+    if (!outcome) return helpers::ErrorToResponse(outcome.error());
+    return helpers::BuildDeleteCityResponse(*outcome);
   }, "DeleteCity");
   (void)router_->Add("GET", "/cities/{cityId}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -337,24 +341,24 @@ WeatherServer::WeatherServer(std::shared_ptr<WeatherHandler> handler)
     // content-type is tolerated, and blob payloads without @mediaType accept
     // any content type / accept.
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
-      auto error_response = JsonError(415, "", "unsupported media type", {});
+      auto error_response = helpers::JsonError(415, "", "unsupported media type", {});
       error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
-      auto error_response = JsonError(406, "", "not acceptable", {});
+      auto error_response = helpers::JsonError(406, "", "not acceptable", {});
       error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    auto input = ParseGetCityInput(request, context, &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    if (!input) return ErrorToResponse(input.error());
-    ValidateGetCityInput(*input, "", &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
+    auto input = helpers::ParseGetCityInput(request, context, &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
+    if (!input) return helpers::ErrorToResponse(input.error());
+    helpers::ValidateGetCityInput(*input, "", &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
     auto outcome = handler->GetCity(*input, context);
-    if (!outcome) return ErrorToResponse(outcome.error());
-    return BuildGetCityResponse(*outcome);
+    if (!outcome) return helpers::ErrorToResponse(outcome.error());
+    return helpers::BuildGetCityResponse(*outcome);
   }, "GetCity");
   (void)router_->Add("GET", "/current-time", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -362,22 +366,22 @@ WeatherServer::WeatherServer(std::shared_ptr<WeatherHandler> handler)
     // content-type is tolerated, and blob payloads without @mediaType accept
     // any content type / accept.
     if (request.headers.Get("content-type").has_value()) {
-      auto error_response = JsonError(415, "", "unsupported media type", {});
+      auto error_response = helpers::JsonError(415, "", "unsupported media type", {});
       error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
-      auto error_response = JsonError(406, "", "not acceptable", {});
+      auto error_response = helpers::JsonError(406, "", "not acceptable", {});
       error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    auto input = ParseGetCurrentTimeInput(request, context, &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    if (!input) return ErrorToResponse(input.error());
+    auto input = helpers::ParseGetCurrentTimeInput(request, context, &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
+    if (!input) return helpers::ErrorToResponse(input.error());
     auto outcome = handler->GetCurrentTime(*input, context);
-    if (!outcome) return ErrorToResponse(outcome.error());
-    return BuildGetCurrentTimeResponse(*outcome);
+    if (!outcome) return helpers::ErrorToResponse(outcome.error());
+    return helpers::BuildGetCurrentTimeResponse(*outcome);
   }, "GetCurrentTime");
   (void)router_->Add("GET", "/cities/{cityId}/forecast", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -385,24 +389,24 @@ WeatherServer::WeatherServer(std::shared_ptr<WeatherHandler> handler)
     // content-type is tolerated, and blob payloads without @mediaType accept
     // any content type / accept.
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
-      auto error_response = JsonError(415, "", "unsupported media type", {});
+      auto error_response = helpers::JsonError(415, "", "unsupported media type", {});
       error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
-      auto error_response = JsonError(406, "", "not acceptable", {});
+      auto error_response = helpers::JsonError(406, "", "not acceptable", {});
       error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    auto input = ParseGetForecastInput(request, context, &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    if (!input) return ErrorToResponse(input.error());
-    ValidateGetForecastInput(*input, "", &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
+    auto input = helpers::ParseGetForecastInput(request, context, &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
+    if (!input) return helpers::ErrorToResponse(input.error());
+    helpers::ValidateGetForecastInput(*input, "", &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
     auto outcome = handler->GetForecast(*input, context);
-    if (!outcome) return ErrorToResponse(outcome.error());
-    return BuildGetForecastResponse(*outcome);
+    if (!outcome) return helpers::ErrorToResponse(outcome.error());
+    return helpers::BuildGetForecastResponse(*outcome);
   }, "GetForecast");
   (void)router_->Add("GET", "/reports/{reportPath+}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -410,22 +414,22 @@ WeatherServer::WeatherServer(std::shared_ptr<WeatherHandler> handler)
     // content-type is tolerated, and blob payloads without @mediaType accept
     // any content type / accept.
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
-      auto error_response = JsonError(415, "", "unsupported media type", {});
+      auto error_response = helpers::JsonError(415, "", "unsupported media type", {});
       error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
-      auto error_response = JsonError(406, "", "not acceptable", {});
+      auto error_response = helpers::JsonError(406, "", "not acceptable", {});
       error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    auto input = ParseGetReportInput(request, context, &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    if (!input) return ErrorToResponse(input.error());
+    auto input = helpers::ParseGetReportInput(request, context, &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
+    if (!input) return helpers::ErrorToResponse(input.error());
     auto outcome = handler->GetReport(*input, context);
-    if (!outcome) return ErrorToResponse(outcome.error());
-    return BuildGetReportResponse(*outcome);
+    if (!outcome) return helpers::ErrorToResponse(outcome.error());
+    return helpers::BuildGetReportResponse(*outcome);
   }, "GetReport");
   (void)router_->Add("GET", "/cities", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -433,22 +437,22 @@ WeatherServer::WeatherServer(std::shared_ptr<WeatherHandler> handler)
     // content-type is tolerated, and blob payloads without @mediaType accept
     // any content type / accept.
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
-      auto error_response = JsonError(415, "", "unsupported media type", {});
+      auto error_response = helpers::JsonError(415, "", "unsupported media type", {});
       error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
-      auto error_response = JsonError(406, "", "not acceptable", {});
+      auto error_response = helpers::JsonError(406, "", "not acceptable", {});
       error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    auto input = ParseListCitiesInput(request, context, &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    if (!input) return ErrorToResponse(input.error());
+    auto input = helpers::ParseListCitiesInput(request, context, &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
+    if (!input) return helpers::ErrorToResponse(input.error());
     auto outcome = handler->ListCities(*input, context);
-    if (!outcome) return ErrorToResponse(outcome.error());
-    return BuildListCitiesResponse(*outcome);
+    if (!outcome) return helpers::ErrorToResponse(outcome.error());
+    return helpers::BuildListCitiesResponse(*outcome);
   }, "ListCities");
 }
 

@@ -107,11 +107,12 @@ class CppCodegenPluginTest {
     assertEquals(2, server.split("\\(void\\)router_->Add\\(", -1).length - 1);
     assertTrue(server.contains("(void)stream_router_->Add(\"GET\", \"/\","));
     assertTrue(server.contains("if (method_name == \"Divide\")"));
-    assertTrue(server.contains("return JsonRpcError(-32601, \"UnknownOperationException\""));
+    assertTrue(
+        server.contains("return helpers::JsonRpcError(-32601, \"UnknownOperationException\""));
     // Modeled errors: @httpError status as the code, fq shape id in __type.
     assertTrue(
         server.contains(
-            "return JsonRpcError(422, \"example.calculator#DivisionByZero\", \"\","
+            "return helpers::JsonRpcError(422, \"example.calculator#DivisionByZero\", \"\","
                 + " std::move(body), id);"));
   }
 
@@ -149,57 +150,49 @@ class CppCodegenPluginTest {
   void rejectsBacktrackingOnlyPatterns() {
     // Backreferences and lookaround need a backtracking engine; the
     // linear-time ReDoS-safe matcher refuses them at generation time.
-    CodegenException error =
-        assertThrows(
-            CodegenException.class,
-            () ->
-                PluginTestHarness.generate(
-                    """
-                    $version: "2.0"
-                    namespace test.redos
-                    use smithy.cpp.protocols#jsonRpc2
+    PluginTestHarness.assertRejected(
+        """
+        $version: "2.0"
+        namespace test.redos
+        use smithy.cpp.protocols#jsonRpc2
 
-                    @jsonRpc2
-                    service Svc { version: "1", operations: [Op] }
-                    operation Op {
-                        input := {
-                            @pattern("^(a+)\\\\1$")
-                            doubled: String
-                        }
-                    }
-                    """,
-                    "test.redos#Svc",
-                    "test::redos"));
-    assertTrue(error.getMessage().contains("backreference"));
-    assertTrue(error.getMessage().contains("^(a+)\\1$"));
+        @jsonRpc2
+        service Svc { version: "1", operations: [Op] }
+        operation Op {
+            input := {
+                @pattern("^(a+)\\\\1$")
+                doubled: String
+            }
+        }
+        """,
+        "test.redos#Svc",
+        "test::redos",
+        "backreference",
+        "^(a+)\\1$");
   }
 
   @Test
   void rejectsRecursionThroughUnionMembers() {
-    CodegenException error =
-        assertThrows(
-            CodegenException.class,
-            () ->
-                PluginTestHarness.generate(
-                    """
-                    $version: "2.0"
-                    namespace test.rec
+    PluginTestHarness.assertRejected(
+        """
+        $version: "2.0"
+        namespace test.rec
 
-                    service Svc { version: "1", operations: [Op] }
-                    operation Op { input := { tree: TreeNode } }
+        service Svc { version: "1", operations: [Op] }
+        operation Op { input := { tree: TreeNode } }
 
-                    structure TreeNode {
-                        value: TreeValue
-                    }
-                    union TreeValue {
-                        leaf: String
-                        node: TreeNode
-                    }
-                    """,
-                    "test.rec#Svc",
-                    "test::rec"));
-    assertTrue(error.getMessage().contains("union member"));
-    assertTrue(error.getMessage().contains("TreeValue"));
+        structure TreeNode {
+            value: TreeValue
+        }
+        union TreeValue {
+            leaf: String
+            node: TreeNode
+        }
+        """,
+        "test.rec#Svc",
+        "test::rec",
+        "union member",
+        "TreeValue");
   }
 
   // A jsonRpc2 server generated from an inline model; returns the manifest so a

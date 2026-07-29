@@ -349,16 +349,14 @@ final class ClientGenerator {
     }
     String name = clientName();
 
-    w.write("namespace {");
-    w.write("");
+    ProtocolSupport.openHelpersNamespace(w);
     protocol.writeClientHelpers(w, context);
     ProtocolSupport.writeOperationErrorParsers(w, context, service, protocol, operations());
     if (!streamingOperations().isEmpty()) {
       EventStreamCodeGen.writeClientStreamHelpers(
           w, context, service, protocol, streamingOperations(), name);
     }
-    w.write("}  // namespace");
-    w.write("");
+    ProtocolSupport.closeHelpersNamespace(w);
 
     w.openBlock("smithy::Outcome<$L> $L::Create(smithy::ClientConfig config) {", name, name);
     w.write("std::shared_ptr<smithy::http::HttpClient> transport = config.http_client;");

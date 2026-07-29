@@ -98,6 +98,11 @@ public final class CppWriter extends SymbolWriter<CppWriter, CppWriter.IncludeCo
       out.append(includes).append('\n');
     }
     out.append("namespace ").append(cppNamespace).append(" {\n\n");
+    if (!isHeader) {
+      // Generated sources reference model types as types::X where a bare name
+      // could be shadowed by a same-named file-local helper (issue #71).
+      out.append("namespace types = ::").append(cppNamespace).append(";\n\n");
+    }
     String body = super.toString();
     out.append(body);
     if (!body.endsWith("\n")) {

@@ -20,6 +20,8 @@
 
 namespace example::bookstore {
 
+namespace types = ::example::bookstore;
+
 // Integration tests for the generated Bookstore service (PLAN Phase 5): the
 // generated client drives the generated server over the loopback transport
 // AND a real socket on an ephemeral port. Random inputs are seeded and

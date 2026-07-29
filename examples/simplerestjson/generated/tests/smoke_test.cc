@@ -11,6 +11,8 @@
 
 namespace example::bookstore {
 
+namespace types = ::example::bookstore;
+
 // Smoke tests for the generated Bookstore service: the generated client calls the
 // generated server over the in-memory loopback transport. A passing suite
 // pins routing, serde symmetry, required members, and error mapping; swap the

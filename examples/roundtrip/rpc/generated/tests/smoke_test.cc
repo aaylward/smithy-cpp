@@ -11,6 +11,8 @@
 
 namespace example::roundtrip::rpc {
 
+namespace types = ::example::roundtrip::rpc;
+
 // Smoke tests for the generated RoundTripRpc service: the generated client calls the
 // generated server over the in-memory loopback transport. A passing suite
 // pins routing, serde symmetry, required members, and error mapping; swap the

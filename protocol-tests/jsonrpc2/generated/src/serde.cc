@@ -8,6 +8,8 @@
 
 namespace smithy::protocoltests::jsonrpc2 {
 
+namespace types = ::smithy::protocoltests::jsonrpc2;
+
 smithy::Document SerializeEchoedNote(const EchoedNote& value) {
   smithy::DocumentMap map;
   map.emplace("text", smithy::Document(value.text));
@@ -269,7 +271,7 @@ smithy::Outcome<EchoPayloadInput> DeserializeEchoPayloadInput(const smithy::Docu
   {
     const smithy::Document* member = doc.Find("nested");
     if (member != nullptr && !member->is_null()) {
-      Nested parsed_member{};
+      types::Nested parsed_member{};
       {
         auto parsed = DeserializeNested(*member);
         if (!parsed) return std::move(parsed).error();
@@ -320,7 +322,7 @@ smithy::Outcome<EchoPayloadOutput> DeserializeEchoPayloadOutput(const smithy::Do
   {
     const smithy::Document* member = doc.Find("nested");
     if (member != nullptr && !member->is_null()) {
-      Nested parsed_member{};
+      types::Nested parsed_member{};
       {
         auto parsed = DeserializeNested(*member);
         if (!parsed) return std::move(parsed).error();
@@ -456,7 +458,7 @@ smithy::Outcome<EchoStreamInput> DeserializeEchoStreamInput(const smithy::Docume
   {
     const smithy::Document* member = doc.Find("events");
     if (member != nullptr && !member->is_null()) {
-      UpEvents parsed_member{};
+      types::UpEvents parsed_member{};
       {
         auto parsed = DeserializeUpEvents(*member);
         if (!parsed) return std::move(parsed).error();
@@ -482,7 +484,7 @@ smithy::Outcome<EchoStreamOutput> DeserializeEchoStreamOutput(const smithy::Docu
   {
     const smithy::Document* member = doc.Find("events");
     if (member != nullptr && !member->is_null()) {
-      DownEvents parsed_member{};
+      types::DownEvents parsed_member{};
       {
         auto parsed = DeserializeDownEvents(*member);
         if (!parsed) return std::move(parsed).error();

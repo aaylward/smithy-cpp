@@ -23,7 +23,10 @@
 
 namespace example::weather {
 
+namespace types = ::example::weather;
+
 namespace {
+namespace helpers {
 
 // The error shape name arrives namespaced ("ns#Shape") and possibly
 // URI-qualified; modeled error codes keep only the shape name.
@@ -49,11 +52,11 @@ struct ParsedError {
   auto doc = smithy::json::Decode(response.body);
   if (doc.ok()) parsed.doc = *std::move(doc);
   const auto type_header = response.headers.Get("x-error-type");
-  if (type_header.has_value()) parsed.code = SanitizeErrorCode(*type_header);
+  if (type_header.has_value()) parsed.code = helpers::SanitizeErrorCode(*type_header);
   if (parsed.doc.is_map()) {
     const smithy::Document* type = parsed.doc.Find("__type");
     if (type == nullptr) type = parsed.doc.Find("code");
-    if (parsed.code == "UnknownError" && type != nullptr && type->is_string()) parsed.code = SanitizeErrorCode(type->as_string());
+    if (parsed.code == "UnknownError" && type != nullptr && type->is_string()) parsed.code = helpers::SanitizeErrorCode(type->as_string());
     const smithy::Document* text = parsed.doc.Find("message");
     if (text != nullptr && text->is_string()) parsed.message = text->as_string();
   }
@@ -112,26 +115,27 @@ smithy::Error MakeNoSuchResourceError(const smithy::http::HttpResponse& response
 }
 
 smithy::Error ParseDeleteCityError(const smithy::http::HttpResponse& response) {
-  ParsedError parsed = ParseError(response);
-  if (parsed.code == "NoSuchResource") return MakeNoSuchResourceError(response, std::move(parsed));
-  if (parsed.code == "UnknownError" && parsed.status == 404) return MakeNoSuchResourceError(response, std::move(parsed));
-  return GenericError(std::move(parsed));
+  ParsedError parsed = helpers::ParseError(response);
+  if (parsed.code == "NoSuchResource") return helpers::MakeNoSuchResourceError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 404) return helpers::MakeNoSuchResourceError(response, std::move(parsed));
+  return helpers::GenericError(std::move(parsed));
 }
 
 smithy::Error ParseGetCityError(const smithy::http::HttpResponse& response) {
-  ParsedError parsed = ParseError(response);
-  if (parsed.code == "NoSuchResource") return MakeNoSuchResourceError(response, std::move(parsed));
-  if (parsed.code == "UnknownError" && parsed.status == 404) return MakeNoSuchResourceError(response, std::move(parsed));
-  return GenericError(std::move(parsed));
+  ParsedError parsed = helpers::ParseError(response);
+  if (parsed.code == "NoSuchResource") return helpers::MakeNoSuchResourceError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 404) return helpers::MakeNoSuchResourceError(response, std::move(parsed));
+  return helpers::GenericError(std::move(parsed));
 }
 
 smithy::Error ParseGetForecastError(const smithy::http::HttpResponse& response) {
-  ParsedError parsed = ParseError(response);
-  if (parsed.code == "NoSuchResource") return MakeNoSuchResourceError(response, std::move(parsed));
-  if (parsed.code == "UnknownError" && parsed.status == 404) return MakeNoSuchResourceError(response, std::move(parsed));
-  return GenericError(std::move(parsed));
+  ParsedError parsed = helpers::ParseError(response);
+  if (parsed.code == "NoSuchResource") return helpers::MakeNoSuchResourceError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 404) return helpers::MakeNoSuchResourceError(response, std::move(parsed));
+  return helpers::GenericError(std::move(parsed));
 }
 
+}  // namespace helpers
 }  // namespace
 
 smithy::Outcome<WeatherClient> WeatherClient::Create(smithy::ClientConfig config) {
@@ -185,7 +189,7 @@ smithy::Outcome<DeleteCityOutput> WeatherClient::DeleteCity(const DeleteCityInpu
   request.target = std::move(target);
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 204) return ParseDeleteCityError(*response);
+  if (response->status != 204) return helpers::ParseDeleteCityError(*response);
   return DeleteCityOutput{};
 }
 
@@ -199,7 +203,7 @@ smithy::Outcome<GetCityOutput> WeatherClient::GetCity(const GetCityInput& input)
   request.target = std::move(target);
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return ParseGetCityError(*response);
+  if (response->status != 200) return helpers::ParseGetCityError(*response);
   auto body_doc = smithy::json::Decode(response->body);
   if (!body_doc) return std::move(body_doc).error();
   return DeserializeGetCityOutput(*body_doc);
@@ -214,7 +218,7 @@ smithy::Outcome<GetCurrentTimeOutput> WeatherClient::GetCurrentTime(const GetCur
   request.target = std::move(target);
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return GenericError(ParseError(*response));
+  if (response->status != 200) return helpers::GenericError(helpers::ParseError(*response));
   auto body_doc = smithy::json::Decode(response->body);
   if (!body_doc) return std::move(body_doc).error();
   return DeserializeGetCurrentTimeOutput(*body_doc);
@@ -231,7 +235,7 @@ smithy::Outcome<GetForecastOutput> WeatherClient::GetForecast(const GetForecastI
   request.target = std::move(target);
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return ParseGetForecastError(*response);
+  if (response->status != 200) return helpers::ParseGetForecastError(*response);
   if (response->body.empty()) return GetForecastOutput{};
   auto body_doc = smithy::json::Decode(response->body);
   if (!body_doc) return std::move(body_doc).error();
@@ -248,7 +252,7 @@ smithy::Outcome<GetReportOutput> WeatherClient::GetReport(const GetReportInput& 
   request.target = std::move(target);
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return GenericError(ParseError(*response));
+  if (response->status != 200) return helpers::GenericError(helpers::ParseError(*response));
   auto body_doc = smithy::json::Decode(response->body);
   if (!body_doc) return std::move(body_doc).error();
   return DeserializeGetReportOutput(*body_doc);
@@ -270,7 +274,7 @@ smithy::Outcome<ListCitiesOutput> WeatherClient::ListCities(const ListCitiesInpu
   request.target = std::move(target);
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return GenericError(ParseError(*response));
+  if (response->status != 200) return helpers::GenericError(helpers::ParseError(*response));
   auto body_doc = smithy::json::Decode(response->body);
   if (!body_doc) return std::move(body_doc).error();
   return DeserializeListCitiesOutput(*body_doc);

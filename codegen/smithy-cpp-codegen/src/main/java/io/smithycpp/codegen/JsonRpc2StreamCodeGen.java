@@ -73,20 +73,20 @@ final class JsonRpc2StreamCodeGen {
     w.write("// Only the raw-text wire reaches this route; a framed message means a");
     w.write("// peer speaking the wrong wire entirely.");
     w.write(
-        "opening.refusal = JsonRpcStreamText(JsonRpcError(-32600, \"SerializationException\","
+        "opening.refusal = helpers::JsonRpcStreamText(helpers::JsonRpcError(-32600, \"SerializationException\","
             + " \"the opening message must be one JSON-RPC request envelope\", {}, opening.id));");
     w.write("return opening;");
     w.closeBlock("}");
     w.write("auto decoded = smithy::json::Decode(message.payload.ToString());");
     w.openBlock("if (!decoded) {");
     w.write(
-        "opening.refusal = JsonRpcStreamText(JsonRpcError(-32700, \"SerializationException\","
+        "opening.refusal = helpers::JsonRpcStreamText(helpers::JsonRpcError(-32700, \"SerializationException\","
             + " \"request body is not valid JSON\", {}, opening.id));");
     w.write("return opening;");
     w.closeBlock("}");
     w.openBlock("if (!decoded->is_map()) {");
     w.write(
-        "opening.refusal = JsonRpcStreamText(JsonRpcError(-32600, \"SerializationException\","
+        "opening.refusal = helpers::JsonRpcStreamText(helpers::JsonRpcError(-32600, \"SerializationException\","
             + " \"request is not a JSON-RPC 2.0 call\", {}, opening.id));");
     w.write("return opening;");
     w.closeBlock("}");
@@ -97,14 +97,14 @@ final class JsonRpc2StreamCodeGen {
     w.openBlock(
         "if (version == nullptr || !version->is_string() || version->as_string() != \"2.0\") {");
     w.write(
-        "opening.refusal = JsonRpcStreamText(JsonRpcError(-32600, \"SerializationException\","
+        "opening.refusal = helpers::JsonRpcStreamText(helpers::JsonRpcError(-32600, \"SerializationException\","
             + " \"expected jsonrpc: \\\"2.0\\\"\", {}, opening.id));");
     w.write("return opening;");
     w.closeBlock("}");
     w.write("const smithy::Document* method = decoded->Find(\"method\");");
     w.openBlock("if (method == nullptr || !method->is_string()) {");
     w.write(
-        "opening.refusal = JsonRpcStreamText(JsonRpcError(-32600, \"SerializationException\","
+        "opening.refusal = helpers::JsonRpcStreamText(helpers::JsonRpcError(-32600, \"SerializationException\","
             + " \"expected a string method member\", {}, opening.id));");
     w.write("return opening;");
     w.closeBlock("}");
@@ -112,7 +112,7 @@ final class JsonRpc2StreamCodeGen {
     w.write("// the stream's events to echo — refused, unlike the unary endpoint.");
     w.openBlock("if (opening.id.is_null()) {");
     w.write(
-        "opening.refusal = JsonRpcStreamText(JsonRpcError(-32600, \"SerializationException\","
+        "opening.refusal = helpers::JsonRpcStreamText(helpers::JsonRpcError(-32600, \"SerializationException\","
             + " \"the opening call must carry an id\", {}, opening.id));");
     w.write("return opening;");
     w.closeBlock("}");
@@ -136,8 +136,7 @@ final class JsonRpc2StreamCodeGen {
       CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
     String op = EventStreamCodeGen.opName(operation);
     String serviceName = CppReservedWords.escape(service.getId().getName());
-    String inputType =
-        context.cppSymbols().toSymbol(ProtocolSupport.inputShape(context, operation)).getName();
+    String inputType = context.cppSymbols().typeRef(ProtocolSupport.inputShape(context, operation));
     w.write("// The async route's launch wrapper (ADR-0021), on the JSON-RPC wire");
     w.write("// (ADR-0023): the handler speaks envelope messages, the wrapper socket");
     w.write("// translates, and the terminal response envelope — result on a clean");
@@ -145,7 +144,7 @@ final class JsonRpc2StreamCodeGen {
     w.write("// frame (and the stream it owns) outlives the write. Best-effort, like");
     w.write("// every terminal send: a send the dead session refuses is discarded.");
     w.openBlock(
-        "smithy::eventstream::Detached Serve$LAsync(std::shared_ptr<$LAsyncHandler> handler,"
+        "smithy::eventstream::Detached Serve$LAsync(std::shared_ptr<types::$LAsyncHandler> handler,"
             + " $L input, std::shared_ptr<smithy::http::WebSocket> socket, smithy::Document id) {",
         op,
         serviceName,
@@ -154,7 +153,7 @@ final class JsonRpc2StreamCodeGen {
         "auto wrapped = std::make_shared<smithy::eventstream::JsonRpcStreamSocket>(socket, id,"
             + " smithy::eventstream::JsonRpcStreamSocket::Role::kServer);");
     w.write(
-        "$L stream(wrapped, $L, Decode$LEvent);",
+        "types::$L stream(wrapped, $L, helpers::Decode$LEvent);",
         EventStreamCodeGen.asyncServerStreamAlias(operation),
         EventStreamCodeGen.encoderArgument(
             EventStreamCodeGen.outputInfo(context.model(), operation), operation),
@@ -165,7 +164,8 @@ final class JsonRpc2StreamCodeGen {
     w.write("// branch temporaries become frame slots and the wrong branch runs).");
     w.write("smithy::eventstream::Message terminal =");
     w.write("    outcome.ok() ? BuildJsonRpcTerminalResult(id)");
-    w.write("                 : JsonRpcStreamText(ErrorToResponse(outcome.error(), id));");
+    w.write(
+        "                 : helpers::JsonRpcStreamText(helpers::ErrorToResponse(outcome.error(), id));");
     w.write("(void)co_await smithy::eventstream::SendMessage(socket, std::move(terminal));");
     w.write("stream.Close();");
     w.closeBlock("}");
@@ -190,14 +190,14 @@ final class JsonRpc2StreamCodeGen {
 
     w.write("// The blocking seam's shared-endpoint driver (ADR-0023).");
     w.openBlock(
-        "void ServeJsonRpcStream($LHandler& handler, "
+        "void ServeJsonRpcStream(types::$LHandler& handler, "
             + ProtocolSupport.REQUEST_CONTEXT_PARAM
             + " context, smithy::http::WebSocket& socket) {",
         serviceName);
     w.write("auto first = socket.Receive();");
     w.write("// A wire that failed or closed before the opening call is a non-event.");
     w.write("if (!first.ok() || !first->has_value()) return;");
-    w.write("const JsonRpcOpening opening = ParseJsonRpcOpening(**first);");
+    w.write("const JsonRpcOpening opening = helpers::ParseJsonRpcOpening(**first);");
     w.openBlock("if (!opening.ok) {");
     w.write("(void)socket.Send(opening.refusal);");
     w.write("socket.Close();");
@@ -212,12 +212,12 @@ final class JsonRpc2StreamCodeGen {
     w.write("// envelope is read inside this Detached frame — a client that upgrades");
     w.write("// and never calls costs no parked thread.");
     w.openBlock(
-        "smithy::eventstream::Detached ServeJsonRpcSession(std::shared_ptr<$LAsyncHandler>"
+        "smithy::eventstream::Detached ServeJsonRpcSession(std::shared_ptr<types::$LAsyncHandler>"
             + " handler, std::shared_ptr<smithy::http::WebSocket> socket) {",
         serviceName);
     w.write("auto first = co_await smithy::eventstream::ReceiveMessage(socket);");
     w.write("if (!first.ok() || !first->has_value()) co_return;");
-    w.write("const JsonRpcOpening opening = ParseJsonRpcOpening(**first);");
+    w.write("const JsonRpcOpening opening = helpers::ParseJsonRpcOpening(**first);");
     w.openBlock("if (!opening.ok) {");
     w.write("(void)co_await smithy::eventstream::SendMessage(socket, opening.refusal);");
     w.write("socket->Close();");
@@ -243,7 +243,7 @@ final class JsonRpc2StreamCodeGen {
       String op = EventStreamCodeGen.opName(operation);
       StructureShape input = ProtocolSupport.inputShape(context, operation);
       w.openBlock("if (opening.method == $S) {", wireName);
-      w.write("$L input{};", context.cppSymbols().toSymbol(input).getName());
+      w.write("$L input{};", context.cppSymbols().typeRef(input));
       if (!ProtocolSupport.noModeledInput(input)) {
         w.write(
             "auto parsed = Deserialize$L(opening.params);",
@@ -252,19 +252,21 @@ final class JsonRpc2StreamCodeGen {
         writeRefusalTail(
             w,
             session,
-            "JsonRpcStreamText(JsonRpcError(-32602, \"SerializationException\","
+            "helpers::JsonRpcStreamText(helpers::JsonRpcError(-32602, \"SerializationException\","
                 + " parsed.error().message(), {}, opening.id))");
         w.closeBlock("}");
         w.write("input = *std::move(parsed);");
       }
       if (validation.validates(operation)) {
         w.write("std::vector<smithy::server::ValidationFailure> validation_failures;");
-        w.write("$L(input, \"\", &validation_failures);", validation.validatorNameFor(operation));
+        w.write(
+            "helpers::$L(input, \"\", &validation_failures);",
+            validation.validatorNameFor(operation));
         w.openBlock("if (!validation_failures.empty()) {");
         writeRefusalTail(
             w,
             session,
-            "JsonRpcStreamText(ValidationErrorResponse(validation_failures, opening.id))");
+            "helpers::JsonRpcStreamText(helpers::ValidationErrorResponse(validation_failures, opening.id))");
         w.closeBlock("}");
       }
       MemberShape streamMember = EventStreamCodeGen.inputStreamMember(context.model(), operation);
@@ -273,14 +275,15 @@ final class JsonRpc2StreamCodeGen {
         w.write("input.$L.reset();", context.cppSymbols().toMemberName(streamMember));
       }
       if (session) {
-        w.write("Serve$LAsync(handler, std::move(input), std::move(socket), opening.id);", op);
+        w.write(
+            "helpers::Serve$LAsync(handler, std::move(input), std::move(socket), opening.id);", op);
         w.write("co_return;");
       } else {
         w.write(
             "smithy::eventstream::JsonRpcStreamSocket wrapped(socket, opening.id,"
                 + " smithy::eventstream::JsonRpcStreamSocket::Role::kServer);");
         w.write(
-            "$L stream(wrapped, $L, Decode$LEvent);",
+            "types::$L stream(wrapped, $L, helpers::Decode$LEvent);",
             EventStreamCodeGen.serverStreamAlias(operation),
             EventStreamCodeGen.encoderArgument(
                 EventStreamCodeGen.outputInfo(context.model(), operation), operation),
@@ -288,10 +291,10 @@ final class JsonRpc2StreamCodeGen {
         w.write("auto outcome = handler.$L(input, stream, context);", op);
         w.write("// The terminal response rides the raw socket: the wrapper only speaks");
         w.write("// notifications, and the envelope is already text.");
-        w.write("(void)socket.Send(outcome.ok() ? BuildJsonRpcTerminalResult(opening.id)");
+        w.write("(void)socket.Send(outcome.ok() ? helpers::BuildJsonRpcTerminalResult(opening.id)");
         w.write(
             "                                 :"
-                + " JsonRpcStreamText(ErrorToResponse(outcome.error(), opening.id)));");
+                + " helpers::JsonRpcStreamText(helpers::ErrorToResponse(outcome.error(), opening.id)));");
         w.write("stream.Close();");
         w.write("return;");
       }
@@ -300,7 +303,7 @@ final class JsonRpc2StreamCodeGen {
     writeRefusalTail(
         w,
         session,
-        "JsonRpcStreamText(JsonRpcError(-32601, \"UnknownOperationException\","
+        "helpers::JsonRpcStreamText(helpers::JsonRpcError(-32601, \"UnknownOperationException\","
             + " \"unknown method: \" + opening.method, {}, opening.id))");
   }
 
@@ -339,7 +342,7 @@ final class JsonRpc2StreamCodeGen {
     w.write("request.raw_text_frames = true;");
     w.write("request.headers.Set(\"user-agent\", config_.user_agent);");
     ClientGenerator.writeAuth(w, service);
-    w.write("auto socket = DialStream(config_, std::move(request));");
+    w.write("auto socket = helpers::DialStream(config_, std::move(request));");
     w.write("if (!socket) return std::move(socket).error();");
     w.write("// The opening request envelope: selects the operation and carries the");
     w.write("// initial-request members (the :initial-request seam, realized).");
@@ -373,7 +376,7 @@ final class JsonRpc2StreamCodeGen {
         "    std::make_shared<smithy::eventstream::JsonRpcStreamSocket>(*std::move(socket),"
             + " smithy::Document(1), smithy::eventstream::JsonRpcStreamSocket::Role::kClient),");
     w.write(
-        "    $L, Decode$LEvent);",
+        "    $L, helpers::Decode$LEvent);",
         EventStreamCodeGen.encoderArgument(
             EventStreamCodeGen.inputInfo(context.model(), operation), operation),
         op);

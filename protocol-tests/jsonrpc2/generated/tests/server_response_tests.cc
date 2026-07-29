@@ -14,6 +14,8 @@
 
 namespace smithy::protocoltests::jsonrpc2 {
 
+namespace types = ::smithy::protocoltests::jsonrpc2;
+
 // Generated from smithy.test#httpResponseTests (server cases): a stub
 // handler returns the expected params and the wire response the server
 // produced is compared against the test definition.

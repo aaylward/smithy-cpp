@@ -32,6 +32,23 @@ final class PluginTestHarness {
   }
 
   /**
+   * Asserts generation rejects the model, checking the diagnostic carries every {@code fragment}
+   * (the shared shape of every scoping-rejection test), and returns it for further assertions.
+   */
+  static software.amazon.smithy.codegen.core.CodegenException assertRejected(
+      String modelText, String service, String namespace, String... fragments) {
+    software.amazon.smithy.codegen.core.CodegenException error =
+        org.junit.jupiter.api.Assertions.assertThrows(
+            software.amazon.smithy.codegen.core.CodegenException.class,
+            () -> generate(modelText, service, namespace));
+    for (String fragment : fragments) {
+      org.junit.jupiter.api.Assertions.assertTrue(
+          error.getMessage().contains(fragment), error.getMessage());
+    }
+    return error;
+  }
+
+  /**
    * Assembles {@code modelText} and runs the plugin, letting {@code extraSettings} add members
    * (mode, runtimeTarget, emitBuildFile, ...) to the settings object.
    */

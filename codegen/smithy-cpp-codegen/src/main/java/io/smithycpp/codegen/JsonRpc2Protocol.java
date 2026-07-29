@@ -56,18 +56,6 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
     return "jsonRpc2";
   }
 
-  @Override
-  public ProtocolSupport.ErrorResponseSpec errorResponseSpec() {
-    return SPEC;
-  }
-
-  @Override
-  public List<String> serverOperationHelperNames(String opName, boolean streaming) {
-    // Unary operations get a Handle<Op> dispatch body; streaming ones ride the
-    // stream/session seams with no per-operation helper (ADR-0023).
-    return streaming ? List.of() : List.of(handleFunction(opName));
-  }
-
   /** The one derivation of the Handle&lt;Op&gt; helper name (definition and call sites). */
   private static String handleFunction(String opName) {
     return "Handle" + opName;
@@ -137,7 +125,7 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
     w.write("const smithy::Document* type = parsed.doc.Find(\"__type\");");
     w.write(
         "if (type != nullptr && type->is_string()) "
-            + "parsed.code = SanitizeErrorCode(type->as_string());");
+            + "parsed.code = helpers::SanitizeErrorCode(type->as_string());");
     w.closeBlock("}");
     w.write("return parsed;");
     w.closeBlock("}");
@@ -232,7 +220,7 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
             + ProtocolSupport.REQUEST_CONTEXT_PARAM
             + " context, smithy::http::WebSocket& socket) {");
     w.write("(void)request;");
-    w.write("ServeJsonRpcStream(*handler, context, socket);");
+    w.write("helpers::ServeJsonRpcStream(*handler, context, socket);");
     w.closeBlock("}, $S);", service.getId().getName());
   }
 
@@ -246,7 +234,7 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
             + " context, std::shared_ptr<smithy::http::WebSocket> socket) {");
     w.write("(void)request;");
     w.write("(void)context;");
-    w.write("ServeJsonRpcSession(handler, std::move(socket));");
+    w.write("helpers::ServeJsonRpcSession(handler, std::move(socket));");
     w.closeBlock("}, $S);", service.getId().getName());
   }
 
@@ -327,7 +315,7 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
       CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
     StructureShape input = ProtocolSupport.inputShape(context, operation);
     StructureShape output = ProtocolSupport.outputShape(context, operation);
-    String inputType = context.cppSymbols().toSymbol(input).getName();
+    String inputType = context.cppSymbols().typeRef(input);
     String opName = CppReservedWords.escape(operation.getId().getName());
 
     w.write("template <typename Handler>");
@@ -342,7 +330,7 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
       w.write("(void)params;");
     } else {
       w.write(
-          "if (!params.is_map()) return JsonRpcError(-32602, \"SerializationException\", "
+          "if (!params.is_map()) return helpers::JsonRpcError(-32602, \"SerializationException\", "
               + "\"params must be an object\", {}, id);");
       ProtocolSupport.writeRpcParsedInput(w, context, input, "params", "-32602", SPEC);
     }
@@ -391,17 +379,17 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
             + "content_type.has_value() && "
             + "smithy::http::MediaTypeOf(*content_type) != \"application/json\") {");
     w.write(
-        "return JsonRpcError(-32600, \"UnsupportedMediaTypeException\", "
+        "return helpers::JsonRpcError(-32600, \"UnsupportedMediaTypeException\", "
             + "\"expected content-type: application/json\", {}, id);");
     w.closeBlock("}");
     w.write("auto decoded = smithy::json::Decode(request.body);");
     w.write("// Envelope failure messages are fixed strings: the conformance suite");
     w.write("// compares bodies exactly, so no decoder detail leaks into the wire.");
     w.write(
-        "if (!decoded) return JsonRpcError(-32700, \"SerializationException\", "
+        "if (!decoded) return helpers::JsonRpcError(-32700, \"SerializationException\", "
             + "\"request body is not valid JSON\", {}, id);");
     w.write(
-        "if (!decoded->is_map()) return JsonRpcError(-32600, \"SerializationException\", "
+        "if (!decoded->is_map()) return helpers::JsonRpcError(-32600, \"SerializationException\", "
             + "\"request is not a JSON-RPC 2.0 call\", {}, id);");
     w.write(
         "if (const smithy::Document* id_doc = decoded->Find(\"id\"); "
@@ -410,13 +398,13 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
     w.openBlock(
         "if (version == nullptr || !version->is_string() || version->as_string() != \"2.0\") {");
     w.write(
-        "return JsonRpcError(-32600, \"SerializationException\", "
+        "return helpers::JsonRpcError(-32600, \"SerializationException\", "
             + "\"expected jsonrpc: \\\"2.0\\\"\", {}, id);");
     w.closeBlock("}");
     w.write("const smithy::Document* method = decoded->Find(\"method\");");
     w.openBlock("if (method == nullptr || !method->is_string()) {");
     w.write(
-        "return JsonRpcError(-32600, \"SerializationException\", "
+        "return helpers::JsonRpcError(-32600, \"SerializationException\", "
             + "\"expected a string method member\", {}, id);");
     w.closeBlock("}");
     w.write("// Absent/null params deserialize like an empty object.");
@@ -428,13 +416,14 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
       String wireName = operation.getId().getName();
       String opName = CppReservedWords.escape(wireName);
       w.openBlock("if (method_name == $S) {", wireName);
-      w.write("auto response = $L(*handler, *params, id, context);", handleFunction(opName));
+      w.write(
+          "auto response = helpers::$L(*handler, *params, id, context);", handleFunction(opName));
       w.write("response.operation = $S;", wireName);
       w.write("return response;");
       w.closeBlock("}");
     }
     w.write(
-        "return JsonRpcError(-32601, \"UnknownOperationException\", "
+        "return helpers::JsonRpcError(-32601, \"UnknownOperationException\", "
             + "\"unknown method: \" + method_name, {}, id);");
     w.closeBlock("});");
   }

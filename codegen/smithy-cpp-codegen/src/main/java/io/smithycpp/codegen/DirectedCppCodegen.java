@@ -63,9 +63,6 @@ public final class DirectedCppCodegen
         // Event-stream scope checks (ADR-0016) fail generation with a named
         // diagnostic before any streaming code is emitted.
         EventStreamCodeGen.validate(directive.context(), service, protocol, operations);
-        // Shape names that match a generated file-local helper fail here with
-        // an attributed diagnostic, not as a raw C++ error (issue #71).
-        ReservedHelperNames.reject(directive.context(), protocol, service, operations);
         if (directive.settings().generateClient()) {
           clientGenerator.run();
           hasClient = true;

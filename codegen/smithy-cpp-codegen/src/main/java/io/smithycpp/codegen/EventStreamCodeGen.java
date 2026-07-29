@@ -321,7 +321,7 @@ final class EventStreamCodeGen {
    * static_assert, event_stream.h), so the slot is never invoked and no stub is emitted.
    */
   static String encoderArgument(Optional<EventStreamInfo> tx, OperationShape operation) {
-    return tx.isPresent() ? "Encode" + opName(operation) + "Event" : "{}";
+    return tx.isPresent() ? "helpers::Encode" + opName(operation) + "Event" : "{}";
   }
 
   /**
@@ -459,10 +459,10 @@ final class EventStreamCodeGen {
    */
   static void writeDialAndReturn(CppWriter w, CppContext context, OperationShape operation) {
     String op = opName(operation);
-    w.write("auto socket = DialStream(config_, std::move(request));");
+    w.write("auto socket = helpers::DialStream(config_, std::move(request));");
     w.write("if (!socket) return std::move(socket).error();");
     w.write(
-        "return $L(*std::move(socket), $L, Decode$LEvent);",
+        "return $L(*std::move(socket), $L, helpers::Decode$LEvent);",
         clientStreamAlias(operation),
         encoderArgument(inputInfo(context.model(), operation), operation),
         op);
@@ -481,8 +481,7 @@ final class EventStreamCodeGen {
       CppWriter w, CppContext context, ServiceShape service, OperationShape operation) {
     String op = opName(operation);
     String serviceName = CppReservedWords.escape(service.getId().getName());
-    String inputType =
-        context.cppSymbols().toSymbol(ProtocolSupport.inputShape(context, operation)).getName();
+    String inputType = context.cppSymbols().typeRef(ProtocolSupport.inputShape(context, operation));
     w.write("// The async route's launch wrapper (ADR-0021): its frame owns the typed");
     w.write("// session, so the handler may take it by reference. A failure outcome is");
     w.write("// framed like the blocking route's, and the exception send is AWAITED so");
@@ -490,13 +489,13 @@ final class EventStreamCodeGen {
     w.write("// busy wire can cancel it. Best-effort, like the blocking route: a send");
     w.write("// the terminated session refuses is discarded.");
     w.openBlock(
-        "smithy::eventstream::Detached Serve$LAsync(std::shared_ptr<$LAsyncHandler> handler,"
-            + " $L input, std::shared_ptr<smithy::http::WebSocket> socket) {",
+        "smithy::eventstream::Detached Serve$LAsync(std::shared_ptr<types::$LAsyncHandler>"
+            + " handler, $L input, std::shared_ptr<smithy::http::WebSocket> socket) {",
         op,
         serviceName,
         inputType);
     w.write(
-        "$L stream(socket, $L, Decode$LEvent);",
+        "types::$L stream(socket, $L, helpers::Decode$LEvent);",
         asyncServerStreamAlias(operation),
         encoderArgument(outputInfo(context.model(), operation), operation),
         op);
@@ -504,7 +503,7 @@ final class EventStreamCodeGen {
     w.openBlock("if (!outcome.ok()) {");
     w.write(
         "(void)co_await smithy::eventstream::SendMessage(socket,"
-            + " Build$LExceptionMessage(outcome.error()));",
+            + " helpers::Build$LExceptionMessage(outcome.error()));",
         op);
     w.closeBlock("}");
     w.write("stream.Close();");
@@ -518,7 +517,7 @@ final class EventStreamCodeGen {
    * never waiting for the session to end (the launch-point contract of the shared seam).
    */
   static void writeLaunchAsync(CppWriter w, OperationShape operation, String inputExpr) {
-    w.write("Serve$LAsync(handler, $L, std::move(socket));", opName(operation), inputExpr);
+    w.write("helpers::Serve$LAsync(handler, $L, std::move(socket));", opName(operation), inputExpr);
   }
 
   /**
@@ -531,13 +530,13 @@ final class EventStreamCodeGen {
       CppWriter w, CppContext context, OperationShape operation, String inputExpr) {
     String op = opName(operation);
     w.write(
-        "$L stream(socket, $L, Decode$LEvent);",
+        "$L stream(socket, $L, helpers::Decode$LEvent);",
         serverStreamAlias(operation),
         encoderArgument(outputInfo(context.model(), operation), operation),
         op);
     w.write("auto outcome = handler->$L($L, stream, context);", op, inputExpr);
     w.openBlock("if (!outcome) {");
-    w.write("(void)socket.Send(Build$LExceptionMessage(outcome.error()));", op);
+    w.write("(void)socket.Send(helpers::Build$LExceptionMessage(outcome.error()));", op);
     w.closeBlock("}");
     w.write("stream.Close();");
   }
@@ -558,7 +557,7 @@ final class EventStreamCodeGen {
       return;
     }
     UnionShape union = eventUnion(tx.get());
-    String unionType = context.cppSymbols().toSymbol(union).getName();
+    String unionType = context.cppSymbols().typeRef(union);
     w.write("// One event per message (ADR-0016): the engaged member's structure is the");
     w.write("// payload, its member name the :event-type.");
     w.openBlock(
@@ -581,7 +580,9 @@ final class EventStreamCodeGen {
                   + "())"));
       w.closeBlock("}");
     }
-    w.write("return smithy::Error::Validation($S);", unionType + ": no event member engaged");
+    w.write(
+        "return smithy::Error::Validation($S);",
+        context.cppSymbols().toSymbol(union).getName() + ": no event member engaged");
     w.closeBlock("}");
     w.write("");
   }
@@ -616,7 +617,7 @@ final class EventStreamCodeGen {
       return;
     }
     UnionShape union = eventUnion(rx.get());
-    String unionType = context.cppSymbols().toSymbol(union).getName();
+    String unionType = context.cppSymbols().typeRef(union);
     w.openBlock(
         "smithy::Outcome<$L> Decode$LEvent(const smithy::eventstream::Message& message) {",
         unionType,
@@ -666,7 +667,7 @@ final class EventStreamCodeGen {
     w.write("// A received exception is terminal (ADR-0016): the EventStream closes the");
     w.write("// session and surfaces this error, exactly the unary shape.");
     w.write("ParsedError parsed;");
-    w.write("parsed.code = SanitizeErrorCode(envelope->type);");
+    w.write("parsed.code = helpers::SanitizeErrorCode(envelope->type);");
     w.write("auto exception_doc = $L;", protocol.eventPayloadDecode("envelope->payload"));
     w.openBlock("if (exception_doc.ok() && exception_doc->is_map()) {");
     w.write("parsed.doc = *std::move(exception_doc);");
@@ -679,12 +680,12 @@ final class EventStreamCodeGen {
       w.write("smithy::http::HttpResponse response;");
       for (Map.Entry<String, StructureShape> entry : errors.entrySet()) {
         w.write(
-            "if (parsed.code == $S) return $L(response, std::move(parsed));",
+            "if (parsed.code == $S) return helpers::$L(response, std::move(parsed));",
             entry.getValue().getId().getName(),
             ProtocolSupport.makeErrorFunction(context, entry.getValue()));
       }
     }
-    w.write("return GenericError(std::move(parsed));");
+    w.write("return helpers::GenericError(std::move(parsed));");
   }
 
   /**
@@ -714,7 +715,7 @@ final class EventStreamCodeGen {
     w.write("message = error.message();");
     for (Map.Entry<String, StructureShape> entry : errors.entrySet()) {
       w.openBlock("if (error.code() == $S) {", entry.getValue().getId().getName());
-      w.openBlock("if (const auto* detail = error.detail<$L>()) {", entry.getKey());
+      w.openBlock("if (const auto* detail = error.detail<types::$L>()) {", entry.getKey());
       w.write(
           "body = Serialize$L(*detail).as_map();",
           SerdeCodeGen.serdeFunctionSuffix(context, entry.getValue()));

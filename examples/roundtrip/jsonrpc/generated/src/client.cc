@@ -18,7 +18,10 @@
 
 namespace example::roundtrip::jsonrpc {
 
+namespace types = ::example::roundtrip::jsonrpc;
+
 namespace {
+namespace helpers {
 
 // The error shape name arrives namespaced ("ns#Shape") and possibly
 // URI-qualified; modeled error codes keep only the shape name.
@@ -53,7 +56,7 @@ struct ParsedError {
   if (const smithy::Document* data = error->Find("data"); data != nullptr) parsed.doc = *data;
   if (parsed.doc.is_map()) {
     const smithy::Document* type = parsed.doc.Find("__type");
-    if (type != nullptr && type->is_string()) parsed.code = SanitizeErrorCode(type->as_string());
+    if (type != nullptr && type->is_string()) parsed.code = helpers::SanitizeErrorCode(type->as_string());
   }
   return parsed;
 }
@@ -89,12 +92,13 @@ smithy::Error MakeSinkQuotaExceededError(const smithy::http::HttpResponse& respo
 }
 
 smithy::Error ParsePutSinkRpcError(const smithy::http::HttpResponse& response) {
-  ParsedError parsed = ParseError(response);
-  if (parsed.code == "SinkNotFound") return MakeSinkNotFoundError(response, std::move(parsed));
-  if (parsed.code == "SinkQuotaExceeded") return MakeSinkQuotaExceededError(response, std::move(parsed));
-  return GenericError(std::move(parsed));
+  ParsedError parsed = helpers::ParseError(response);
+  if (parsed.code == "SinkNotFound") return helpers::MakeSinkNotFoundError(response, std::move(parsed));
+  if (parsed.code == "SinkQuotaExceeded") return helpers::MakeSinkQuotaExceededError(response, std::move(parsed));
+  return helpers::GenericError(std::move(parsed));
 }
 
+}  // namespace helpers
 }  // namespace
 
 smithy::Outcome<RoundTripJsonRpcClient> RoundTripJsonRpcClient::Create(smithy::ClientConfig config) {
@@ -159,7 +163,7 @@ smithy::Outcome<PutSinkRpcOutput> RoundTripJsonRpcClient::PutSinkRpc(const PutSi
   // Errors are JSON-RPC envelopes on HTTP 200; non-200 means the request
   // never reached the protocol layer (router 404, proxy) and parses generically.
   const bool is_error = !envelope_doc.ok() || !envelope_doc->is_map() || envelope_doc->Find("error") != nullptr;
-  if (response->status != 200 || is_error) return ParsePutSinkRpcError(*response);
+  if (response->status != 200 || is_error) return helpers::ParsePutSinkRpcError(*response);
   const smithy::Document* result = envelope_doc->Find("result");
   if (result == nullptr) return smithy::Error::Serialization("jsonRpc2: response has no result member");
   return DeserializePutSinkRpcOutput(*result);

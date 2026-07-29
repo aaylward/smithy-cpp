@@ -8,6 +8,8 @@
 
 namespace example::calculator {
 
+namespace types = ::example::calculator;
+
 smithy::Document SerializeTerm(const Term& value) {
   smithy::DocumentMap map;
   map.emplace("value", smithy::Document(static_cast<double>(value.value)));
@@ -83,7 +85,7 @@ smithy::Outcome<AccumulateInput> DeserializeAccumulateInput(const smithy::Docume
   {
     const smithy::Document* member = doc.Find("terms");
     if (member != nullptr && !member->is_null()) {
-      Terms parsed_member{};
+      types::Terms parsed_member{};
       {
         auto parsed = DeserializeTerms(*member);
         if (!parsed) return std::move(parsed).error();
@@ -155,7 +157,7 @@ smithy::Outcome<AccumulateOutput> DeserializeAccumulateOutput(const smithy::Docu
   {
     const smithy::Document* member = doc.Find("totals");
     if (member != nullptr && !member->is_null()) {
-      Totals parsed_member{};
+      types::Totals parsed_member{};
       {
         auto parsed = DeserializeTotals(*member);
         if (!parsed) return std::move(parsed).error();

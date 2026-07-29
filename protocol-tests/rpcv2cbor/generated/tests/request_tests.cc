@@ -13,6 +13,8 @@
 
 namespace smithy::protocoltests::rpcv2cbor {
 
+namespace types = ::smithy::protocoltests::rpcv2cbor;
+
 // Generated from smithy.test#httpRequestTests (client cases).
 namespace {
 

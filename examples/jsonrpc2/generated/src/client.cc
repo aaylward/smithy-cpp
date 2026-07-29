@@ -21,7 +21,10 @@
 
 namespace example::calculator {
 
+namespace types = ::example::calculator;
+
 namespace {
+namespace helpers {
 
 // The error shape name arrives namespaced ("ns#Shape") and possibly
 // URI-qualified; modeled error codes keep only the shape name.
@@ -56,7 +59,7 @@ struct ParsedError {
   if (const smithy::Document* data = error->Find("data"); data != nullptr) parsed.doc = *data;
   if (parsed.doc.is_map()) {
     const smithy::Document* type = parsed.doc.Find("__type");
-    if (type != nullptr && type->is_string()) parsed.code = SanitizeErrorCode(type->as_string());
+    if (type != nullptr && type->is_string()) parsed.code = helpers::SanitizeErrorCode(type->as_string());
   }
   return parsed;
 }
@@ -92,9 +95,9 @@ smithy::Error MakeOverflowError(const smithy::http::HttpResponse& response, Pars
 }
 
 smithy::Error ParseDivideError(const smithy::http::HttpResponse& response) {
-  ParsedError parsed = ParseError(response);
-  if (parsed.code == "DivisionByZero") return MakeDivisionByZeroError(response, std::move(parsed));
-  return GenericError(std::move(parsed));
+  ParsedError parsed = helpers::ParseError(response);
+  if (parsed.code == "DivisionByZero") return helpers::MakeDivisionByZeroError(response, std::move(parsed));
+  return helpers::GenericError(std::move(parsed));
 }
 
 // Dials the WebSocket a streaming operation rides (ADR-0016): host, port, and
@@ -119,21 +122,21 @@ smithy::Outcome<std::shared_ptr<smithy::http::WebSocket>> DialStream(const smith
 
 // One event per message (ADR-0016): the engaged member's structure is the
 // payload, its member name the :event-type.
-smithy::Outcome<smithy::eventstream::Message> EncodeAccumulateEvent(const Terms& event) {
+smithy::Outcome<smithy::eventstream::Message> EncodeAccumulateEvent(const types::Terms& event) {
   if (event.is_add()) {
     return smithy::eventstream::MakeEventMessage("add", "application/json", smithy::Blob::FromString(smithy::json::Encode(SerializeTerm(event.as_add()))));
   }
   return smithy::Error::Validation("Terms: no event member engaged");
 }
 
-smithy::Outcome<Totals> DecodeAccumulateEvent(const smithy::eventstream::Message& message) {
+smithy::Outcome<types::Totals> DecodeAccumulateEvent(const smithy::eventstream::Message& message) {
   auto envelope = smithy::eventstream::ParseEnvelope(message);
   if (!envelope) return std::move(envelope).error();
   if (envelope->kind == smithy::eventstream::EventEnvelope::Kind::kException) {
     // A received exception is terminal (ADR-0016): the EventStream closes the
     // session and surfaces this error, exactly the unary shape.
     ParsedError parsed;
-    parsed.code = SanitizeErrorCode(envelope->type);
+    parsed.code = helpers::SanitizeErrorCode(envelope->type);
     auto exception_doc = smithy::json::Decode(envelope->payload.ToString());
     if (exception_doc.ok() && exception_doc->is_map()) {
       parsed.doc = *std::move(exception_doc);
@@ -142,19 +145,20 @@ smithy::Outcome<Totals> DecodeAccumulateEvent(const smithy::eventstream::Message
     }
     // Make<Error>Error's header-patch source; exception messages carry none.
     smithy::http::HttpResponse response;
-    if (parsed.code == "Overflow") return MakeOverflowError(response, std::move(parsed));
-    return GenericError(std::move(parsed));
+    if (parsed.code == "Overflow") return helpers::MakeOverflowError(response, std::move(parsed));
+    return helpers::GenericError(std::move(parsed));
   }
   if (envelope->type == "total") {
     auto doc = smithy::json::Decode(envelope->payload.ToString());
     if (!doc) return std::move(doc).error();
     auto event = DeserializeRunningTotal(*doc);
     if (!event) return std::move(event).error();
-    return Totals::FromTotal(*std::move(event));
+    return types::Totals::FromTotal(*std::move(event));
   }
   return smithy::Error::Serialization("Accumulate: unknown event type: " + envelope->type);
 }
 
+}  // namespace helpers
 }  // namespace
 
 smithy::Outcome<CalculatorClient> CalculatorClient::Create(smithy::ClientConfig config) {
@@ -201,7 +205,7 @@ smithy::Outcome<AccumulateClientStream> CalculatorClient::Accumulate(const Accum
   request.target = path_prefix_ + "/";
   request.raw_text_frames = true;
   request.headers.Set("user-agent", config_.user_agent);
-  auto socket = DialStream(config_, std::move(request));
+  auto socket = helpers::DialStream(config_, std::move(request));
   if (!socket) return std::move(socket).error();
   // The opening request envelope: selects the operation and carries the
   // initial-request members (the :initial-request seam, realized).
@@ -219,7 +223,7 @@ smithy::Outcome<AccumulateClientStream> CalculatorClient::Accumulate(const Accum
   if (!sent) return std::move(sent).error();
   return AccumulateClientStream(
       std::make_shared<smithy::eventstream::JsonRpcStreamSocket>(*std::move(socket), smithy::Document(1), smithy::eventstream::JsonRpcStreamSocket::Role::kClient),
-      EncodeAccumulateEvent, DecodeAccumulateEvent);
+      helpers::EncodeAccumulateEvent, helpers::DecodeAccumulateEvent);
 }
 
 smithy::Outcome<AddOutput> CalculatorClient::Add(const AddInput& input) const {
@@ -239,7 +243,7 @@ smithy::Outcome<AddOutput> CalculatorClient::Add(const AddInput& input) const {
   // Errors are JSON-RPC envelopes on HTTP 200; non-200 means the request
   // never reached the protocol layer (router 404, proxy) and parses generically.
   const bool is_error = !envelope_doc.ok() || !envelope_doc->is_map() || envelope_doc->Find("error") != nullptr;
-  if (response->status != 200 || is_error) return GenericError(ParseError(*response));
+  if (response->status != 200 || is_error) return helpers::GenericError(helpers::ParseError(*response));
   const smithy::Document* result = envelope_doc->Find("result");
   if (result == nullptr) return smithy::Error::Serialization("jsonRpc2: response has no result member");
   return DeserializeAddOutput(*result);
@@ -264,7 +268,7 @@ smithy::Outcome<DivideOutput> CalculatorClient::Divide(const DivideInput& input)
   // Errors are JSON-RPC envelopes on HTTP 200; non-200 means the request
   // never reached the protocol layer (router 404, proxy) and parses generically.
   const bool is_error = !envelope_doc.ok() || !envelope_doc->is_map() || envelope_doc->Find("error") != nullptr;
-  if (response->status != 200 || is_error) return ParseDivideError(*response);
+  if (response->status != 200 || is_error) return helpers::ParseDivideError(*response);
   const smithy::Document* result = envelope_doc->Find("result");
   if (result == nullptr) return smithy::Error::Serialization("jsonRpc2: response has no result member");
   return DeserializeDivideOutput(*result);

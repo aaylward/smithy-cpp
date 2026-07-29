@@ -20,6 +20,8 @@
 
 namespace example::chat {
 
+namespace types = ::example::chat;
+
 // Integration tests for the generated Chat service (PLAN Phase 5): the
 // generated client drives the generated server over the loopback transport
 // AND a real socket on an ephemeral port. Random inputs are seeded and

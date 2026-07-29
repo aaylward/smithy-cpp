@@ -35,6 +35,27 @@ final class ProtocolSupport {
 
   private ProtocolSupport() {}
 
+  /**
+   * Opens the file-local helpers namespace (issue #71): a named namespace nested in the anonymous
+   * one, so helpers keep internal linkage while every reference to them is spelled {@code
+   * helpers::X} — a model shape's type name can never capture a helper call through C++ name
+   * lookup, and no model name is reserved. The mirror-image direction is covered by the {@code
+   * types} alias every generated source carries ({@link CppWriter}): code inside the namespace
+   * references model types as {@code types::X}, which a sibling helper's name can never shadow.
+   */
+  static void openHelpersNamespace(CppWriter w) {
+    w.write("namespace {");
+    w.write("namespace helpers {");
+    w.write("");
+  }
+
+  /** Closes {@link #openHelpersNamespace}'s two scopes. */
+  static void closeHelpersNamespace(CppWriter w) {
+    w.write("}  // namespace helpers");
+    w.write("}  // namespace");
+    w.write("");
+  }
+
   /** Emits SanitizeErrorCode: strips URI qualifiers and namespaces off wire error codes. */
   static void writeSanitizeErrorCode(CppWriter w) {
     w.write("// The error shape name arrives namespaced (\"ns#Shape\") and possibly");
@@ -82,15 +103,6 @@ final class ProtocolSupport {
    * whose error identity is not header/body-top-level shaped (jsonRpc2) compose the pieces
    * themselves and write their own ParseError.
    */
-  /**
-   * The anonymous-namespace names the shared error-parsing helpers declare — reserved by the
-   * shape-name guard (issue #71). Universal across client protocols: jsonRpc2 skips {@link
-   * #writeErrorSupport} but composes its own ParseError from the same pieces, declaring the same
-   * four names.
-   */
-  static final List<String> CLIENT_ERROR_HELPERS =
-      List.of("ParseError", "ParsedError", "GenericError", "SanitizeErrorCode");
-
   static void writeErrorSupport(CppWriter w, String decodeStatement, String errorTypeHeader) {
     writeSanitizeErrorCode(w);
     writeParsedErrorStruct(w);
@@ -105,14 +117,15 @@ final class ProtocolSupport {
     w.write("if (doc.ok()) parsed.doc = *std::move(doc);");
     if (!errorTypeHeader.isEmpty()) {
       w.write("const auto type_header = response.headers.Get($S);", errorTypeHeader);
-      w.write("if (type_header.has_value()) parsed.code = SanitizeErrorCode(*type_header);");
+      w.write(
+          "if (type_header.has_value()) parsed.code = helpers::SanitizeErrorCode(*type_header);");
     }
     w.openBlock("if (parsed.doc.is_map()) {");
     w.write("const smithy::Document* type = parsed.doc.Find(\"__type\");");
     w.write("if (type == nullptr) type = parsed.doc.Find(\"code\");");
     w.write(
         "if (parsed.code == \"UnknownError\" && type != nullptr && type->is_string()) "
-            + "parsed.code = SanitizeErrorCode(type->as_string());");
+            + "parsed.code = helpers::SanitizeErrorCode(type->as_string());");
     w.write("const smithy::Document* text = parsed.doc.Find(\"message\");");
     w.write("if (text != nullptr && text->is_string()) parsed.message = text->as_string();");
     w.closeBlock("}");
@@ -121,12 +134,6 @@ final class ProtocolSupport {
     w.write("");
     writeGenericError(w);
   }
-
-  /**
-   * The names {@link #writeNumericParseHelpers} declares — reserved by the shape-name guard for
-   * protocols whose {@link ProtocolGenerator#usesNumericParseHelpers} holds (issue #71).
-   */
-  static final List<String> NUMERIC_PARSE_HELPERS = List.of("ParseInt64Text", "ParseDoubleText");
 
   /** Text-to-number helpers used for header/label/query bindings. */
   static void writeNumericParseHelpers(CppWriter w) {
@@ -283,7 +290,7 @@ final class ProtocolSupport {
     w.write("auto decompressed = smithy::GzipDecompress(request.body);");
     w.openBlock("if (!decompressed) {");
     w.write(
-        "return $L($L, $S, \"invalid gzip request body\", {}$L);",
+        "return helpers::$L($L, $S, \"invalid gzip request body\", {}$L);",
         errorFn,
         status,
         errorCode,
@@ -380,7 +387,7 @@ final class ProtocolSupport {
         SerdeCodeGen.serdeFunctionSuffix(context, input),
         deserializeFrom);
     w.write(
-        "if (!parsed) return $L($L, \"SerializationException\", parsed.error().message(), {}$L);",
+        "if (!parsed) return helpers::$L($L, \"SerializationException\", parsed.error().message(), {}$L);",
         spec.errorFn(),
         parseErrorStatus,
         spec.extraArgs());
@@ -403,7 +410,7 @@ final class ProtocolSupport {
         "auto outcome = $L$L(input, context);",
         handlerAccess,
         CppReservedWords.escape(operation.getId().getName()));
-    w.write("if (!outcome) return ErrorToResponse(outcome.error()$L);", spec.extraArgs());
+    w.write("if (!outcome) return helpers::ErrorToResponse(outcome.error()$L);", spec.extraArgs());
   }
 
   /** HTTP status for a modeled error shape: @httpError, else @error class default. */
@@ -428,9 +435,6 @@ final class ProtocolSupport {
       this(errorFn, errortypeHeader, "", "");
     }
   }
-
-  /** The error-mapping helper every generated server declares — reserved by the guard (#71). */
-  static final String ERROR_TO_RESPONSE = "ErrorToResponse";
 
   /**
    * Emits the server's ErrorToResponse over {@code spec.errorFn()(status, code, message, body)}:
@@ -469,6 +473,8 @@ final class ProtocolSupport {
       String errortypeHeader,
       String extraParams,
       String extraArgs) {
+    // Every use below is a call, and helper calls carry one qualified spelling.
+    errorBodyFn = "helpers::" + errorBodyFn;
     Map<String, StructureShape> errorShapes = new TreeMap<>();
     for (OperationShape operation : operations) {
       for (ShapeId errorId : operation.getErrors(service)) {
@@ -480,8 +486,8 @@ final class ProtocolSupport {
     w.write("// [[maybe_unused]]: only unary routes map handler errors here; a service");
     w.write("// whose operations all stream reports errors on the stream instead.");
     w.openBlock(
-        "[[maybe_unused]] smithy::http::HttpResponse $L(const smithy::Error& error$L) {",
-        ERROR_TO_RESPONSE,
+        "[[maybe_unused]] smithy::http::HttpResponse ErrorToResponse(const smithy::Error& "
+            + "error$L) {",
         extraParams);
     if (!errortypeHeader.isEmpty()) {
       w.write("std::vector<std::pair<std::string, std::string>> header_values;");
@@ -492,7 +498,7 @@ final class ProtocolSupport {
       String type = context.cppSymbols().toSymbol(shape).getName();
       w.openBlock("if (error.code() == $S) {", shape.getId().getName());
       w.write("smithy::DocumentMap body;");
-      w.openBlock("if (const auto* detail = error.detail<$L>()) {", type);
+      w.openBlock("if (const auto* detail = error.detail<types::$L>()) {", type);
       w.write(
           "body = Serialize$L(*detail).as_map();",
           SerdeCodeGen.serdeFunctionSuffix(context, shape));
@@ -683,10 +689,10 @@ final class ProtocolSupport {
       w.openBlock(
           "smithy::Error $L(const smithy::http::HttpResponse& response) {",
           parseErrorFunction(operation));
-      w.write("ParsedError parsed = ParseError(response);");
+      w.write("ParsedError parsed = helpers::ParseError(response);");
       for (Map.Entry<String, StructureShape> entry : sorted.entrySet()) {
         w.write(
-            "if (parsed.code == $S) return $L(response, std::move(parsed));",
+            "if (parsed.code == $S) return helpers::$L(response, std::move(parsed));",
             entry.getValue().getId().getName(),
             makeErrorFunction(context, entry.getValue()));
       }
@@ -706,23 +712,19 @@ final class ProtocolSupport {
           }
           w.write(
               "if (parsed.code == \"UnknownError\" && parsed.status == $L) "
-                  + "return $L(response, std::move(parsed));",
+                  + "return helpers::$L(response, std::move(parsed));",
               entry.getKey(),
               makeErrorFunction(context, entry.getValue().get(0).getValue()));
         }
       }
-      w.write("return GenericError(std::move(parsed));");
+      w.write("return helpers::GenericError(std::move(parsed));");
       w.closeBlock("}");
       w.write("");
     }
   }
 
-  /**
-   * The one derivation of the Parse&lt;Op&gt;Error helper name (definition, call sites, and the
-   * guard's reservation). Emitted only for unary operations that declare errors — {@link
-   * #writeOperationErrorParsers}' skip logic.
-   */
-  static String parseErrorFunction(OperationShape operation) {
+  /** The one derivation of the Parse<Op>Error helper name (definition and call sites). */
+  private static String parseErrorFunction(OperationShape operation) {
     return "Parse" + CppReservedWords.escape(operation.getId().getName()) + "Error";
   }
 
@@ -734,9 +736,9 @@ final class ProtocolSupport {
   /** The expression a protocol's operation body returns for a non-success response. */
   static String errorExpression(CppContext context, ServiceShape service, OperationShape op) {
     if (op.getErrors(service).isEmpty()) {
-      return "GenericError(ParseError(*response))";
+      return "helpers::GenericError(helpers::ParseError(*response))";
     }
-    return parseErrorFunction(op) + "(*response)";
+    return "helpers::" + parseErrorFunction(op) + "(*response)";
   }
 
   /**

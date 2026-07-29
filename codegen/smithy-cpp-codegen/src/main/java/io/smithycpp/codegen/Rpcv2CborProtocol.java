@@ -49,11 +49,6 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
   private static final ProtocolSupport.ErrorResponseSpec SPEC =
       new ProtocolSupport.ErrorResponseSpec("CborError", /* errortypeHeader= */ "");
 
-  @Override
-  public ProtocolSupport.ErrorResponseSpec errorResponseSpec() {
-    return SPEC;
-  }
-
   /** Set up by writeServerHelpers (always called before the routes are emitted). */
   private ValidationGenerator validation;
 
@@ -108,7 +103,7 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
     w.openBlock(
         "if (request.headers.Get(\"smithy-protocol\").value_or(\"\") != \"rpc-v2-cbor\") {");
     w.write(
-        "return CborError(400, \"SerializationException\", "
+        "return helpers::CborError(400, \"SerializationException\", "
             + "\"expected smithy-protocol: rpc-v2-cbor\", {});");
     w.closeBlock("}");
     w.write("// Content-Type validation per the rpcv2Cbor spec: a present header must");
@@ -118,7 +113,7 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
             + "content_type.has_value() && "
             + "smithy::http::MediaTypeOf(*content_type) != \"application/cbor\") {");
     w.write(
-        "return CborError(415, \"UnsupportedMediaTypeException\", "
+        "return helpers::CborError(415, \"UnsupportedMediaTypeException\", "
             + "\"expected content-type: application/cbor\", {});");
     w.closeBlock("}");
     w.write("$L input{};", inputType);
@@ -128,7 +123,7 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
       w.openBlock("if (!request.body.empty()) {");
       w.write("auto decoded = smithy::cbor::Decode(smithy::Blob::FromString(request.body));");
       w.write(
-          "if (!decoded) return CborError(400, \"SerializationException\", "
+          "if (!decoded) return helpers::CborError(400, \"SerializationException\", "
               + "decoded.error().message(), {});");
       w.write("body_doc = *std::move(decoded);");
       w.closeBlock("}");

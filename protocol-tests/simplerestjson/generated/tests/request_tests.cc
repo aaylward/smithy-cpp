@@ -13,6 +13,8 @@
 
 namespace smithy::protocoltests::simplerestjson {
 
+namespace types = ::smithy::protocoltests::simplerestjson;
+
 // Generated from smithy.test#httpRequestTests (client cases).
 namespace {
 

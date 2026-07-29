@@ -23,7 +23,10 @@
 
 namespace example::bookstore {
 
+namespace types = ::example::bookstore;
+
 namespace {
+namespace helpers {
 
 // The error shape name arrives namespaced ("ns#Shape") and possibly
 // URI-qualified; modeled error codes keep only the shape name.
@@ -49,11 +52,11 @@ struct ParsedError {
   auto doc = smithy::json::Decode(response.body);
   if (doc.ok()) parsed.doc = *std::move(doc);
   const auto type_header = response.headers.Get("x-error-type");
-  if (type_header.has_value()) parsed.code = SanitizeErrorCode(*type_header);
+  if (type_header.has_value()) parsed.code = helpers::SanitizeErrorCode(*type_header);
   if (parsed.doc.is_map()) {
     const smithy::Document* type = parsed.doc.Find("__type");
     if (type == nullptr) type = parsed.doc.Find("code");
-    if (parsed.code == "UnknownError" && type != nullptr && type->is_string()) parsed.code = SanitizeErrorCode(type->as_string());
+    if (parsed.code == "UnknownError" && type != nullptr && type->is_string()) parsed.code = helpers::SanitizeErrorCode(type->as_string());
     const smithy::Document* text = parsed.doc.Find("message");
     if (text != nullptr && text->is_string()) parsed.message = text->as_string();
   }
@@ -112,12 +115,13 @@ smithy::Error MakeBookNotFoundError(const smithy::http::HttpResponse& response, 
 }
 
 smithy::Error ParseGetBookError(const smithy::http::HttpResponse& response) {
-  ParsedError parsed = ParseError(response);
-  if (parsed.code == "BookNotFound") return MakeBookNotFoundError(response, std::move(parsed));
-  if (parsed.code == "UnknownError" && parsed.status == 404) return MakeBookNotFoundError(response, std::move(parsed));
-  return GenericError(std::move(parsed));
+  ParsedError parsed = helpers::ParseError(response);
+  if (parsed.code == "BookNotFound") return helpers::MakeBookNotFoundError(response, std::move(parsed));
+  if (parsed.code == "UnknownError" && parsed.status == 404) return helpers::MakeBookNotFoundError(response, std::move(parsed));
+  return helpers::GenericError(std::move(parsed));
 }
 
+}  // namespace helpers
 }  // namespace
 
 smithy::Outcome<BookstoreClient> BookstoreClient::Create(smithy::ClientConfig config) {
@@ -170,7 +174,7 @@ smithy::Outcome<AddBookOutput> BookstoreClient::AddBook(const AddBookInput& inpu
   request.headers.Set("content-type", "application/json");
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status < 200 || response->status > 299) return GenericError(ParseError(*response));
+  if (response->status < 200 || response->status > 299) return helpers::GenericError(helpers::ParseError(*response));
   AddBookOutput out{};
   auto body_doc = smithy::json::Decode(response->body.empty() ? "{}" : response->body);
   if (!body_doc) return std::move(body_doc).error();
@@ -200,7 +204,7 @@ smithy::Outcome<GetBookOutput> BookstoreClient::GetBook(const GetBookInput& inpu
   request.target = std::move(target);
   auto response = Send(std::move(request));
   if (!response) return std::move(response).error();
-  if (response->status != 200) return ParseGetBookError(*response);
+  if (response->status != 200) return helpers::ParseGetBookError(*response);
   auto body_doc = smithy::json::Decode(response->body);
   if (!body_doc) return std::move(body_doc).error();
   return DeserializeGetBookOutput(*body_doc);

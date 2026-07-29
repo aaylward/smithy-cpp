@@ -8,6 +8,8 @@
 
 namespace example::bookstore {
 
+namespace types = ::example::bookstore;
+
 smithy::Document SerializeAddBookInput(const AddBookInput& value) {
   smithy::DocumentMap map;
   map.emplace("isbn", smithy::Document(value.isbn));

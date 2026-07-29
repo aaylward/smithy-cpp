@@ -26,7 +26,10 @@
 
 namespace smithy::protocoltests::simplerestjson {
 
+namespace types = ::smithy::protocoltests::simplerestjson;
+
 namespace {
+namespace helpers {
 
 // Strict text parsing for label/query/header bindings ([[maybe_unused]]:
 // emitted for every service; not every service binds numeric values).
@@ -79,7 +82,7 @@ smithy::http::HttpResponse JsonError(int status, const std::string& code, const 
   if (error.kind() == smithy::ErrorKind::kModeled) {
     if (error.code() == "FallbackError") {
       smithy::DocumentMap body;
-      if (const auto* detail = error.detail<FallbackError>()) {
+      if (const auto* detail = error.detail<types::FallbackError>()) {
         body = SerializeFallbackError(*detail).as_map();
       }
       // The typed detail's own message member wins over the generic one.
@@ -87,14 +90,14 @@ smithy::http::HttpResponse JsonError(int status, const std::string& code, const 
       if (!has_message && !error.message().empty()) {
         body.emplace("message", smithy::Document(error.message()));
       }
-      auto response = JsonError(400, "", "", std::move(body));
+      auto response = helpers::JsonError(400, "", "", std::move(body));
       response.headers.Set("x-error-type", error.code());
       for (const auto& [name, value] : header_values) response.headers.Set(name, value);
       return response;
     }
     if (error.code() == "GenericClientError") {
       smithy::DocumentMap body;
-      if (const auto* detail = error.detail<GenericClientError>()) {
+      if (const auto* detail = error.detail<types::GenericClientError>()) {
         body = SerializeGenericClientError(*detail).as_map();
       }
       // The typed detail's own message member wins over the generic one.
@@ -102,14 +105,14 @@ smithy::http::HttpResponse JsonError(int status, const std::string& code, const 
       if (!has_message && !error.message().empty()) {
         body.emplace("message", smithy::Document(error.message()));
       }
-      auto response = JsonError(418, "", "", std::move(body));
+      auto response = helpers::JsonError(418, "", "", std::move(body));
       response.headers.Set("x-error-type", error.code());
       for (const auto& [name, value] : header_values) response.headers.Set(name, value);
       return response;
     }
     if (error.code() == "GenericServerError") {
       smithy::DocumentMap body;
-      if (const auto* detail = error.detail<GenericServerError>()) {
+      if (const auto* detail = error.detail<types::GenericServerError>()) {
         body = SerializeGenericServerError(*detail).as_map();
       }
       // The typed detail's own message member wins over the generic one.
@@ -117,14 +120,14 @@ smithy::http::HttpResponse JsonError(int status, const std::string& code, const 
       if (!has_message && !error.message().empty()) {
         body.emplace("message", smithy::Document(error.message()));
       }
-      auto response = JsonError(502, "", "", std::move(body));
+      auto response = helpers::JsonError(502, "", "", std::move(body));
       response.headers.Set("x-error-type", error.code());
       for (const auto& [name, value] : header_values) response.headers.Set(name, value);
       return response;
     }
     if (error.code() == "NotFoundError") {
       smithy::DocumentMap body;
-      if (const auto* detail = error.detail<NotFoundError>()) {
+      if (const auto* detail = error.detail<types::NotFoundError>()) {
         body = SerializeNotFoundError(*detail).as_map();
       }
       // The typed detail's own message member wins over the generic one.
@@ -132,14 +135,14 @@ smithy::http::HttpResponse JsonError(int status, const std::string& code, const 
       if (!has_message && !error.message().empty()) {
         body.emplace("message", smithy::Document(error.message()));
       }
-      auto response = JsonError(404, "", "", std::move(body));
+      auto response = helpers::JsonError(404, "", "", std::move(body));
       response.headers.Set("x-error-type", error.code());
       for (const auto& [name, value] : header_values) response.headers.Set(name, value);
       return response;
     }
     if (error.code() == "PriceError") {
       smithy::DocumentMap body;
-      if (const auto* detail = error.detail<PriceError>()) {
+      if (const auto* detail = error.detail<types::PriceError>()) {
         body = SerializePriceError(*detail).as_map();
       }
       // The typed detail's own message member wins over the generic one.
@@ -151,14 +154,14 @@ smithy::http::HttpResponse JsonError(int status, const std::string& code, const 
         if (it->second.is_int()) header_values.emplace_back("X-CODE", std::to_string(it->second.as_int()));
         body.erase(it);
       }
-      auto response = JsonError(400, "", "", std::move(body));
+      auto response = helpers::JsonError(400, "", "", std::move(body));
       response.headers.Set("x-error-type", error.code());
       for (const auto& [name, value] : header_values) response.headers.Set(name, value);
       return response;
     }
     if (error.code() == "UnknownServerError") {
       smithy::DocumentMap body;
-      if (const auto* detail = error.detail<UnknownServerError>()) {
+      if (const auto* detail = error.detail<types::UnknownServerError>()) {
         body = SerializeUnknownServerError(*detail).as_map();
       }
       // The typed detail's own message member wins over the generic one.
@@ -166,20 +169,20 @@ smithy::http::HttpResponse JsonError(int status, const std::string& code, const 
       if (!has_message && !error.message().empty()) {
         body.emplace("message", smithy::Document(error.message()));
       }
-      auto response = JsonError(500, "", "", std::move(body));
+      auto response = helpers::JsonError(500, "", "", std::move(body));
       response.headers.Set("x-error-type", error.code());
       for (const auto& [name, value] : header_values) response.headers.Set(name, value);
       return response;
     }
-    return JsonError(400, error.code(), error.message(), {});
+    return helpers::JsonError(400, error.code(), error.message(), {});
   }
   if (error.kind() == smithy::ErrorKind::kValidation || error.kind() == smithy::ErrorKind::kSerialization) {
-    auto response = JsonError(400, "", error.message(), {});
+    auto response = helpers::JsonError(400, "", error.message(), {});
     response.headers.Set("x-error-type", "SerializationException");
     return response;
   }
   // Never leak internal detail on unexpected failures.
-  return JsonError(500, "InternalFailure", "internal failure", {});
+  return helpers::JsonError(500, "InternalFailure", "internal failure", {});
 }
 
 // Constraint validation (smithy.framework#ValidationException): messages
@@ -192,72 +195,72 @@ void ValidateIngredients(const std::vector<Ingredient>& value, const std::string
   for (std::size_t i = 0; i < value.size(); ++i) {
     const std::string item_path = path + "/" + std::to_string(i);
     if (value[i].value() == Ingredient::Value::kUnknown) {
-      AddValidationFailure(failures, item_path, "Value at '" + item_path + "' failed to satisfy constraint: Member must satisfy enum value set: [TOMATO, CHEESE, PINEAPPLE, BACON, CHICKEN, Salad, MUSHROOM, OLIVES, ONIONS, PEPPERONI, PEPPERS]");
+      helpers::AddValidationFailure(failures, item_path, "Value at '" + item_path + "' failed to satisfy constraint: Member must satisfy enum value set: [TOMATO, CHEESE, PINEAPPLE, BACON, CHICKEN, Salad, MUSHROOM, OLIVES, ONIONS, PEPPERONI, PEPPERS]");
     }
   }
 }
 
-void ValidatePizza(const Pizza& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
+void ValidatePizza(const types::Pizza& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
   {
     const std::string member_path = path + "/base";
     if (value.base.value() == PizzaBase::Value::kUnknown) {
-      AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy enum value set: [C, T]");
+      helpers::AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy enum value set: [C, T]");
     }
   }
   {
     const std::string member_path = path + "/toppings";
-    ValidateIngredients(value.toppings, member_path, failures);
+    helpers::ValidateIngredients(value.toppings, member_path, failures);
   }
 }
 
-void ValidateSalad(const Salad& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
+void ValidateSalad(const types::Salad& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
   {
     const std::string member_path = path + "/ingredients";
-    ValidateIngredients(value.ingredients, member_path, failures);
+    helpers::ValidateIngredients(value.ingredients, member_path, failures);
   }
 }
 
-void ValidateFood(const Food& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
+void ValidateFood(const types::Food& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
   if (value.is_pizza()) {
     const std::string member_path = path + "/pizza";
-    ValidatePizza(value.as_pizza(), member_path, failures);
+    helpers::ValidatePizza(value.as_pizza(), member_path, failures);
   }
   if (value.is_salad()) {
     const std::string member_path = path + "/salad";
-    ValidateSalad(value.as_salad(), member_path, failures);
+    helpers::ValidateSalad(value.as_salad(), member_path, failures);
   }
 }
 
-void ValidateMenuItem(const MenuItem& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
+void ValidateMenuItem(const types::MenuItem& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
   {
     const std::string member_path = path + "/food";
-    ValidateFood(value.food, member_path, failures);
+    helpers::ValidateFood(value.food, member_path, failures);
   }
 }
 
-void ValidateAddMenuItemInput(const AddMenuItemInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
+void ValidateAddMenuItemInput(const types::AddMenuItemInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
   {
     const std::string member_path = path + "/menuItem";
-    ValidateMenuItem(value.menuItem, member_path, failures);
+    helpers::ValidateMenuItem(value.menuItem, member_path, failures);
   }
 }
 
-void ValidateGetEnumInput(const GetEnumInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
+void ValidateGetEnumInput(const types::GetEnumInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
   {
     const std::string member_path = path + "/aa";
     if (value.aa.value() == TheEnum::Value::kUnknown) {
-      AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy enum value set: [v1, v2]");
+      helpers::AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy enum value set: [v1, v2]");
     }
   }
 }
 
-void ValidateHealthInput(const HealthInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
+void ValidateHealthInput(const types::HealthInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
   if (value.query.has_value()) {
     const std::string member_path = path + "/query";
     {
       const std::size_t member_length = smithy::Utf8CodePointCount((*value.query));
       if (member_length > 5ULL) {
-        AddValidationFailure(failures, member_path, "Value with length " + std::to_string(member_length) + " at '" + member_path + "' failed to satisfy constraint: Member must have length between 0 and 5, inclusive");
+        helpers::AddValidationFailure(failures, member_path, "Value with length " + std::to_string(member_length) + " at '" + member_path + "' failed to satisfy constraint: Member must have length between 0 and 5, inclusive");
       }
     }
   }
@@ -278,16 +281,16 @@ void ValidateHealthInput(const HealthInput& value, const std::string& path, std:
   }
   smithy::DocumentMap body;
   body.emplace("fieldList", smithy::Document(std::move(field_list)));
-  smithy::http::HttpResponse response = JsonError(400, "", summary, std::move(body));
+  smithy::http::HttpResponse response = helpers::JsonError(400, "", summary, std::move(body));
   response.headers.Set("x-error-type", "ValidationException");
   return response;
 }
 
-smithy::Outcome<AddMenuItemInput> ParseAddMenuItemInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
+smithy::Outcome<types::AddMenuItemInput> ParseAddMenuItemInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
   (void)request;
   (void)context;
   (void)validation_failures;
-  AddMenuItemInput input{};
+  types::AddMenuItemInput input{};
   {
     const std::string& label_value = context.labels.at("restaurant");
     input.restaurant = label_value;
@@ -305,7 +308,7 @@ smithy::Outcome<AddMenuItemInput> ParseAddMenuItemInput(const smithy::http::Http
   return input;
 }
 
-smithy::http::HttpResponse BuildAddMenuItemResponse(const AddMenuItemOutput& output) {
+smithy::http::HttpResponse BuildAddMenuItemResponse(const types::AddMenuItemOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 201;
@@ -316,21 +319,21 @@ smithy::http::HttpResponse BuildAddMenuItemResponse(const AddMenuItemOutput& out
   return response;
 }
 
-smithy::Outcome<CustomCodeInput> ParseCustomCodeInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
+smithy::Outcome<types::CustomCodeInput> ParseCustomCodeInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
   (void)request;
   (void)context;
   (void)validation_failures;
-  CustomCodeInput input{};
+  types::CustomCodeInput input{};
   {
     const std::string& label_value = context.labels.at("code");
-    auto parsed_num = ParseInt64Text(label_value, -2147483648LL, 2147483647LL);
+    auto parsed_num = helpers::ParseInt64Text(label_value, -2147483648LL, 2147483647LL);
     if (!parsed_num) return std::move(parsed_num).error();
     input.code = static_cast<std::int32_t>(*parsed_num);
   }
   return input;
 }
 
-smithy::http::HttpResponse BuildCustomCodeResponse(const CustomCodeOutput& output) {
+smithy::http::HttpResponse BuildCustomCodeResponse(const types::CustomCodeOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -341,19 +344,19 @@ smithy::http::HttpResponse BuildCustomCodeResponse(const CustomCodeOutput& outpu
   return response;
 }
 
-smithy::Outcome<GetEnumInput> ParseGetEnumInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
+smithy::Outcome<types::GetEnumInput> ParseGetEnumInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
   (void)request;
   (void)context;
   (void)validation_failures;
-  GetEnumInput input{};
+  types::GetEnumInput input{};
   {
     const std::string& label_value = context.labels.at("aa");
-    input.aa = TheEnum::FromString(label_value);
+    input.aa = types::TheEnum::FromString(label_value);
   }
   return input;
 }
 
-smithy::http::HttpResponse BuildGetEnumResponse(const GetEnumOutput& output) {
+smithy::http::HttpResponse BuildGetEnumResponse(const types::GetEnumOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -366,21 +369,21 @@ smithy::http::HttpResponse BuildGetEnumResponse(const GetEnumOutput& output) {
   return response;
 }
 
-smithy::Outcome<GetIntEnumInput> ParseGetIntEnumInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
+smithy::Outcome<types::GetIntEnumInput> ParseGetIntEnumInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
   (void)request;
   (void)context;
   (void)validation_failures;
-  GetIntEnumInput input{};
+  types::GetIntEnumInput input{};
   {
     const std::string& label_value = context.labels.at("aa");
-    auto parsed_num = ParseInt64Text(label_value, -2147483648LL, 2147483647LL);
+    auto parsed_num = helpers::ParseInt64Text(label_value, -2147483648LL, 2147483647LL);
     if (!parsed_num) return std::move(parsed_num).error();
-    input.aa = static_cast<EnumResult>(*parsed_num);
+    input.aa = static_cast<types::EnumResult>(*parsed_num);
   }
   return input;
 }
 
-smithy::http::HttpResponse BuildGetIntEnumResponse(const GetIntEnumOutput& output) {
+smithy::http::HttpResponse BuildGetIntEnumResponse(const types::GetIntEnumOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -391,11 +394,11 @@ smithy::http::HttpResponse BuildGetIntEnumResponse(const GetIntEnumOutput& outpu
   return response;
 }
 
-smithy::Outcome<GetMenuInput> ParseGetMenuInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
+smithy::Outcome<types::GetMenuInput> ParseGetMenuInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
   (void)request;
   (void)context;
   (void)validation_failures;
-  GetMenuInput input{};
+  types::GetMenuInput input{};
   {
     const std::string& label_value = context.labels.at("restaurant");
     input.restaurant = label_value;
@@ -403,7 +406,7 @@ smithy::Outcome<GetMenuInput> ParseGetMenuInput(const smithy::http::HttpRequest&
   return input;
 }
 
-smithy::http::HttpResponse BuildGetMenuResponse(const GetMenuOutput& output) {
+smithy::http::HttpResponse BuildGetMenuResponse(const types::GetMenuOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -413,11 +416,11 @@ smithy::http::HttpResponse BuildGetMenuResponse(const GetMenuOutput& output) {
   return response;
 }
 
-smithy::Outcome<HeaderEndpointInput> ParseHeaderEndpointInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
+smithy::Outcome<types::HeaderEndpointInput> ParseHeaderEndpointInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
   (void)request;
   (void)context;
   (void)validation_failures;
-  HeaderEndpointInput input{};
+  types::HeaderEndpointInput input{};
   if (const auto header_value = request.headers.Get("X-Capitalized-Header"); header_value.has_value()) {
     input.capitalizedHeader = (*header_value);
   }
@@ -433,7 +436,7 @@ smithy::Outcome<HeaderEndpointInput> ParseHeaderEndpointInput(const smithy::http
   return input;
 }
 
-smithy::http::HttpResponse BuildHeaderEndpointResponse(const HeaderEndpointOutput& output) {
+smithy::http::HttpResponse BuildHeaderEndpointResponse(const types::HeaderEndpointOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -455,11 +458,11 @@ smithy::http::HttpResponse BuildHeaderEndpointResponse(const HeaderEndpointOutpu
   return response;
 }
 
-smithy::Outcome<HealthInput> ParseHealthInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
+smithy::Outcome<types::HealthInput> ParseHealthInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
   (void)request;
   (void)context;
   (void)validation_failures;
-  HealthInput input{};
+  types::HealthInput input{};
   for (const auto& [key, value] : context.query_params) {
     if (key == "query") {
       input.query = value;
@@ -469,7 +472,7 @@ smithy::Outcome<HealthInput> ParseHealthInput(const smithy::http::HttpRequest& r
   return input;
 }
 
-smithy::http::HttpResponse BuildHealthResponse(const HealthOutput& output) {
+smithy::http::HttpResponse BuildHealthResponse(const types::HealthOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -480,11 +483,11 @@ smithy::http::HttpResponse BuildHealthResponse(const HealthOutput& output) {
   return response;
 }
 
-smithy::Outcome<HttpPayloadRequiredWithDefaultInput> ParseHttpPayloadRequiredWithDefaultInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
+smithy::Outcome<types::HttpPayloadRequiredWithDefaultInput> ParseHttpPayloadRequiredWithDefaultInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
   (void)request;
   (void)context;
   (void)validation_failures;
-  HttpPayloadRequiredWithDefaultInput input{};
+  types::HttpPayloadRequiredWithDefaultInput input{};
   if (!request.body.empty()) {
     auto payload_doc = smithy::json::Decode(request.body);
     if (!payload_doc) return std::move(payload_doc).error();
@@ -494,7 +497,7 @@ smithy::Outcome<HttpPayloadRequiredWithDefaultInput> ParseHttpPayloadRequiredWit
   return input;
 }
 
-smithy::http::HttpResponse BuildHttpPayloadRequiredWithDefaultResponse(const HttpPayloadRequiredWithDefaultOutput& output) {
+smithy::http::HttpResponse BuildHttpPayloadRequiredWithDefaultResponse(const types::HttpPayloadRequiredWithDefaultOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -504,11 +507,11 @@ smithy::http::HttpResponse BuildHttpPayloadRequiredWithDefaultResponse(const Htt
   return response;
 }
 
-smithy::Outcome<HttpPayloadWithDefaultInput> ParseHttpPayloadWithDefaultInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
+smithy::Outcome<types::HttpPayloadWithDefaultInput> ParseHttpPayloadWithDefaultInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
   (void)request;
   (void)context;
   (void)validation_failures;
-  HttpPayloadWithDefaultInput input{};
+  types::HttpPayloadWithDefaultInput input{};
   if (!request.body.empty()) {
     auto payload_doc = smithy::json::Decode(request.body);
     if (!payload_doc) return std::move(payload_doc).error();
@@ -519,7 +522,7 @@ smithy::Outcome<HttpPayloadWithDefaultInput> ParseHttpPayloadWithDefaultInput(co
   return input;
 }
 
-smithy::http::HttpResponse BuildHttpPayloadWithDefaultResponse(const HttpPayloadWithDefaultOutput& output) {
+smithy::http::HttpResponse BuildHttpPayloadWithDefaultResponse(const types::HttpPayloadWithDefaultOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -529,11 +532,11 @@ smithy::http::HttpResponse BuildHttpPayloadWithDefaultResponse(const HttpPayload
   return response;
 }
 
-smithy::Outcome<OpenUnionsInput> ParseOpenUnionsInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
+smithy::Outcome<types::OpenUnionsInput> ParseOpenUnionsInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
   (void)request;
   (void)context;
   (void)validation_failures;
-  OpenUnionsInput input{};
+  types::OpenUnionsInput input{};
   if (!request.body.empty()) {
     auto payload_doc = smithy::json::Decode(request.body);
     if (!payload_doc) return std::move(payload_doc).error();
@@ -547,7 +550,7 @@ smithy::Outcome<OpenUnionsInput> ParseOpenUnionsInput(const smithy::http::HttpRe
   return input;
 }
 
-smithy::http::HttpResponse BuildOpenUnionsResponse(const OpenUnionsOutput& output) {
+smithy::http::HttpResponse BuildOpenUnionsResponse(const types::OpenUnionsOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -557,11 +560,11 @@ smithy::http::HttpResponse BuildOpenUnionsResponse(const OpenUnionsOutput& outpu
   return response;
 }
 
-smithy::Outcome<PreserveOrderInput> ParsePreserveOrderInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
+smithy::Outcome<types::PreserveOrderInput> ParsePreserveOrderInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
   (void)request;
   (void)context;
   (void)validation_failures;
-  PreserveOrderInput input{};
+  types::PreserveOrderInput input{};
   auto body_doc = smithy::json::Decode(request.body.empty() ? "{}" : request.body);
   if (!body_doc) return std::move(body_doc).error();
   if (!body_doc->is_map()) return smithy::Error::Serialization("PreserveOrder: expected a JSON object body");
@@ -588,7 +591,7 @@ smithy::Outcome<PreserveOrderInput> ParsePreserveOrderInput(const smithy::http::
   return input;
 }
 
-smithy::http::HttpResponse BuildPreserveOrderResponse(const PreserveOrderOutput& output) {
+smithy::http::HttpResponse BuildPreserveOrderResponse(const types::PreserveOrderOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -604,11 +607,11 @@ smithy::http::HttpResponse BuildPreserveOrderResponse(const PreserveOrderOutput&
   return response;
 }
 
-smithy::Outcome<RoundTripInput> ParseRoundTripInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
+smithy::Outcome<types::RoundTripInput> ParseRoundTripInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
   (void)request;
   (void)context;
   (void)validation_failures;
-  RoundTripInput input{};
+  types::RoundTripInput input{};
   {
     const std::string& label_value = context.labels.at("label");
     input.label = label_value;
@@ -637,7 +640,7 @@ smithy::Outcome<RoundTripInput> ParseRoundTripInput(const smithy::http::HttpRequ
   return input;
 }
 
-smithy::http::HttpResponse BuildRoundTripResponse(const RoundTripOutput& output) {
+smithy::http::HttpResponse BuildRoundTripResponse(const types::RoundTripOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -657,15 +660,15 @@ smithy::http::HttpResponse BuildRoundTripResponse(const RoundTripOutput& output)
   return response;
 }
 
-smithy::Outcome<VersionInput> ParseVersionInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
+smithy::Outcome<types::VersionInput> ParseVersionInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
   (void)request;
   (void)context;
   (void)validation_failures;
-  VersionInput input{};
+  types::VersionInput input{};
   return input;
 }
 
-smithy::http::HttpResponse BuildVersionResponse(const VersionOutput& output) {
+smithy::http::HttpResponse BuildVersionResponse(const types::VersionOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -675,6 +678,7 @@ smithy::http::HttpResponse BuildVersionResponse(const VersionOutput& output) {
   return response;
 }
 
+}  // namespace helpers
 }  // namespace
 
 PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServiceHandler> handler)
@@ -688,24 +692,24 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     // content-type is tolerated, and blob payloads without @mediaType accept
     // any content type / accept.
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() ? smithy::http::MediaTypeOf(*content_type) != "application/json" : !request.body.empty()) {
-      auto error_response = JsonError(415, "", "unsupported media type", {});
+      auto error_response = helpers::JsonError(415, "", "unsupported media type", {});
       error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
-      auto error_response = JsonError(406, "", "not acceptable", {});
+      auto error_response = helpers::JsonError(406, "", "not acceptable", {});
       error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    auto input = ParseAddMenuItemInput(request, context, &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    if (!input) return ErrorToResponse(input.error());
-    ValidateAddMenuItemInput(*input, "", &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
+    auto input = helpers::ParseAddMenuItemInput(request, context, &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
+    if (!input) return helpers::ErrorToResponse(input.error());
+    helpers::ValidateAddMenuItemInput(*input, "", &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
     auto outcome = handler->AddMenuItem(*input, context);
-    if (!outcome) return ErrorToResponse(outcome.error());
-    return BuildAddMenuItemResponse(*outcome);
+    if (!outcome) return helpers::ErrorToResponse(outcome.error());
+    return helpers::BuildAddMenuItemResponse(*outcome);
   }, "AddMenuItem");
   (void)router_->Add("GET", "/custom-code/{code}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -713,17 +717,17 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     // content-type is tolerated, and blob payloads without @mediaType accept
     // any content type / accept.
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
-      auto error_response = JsonError(415, "", "unsupported media type", {});
+      auto error_response = helpers::JsonError(415, "", "unsupported media type", {});
       error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    auto input = ParseCustomCodeInput(request, context, &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    if (!input) return ErrorToResponse(input.error());
+    auto input = helpers::ParseCustomCodeInput(request, context, &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
+    if (!input) return helpers::ErrorToResponse(input.error());
     auto outcome = handler->CustomCode(*input, context);
-    if (!outcome) return ErrorToResponse(outcome.error());
-    return BuildCustomCodeResponse(*outcome);
+    if (!outcome) return helpers::ErrorToResponse(outcome.error());
+    return helpers::BuildCustomCodeResponse(*outcome);
   }, "CustomCode");
   (void)router_->Add("GET", "/get-enum/{aa}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -731,24 +735,24 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     // content-type is tolerated, and blob payloads without @mediaType accept
     // any content type / accept.
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
-      auto error_response = JsonError(415, "", "unsupported media type", {});
+      auto error_response = helpers::JsonError(415, "", "unsupported media type", {});
       error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
-      auto error_response = JsonError(406, "", "not acceptable", {});
+      auto error_response = helpers::JsonError(406, "", "not acceptable", {});
       error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    auto input = ParseGetEnumInput(request, context, &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    if (!input) return ErrorToResponse(input.error());
-    ValidateGetEnumInput(*input, "", &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
+    auto input = helpers::ParseGetEnumInput(request, context, &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
+    if (!input) return helpers::ErrorToResponse(input.error());
+    helpers::ValidateGetEnumInput(*input, "", &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
     auto outcome = handler->GetEnum(*input, context);
-    if (!outcome) return ErrorToResponse(outcome.error());
-    return BuildGetEnumResponse(*outcome);
+    if (!outcome) return helpers::ErrorToResponse(outcome.error());
+    return helpers::BuildGetEnumResponse(*outcome);
   }, "GetEnum");
   (void)router_->Add("GET", "/get-int-enum/{aa}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -756,22 +760,22 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     // content-type is tolerated, and blob payloads without @mediaType accept
     // any content type / accept.
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
-      auto error_response = JsonError(415, "", "unsupported media type", {});
+      auto error_response = helpers::JsonError(415, "", "unsupported media type", {});
       error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
-      auto error_response = JsonError(406, "", "not acceptable", {});
+      auto error_response = helpers::JsonError(406, "", "not acceptable", {});
       error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    auto input = ParseGetIntEnumInput(request, context, &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    if (!input) return ErrorToResponse(input.error());
+    auto input = helpers::ParseGetIntEnumInput(request, context, &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
+    if (!input) return helpers::ErrorToResponse(input.error());
     auto outcome = handler->GetIntEnum(*input, context);
-    if (!outcome) return ErrorToResponse(outcome.error());
-    return BuildGetIntEnumResponse(*outcome);
+    if (!outcome) return helpers::ErrorToResponse(outcome.error());
+    return helpers::BuildGetIntEnumResponse(*outcome);
   }, "GetIntEnum");
   (void)router_->Add("GET", "/restaurant/{restaurant}/menu", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -779,22 +783,22 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     // content-type is tolerated, and blob payloads without @mediaType accept
     // any content type / accept.
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
-      auto error_response = JsonError(415, "", "unsupported media type", {});
+      auto error_response = helpers::JsonError(415, "", "unsupported media type", {});
       error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
-      auto error_response = JsonError(406, "", "not acceptable", {});
+      auto error_response = helpers::JsonError(406, "", "not acceptable", {});
       error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    auto input = ParseGetMenuInput(request, context, &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    if (!input) return ErrorToResponse(input.error());
+    auto input = helpers::ParseGetMenuInput(request, context, &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
+    if (!input) return helpers::ErrorToResponse(input.error());
     auto outcome = handler->GetMenu(*input, context);
-    if (!outcome) return ErrorToResponse(outcome.error());
-    return BuildGetMenuResponse(*outcome);
+    if (!outcome) return helpers::ErrorToResponse(outcome.error());
+    return helpers::BuildGetMenuResponse(*outcome);
   }, "GetMenu");
   (void)router_->Add("POST", "/headers", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -802,17 +806,17 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     // content-type is tolerated, and blob payloads without @mediaType accept
     // any content type / accept.
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
-      auto error_response = JsonError(415, "", "unsupported media type", {});
+      auto error_response = helpers::JsonError(415, "", "unsupported media type", {});
       error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    auto input = ParseHeaderEndpointInput(request, context, &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    if (!input) return ErrorToResponse(input.error());
+    auto input = helpers::ParseHeaderEndpointInput(request, context, &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
+    if (!input) return helpers::ErrorToResponse(input.error());
     auto outcome = handler->HeaderEndpoint(*input, context);
-    if (!outcome) return ErrorToResponse(outcome.error());
-    return BuildHeaderEndpointResponse(*outcome);
+    if (!outcome) return helpers::ErrorToResponse(outcome.error());
+    return helpers::BuildHeaderEndpointResponse(*outcome);
   }, "HeaderEndpoint");
   (void)router_->Add("GET", "/health", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -820,24 +824,24 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     // content-type is tolerated, and blob payloads without @mediaType accept
     // any content type / accept.
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
-      auto error_response = JsonError(415, "", "unsupported media type", {});
+      auto error_response = helpers::JsonError(415, "", "unsupported media type", {});
       error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
-      auto error_response = JsonError(406, "", "not acceptable", {});
+      auto error_response = helpers::JsonError(406, "", "not acceptable", {});
       error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    auto input = ParseHealthInput(request, context, &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    if (!input) return ErrorToResponse(input.error());
-    ValidateHealthInput(*input, "", &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
+    auto input = helpers::ParseHealthInput(request, context, &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
+    if (!input) return helpers::ErrorToResponse(input.error());
+    helpers::ValidateHealthInput(*input, "", &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
     auto outcome = handler->Health(*input, context);
-    if (!outcome) return ErrorToResponse(outcome.error());
-    return BuildHealthResponse(*outcome);
+    if (!outcome) return helpers::ErrorToResponse(outcome.error());
+    return helpers::BuildHealthResponse(*outcome);
   }, "Health");
   (void)router_->Add("PUT", "/httpPayloadRequiredWithDefault", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -845,22 +849,22 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     // content-type is tolerated, and blob payloads without @mediaType accept
     // any content type / accept.
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() ? smithy::http::MediaTypeOf(*content_type) != "application/json" : !request.body.empty()) {
-      auto error_response = JsonError(415, "", "unsupported media type", {});
+      auto error_response = helpers::JsonError(415, "", "unsupported media type", {});
       error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
-      auto error_response = JsonError(406, "", "not acceptable", {});
+      auto error_response = helpers::JsonError(406, "", "not acceptable", {});
       error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    auto input = ParseHttpPayloadRequiredWithDefaultInput(request, context, &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    if (!input) return ErrorToResponse(input.error());
+    auto input = helpers::ParseHttpPayloadRequiredWithDefaultInput(request, context, &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
+    if (!input) return helpers::ErrorToResponse(input.error());
     auto outcome = handler->HttpPayloadRequiredWithDefault(*input, context);
-    if (!outcome) return ErrorToResponse(outcome.error());
-    return BuildHttpPayloadRequiredWithDefaultResponse(*outcome);
+    if (!outcome) return helpers::ErrorToResponse(outcome.error());
+    return helpers::BuildHttpPayloadRequiredWithDefaultResponse(*outcome);
   }, "HttpPayloadRequiredWithDefault");
   (void)router_->Add("PUT", "/httpPayloadWithDefault", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -868,22 +872,22 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     // content-type is tolerated, and blob payloads without @mediaType accept
     // any content type / accept.
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() ? smithy::http::MediaTypeOf(*content_type) != "application/json" : !request.body.empty()) {
-      auto error_response = JsonError(415, "", "unsupported media type", {});
+      auto error_response = helpers::JsonError(415, "", "unsupported media type", {});
       error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
-      auto error_response = JsonError(406, "", "not acceptable", {});
+      auto error_response = helpers::JsonError(406, "", "not acceptable", {});
       error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    auto input = ParseHttpPayloadWithDefaultInput(request, context, &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    if (!input) return ErrorToResponse(input.error());
+    auto input = helpers::ParseHttpPayloadWithDefaultInput(request, context, &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
+    if (!input) return helpers::ErrorToResponse(input.error());
     auto outcome = handler->HttpPayloadWithDefault(*input, context);
-    if (!outcome) return ErrorToResponse(outcome.error());
-    return BuildHttpPayloadWithDefaultResponse(*outcome);
+    if (!outcome) return helpers::ErrorToResponse(outcome.error());
+    return helpers::BuildHttpPayloadWithDefaultResponse(*outcome);
   }, "HttpPayloadWithDefault");
   (void)router_->Add("PUT", "/openUnions", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -891,22 +895,22 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     // content-type is tolerated, and blob payloads without @mediaType accept
     // any content type / accept.
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() ? smithy::http::MediaTypeOf(*content_type) != "application/json" : !request.body.empty()) {
-      auto error_response = JsonError(415, "", "unsupported media type", {});
+      auto error_response = helpers::JsonError(415, "", "unsupported media type", {});
       error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
-      auto error_response = JsonError(406, "", "not acceptable", {});
+      auto error_response = helpers::JsonError(406, "", "not acceptable", {});
       error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    auto input = ParseOpenUnionsInput(request, context, &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    if (!input) return ErrorToResponse(input.error());
+    auto input = helpers::ParseOpenUnionsInput(request, context, &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
+    if (!input) return helpers::ErrorToResponse(input.error());
     auto outcome = handler->OpenUnions(*input, context);
-    if (!outcome) return ErrorToResponse(outcome.error());
-    return BuildOpenUnionsResponse(*outcome);
+    if (!outcome) return helpers::ErrorToResponse(outcome.error());
+    return helpers::BuildOpenUnionsResponse(*outcome);
   }, "OpenUnions");
   (void)router_->Add("POST", "/preserveKeyOrder", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -914,22 +918,22 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     // content-type is tolerated, and blob payloads without @mediaType accept
     // any content type / accept.
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
-      auto error_response = JsonError(415, "", "unsupported media type", {});
+      auto error_response = helpers::JsonError(415, "", "unsupported media type", {});
       error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
-      auto error_response = JsonError(406, "", "not acceptable", {});
+      auto error_response = helpers::JsonError(406, "", "not acceptable", {});
       error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    auto input = ParsePreserveOrderInput(request, context, &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    if (!input) return ErrorToResponse(input.error());
+    auto input = helpers::ParsePreserveOrderInput(request, context, &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
+    if (!input) return helpers::ErrorToResponse(input.error());
     auto outcome = handler->PreserveOrder(*input, context);
-    if (!outcome) return ErrorToResponse(outcome.error());
-    return BuildPreserveOrderResponse(*outcome);
+    if (!outcome) return helpers::ErrorToResponse(outcome.error());
+    return helpers::BuildPreserveOrderResponse(*outcome);
   }, "PreserveOrder");
   (void)router_->Add("POST", "/roundTrip/{label}", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -937,22 +941,22 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     // content-type is tolerated, and blob payloads without @mediaType accept
     // any content type / accept.
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
-      auto error_response = JsonError(415, "", "unsupported media type", {});
+      auto error_response = helpers::JsonError(415, "", "unsupported media type", {});
       error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
-      auto error_response = JsonError(406, "", "not acceptable", {});
+      auto error_response = helpers::JsonError(406, "", "not acceptable", {});
       error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    auto input = ParseRoundTripInput(request, context, &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    if (!input) return ErrorToResponse(input.error());
+    auto input = helpers::ParseRoundTripInput(request, context, &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
+    if (!input) return helpers::ErrorToResponse(input.error());
     auto outcome = handler->RoundTrip(*input, context);
-    if (!outcome) return ErrorToResponse(outcome.error());
-    return BuildRoundTripResponse(*outcome);
+    if (!outcome) return helpers::ErrorToResponse(outcome.error());
+    return helpers::BuildRoundTripResponse(*outcome);
   }, "RoundTrip");
   (void)router_->Add("GET", "/version", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -960,22 +964,22 @@ PizzaAdminServiceServer::PizzaAdminServiceServer(std::shared_ptr<PizzaAdminServi
     // content-type is tolerated, and blob payloads without @mediaType accept
     // any content type / accept.
     if (request.headers.Get("content-type").has_value()) {
-      auto error_response = JsonError(415, "", "unsupported media type", {});
+      auto error_response = helpers::JsonError(415, "", "unsupported media type", {});
       error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
-      auto error_response = JsonError(406, "", "not acceptable", {});
+      auto error_response = helpers::JsonError(406, "", "not acceptable", {});
       error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    auto input = ParseVersionInput(request, context, &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    if (!input) return ErrorToResponse(input.error());
+    auto input = helpers::ParseVersionInput(request, context, &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
+    if (!input) return helpers::ErrorToResponse(input.error());
     auto outcome = handler->Version(*input, context);
-    if (!outcome) return ErrorToResponse(outcome.error());
-    return BuildVersionResponse(*outcome);
+    if (!outcome) return helpers::ErrorToResponse(outcome.error());
+    return helpers::BuildVersionResponse(*outcome);
   }, "Version");
 }
 

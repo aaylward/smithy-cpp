@@ -137,14 +137,43 @@ final class CppSymbolProvider implements SymbolProvider {
     if (declaredNames == null) {
       declaredNames = computeDeclaredNames();
     }
-    return declaredNames.getOrDefault(
-        shape.getId(), CppReservedWords.escape(shape.getId().getName()));
+    return declaredNames.getOrDefault(shape.getId(), escapeTypeName(shape.getId().getName()));
+  }
+
+  /**
+   * Keyword escaping plus the two file-level identifiers generated sources claim (issue #71): a
+   * type named {@code helpers} or {@code types} would be ambiguous against the helpers namespace /
+   * the types alias, so it gets the same trailing-underscore treatment as a keyword. Member names
+   * stay on plain {@link CppReservedWords} — member access never collides with a namespace.
+   */
+  private static String escapeTypeName(String name) {
+    String escaped = CppReservedWords.escape(name);
+    return escaped.equals("helpers") || escaped.equals("types") ? escaped + "_" : escaped;
+  }
+
+  /**
+   * The spelling generated .cc code uses to reference a shape's C++ type where a file-local helper
+   * could otherwise shadow it (issue #71): declared model types go through the file-level {@code
+   * types} namespace alias ({@link CppWriter}); builtin mappings (std::string, float, smithy::Blob,
+   * ...) have no model-controlled name and stay bare.
+   */
+  String typeRef(Shape shape) {
+    String name = toSymbol(shape).getName();
+    // Only the kinds whose symbol IS a declared identifier: lists/maps spell
+    // std::vector<...>/std::map<...> inline and smithy.api#Unit maps to the
+    // runtime's smithy::Unit — no model-controlled name to protect there.
+    boolean declared =
+        (shape.isStructureShape()
+                || shape.isUnionShape()
+                || shape.isEnumShape()
+                || shape.isIntEnumShape())
+            && !shape.getId().toString().equals("smithy.api#Unit");
+    return declared ? "types::" + name : name;
   }
 
   /**
    * Whether the shape declares a C++ type name in the generated module — the filter behind {@link
-   * #declaredName} and the shape-name guard's collision scan (issue #71). smithy.api#Unit maps to
-   * the runtime's smithy::Unit and declares nothing.
+   * #declaredName}. smithy.api#Unit maps to the runtime's smithy::Unit and declares nothing.
    */
   static boolean declaresType(Shape shape) {
     return (shape.isStructureShape()
@@ -174,7 +203,7 @@ final class CppSymbolProvider implements SymbolProvider {
       }
       byName
           .computeIfAbsent(
-              CppReservedWords.escape(shape.getId().getName()), key -> new java.util.ArrayList<>())
+              escapeTypeName(shape.getId().getName()), key -> new java.util.ArrayList<>())
           .add(shape);
     }
     String homeNamespace = settings.service().getNamespace();

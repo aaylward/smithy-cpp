@@ -44,21 +44,6 @@ final class ValidationGenerator {
   private boolean wiringEmitted;
 
   /**
-   * The wiring's anonymous-namespace helper names — reserved by the shape-name guard exactly when
-   * {@link #wiringNeeded} holds (issue #71).
-   */
-  static final List<String> WIRING_HELPERS =
-      List.of("AddValidationFailure", "ValidationErrorResponse");
-
-  /**
-   * What {@link #writeWiring} will decide for the same {@code alsoEmit}: the shape-name guard
-   * mirrors the decision without emitting anything.
-   */
-  boolean wiringNeeded(boolean alsoEmit) {
-    return hasValidators() || alsoEmit;
-  }
-
-  /**
    * The construct-then-emit wiring every protocol's writeServerHelpers repeats: build the
    * validators and, when the service validates anything (or {@code alsoEmit} — failures the
    * protocol records itself, like HTTP+JSON's top-level @required bindings), emit the failure
@@ -74,7 +59,7 @@ final class ValidationGenerator {
       String validationErrorCode,
       ProtocolSupport.ErrorResponseSpec spec) {
     ValidationGenerator validation = new ValidationGenerator(context, operations);
-    validation.wiringEmitted = validation.wiringNeeded(alsoEmit);
+    validation.wiringEmitted = validation.hasValidators() || alsoEmit;
     if (validation.wiringEmitted) {
       writeFailureHelper(w);
       validation.writeValidators(w);
@@ -108,10 +93,10 @@ final class ValidationGenerator {
       return;
     }
     w.write("std::vector<smithy::server::ValidationFailure> validation_failures;");
-    w.write("$L(input, \"\", &validation_failures);", validatorNameFor(operation));
+    w.write("helpers::$L(input, \"\", &validation_failures);", validatorNameFor(operation));
     w.write(
         "if (!validation_failures.empty()) "
-            + "return ValidationErrorResponse(validation_failures$L);",
+            + "return helpers::ValidationErrorResponse(validation_failures$L);",
         extraArgs);
   }
 
@@ -258,7 +243,7 @@ final class ValidationGenerator {
     w.write("smithy::DocumentMap body;");
     w.write("body.emplace(\"fieldList\", smithy::Document(std::move(field_list)));");
     w.write(
-        "smithy::http::HttpResponse response = $L(400, $S, summary, std::move(body)$L);",
+        "smithy::http::HttpResponse response = helpers::$L(400, $S, summary, std::move(body)$L);",
         errorFn,
         errorCode,
         extraArgs);
@@ -290,7 +275,7 @@ final class ValidationGenerator {
           "void $L(const $L& value, const std::string& path, "
               + "std::vector<smithy::server::ValidationFailure>* failures);",
           validatorName(shape),
-          context.cppSymbols().toSymbol(shape).getName());
+          context.cppSymbols().typeRef(shape));
       declared = true;
     }
     if (declared) {
@@ -308,20 +293,8 @@ final class ValidationGenerator {
     return "Validate" + SerdeCodeGen.serdeFunctionSuffix(context, shape);
   }
 
-  /**
-   * The Validate&lt;Suffix&gt; helper names this generator will declare in the server's anonymous
-   * namespace — reserved by the shape-name guard (issue #71).
-   */
-  Set<String> validatorNames() {
-    Set<String> names = new LinkedHashSet<>();
-    for (ShapeId id : constrained) {
-      names.add(validatorName(context.model().expectShape(id)));
-    }
-    return names;
-  }
-
   private void writeValidator(CppWriter w, Shape shape) {
-    String type = context.cppSymbols().toSymbol(shape).getName();
+    String type = context.cppSymbols().typeRef(shape);
     w.openBlock(
         "void $L(const $L& value, const std::string& path, "
             + "std::vector<smithy::server::ValidationFailure>* failures) {",
@@ -409,7 +382,7 @@ final class ValidationGenerator {
   private void writeRecursion(CppWriter w, MemberShape member, String valueExpr, String pathVar) {
     Shape memberTarget = target(member);
     if (constrained.contains(memberTarget.getId())) {
-      w.write("$L($L, $L, failures);", validatorName(memberTarget), valueExpr, pathVar);
+      w.write("helpers::$L($L, $L, failures);", validatorName(memberTarget), valueExpr, pathVar);
     }
   }
 
@@ -514,7 +487,7 @@ final class ValidationGenerator {
     w.write("const std::size_t member_length = $L;", lengthExpr);
     w.openBlock("if ($L) {", condition);
     w.write(
-        "AddValidationFailure(failures, $L, \"Value with length \" + "
+        "helpers::AddValidationFailure(failures, $L, \"Value with length \" + "
             + "std::to_string(member_length) + \" at '\" + $L + \"' failed to satisfy "
             + "constraint: $L\");",
         pathVar,
@@ -553,7 +526,7 @@ final class ValidationGenerator {
     }
     w.openBlock("if ($L) {", condition);
     w.write(
-        "AddValidationFailure(failures, $L, \"Value at '\" + $L + \"' failed to satisfy "
+        "helpers::AddValidationFailure(failures, $L, \"Value at '\" + $L + \"' failed to satisfy "
             + "constraint: $L\");",
         pathVar,
         pathVar,
@@ -580,7 +553,7 @@ final class ValidationGenerator {
         pattern.getValue());
     w.openBlock("if (!$L.ok() || !$L->Search($L)) {", variable, variable, valueExpr);
     w.write(
-        "AddValidationFailure(failures, $L, \"Value at '\" + $L + \"' failed to satisfy "
+        "helpers::AddValidationFailure(failures, $L, \"Value at '\" + $L + \"' failed to satisfy "
             + "constraint: Member must satisfy regular expression pattern: \" + "
             + "std::string($L));",
         pathVar,
@@ -665,7 +638,7 @@ final class ValidationGenerator {
     w.closeBlock("}");
     w.openBlock("if (!unique) {");
     w.write(
-        "AddValidationFailure(failures, $L, \"Value at '\" + $L + \"' failed to satisfy "
+        "helpers::AddValidationFailure(failures, $L, \"Value at '\" + $L + \"' failed to satisfy "
             + "constraint: Member must have unique values\");",
         pathVar,
         pathVar);
@@ -696,7 +669,7 @@ final class ValidationGenerator {
     String type = context.cppSymbols().toSymbol(target).getName();
     w.openBlock("if ($L.value() == $L::Value::kUnknown) {", valueExpr, type);
     w.write(
-        "AddValidationFailure(failures, $L, \"Value at '\" + $L + \"' failed to satisfy "
+        "helpers::AddValidationFailure(failures, $L, \"Value at '\" + $L + \"' failed to satisfy "
             + "constraint: Member must satisfy enum value set: [$L]\");",
         pathVar,
         pathVar,

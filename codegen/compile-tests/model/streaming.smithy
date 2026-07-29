@@ -131,6 +131,20 @@ structure ChatMessage {
     text: String
 
     sender: String
+
+    /// Helper-shadowing stress, streaming flavor (issue #71): types named
+    /// after the stream helpers ride an event payload through every wire.
+    dial: DialStream
+
+    encode: EncodeConverseEvent
+}
+
+structure DialStream {
+    value: String
+}
+
+structure EncodeConverseEvent {
+    value: String
 }
 
 structure TypingNotice {

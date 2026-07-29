@@ -14,6 +14,8 @@
 
 namespace smithy::protocoltests::jsonrpc2 {
 
+namespace types = ::smithy::protocoltests::jsonrpc2;
+
 // Generated from smithy.test#httpMalformedRequestTests: each malformed
 // wire request is routed into the generated server, which must reject
 // it with the expected status/headers/body before the handler runs.

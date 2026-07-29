@@ -28,7 +28,10 @@
 
 namespace example::roundtrip::rest {
 
+namespace types = ::example::roundtrip::rest;
+
 namespace {
+namespace helpers {
 
 // Strict text parsing for label/query/header bindings ([[maybe_unused]]:
 // emitted for every service; not every service binds numeric values).
@@ -81,7 +84,7 @@ smithy::http::HttpResponse JsonError(int status, const std::string& code, const 
   if (error.kind() == smithy::ErrorKind::kModeled) {
     if (error.code() == "DescribeSinkError") {
       smithy::DocumentMap body;
-      if (const auto* detail = error.detail<DescribeSinkError>()) {
+      if (const auto* detail = error.detail<types::DescribeSinkError>()) {
         body = SerializeDescribeSinkError(*detail).as_map();
       }
       // The typed detail's own message member wins over the generic one.
@@ -89,14 +92,14 @@ smithy::http::HttpResponse JsonError(int status, const std::string& code, const 
       if (!has_message && !error.message().empty()) {
         body.emplace("message", smithy::Document(error.message()));
       }
-      auto response = JsonError(410, "", "", std::move(body));
+      auto response = helpers::JsonError(410, "", "", std::move(body));
       response.headers.Set("x-error-type", error.code());
       for (const auto& [name, value] : header_values) response.headers.Set(name, value);
       return response;
     }
     if (error.code() == "SinkNotFound") {
       smithy::DocumentMap body;
-      if (const auto* detail = error.detail<SinkNotFound>()) {
+      if (const auto* detail = error.detail<types::SinkNotFound>()) {
         body = SerializeSinkNotFound(*detail).as_map();
       }
       // The typed detail's own message member wins over the generic one.
@@ -104,14 +107,14 @@ smithy::http::HttpResponse JsonError(int status, const std::string& code, const 
       if (!has_message && !error.message().empty()) {
         body.emplace("message", smithy::Document(error.message()));
       }
-      auto response = JsonError(404, "", "", std::move(body));
+      auto response = helpers::JsonError(404, "", "", std::move(body));
       response.headers.Set("x-error-type", error.code());
       for (const auto& [name, value] : header_values) response.headers.Set(name, value);
       return response;
     }
     if (error.code() == "SinkQuotaExceeded") {
       smithy::DocumentMap body;
-      if (const auto* detail = error.detail<SinkQuotaExceeded>()) {
+      if (const auto* detail = error.detail<types::SinkQuotaExceeded>()) {
         body = SerializeSinkQuotaExceeded(*detail).as_map();
       }
       // The typed detail's own message member wins over the generic one.
@@ -123,20 +126,20 @@ smithy::http::HttpResponse JsonError(int status, const std::string& code, const 
         if (it->second.is_int()) header_values.emplace_back("x-retry-after-seconds", std::to_string(it->second.as_int()));
         body.erase(it);
       }
-      auto response = JsonError(503, "", "", std::move(body));
+      auto response = helpers::JsonError(503, "", "", std::move(body));
       response.headers.Set("x-error-type", error.code());
       for (const auto& [name, value] : header_values) response.headers.Set(name, value);
       return response;
     }
-    return JsonError(400, error.code(), error.message(), {});
+    return helpers::JsonError(400, error.code(), error.message(), {});
   }
   if (error.kind() == smithy::ErrorKind::kValidation || error.kind() == smithy::ErrorKind::kSerialization) {
-    auto response = JsonError(400, "", error.message(), {});
+    auto response = helpers::JsonError(400, "", error.message(), {});
     response.headers.Set("x-error-type", "SerializationException");
     return response;
   }
   // Never leak internal detail on unexpected failures.
-  return JsonError(500, "InternalFailure", "internal failure", {});
+  return helpers::JsonError(500, "InternalFailure", "internal failure", {});
 }
 
 // Constraint validation (smithy.framework#ValidationException): messages
@@ -145,27 +148,27 @@ void AddValidationFailure(std::vector<smithy::server::ValidationFailure>* failur
   failures->push_back({std::move(path), std::move(message)});
 }
 
-void ValidateDescribeSinkInput(const DescribeSinkInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
+void ValidateDescribeSinkInput(const types::DescribeSinkInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
   {
     const std::string member_path = path + "/sinkId";
     {
       const std::size_t member_length = smithy::Utf8CodePointCount(value.sinkId);
       if (member_length < 1ULL || member_length > 32ULL) {
-        AddValidationFailure(failures, member_path, "Value with length " + std::to_string(member_length) + " at '" + member_path + "' failed to satisfy constraint: Member must have length between 1 and 32, inclusive");
+        helpers::AddValidationFailure(failures, member_path, "Value with length " + std::to_string(member_length) + " at '" + member_path + "' failed to satisfy constraint: Member must have length between 1 and 32, inclusive");
       }
     }
     static const smithy::Outcome<smithy::Regex> kPattern0 = smithy::Regex::Compile(R"__smithy(^[A-Za-z0-9]+$)__smithy");
     if (!kPattern0.ok() || !kPattern0->Search(value.sinkId)) {
-      AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy regular expression pattern: " + std::string("^[A-Za-z0-9]+$"));
+      helpers::AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy regular expression pattern: " + std::string("^[A-Za-z0-9]+$"));
     }
   }
 }
 
-void ValidateKitchenSink(const KitchenSink& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
+void ValidateKitchenSink(const types::KitchenSink& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
   if (value.priority.has_value()) {
     const std::string member_path = path + "/priority";
     if ((*value.priority).value() == Priority::Value::kUnknown) {
-      AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy enum value set: [low, medium, high]");
+      helpers::AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy enum value set: [low, medium, high]");
     }
   }
   if (value.uniqueNames.has_value()) {
@@ -178,56 +181,56 @@ void ValidateKitchenSink(const KitchenSink& value, const std::string& path, std:
         }
       }
       if (!unique) {
-        AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must have unique values");
+        helpers::AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must have unique values");
       }
     }
   }
 }
 
-void ValidatePutSinkInput(const PutSinkInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
+void ValidatePutSinkInput(const types::PutSinkInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
   {
     const std::string member_path = path + "/sinkId";
     {
       const std::size_t member_length = smithy::Utf8CodePointCount(value.sinkId);
       if (member_length < 1ULL || member_length > 32ULL) {
-        AddValidationFailure(failures, member_path, "Value with length " + std::to_string(member_length) + " at '" + member_path + "' failed to satisfy constraint: Member must have length between 1 and 32, inclusive");
+        helpers::AddValidationFailure(failures, member_path, "Value with length " + std::to_string(member_length) + " at '" + member_path + "' failed to satisfy constraint: Member must have length between 1 and 32, inclusive");
       }
     }
     static const smithy::Outcome<smithy::Regex> kPattern1 = smithy::Regex::Compile(R"__smithy(^[A-Za-z0-9]+$)__smithy");
     if (!kPattern1.ok() || !kPattern1->Search(value.sinkId)) {
-      AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy regular expression pattern: " + std::string("^[A-Za-z0-9]+$"));
+      helpers::AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy regular expression pattern: " + std::string("^[A-Za-z0-9]+$"));
     }
   }
   {
     const std::string member_path = path + "/limit";
     if (value.limit < 1 || value.limit > 100) {
-      AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must be between 1 and 100, inclusive");
+      helpers::AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must be between 1 and 100, inclusive");
     }
   }
   if (value.priority.has_value()) {
     const std::string member_path = path + "/priority";
     if ((*value.priority).value() == Priority::Value::kUnknown) {
-      AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy enum value set: [low, medium, high]");
+      helpers::AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy enum value set: [low, medium, high]");
     }
   }
   if (value.sink.has_value()) {
     const std::string member_path = path + "/sink";
-    ValidateKitchenSink((*value.sink), member_path, failures);
+    helpers::ValidateKitchenSink((*value.sink), member_path, failures);
   }
 }
 
-void ValidateUploadAttachmentInput(const UploadAttachmentInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
+void ValidateUploadAttachmentInput(const types::UploadAttachmentInput& value, const std::string& path, std::vector<smithy::server::ValidationFailure>* failures) {
   {
     const std::string member_path = path + "/sinkId";
     {
       const std::size_t member_length = smithy::Utf8CodePointCount(value.sinkId);
       if (member_length < 1ULL || member_length > 32ULL) {
-        AddValidationFailure(failures, member_path, "Value with length " + std::to_string(member_length) + " at '" + member_path + "' failed to satisfy constraint: Member must have length between 1 and 32, inclusive");
+        helpers::AddValidationFailure(failures, member_path, "Value with length " + std::to_string(member_length) + " at '" + member_path + "' failed to satisfy constraint: Member must have length between 1 and 32, inclusive");
       }
     }
     static const smithy::Outcome<smithy::Regex> kPattern2 = smithy::Regex::Compile(R"__smithy(^[A-Za-z0-9]+$)__smithy");
     if (!kPattern2.ok() || !kPattern2->Search(value.sinkId)) {
-      AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy regular expression pattern: " + std::string("^[A-Za-z0-9]+$"));
+      helpers::AddValidationFailure(failures, member_path, "Value at '" + member_path + "' failed to satisfy constraint: Member must satisfy regular expression pattern: " + std::string("^[A-Za-z0-9]+$"));
     }
   }
 }
@@ -247,16 +250,16 @@ void ValidateUploadAttachmentInput(const UploadAttachmentInput& value, const std
   }
   smithy::DocumentMap body;
   body.emplace("fieldList", smithy::Document(std::move(field_list)));
-  smithy::http::HttpResponse response = JsonError(400, "", summary, std::move(body));
+  smithy::http::HttpResponse response = helpers::JsonError(400, "", summary, std::move(body));
   response.headers.Set("x-error-type", "ValidationException");
   return response;
 }
 
-smithy::Outcome<DescribeSinkInput> ParseDescribeSinkInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
+smithy::Outcome<types::DescribeSinkInput> ParseDescribeSinkInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
   (void)request;
   (void)context;
   (void)validation_failures;
-  DescribeSinkInput input{};
+  types::DescribeSinkInput input{};
   {
     const std::string& label_value = context.labels.at("sinkId");
     input.sinkId = label_value;
@@ -264,7 +267,7 @@ smithy::Outcome<DescribeSinkInput> ParseDescribeSinkInput(const smithy::http::Ht
   return input;
 }
 
-smithy::http::HttpResponse BuildDescribeSinkResponse(const DescribeSinkOutput& output) {
+smithy::http::HttpResponse BuildDescribeSinkResponse(const types::DescribeSinkOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -277,11 +280,11 @@ smithy::http::HttpResponse BuildDescribeSinkResponse(const DescribeSinkOutput& o
   return response;
 }
 
-smithy::Outcome<PutSinkInput> ParsePutSinkInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
+smithy::Outcome<types::PutSinkInput> ParsePutSinkInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
   (void)request;
   (void)context;
   (void)validation_failures;
-  PutSinkInput input{};
+  types::PutSinkInput input{};
   {
     const std::string& label_value = context.labels.at("sinkId");
     input.sinkId = label_value;
@@ -293,13 +296,13 @@ smithy::Outcome<PutSinkInput> ParsePutSinkInput(const smithy::http::HttpRequest&
   }
   if (!request.headers.Get("x-sink-created").has_value()) AddValidationFailure(validation_failures, "/created", "Value at '/created' failed to satisfy constraint: Member must not be null");
   if (const auto header_value = request.headers.Get("x-sink-priority"); header_value.has_value()) {
-    input.priority = Priority::FromString((*header_value));
+    input.priority = types::Priority::FromString((*header_value));
   }
   bool saw_limit = false;
   for (const auto& [key, value] : context.query_params) {
     if (key == "limit") {
       saw_limit = true;
-      auto parsed_num = ParseInt64Text(value, -2147483648LL, 2147483647LL);
+      auto parsed_num = helpers::ParseInt64Text(value, -2147483648LL, 2147483647LL);
       if (!parsed_num) return std::move(parsed_num).error();
       input.limit = static_cast<std::int32_t>(*parsed_num);
       continue;
@@ -321,7 +324,7 @@ smithy::Outcome<PutSinkInput> ParsePutSinkInput(const smithy::http::HttpRequest&
   {
     const smithy::Document* member = body_doc->Find("sink");
     if (member != nullptr && !member->is_null()) {
-      KitchenSink parsed_member{};
+      types::KitchenSink parsed_member{};
       {
         auto parsed = DeserializeKitchenSink(*member);
         if (!parsed) return std::move(parsed).error();
@@ -341,7 +344,7 @@ smithy::Outcome<PutSinkInput> ParsePutSinkInput(const smithy::http::HttpRequest&
   return input;
 }
 
-smithy::http::HttpResponse BuildPutSinkResponse(const PutSinkOutput& output) {
+smithy::http::HttpResponse BuildPutSinkResponse(const types::PutSinkOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -366,11 +369,11 @@ smithy::http::HttpResponse BuildPutSinkResponse(const PutSinkOutput& output) {
   return response;
 }
 
-smithy::Outcome<UploadAttachmentInput> ParseUploadAttachmentInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
+smithy::Outcome<types::UploadAttachmentInput> ParseUploadAttachmentInput(const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context, std::vector<smithy::server::ValidationFailure>* validation_failures) {
   (void)request;
   (void)context;
   (void)validation_failures;
-  UploadAttachmentInput input{};
+  types::UploadAttachmentInput input{};
   {
     const std::string& label_value = context.labels.at("sinkId");
     input.sinkId = label_value;
@@ -384,7 +387,7 @@ smithy::Outcome<UploadAttachmentInput> ParseUploadAttachmentInput(const smithy::
   return input;
 }
 
-smithy::http::HttpResponse BuildUploadAttachmentResponse(const UploadAttachmentOutput& output) {
+smithy::http::HttpResponse BuildUploadAttachmentResponse(const types::UploadAttachmentOutput& output) {
   (void)output;
   smithy::http::HttpResponse response;
   response.status = 200;
@@ -398,6 +401,7 @@ smithy::http::HttpResponse BuildUploadAttachmentResponse(const UploadAttachmentO
   return response;
 }
 
+}  // namespace helpers
 }  // namespace
 
 RoundTripRestServer::RoundTripRestServer(std::shared_ptr<RoundTripRestHandler> handler)
@@ -411,24 +415,24 @@ RoundTripRestServer::RoundTripRestServer(std::shared_ptr<RoundTripRestHandler> h
     // content-type is tolerated, and blob payloads without @mediaType accept
     // any content type / accept.
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
-      auto error_response = JsonError(415, "", "unsupported media type", {});
+      auto error_response = helpers::JsonError(415, "", "unsupported media type", {});
       error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
-      auto error_response = JsonError(406, "", "not acceptable", {});
+      auto error_response = helpers::JsonError(406, "", "not acceptable", {});
       error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    auto input = ParseDescribeSinkInput(request, context, &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    if (!input) return ErrorToResponse(input.error());
-    ValidateDescribeSinkInput(*input, "", &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
+    auto input = helpers::ParseDescribeSinkInput(request, context, &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
+    if (!input) return helpers::ErrorToResponse(input.error());
+    helpers::ValidateDescribeSinkInput(*input, "", &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
     auto outcome = handler->DescribeSink(*input, context);
-    if (!outcome) return ErrorToResponse(outcome.error());
-    return BuildDescribeSinkResponse(*outcome);
+    if (!outcome) return helpers::ErrorToResponse(outcome.error());
+    return helpers::BuildDescribeSinkResponse(*outcome);
   }, "DescribeSink");
   (void)router_->Add("PUT", "/sinks/{sinkId}", [handler](const smithy::http::HttpRequest& raw_request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     smithy::http::HttpRequest request = raw_request;
@@ -436,7 +440,7 @@ RoundTripRestServer::RoundTripRestServer(std::shared_ptr<RoundTripRestHandler> h
     if (const auto request_encoding = request.headers.Get("content-encoding"); request_encoding.has_value() && (*request_encoding == "gzip" || request_encoding->ends_with(", gzip"))) {
       auto decompressed = smithy::GzipDecompress(request.body);
       if (!decompressed) {
-        return JsonError(400, "", "invalid gzip request body", {});
+        return helpers::JsonError(400, "", "invalid gzip request body", {});
       }
       request.body = *std::move(decompressed);
     }
@@ -445,24 +449,24 @@ RoundTripRestServer::RoundTripRestServer(std::shared_ptr<RoundTripRestHandler> h
     // content-type is tolerated, and blob payloads without @mediaType accept
     // any content type / accept.
     if (const auto content_type = request.headers.Get("content-type"); content_type.has_value() && smithy::http::MediaTypeOf(*content_type) != "application/json") {
-      auto error_response = JsonError(415, "", "unsupported media type", {});
+      auto error_response = helpers::JsonError(415, "", "unsupported media type", {});
       error_response.headers.Set("x-error-type", "UnsupportedMediaTypeException");
       return error_response;
     }
     if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
-      auto error_response = JsonError(406, "", "not acceptable", {});
+      auto error_response = helpers::JsonError(406, "", "not acceptable", {});
       error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    auto input = ParsePutSinkInput(request, context, &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    if (!input) return ErrorToResponse(input.error());
-    ValidatePutSinkInput(*input, "", &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
+    auto input = helpers::ParsePutSinkInput(request, context, &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
+    if (!input) return helpers::ErrorToResponse(input.error());
+    helpers::ValidatePutSinkInput(*input, "", &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
     auto outcome = handler->PutSink(*input, context);
-    if (!outcome) return ErrorToResponse(outcome.error());
-    return BuildPutSinkResponse(*outcome);
+    if (!outcome) return helpers::ErrorToResponse(outcome.error());
+    return helpers::BuildPutSinkResponse(*outcome);
   }, "PutSink");
   (void)router_->Add("POST", "/sinks/{sinkId}/attachment", [handler](const smithy::http::HttpRequest& request, const smithy::server::RequestContext& context) -> smithy::http::HttpResponse {
     // Content-Type validation per the HTTP binding spec (415), then Accept (406);
@@ -470,19 +474,19 @@ RoundTripRestServer::RoundTripRestServer(std::shared_ptr<RoundTripRestHandler> h
     // content-type is tolerated, and blob payloads without @mediaType accept
     // any content type / accept.
     if (const auto accept = request.headers.Get("accept"); accept.has_value() && !smithy::http::AcceptMatches(*accept, "application/json")) {
-      auto error_response = JsonError(406, "", "not acceptable", {});
+      auto error_response = helpers::JsonError(406, "", "not acceptable", {});
       error_response.headers.Set("x-error-type", "NotAcceptableException");
       return error_response;
     }
     std::vector<smithy::server::ValidationFailure> validation_failures;
-    auto input = ParseUploadAttachmentInput(request, context, &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
-    if (!input) return ErrorToResponse(input.error());
-    ValidateUploadAttachmentInput(*input, "", &validation_failures);
-    if (!validation_failures.empty()) return ValidationErrorResponse(validation_failures);
+    auto input = helpers::ParseUploadAttachmentInput(request, context, &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
+    if (!input) return helpers::ErrorToResponse(input.error());
+    helpers::ValidateUploadAttachmentInput(*input, "", &validation_failures);
+    if (!validation_failures.empty()) return helpers::ValidationErrorResponse(validation_failures);
     auto outcome = handler->UploadAttachment(*input, context);
-    if (!outcome) return ErrorToResponse(outcome.error());
-    return BuildUploadAttachmentResponse(*outcome);
+    if (!outcome) return helpers::ErrorToResponse(outcome.error());
+    return helpers::BuildUploadAttachmentResponse(*outcome);
   }, "UploadAttachment");
 }
 

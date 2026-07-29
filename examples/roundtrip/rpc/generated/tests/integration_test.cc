@@ -21,6 +21,8 @@
 
 namespace example::roundtrip::rpc {
 
+namespace types = ::example::roundtrip::rpc;
+
 // Integration tests for the generated RoundTripRpc service (PLAN Phase 5): the
 // generated client drives the generated server over the loopback transport
 // AND a real socket on an ephemeral port. Random inputs are seeded and

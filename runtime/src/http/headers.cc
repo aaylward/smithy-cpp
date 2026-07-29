@@ -120,25 +120,23 @@ std::string MediaTypeOf(std::string_view content_type) {
 }
 
 bool ValidHeaderName(std::string_view name) {
-  if (name.empty()) return false;
-  for (const char c : name) {
+  // Control bytes split or corrupt the field line; space and colon corrupt
+  // the name/value boundary. (Full token validation would also exclude
+  // separators like '(' — the defense here is scoped to what breaks the
+  // wire, not to RFC pedantry.)
+  return !name.empty() && std::ranges::none_of(name, [](char c) {
     const auto byte = static_cast<unsigned char>(c);
-    // Control bytes split or corrupt the field line; space and colon corrupt
-    // the name/value boundary. (Full token validation would also exclude
-    // separators like '(' — the defense here is scoped to what breaks the
-    // wire, not to RFC pedantry.)
-    if (byte <= 0x20 || byte == 0x7F || c == ':') return false;
-  }
-  return true;
+    return byte <= 0x20 || byte == 0x7F || c == ':';
+  });
 }
 
 bool ValidHeaderValue(std::string_view value) {
-  for (const char c : value) {
+  return std::ranges::all_of(value, [](char c) {
     const auto byte = static_cast<unsigned char>(c);
-    if (byte == '\t') continue;  // HTAB is legal inside field values
-    if (byte < 0x20 || byte == 0x7F) return false;
-  }
-  return true;
+    // HTAB is legal inside field values; every other control byte and DEL
+    // is not.
+    return byte == '\t' || (byte >= 0x20 && byte != 0x7F);
+  });
 }
 
 std::optional<std::string> FindUnsafeHeader(const Headers& headers) {

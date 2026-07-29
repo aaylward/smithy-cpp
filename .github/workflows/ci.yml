@@ -211,7 +211,7 @@ jobs:
           lcov --ignore-errors negative --list "$REPORT"
           genhtml --ignore-errors negative --output-directory coverage-html "$REPORT"
           cp "$REPORT" coverage-html/coverage.lcov
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: coverage-html

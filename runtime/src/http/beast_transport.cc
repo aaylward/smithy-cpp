@@ -1316,11 +1316,14 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
     });
   }
 
+  // By value, like ToWireResponse below it: every caller is done with the
+  // response, so the body (bounded by max_body_bytes, up to tens of MiB)
+  // moves through to the wire object instead of being copied per request.
   template <typename Stream>
-  void Respond(const std::shared_ptr<Stream>& stream, const HttpResponse& response, bool keep_alive,
+  void Respond(const std::shared_ptr<Stream>& stream, HttpResponse response, bool keep_alive,
                std::string peer) {
-    auto wire =
-        std::make_shared<bhttp::response<bhttp::string_body>>(ToWireResponse(response, keep_alive));
+    auto wire = std::make_shared<bhttp::response<bhttp::string_body>>(
+        ToWireResponse(std::move(response), keep_alive));
     // Each wire phase gets its own request_timeout_seconds budget: Beast
     // expiries are absolute and outlive the op, so without a re-arm the
     // write would run under the deadline set at READ start — and a handler
@@ -1385,7 +1388,7 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
           // response on the plain HTTP connection, keep-alive intact.
           self->active.fetch_add(1);
           const bool keep_alive = parser->get().keep_alive() && !self->stopping;
-          self->Respond(stream, *refusal, keep_alive, request.peer_address);
+          self->Respond(stream, *std::move(refusal), keep_alive, std::move(request.peer_address));
           return;
         }
         self->CompleteUpgrade(stream, parser, std::move(request));

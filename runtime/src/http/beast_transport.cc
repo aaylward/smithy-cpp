@@ -1961,6 +1961,15 @@ Outcome<HttpResponse> BeastHttpClient::Send(const HttpRequest& request) {
   if (state_->opts.host.empty()) {
     return Error::Validation("beast client: options need a host");
   }
+  // Request-line injection defense (issue #109): Beast's target()/method
+  // do not reject CR/LF, so a raw one would split the request line. Refused
+  // before the dial. (An empty target is Beast-defaulted to "/" below.)
+  if (request.method.empty() || !ValidRequestLineField(request.method)) {
+    return Error::Validation("beast client: request method contains forbidden bytes or is empty");
+  }
+  if (!ValidRequestLineField(request.target)) {
+    return Error::Validation("beast client: request target contains forbidden bytes");
+  }
   if (const auto unsafe = FindUnsafeHeader(request.headers); unsafe.has_value()) {
     // The header-injection defense (issue #109): refused before anything
     // is written — an embedded CR/LF would split the request on the wire.
@@ -2205,6 +2214,14 @@ Outcome<std::shared_ptr<WebSocket>> BeastWebSocketClient::Dial(Options options) 
     // GET verbatim, so CR/LF here is request splitting.
     return Error::Validation("beast websocket: upgrade header \"" + *unsafe +
                              "\" contains forbidden bytes");
+  }
+  if (!ValidRequestLineField(options.target)) {
+    // Request-line injection (issue #109): the target rides the upgrade
+    // GET's request line, and Beast's handshake target() does not reject
+    // CR/LF any more than the HTTP client's does. Guarded here for parity
+    // with the upgrade-header check above and the HTTP-client target guard.
+    // (The method is always GET, set by Beast, so it needs no check.)
+    return Error::Validation("beast websocket: upgrade target contains forbidden bytes");
   }
   if (options.raw_text_frames && options.offer_json_frames) {
     return Error::Validation(

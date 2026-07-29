@@ -76,6 +76,18 @@ bool ValidHeaderValue(std::string_view value);
 // outbound transport path checks this before writing.
 std::optional<std::string> FindUnsafeHeader(const Headers& headers);
 
+// The request-line sibling of the header defense (issue #109): whether a
+// method or an origin-form target is safe to write into the client request
+// line "METHOD SP TARGET SP HTTP/1.1 CRLF". Rejects space, every control
+// byte (CR/LF split the line; the rest corrupt it), and DEL — but NOT
+// colon, which is a legal target character (RFC 3986 pchar) unlike a header
+// name. A method is an RFC 9110 token and a target is percent-encoded, so a
+// conformant value never contains these; a raw one is request-line
+// injection. Empty passes the byte scan — callers enforce non-emptiness
+// where the grammar demands it (an empty method, not an empty target which
+// the transports default to "/").
+bool ValidRequestLineField(std::string_view field);
+
 }  // namespace smithy::http
 
 #endif  // SMITHY_HTTP_HEADERS_H_

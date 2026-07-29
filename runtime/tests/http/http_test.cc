@@ -241,6 +241,8 @@ TEST(HeadersTest, WireSafetyPredicatesRejectControlBytes) {
   EXPECT_FALSE(ValidHeaderName("x\ta"));  // HTAB is a value privilege
   EXPECT_FALSE(ValidHeaderName(std::string_view("x\0y", 3)));
   EXPECT_FALSE(ValidHeaderName("x\x7f"));
+  EXPECT_FALSE(ValidHeaderName("x\x0b"));  // VT — a control byte, not just CR/LF
+  EXPECT_FALSE(ValidHeaderName("x\x0c"));  // FF
 
   // ...values admit HTAB and obs-text, never CR/LF/NUL/DEL.
   EXPECT_TRUE(ValidHeaderValue(""));
@@ -252,6 +254,8 @@ TEST(HeadersTest, WireSafetyPredicatesRejectControlBytes) {
   EXPECT_FALSE(ValidHeaderValue("bare\nlf"));
   EXPECT_FALSE(ValidHeaderValue(std::string_view("nul\0", 4)));
   EXPECT_FALSE(ValidHeaderValue("del\x7f"));
+  EXPECT_FALSE(ValidHeaderValue("vt\x0b"));  // VT/FF are controls, not just CR/LF
+  EXPECT_FALSE(ValidHeaderValue("ff\x0c"));
 
   Headers headers;
   headers.Add("fine", "value");
@@ -259,6 +263,28 @@ TEST(HeadersTest, WireSafetyPredicatesRejectControlBytes) {
   headers.Add("location", "https://x/\r\nset-cookie: evil");
   ASSERT_TRUE(FindUnsafeHeader(headers).has_value());
   EXPECT_EQ(*FindUnsafeHeader(headers), "location");
+}
+
+TEST(HeadersTest, RequestLineFieldPredicateRejectsSpaceAndControls) {
+  // The request-line sibling (issue #109): what may reach
+  // "METHOD SP TARGET SP HTTP/1.1". Legitimate methods and percent-encoded
+  // origin-form targets pass — including a colon, which (unlike a header
+  // name) is a legal target character.
+  EXPECT_TRUE(ValidRequestLineField("GET"));
+  EXPECT_TRUE(ValidRequestLineField("/cities/a%20b?pageSize=10"));
+  EXPECT_TRUE(ValidRequestLineField("/a:b/c;p=q?x=y&z"));   // colon/semicolon legal in a target
+  EXPECT_TRUE(ValidRequestLineField("/path/caf\xc3\xa9"));  // raw UTF-8 obs bytes don't split
+  EXPECT_TRUE(ValidRequestLineField(""));                   // empty: byte scan alone passes
+
+  EXPECT_FALSE(ValidRequestLineField("/x HTTP/1.1"));               // space splits the line
+  EXPECT_FALSE(ValidRequestLineField("/x\r\nEvil: 1"));             // CRLF injection
+  EXPECT_FALSE(ValidRequestLineField("/x\revil"));                  // bare CR
+  EXPECT_FALSE(ValidRequestLineField("/x\nevil"));                  // bare LF
+  EXPECT_FALSE(ValidRequestLineField("GET\tPOST"));                 // HTAB
+  EXPECT_FALSE(ValidRequestLineField(std::string_view("/\0", 2)));  // NUL
+  EXPECT_FALSE(ValidRequestLineField("/x\x7f"));                    // DEL
+  EXPECT_FALSE(ValidRequestLineField("/x\x0b"));                    // VT
+  EXPECT_FALSE(ValidRequestLineField("/x\x0c"));                    // FF
 }
 
 }  // namespace

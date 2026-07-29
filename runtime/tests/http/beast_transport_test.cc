@@ -252,6 +252,35 @@ TEST(BeastTransportTest, StripsHandlerSetFramingHeaders) {
   server.Stop();
 }
 
+TEST(BeastTransportTest, AnInjectedResponseHeaderBecomesA500NotASplitResponse) {
+  // The outbound injection defense (issue #109), at the same authority
+  // point as the framing strip above. The handler models the real attack
+  // shape: request-derived text that reached it DECODED (percent-decoding,
+  // a JSON body, a database field) and is echoed into a header value. The
+  // raw wire must carry one plain 500 — never a second field line, never
+  // the smuggled set-cookie.
+  BeastServerTransport server;
+  ASSERT_TRUE(server
+                  .Start([](const HttpRequest&) {
+                    HttpResponse response;
+                    response.status = 302;
+                    response.headers.Set("location", "https://x/\r\nset-cookie: evil=1");
+                    response.body = "redirecting";
+                    return response;
+                  })
+                  .ok());
+  const std::string raw =
+      RawRoundTrip(server.port(), "GET / HTTP/1.1\r\nhost: x\r\nconnection: close\r\n\r\n");
+  ASSERT_FALSE(raw.empty());
+  const std::string wire = AsciiLowerCopy(raw);
+  EXPECT_NE(wire.find("http/1.1 500"), std::string::npos) << raw;
+  EXPECT_EQ(wire.find("set-cookie"), std::string::npos) << raw;
+  EXPECT_EQ(wire.find("location"), std::string::npos) << raw;
+  EXPECT_EQ(wire.find("redirecting"), std::string::npos) << raw;  // body replaced too
+  EXPECT_NE(wire.find("forbidden bytes"), std::string::npos) << raw;
+  server.Stop();
+}
+
 TEST(BeastTransportTest, MaxConnectionsBoundsConcurrencyWithoutRejecting) {
   // Issue #46: at the cap the server pauses accepting — new connections wait
   // in the kernel's listen backlog until a session closes — rather than

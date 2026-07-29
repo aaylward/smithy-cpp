@@ -439,6 +439,22 @@ TEST(BeastClientTest, TlsServerNegotiatesHttp11Alpn) {
   server.Stop();
 }
 
+TEST(BeastClientTest, ARequestWithAnInjectedHeaderIsRefusedBeforeAnyWire) {
+  // The outbound injection defense (issue #109): CR/LF in a request header
+  // would split the request on the wire. The client refuses with
+  // Validation before it dials — a live server proves nothing is sent.
+  BeastServerTransport server({.port = 0, .threads = 1});
+  ASSERT_TRUE(server.Start(EchoHandler()).ok());
+  BeastHttpClient client({.host = "127.0.0.1", .port = server.port()});
+  HttpRequest request = PostRequest("body");
+  request.headers.Set("x-echo", "value\r\nx-evil: injected");
+  const auto outcome = client.Send(request);
+  ASSERT_FALSE(outcome.ok());
+  EXPECT_EQ(outcome.error().kind(), ErrorKind::kValidation);
+  EXPECT_NE(outcome.error().message().find("x-echo"), std::string::npos);
+  server.Stop();
+}
+
 TEST(BeastClientTest, TlsServerRefusesAlpnWithoutHttp11) {
   BeastServerTransport server(TlsServerOptions());
   ASSERT_TRUE(server.Start(EchoHandler()).ok());

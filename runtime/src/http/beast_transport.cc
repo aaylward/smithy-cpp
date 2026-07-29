@@ -1323,6 +1323,16 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
   template <typename Stream>
   void Respond(const std::shared_ptr<Stream>& stream, HttpResponse response, bool keep_alive,
                std::string peer) {
+    if (FindUnsafeHeader(response.headers).has_value()) {
+      // The header-injection defense (issue #109): a handler echoing
+      // CR/LF-bearing text into a header is response splitting. The whole
+      // response is replaced — fixed text, nothing echoed — loudly enough
+      // that the handler bug gets found instead of shipped.
+      response = HttpResponse{};
+      response.status = 500;
+      response.headers.Set("content-type", "text/plain");
+      response.body = "internal error: response header contains forbidden bytes";
+    }
     auto wire = std::make_shared<bhttp::response<bhttp::string_body>>(
         ToWireResponse(std::move(response), keep_alive));
     // Each wire phase gets its own request_timeout_seconds budget: Beast
@@ -1951,6 +1961,12 @@ Outcome<HttpResponse> BeastHttpClient::Send(const HttpRequest& request) {
   if (state_->opts.host.empty()) {
     return Error::Validation("beast client: options need a host");
   }
+  if (const auto unsafe = FindUnsafeHeader(request.headers); unsafe.has_value()) {
+    // The header-injection defense (issue #109): refused before anything
+    // is written — an embedded CR/LF would split the request on the wire.
+    return Error::Validation("beast client: request header \"" + *unsafe +
+                             "\" contains forbidden bytes");
+  }
   if (!state_->setup_error.empty()) {
     return Error::Validation(state_->setup_error);
   }
@@ -2183,6 +2199,12 @@ Outcome<std::shared_ptr<WebSocket>> FinishDial(std::unique_ptr<DialedConnection>
 Outcome<std::shared_ptr<WebSocket>> BeastWebSocketClient::Dial(Options options) {
   if (options.host.empty()) {
     return Error::Validation("beast websocket: options need a host");
+  }
+  if (const auto unsafe = FindUnsafeHeader(options.headers); unsafe.has_value()) {
+    // The header-injection defense (issue #109): these ride the upgrade
+    // GET verbatim, so CR/LF here is request splitting.
+    return Error::Validation("beast websocket: upgrade header \"" + *unsafe +
+                             "\" contains forbidden bytes");
   }
   if (options.raw_text_frames && options.offer_json_frames) {
     return Error::Validation(

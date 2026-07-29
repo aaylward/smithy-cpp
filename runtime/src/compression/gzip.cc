@@ -1,5 +1,8 @@
 #include "smithy/compression/gzip.h"
 
+#include "smithy/compression/gzip_test_peer.h"
+#include "smithy/core/fatal.h"
+
 // next_in becomes const Bytef*, so the feed below takes string_view bytes
 // verbatim — no const_cast (ES.50, issue #109).
 #define ZLIB_CONST
@@ -54,7 +57,21 @@ std::size_t FeedInput(z_stream& stream, std::string_view data, std::size_t fed,
 
 namespace internal {
 
+namespace {
+
+// The seam's precondition, enforced rather than commented (ADR-0009): zero
+// makes no progress — both loops would spin on Z_BUF_ERROR forever — and
+// anything past uInt reintroduces the truncating cast at the seam itself.
+void RequireFeedBound(std::size_t max_feed) {
+  if (max_feed == 0 || max_feed > std::numeric_limits<uInt>::max()) {
+    Fatal("gzip: max_feed must be in (0, UINT_MAX]");
+  }
+}
+
+}  // namespace
+
 Outcome<std::string> GzipCompressChunked(std::string_view data, std::size_t max_feed) {
+  RequireFeedBound(max_feed);
   z_stream stream{};
   if (deflateInit2(&stream, Z_DEFAULT_COMPRESSION, Z_DEFLATED, kGzipWindowBits, 8,
                    Z_DEFAULT_STRATEGY) != Z_OK) {
@@ -74,7 +91,11 @@ Outcome<std::string> GzipCompressChunked(std::string_view data, std::size_t max_
     stream.next_out = reinterpret_cast<Bytef*>(buffer.data());
     stream.avail_out = static_cast<uInt>(buffer.size());
     result = deflate(&stream, flush);
-    if (result == Z_STREAM_ERROR) {
+    // Only the expected codes may pass (decompress's posture): a stray
+    // Z_MEM_ERROR must fail, not orbit the loop it can never finish.
+    // Z_BUF_ERROR while input remains just means "feed me".
+    const bool starved = result == Z_BUF_ERROR && stream.avail_in == 0 && fed < data.size();
+    if (result != Z_OK && result != Z_STREAM_END && !starved) {
       return Error::Serialization("gzip: deflate failed");
     }
     out.append(buffer.data(), buffer.size() - stream.avail_out);
@@ -90,6 +111,7 @@ Outcome<std::string> GzipCompressChunked(std::string_view data, std::size_t max_
 
 Outcome<std::string> GzipDecompressChunked(std::string_view data, std::size_t max_output,
                                            std::size_t max_feed) {
+  RequireFeedBound(max_feed);
   z_stream stream{};
   if (inflateInit2(&stream, kGzipWindowBits) != Z_OK) {
     return Error::Serialization("gzip: inflateInit2 failed");

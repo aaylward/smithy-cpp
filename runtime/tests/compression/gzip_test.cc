@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <string>
 
+#include "smithy/compression/gzip_test_peer.h"
+
 namespace smithy {
 namespace {
 

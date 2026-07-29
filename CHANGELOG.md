@@ -60,8 +60,12 @@ via `git_override` until then.
   input in bounded slices with no size cliff; the decompress side's
   trailing-garbage check now judges the whole input rather than its
   truncated 32-bit view. Teardown is RAII on every path, and `ZLIB_CONST`
-  replaces the `const_cast`s. The slice bound is test-parameterized, so the
-  re-feed loop is pinned by kilobyte fixtures instead of 4 GiB ones.
+  replaces the `const_cast`s. The slice bound is test-parameterized
+  (`gzip_test_peer.h`, with the bound's validity enforced fatally at the
+  seam), so the re-feed loop is pinned by kilobyte fixtures instead of
+  4 GiB ones — and fuzzed: `//fuzz:gzip_fuzz` holds slice-fed and whole-fed
+  gzip to identical verdicts and bytes on arbitrary inputs, alongside the
+  compress→decompress round trip.
 - `smithy::Document` pivot, JSON (nlohmann-backed) and hand-rolled CBOR
   codecs (RFC 8949 vectors + fuzzers), `Outcome`/`Error` model, retries with
   full-jitter exponential backoff, client interceptors, server middleware,

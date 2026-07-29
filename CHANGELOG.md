@@ -63,8 +63,9 @@ via `git_override` until then.
   A method is a token and a target is percent-encoded origin-form, so a
   conformant value is unaffected; colon and other legal target characters
   still pass (unlike a header name). `ValidRequestLineField` (in `:http`)
-  gates both `Send` paths with `Error::Validation`, before any bytes reach
-  the wire.
+  gates both `Send` paths — and the WebSocket dial, whose upgrade-GET target
+  reaches the wire through Beast's equally-unvalidating handshake `target()`
+  — with `Error::Validation`, before any bytes reach the wire.
 - Outbound header-injection defense (issue #109): every transport write path
   now rejects control bytes in header names and values before they reach the
   wire, closing an HTTP response/request-splitting hole. A handler or

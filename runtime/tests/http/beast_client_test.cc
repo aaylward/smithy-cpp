@@ -471,6 +471,36 @@ TEST(BeastClientTest, ARequestWithAnInjectedTargetIsRefusedBeforeAnyWire) {
   server.Stop();
 }
 
+TEST(BeastClientTest, ARequestWithAnInjectedMethodIsRefusedBeforeAnyWire) {
+  // The method axis: a space or CR/LF in the method corrupts the request
+  // line just as a bad target does. Refused with Validation before the dial.
+  BeastServerTransport server({.port = 0, .threads = 1});
+  ASSERT_TRUE(server.Start(EchoHandler()).ok());
+  BeastHttpClient client({.host = "127.0.0.1", .port = server.port()});
+  HttpRequest request = PostRequest("body");
+  request.method = "POST /smuggled HTTP/1.1\r\nEvil: 1\r\n\r\nHEAD";
+  const auto outcome = client.Send(request);
+  ASSERT_FALSE(outcome.ok());
+  EXPECT_EQ(outcome.error().kind(), ErrorKind::kValidation);
+  EXPECT_NE(outcome.error().message().find("method"), std::string::npos);
+  server.Stop();
+}
+
+TEST(BeastClientTest, ARequestWithAnEmptyMethodIsRefusedBeforeAnyWire) {
+  // An empty method would write a request line starting with a bare space;
+  // the client refuses it (the header contract's non-emptiness rule).
+  BeastServerTransport server({.port = 0, .threads = 1});
+  ASSERT_TRUE(server.Start(EchoHandler()).ok());
+  BeastHttpClient client({.host = "127.0.0.1", .port = server.port()});
+  HttpRequest request = PostRequest("body");
+  request.method = "";
+  const auto outcome = client.Send(request);
+  ASSERT_FALSE(outcome.ok());
+  EXPECT_EQ(outcome.error().kind(), ErrorKind::kValidation);
+  EXPECT_NE(outcome.error().message().find("method"), std::string::npos);
+  server.Stop();
+}
+
 TEST(BeastClientTest, ALegitimateTargetWithColonsAndEncodingIsNotAFalsePositive) {
   // The guard must not reject valid targets: colon, semicolon, and percent
   // escapes are all legal origin-form characters and must round-trip.

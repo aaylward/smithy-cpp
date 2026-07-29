@@ -1114,6 +1114,20 @@ TEST(BeastWebSocketTest, AnInjectedUpgradeHeaderIsRefusedBeforeConnecting) {
   EXPECT_NE(dialed.error().message().find("x-token"), std::string::npos);
 }
 
+TEST(BeastWebSocketTest, AnInjectedUpgradeTargetIsRefusedBeforeConnecting) {
+  // Request-line injection (issue #109): the target rides the upgrade GET's
+  // request line — Beast's handshake target() no more rejects CR/LF than
+  // the HTTP client's does — so a raw CR/LF splits the upgrade request.
+  // Dial refuses with Validation before connecting; port 1 is never reached.
+  const auto dialed =
+      BeastWebSocketClient::Dial({.host = "127.0.0.1",
+                                  .port = 1,
+                                  .target = "/chat HTTP/1.1\r\nX-Smuggled: 1\r\n\r\nGET /admin"});
+  ASSERT_FALSE(dialed.ok());
+  EXPECT_EQ(dialed.error().kind(), ErrorKind::kValidation);
+  EXPECT_NE(dialed.error().message().find("target"), std::string::npos);
+}
+
 TEST(BeastWebSocketTest, StartRefusesAServeCallbackWithoutAHandlerPool) {
   BeastServerTransport::Options options = EchoOptions();
   options.handler_threads = 0;

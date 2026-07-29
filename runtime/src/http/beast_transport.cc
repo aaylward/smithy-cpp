@@ -2215,6 +2215,14 @@ Outcome<std::shared_ptr<WebSocket>> BeastWebSocketClient::Dial(Options options) 
     return Error::Validation("beast websocket: upgrade header \"" + *unsafe +
                              "\" contains forbidden bytes");
   }
+  if (!ValidRequestLineField(options.target)) {
+    // Request-line injection (issue #109): the target rides the upgrade
+    // GET's request line, and Beast's handshake target() does not reject
+    // CR/LF any more than the HTTP client's does. Guarded here for parity
+    // with the upgrade-header check above and the HTTP-client target guard.
+    // (The method is always GET, set by Beast, so it needs no check.)
+    return Error::Validation("beast websocket: upgrade target contains forbidden bytes");
+  }
   if (options.raw_text_frames && options.offer_json_frames) {
     return Error::Validation(
         "beast websocket: raw_text_frames and offer_json_frames cannot both be set (raw text is "

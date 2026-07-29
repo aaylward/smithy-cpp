@@ -154,6 +154,29 @@ TEST(SocketTransportTest, AnInjectedResponseHeaderBecomesA500NotASplitResponse) 
   server.Stop();
 }
 
+TEST(SocketTransportTest, LegitimateObsTextAndTabHeadersAreNotFalsePositives) {
+  // The guard must not turn valid headers into 500s: HTAB and obs-text
+  // (>= 0x80) are legal in field values and must round-trip untouched.
+  SocketHttpServer server;
+  ASSERT_TRUE(server
+                  .Start([](const HttpRequest&) {
+                    HttpResponse response;
+                    response.status = 200;
+                    response.headers.Set("x-tabbed", "a\tb");
+                    response.headers.Set("x-obs", "caf\xc3\xa9");  // UTF-8 é, obs-text
+                    response.body = "ok";
+                    return response;
+                  })
+                  .ok());
+  SocketHttpClient client("127.0.0.1", server.port());
+  const auto response = client.Send(HttpRequest{});
+  ASSERT_TRUE(response.ok()) << response.error().message();
+  EXPECT_EQ(response->status, 200);
+  EXPECT_EQ(response->headers.Get("x-tabbed").value_or(""), "a\tb");
+  EXPECT_EQ(response->headers.Get("x-obs").value_or(""), "caf\xc3\xa9");
+  server.Stop();
+}
+
 TEST(SocketTransportTest, AClientRequestWithInjectedHeaderIsRefusedBeforeConnecting) {
   // Port 1 is never dialed: the refusal happens before any socket work, so
   // no listener is needed for this to fail fast with Validation.

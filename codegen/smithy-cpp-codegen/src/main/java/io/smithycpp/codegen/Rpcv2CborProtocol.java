@@ -18,18 +18,6 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
   }
 
   @Override
-  public String serverErrorHelperName() {
-    return "CborError";
-  }
-
-  @Override
-  public List<String> serverOperationHelperNames(String opName, boolean streaming) {
-    // RPC dispatch: unary operations get a Handle<Op> body; streaming ones
-    // ride the session seam with no per-operation anonymous-namespace helper.
-    return streaming ? List.of() : List.of("Handle" + opName);
-  }
-
-  @Override
   public software.amazon.smithy.model.shapes.ShapeId traitId() {
     return software.amazon.smithy.protocol.traits.Rpcv2CborTrait.ID;
   }
@@ -61,6 +49,11 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
   private static final ProtocolSupport.ErrorResponseSpec SPEC =
       new ProtocolSupport.ErrorResponseSpec("CborError", /* errortypeHeader= */ "");
 
+  @Override
+  public ProtocolSupport.ErrorResponseSpec errorResponseSpec() {
+    return SPEC;
+  }
+
   /** Set up by writeServerHelpers (always called before the routes are emitted). */
   private ValidationGenerator validation;
 
@@ -74,7 +67,7 @@ final class Rpcv2CborProtocol implements ProtocolGenerator {
       CppWriter w, CppContext context, ServiceShape service, List<OperationShape> operations) {
     ProtocolSupport.writeErrorBodyHelper(
         w,
-        "CborError",
+        SPEC.errorFn(),
         "application/cbor",
         "smithy::cbor::Encode(smithy::Document(std::move(body))).ToString()",
         "smithy-protocol",

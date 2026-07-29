@@ -32,23 +32,40 @@ interface ProtocolGenerator {
   }
 
   /**
-   * The anonymous-namespace error-envelope helper the generated server declares (JsonError,
-   * CborError, JsonRpcError) — reserved by the shape-name guard (issue #71).
+   * The protocol's server error-response identity: the error-envelope function (JsonError,
+   * CborError, JsonRpcError) ErrorToResponse and the validation wiring emit through. Its {@code
+   * errorFn} is also reserved by the shape-name guard (issue #71).
    */
-  default String serverErrorHelperName() {
-    return "JsonError";
-  }
+  ProtocolSupport.ErrorResponseSpec errorResponseSpec();
 
   /**
    * Anonymous-namespace helper names the generated server declares for one operation — reserved by
-   * the shape-name guard (issue #71). HTTP binding parses every operation's upgrade/unary input
-   * (Parse&lt;Op&gt;Input) and builds unary responses (Build&lt;Op&gt;Response); RPC dispatch emits
-   * Handle&lt;Op&gt; for unary operations instead.
+   * the shape-name guard (issue #71). Default none: rpcv2Cbor inlines dispatch into its route
+   * lambdas. HTTP binding overrides with its Parse&lt;Op&gt;Input/Build&lt;Op&gt;Response pair,
+   * jsonRpc2 with its Handle&lt;Op&gt; dispatch body.
    */
   default List<String> serverOperationHelperNames(String opName, boolean streaming) {
-    return streaming
-        ? List.of("Parse" + opName + "Input")
-        : List.of("Parse" + opName + "Input", "Build" + opName + "Response");
+    return List.of();
+  }
+
+  /**
+   * Whether the generated client and server declare the text-to-number helpers ({@link
+   * ProtocolSupport#writeNumericParseHelpers}) — reserved by the shape-name guard (issue #71). Only
+   * the HTTP binding halves parse numerics out of labels/queries/headers; the RPC protocols decode
+   * numbers from the body document.
+   */
+  default boolean usesNumericParseHelpers() {
+    return false;
+  }
+
+  /**
+   * Whether the server emits the validation wiring even when no input carries constraints — {@link
+   * ValidationGenerator#writeWiring}'s {@code alsoEmit} argument, mirrored here so the shape-name
+   * guard reserves the wiring helpers exactly when they exist. HTTP+JSON overrides: it records
+   * top-level @required binding failures itself.
+   */
+  default boolean validationWiringAlsoEmitted(CppContext context, List<OperationShape> operations) {
+    return false;
   }
 
   /**

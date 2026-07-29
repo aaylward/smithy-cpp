@@ -44,6 +44,21 @@ final class ValidationGenerator {
   private boolean wiringEmitted;
 
   /**
+   * The wiring's anonymous-namespace helper names — reserved by the shape-name guard exactly when
+   * {@link #wiringNeeded} holds (issue #71).
+   */
+  static final List<String> WIRING_HELPERS =
+      List.of("AddValidationFailure", "ValidationErrorResponse");
+
+  /**
+   * What {@link #writeWiring} will decide for the same {@code alsoEmit}: the shape-name guard
+   * mirrors the decision without emitting anything.
+   */
+  boolean wiringNeeded(boolean alsoEmit) {
+    return hasValidators() || alsoEmit;
+  }
+
+  /**
    * The construct-then-emit wiring every protocol's writeServerHelpers repeats: build the
    * validators and, when the service validates anything (or {@code alsoEmit} — failures the
    * protocol records itself, like HTTP+JSON's top-level @required bindings), emit the failure
@@ -59,7 +74,7 @@ final class ValidationGenerator {
       String validationErrorCode,
       ProtocolSupport.ErrorResponseSpec spec) {
     ValidationGenerator validation = new ValidationGenerator(context, operations);
-    validation.wiringEmitted = validation.hasValidators() || alsoEmit;
+    validation.wiringEmitted = validation.wiringNeeded(alsoEmit);
     if (validation.wiringEmitted) {
       writeFailureHelper(w);
       validation.writeValidators(w);

@@ -679,9 +679,9 @@ final class EventStreamCodeGen {
       w.write("smithy::http::HttpResponse response;");
       for (Map.Entry<String, StructureShape> entry : errors.entrySet()) {
         w.write(
-            "if (parsed.code == $S) return Make$LError(response, std::move(parsed));",
+            "if (parsed.code == $S) return $L(response, std::move(parsed));",
             entry.getValue().getId().getName(),
-            entry.getKey());
+            ProtocolSupport.makeErrorFunction(context, entry.getValue()));
       }
     }
     w.write("return GenericError(std::move(parsed));");

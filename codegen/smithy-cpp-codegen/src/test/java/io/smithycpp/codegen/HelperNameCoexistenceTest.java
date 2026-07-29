@@ -10,9 +10,11 @@ import software.amazon.smithy.build.MockManifest;
  * Pins the resolution of issue #64's last item: per-operation helpers stay out of the serde
  * functions' Serialize/Deserialize&lt;Shape&gt; naming pattern (Parse&lt;Op&gt;Error,
  * Build&lt;Op&gt;Response), so a shape named after an operation coexists with the helpers instead
- * of being hidden by them (C++ name hiding) — models #69's guard used to reject now generate, and
- * the guard is gone. Each test uses the model shape that actually materialized the hiding: a
- * same-named serde call inside the file that declares the helper.
+ * of being hidden by them (C++ name hiding) — models #69's guard used to reject now generate.
+ * (Issue #71's {@link ReservedHelperNames} guards the complementary case these renames can't solve:
+ * a shape whose declared type name matches a helper name itself.) Each test uses the model shape
+ * that actually materialized the hiding: a same-named serde call inside the file that declares the
+ * helper.
  */
 class HelperNameCoexistenceTest {
 

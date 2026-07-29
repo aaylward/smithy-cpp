@@ -57,15 +57,20 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
   }
 
   @Override
-  public String serverErrorHelperName() {
-    return "JsonRpcError";
+  public ProtocolSupport.ErrorResponseSpec errorResponseSpec() {
+    return SPEC;
   }
 
   @Override
   public List<String> serverOperationHelperNames(String opName, boolean streaming) {
-    // RPC dispatch: unary operations get a Handle<Op> body; streaming ones
-    // ride the stream/session seams with no per-operation helper.
-    return streaming ? List.of() : List.of("Handle" + opName);
+    // Unary operations get a Handle<Op> dispatch body; streaming ones ride the
+    // stream/session seams with no per-operation helper (ADR-0023).
+    return streaming ? List.of() : List.of(handleFunction(opName));
+  }
+
+  /** The one derivation of the Handle&lt;Op&gt; helper name (definition and call sites). */
+  private static String handleFunction(String opName) {
+    return "Handle" + opName;
   }
 
   @Override
@@ -267,9 +272,10 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
     // errors, reserved -32xxx codes for envelope-level failures); `type` lands
     // in data.__type; an empty `message` falls back to data's message member.
     w.openBlock(
-        "smithy::http::HttpResponse JsonRpcError(int code, const std::string& type, "
+        "smithy::http::HttpResponse $L(int code, const std::string& type, "
             + "const std::string& message, smithy::DocumentMap data, const smithy::Document& id) "
-            + "{");
+            + "{",
+        SPEC.errorFn());
     w.write("if (!type.empty()) data.insert_or_assign(\"__type\", smithy::Document(type));");
     w.write("std::string text = message;");
     w.openBlock("if (text.empty()) {");
@@ -326,11 +332,11 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
 
     w.write("template <typename Handler>");
     w.openBlock(
-        "smithy::http::HttpResponse Handle$L(Handler& handler, const smithy::Document& params, "
+        "smithy::http::HttpResponse $L(Handler& handler, const smithy::Document& params, "
             + "const smithy::Document& id, "
             + ProtocolSupport.REQUEST_CONTEXT_PARAM
             + " context) {",
-        opName);
+        handleFunction(opName));
     w.write("$L input{};", inputType);
     if (ProtocolSupport.noModeledInput(input)) {
       w.write("(void)params;");
@@ -422,7 +428,7 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
       String wireName = operation.getId().getName();
       String opName = CppReservedWords.escape(wireName);
       w.openBlock("if (method_name == $S) {", wireName);
-      w.write("auto response = Handle$L(*handler, *params, id, context);", opName);
+      w.write("auto response = $L(*handler, *params, id, context);", handleFunction(opName));
       w.write("response.operation = $S;", wireName);
       w.write("return response;");
       w.closeBlock("}");

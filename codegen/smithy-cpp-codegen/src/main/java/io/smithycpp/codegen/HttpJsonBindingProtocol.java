@@ -105,6 +105,32 @@ final class HttpJsonBindingProtocol implements ProtocolGenerator {
   }
 
   @Override
+  public ProtocolSupport.ErrorResponseSpec errorResponseSpec() {
+    return server.errorSpec();
+  }
+
+  @Override
+  public List<String> serverOperationHelperNames(String opName, boolean streaming) {
+    // Streaming operations answer over the session; only their upgrade-request
+    // parse is shared (ADR-0016), so no Build<Op>Response exists for them.
+    return streaming
+        ? List.of(HttpJsonServerGenerator.parseInputFunction(opName))
+        : List.of(
+            HttpJsonServerGenerator.parseInputFunction(opName),
+            HttpJsonServerGenerator.buildResponseFunction(opName));
+  }
+
+  @Override
+  public boolean usesNumericParseHelpers() {
+    return true;
+  }
+
+  @Override
+  public boolean validationWiringAlsoEmitted(CppContext context, List<OperationShape> operations) {
+    return HttpJsonServerGenerator.anyTopLevelRequired(context, operations);
+  }
+
+  @Override
   public void writeServerHelpers(
       CppWriter w, CppContext context, ServiceShape service, List<OperationShape> operations) {
     server.writeHelpers(w, context, service, operations);

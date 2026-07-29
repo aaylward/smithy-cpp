@@ -82,6 +82,15 @@ final class ProtocolSupport {
    * whose error identity is not header/body-top-level shaped (jsonRpc2) compose the pieces
    * themselves and write their own ParseError.
    */
+  /**
+   * The anonymous-namespace names the shared error-parsing helpers declare — reserved by the
+   * shape-name guard (issue #71). Universal across client protocols: jsonRpc2 skips {@link
+   * #writeErrorSupport} but composes its own ParseError from the same pieces, declaring the same
+   * four names.
+   */
+  static final List<String> CLIENT_ERROR_HELPERS =
+      List.of("ParseError", "ParsedError", "GenericError", "SanitizeErrorCode");
+
   static void writeErrorSupport(CppWriter w, String decodeStatement, String errorTypeHeader) {
     writeSanitizeErrorCode(w);
     writeParsedErrorStruct(w);
@@ -112,6 +121,12 @@ final class ProtocolSupport {
     w.write("");
     writeGenericError(w);
   }
+
+  /**
+   * The names {@link #writeNumericParseHelpers} declares — reserved by the shape-name guard for
+   * protocols whose {@link ProtocolGenerator#usesNumericParseHelpers} holds (issue #71).
+   */
+  static final List<String> NUMERIC_PARSE_HELPERS = List.of("ParseInt64Text", "ParseDoubleText");
 
   /** Text-to-number helpers used for header/label/query bindings. */
   static void writeNumericParseHelpers(CppWriter w) {
@@ -414,6 +429,9 @@ final class ProtocolSupport {
     }
   }
 
+  /** The error-mapping helper every generated server declares — reserved by the guard (#71). */
+  static final String ERROR_TO_RESPONSE = "ErrorToResponse";
+
   /**
    * Emits the server's ErrorToResponse over {@code spec.errorFn()(status, code, message, body)}:
    * modeled errors get their @httpError status and serialized detail; validation/serialization
@@ -462,8 +480,8 @@ final class ProtocolSupport {
     w.write("// [[maybe_unused]]: only unary routes map handler errors here; a service");
     w.write("// whose operations all stream reports errors on the stream instead.");
     w.openBlock(
-        "[[maybe_unused]] smithy::http::HttpResponse ErrorToResponse(const smithy::Error& "
-            + "error$L) {",
+        "[[maybe_unused]] smithy::http::HttpResponse $L(const smithy::Error& error$L) {",
+        ERROR_TO_RESPONSE,
         extraParams);
     if (!errortypeHeader.isEmpty()) {
       w.write("std::vector<std::pair<std::string, std::string>> header_values;");
@@ -610,12 +628,10 @@ final class ProtocolSupport {
       }
     }
     for (StructureShape shape : errorShapes.values()) {
-      String type = context.cppSymbols().toSymbol(shape).getName();
       boolean retryable = shape.hasTrait(RetryableTrait.class);
       w.openBlock(
-          "smithy::Error Make$LError(const smithy::http::HttpResponse& response, "
-              + "ParsedError parsed) {",
-          type);
+          "smithy::Error $L(const smithy::http::HttpResponse& response, ParsedError parsed) {",
+          makeErrorFunction(context, shape));
       w.write("(void)response;");
       if (retryable) {
         w.write("const bool retryable = true;  // @retryable");
@@ -670,9 +686,9 @@ final class ProtocolSupport {
       w.write("ParsedError parsed = ParseError(response);");
       for (Map.Entry<String, StructureShape> entry : sorted.entrySet()) {
         w.write(
-            "if (parsed.code == $S) return Make$LError(response, std::move(parsed));",
+            "if (parsed.code == $S) return $L(response, std::move(parsed));",
             entry.getValue().getId().getName(),
-            entry.getKey());
+            makeErrorFunction(context, entry.getValue()));
       }
       if (protocol.errorStatusFallback()) {
         // Statuses claimed by exactly one declared error fall back by status
@@ -690,9 +706,9 @@ final class ProtocolSupport {
           }
           w.write(
               "if (parsed.code == \"UnknownError\" && parsed.status == $L) "
-                  + "return Make$LError(response, std::move(parsed));",
+                  + "return $L(response, std::move(parsed));",
               entry.getKey(),
-              entry.getValue().get(0).getKey());
+              makeErrorFunction(context, entry.getValue().get(0).getValue()));
         }
       }
       w.write("return GenericError(std::move(parsed));");
@@ -701,9 +717,18 @@ final class ProtocolSupport {
     }
   }
 
-  /** The one derivation of the Parse<Op>Error helper name (definition and call sites). */
-  private static String parseErrorFunction(OperationShape operation) {
+  /**
+   * The one derivation of the Parse&lt;Op&gt;Error helper name (definition, call sites, and the
+   * guard's reservation). Emitted only for unary operations that declare errors — {@link
+   * #writeOperationErrorParsers}' skip logic.
+   */
+  static String parseErrorFunction(OperationShape operation) {
     return "Parse" + CppReservedWords.escape(operation.getId().getName()) + "Error";
+  }
+
+  /** The one derivation of the Make&lt;Error&gt;Error helper name, same contract. */
+  static String makeErrorFunction(CppContext context, StructureShape errorShape) {
+    return "Make" + context.cppSymbols().toSymbol(errorShape).getName() + "Error";
   }
 
   /** The expression a protocol's operation body returns for a non-success response. */

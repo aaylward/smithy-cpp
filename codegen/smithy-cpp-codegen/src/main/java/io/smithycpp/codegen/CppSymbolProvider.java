@@ -141,6 +141,21 @@ final class CppSymbolProvider implements SymbolProvider {
         shape.getId(), CppReservedWords.escape(shape.getId().getName()));
   }
 
+  /**
+   * Whether the shape declares a C++ type name in the generated module — the filter behind {@link
+   * #declaredName} and the shape-name guard's collision scan (issue #71). smithy.api#Unit maps to
+   * the runtime's smithy::Unit and declares nothing.
+   */
+  static boolean declaresType(Shape shape) {
+    return (shape.isStructureShape()
+            || shape.isUnionShape()
+            || shape.isEnumShape()
+            || shape.isIntEnumShape()
+            || shape.isListShape()
+            || shape.isMapShape())
+        && !shape.getId().toString().equals("smithy.api#Unit");
+  }
+
   private java.util.Map<software.amazon.smithy.model.shapes.ShapeId, String> declaredNames;
 
   private java.util.Map<software.amazon.smithy.model.shapes.ShapeId, String>
@@ -154,14 +169,7 @@ final class CppSymbolProvider implements SymbolProvider {
     for (Shape shape :
         new software.amazon.smithy.model.neighbor.Walker(model)
             .walkShapes(model.expectShape(settings.service()))) {
-      boolean declares =
-          shape.isStructureShape()
-              || shape.isUnionShape()
-              || shape.isEnumShape()
-              || shape.isIntEnumShape()
-              || shape.isListShape()
-              || shape.isMapShape();
-      if (!declares || shape.getId().toString().equals("smithy.api#Unit")) {
+      if (!declaresType(shape)) {
         continue;
       }
       byName

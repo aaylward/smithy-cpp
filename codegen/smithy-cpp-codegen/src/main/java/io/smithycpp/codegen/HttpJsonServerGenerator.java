@@ -38,9 +38,28 @@ final class HttpJsonServerGenerator {
   /** Whether the service emits ValidationErrorResponse (constraints or top-level @required). */
   private boolean emitsValidation;
 
+  /** The error-response identity ErrorToResponse and the validation wiring emit through. */
+  private final ProtocolSupport.ErrorResponseSpec spec;
+
   HttpJsonServerGenerator(String errorTypeHeaderName, boolean useJsonName) {
     this.errorTypeHeaderName = errorTypeHeaderName;
     this.useJsonName = useJsonName;
+    this.spec = new ProtocolSupport.ErrorResponseSpec("JsonError", errorTypeHeaderName);
+  }
+
+  /** Exposed through {@link ProtocolGenerator#errorResponseSpec} for the shape-name guard. */
+  ProtocolSupport.ErrorResponseSpec errorSpec() {
+    return spec;
+  }
+
+  /** The one derivation of the Parse&lt;Op&gt;Input helper name (definition and call sites). */
+  static String parseInputFunction(String opName) {
+    return "Parse" + opName + "Input";
+  }
+
+  /** The one derivation of the Build&lt;Op&gt;Response helper name (definition and call sites). */
+  static String buildResponseFunction(String opName) {
+    return "Build" + opName + "Response";
   }
 
   List<String> includes() {
@@ -68,11 +87,9 @@ final class HttpJsonServerGenerator {
     ProtocolSupport.writeNumericParseHelpers(w);
     ProtocolSupport.writeErrorBodyHelper(
         w,
-        "JsonError",
+        spec.errorFn(),
         "application/json",
         "smithy::json::Encode(smithy::Document(std::move(body)))");
-    ProtocolSupport.ErrorResponseSpec spec =
-        new ProtocolSupport.ErrorResponseSpec("JsonError", errorTypeHeaderName);
     ProtocolSupport.writeServerErrorToResponse(w, context, service, operations, spec);
     validation =
         ValidationGenerator.writeWiring(
@@ -97,9 +114,11 @@ final class HttpJsonServerGenerator {
   /**
    * Whether any operation has a required top-level body/query/header member: those absences are
    * ValidationException failures ("Member must not be null"), not serialization errors. Absent
-   * labels never route here, and nested required members stay serde-strict.
+   * labels never route here, and nested required members stay serde-strict. Package-private as
+   * {@link ProtocolGenerator#validationWiringAlsoEmitted}'s source, so the guard's gate and {@link
+   * ValidationGenerator#writeWiring}'s {@code alsoEmit} can never disagree.
    */
-  private static boolean anyTopLevelRequired(CppContext context, List<OperationShape> operations) {
+  static boolean anyTopLevelRequired(CppContext context, List<OperationShape> operations) {
     HttpBindingIndex index = HttpBindingIndex.of(context.model());
     for (OperationShape operation : operations) {
       MemberShape streamMember = EventStreamCodeGen.inputStreamMember(context.model(), operation);
@@ -140,12 +159,12 @@ final class HttpJsonServerGenerator {
     HttpBinding prefixHeaders = req.prefixHeaders();
 
     w.openBlock(
-        "smithy::Outcome<$L> Parse$LInput(const smithy::http::HttpRequest& request, "
+        "smithy::Outcome<$L> $L(const smithy::http::HttpRequest& request, "
             + ProtocolSupport.REQUEST_CONTEXT_PARAM
             + " context, "
             + "std::vector<smithy::server::ValidationFailure>* validation_failures) {",
         inputType,
-        opName);
+        parseInputFunction(opName));
     w.write("(void)request;");
     w.write("(void)context;");
     w.write("(void)validation_failures;");
@@ -329,7 +348,9 @@ final class HttpJsonServerGenerator {
     HttpBinding responsePrefixHeaders = resp.prefixHeaders();
 
     w.openBlock(
-        "smithy::http::HttpResponse Build$LResponse(const $L& output) {", opName, outputType);
+        "smithy::http::HttpResponse $L(const $L& output) {",
+        buildResponseFunction(opName),
+        outputType);
     w.write("(void)output;");
     w.write("smithy::http::HttpResponse response;");
     w.write("response.status = $L;", http.getCode());
@@ -466,7 +487,7 @@ final class HttpJsonServerGenerator {
       w.closeBlock("}");
     }
     w.write("std::vector<smithy::server::ValidationFailure> validation_failures;");
-    w.write("auto input = Parse$LInput(request, context, &validation_failures);", opName);
+    w.write("auto input = $L(request, context, &validation_failures);", parseInputFunction(opName));
     if (emitsValidation) {
       w.write(
           "if (!validation_failures.empty()) "
@@ -481,7 +502,7 @@ final class HttpJsonServerGenerator {
     }
     w.write("auto outcome = handler->$L(*input, context);", opName);
     w.write("if (!outcome) return ErrorToResponse(outcome.error());");
-    w.write("return Build$LResponse(*outcome);", opName);
+    w.write("return $L(*outcome);", buildResponseFunction(opName));
     w.closeBlock("}, $S);", operation.getId().getName());
   }
 
@@ -505,7 +526,7 @@ final class HttpJsonServerGenerator {
             + " context, smithy::http::WebSocket& socket) {",
         routePattern(http));
     w.write("std::vector<smithy::server::ValidationFailure> validation_failures;");
-    w.write("auto input = Parse$LInput(request, context, &validation_failures);", opName);
+    w.write("auto input = $L(request, context, &validation_failures);", parseInputFunction(opName));
     w.openBlock("if (!input) {");
     w.write("(void)socket.Send(Build$LExceptionMessage(input.error()));", opName);
     w.write("socket.Close();");
@@ -543,7 +564,7 @@ final class HttpJsonServerGenerator {
             + " context, std::shared_ptr<smithy::http::WebSocket> socket) {",
         routePattern(http));
     w.write("std::vector<smithy::server::ValidationFailure> validation_failures;");
-    w.write("auto input = Parse$LInput(request, context, &validation_failures);", opName);
+    w.write("auto input = $L(request, context, &validation_failures);", parseInputFunction(opName));
     w.openBlock("if (!input) {");
     w.write("(void)socket->Send(Build$LExceptionMessage(input.error()));", opName);
     w.write("socket->Close();");

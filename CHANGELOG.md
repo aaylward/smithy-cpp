@@ -52,6 +52,15 @@ via `git_override` until then.
 
 ### Runtime
 
+- `Timestamp::Format(kEpochSeconds)` renders negative fractional instants
+  correctly (issue #109): floor-division formatted −500 ms as `-1.5`, which
+  the (correct) parser read back as −1500 ms — every pre-1970 instant with
+  a nonzero millisecond part was mis-rendered and round-trip-broken on the
+  epoch-seconds string paths (HTTP label/query/header bindings; JSON and
+  CBOR bodies were unaffected, being numeric). Sign and magnitude now
+  format separately, INT64_MIN-safe. The `kHttpDate` weekday/month tables
+  become `const char*` so their `%s` use no longer leans on literal-backed
+  `string_view` NUL termination.
 - Gzip feeds zlib in bounded slices (issue #109): `avail_in` is 32-bit, and
   the old single feed truncated the length silently — a 4 GiB + N byte
   `@requestCompression` body compressed to a *valid* gzip stream of its

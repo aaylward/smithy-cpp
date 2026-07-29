@@ -3,6 +3,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 
@@ -18,10 +19,13 @@ namespace {
 constexpr std::int64_t kMsPerSecond = 1000;
 constexpr std::int64_t kMsPerDay = 86400 * kMsPerSecond;
 
-constexpr std::array<std::string_view, 7> kWeekdays = {"Sun", "Mon", "Tue", "Wed",
-                                                       "Thu", "Fri", "Sat"};
-constexpr std::array<std::string_view, 12> kMonths = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                                                      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+// const char*, not string_view: these feed snprintf's %s, which needs the
+// NUL a literal-backed view only happens to have (issue #109, SL.str). The
+// parse-side comparisons below still work — string_view compares against
+// const char* by value.
+constexpr std::array<const char*, 7> kWeekdays = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+constexpr std::array<const char*, 12> kMonths = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                                 "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
 
 struct CivilTime {
   int year = 1970;
@@ -261,9 +265,18 @@ std::string Timestamp::Format(TimestampFormat format) const {
   std::string out;
   switch (format) {
     case TimestampFormat::kEpochSeconds: {
-      const std::int64_t whole_seconds = FloorDiv(ms_, kMsPerSecond);
-      out = std::to_string(whole_seconds);
-      AppendFraction(&out, static_cast<int>(ms_ - whole_seconds * kMsPerSecond));
+      // Sign first, then |ms_| decomposed. Floor-division rendered −0.5 s
+      // as whole −1 plus the positive fraction .5 — "-1.5", which Parse
+      // (correctly) read back as −1500 ms: every pre-1970 instant with a
+      // nonzero millisecond part was wire-corrupted (issue #109). Unsigned
+      // negation, not std::abs: the unchecked factory can mint INT64_MIN,
+      // whose two's-complement abs is UB.
+      const bool negative = ms_ < 0;
+      const auto magnitude =
+          negative ? 0 - static_cast<std::uint64_t>(ms_) : static_cast<std::uint64_t>(ms_);
+      if (negative) out.push_back('-');
+      out += std::to_string(magnitude / static_cast<std::uint64_t>(kMsPerSecond));
+      AppendFraction(&out, static_cast<int>(magnitude % static_cast<std::uint64_t>(kMsPerSecond)));
       return out;
     }
     case TimestampFormat::kDateTime: {
@@ -277,8 +290,8 @@ std::string Timestamp::Format(TimestampFormat format) const {
     case TimestampFormat::kHttpDate: {
       const std::size_t weekday = WeekdayIndex(FloorDiv(ms_, kMsPerDay));
       std::snprintf(buffer.data(), buffer.size(), "%s, %02u %s %04d %02d:%02d:%02d GMT",
-                    kWeekdays[weekday].data(), c.day, kMonths[c.month - 1].data(), c.year, c.hour,
-                    c.minute, c.second);
+                    kWeekdays[weekday], c.day, kMonths[c.month - 1], c.year, c.hour, c.minute,
+                    c.second);
       return buffer.data();
     }
   }

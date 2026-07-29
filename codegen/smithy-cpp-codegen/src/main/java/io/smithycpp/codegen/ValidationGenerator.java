@@ -293,6 +293,18 @@ final class ValidationGenerator {
     return "Validate" + SerdeCodeGen.serdeFunctionSuffix(context, shape);
   }
 
+  /**
+   * The Validate&lt;Suffix&gt; helper names this generator will declare in the server's anonymous
+   * namespace — reserved by the shape-name guard (issue #71).
+   */
+  Set<String> validatorNames() {
+    Set<String> names = new LinkedHashSet<>();
+    for (ShapeId id : constrained) {
+      names.add(validatorName(context.model().expectShape(id)));
+    }
+    return names;
+  }
+
   private void writeValidator(CppWriter w, Shape shape) {
     String type = context.cppSymbols().toSymbol(shape).getName();
     w.openBlock(

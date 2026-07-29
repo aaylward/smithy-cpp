@@ -32,6 +32,26 @@ interface ProtocolGenerator {
   }
 
   /**
+   * The anonymous-namespace error-envelope helper the generated server declares (JsonError,
+   * CborError, JsonRpcError) — reserved by the shape-name guard (issue #71).
+   */
+  default String serverErrorHelperName() {
+    return "JsonError";
+  }
+
+  /**
+   * Anonymous-namespace helper names the generated server declares for one operation — reserved by
+   * the shape-name guard (issue #71). HTTP binding parses every operation's upgrade/unary input
+   * (Parse&lt;Op&gt;Input) and builds unary responses (Build&lt;Op&gt;Response); RPC dispatch emits
+   * Handle&lt;Op&gt; for unary operations instead.
+   */
+  default List<String> serverOperationHelperNames(String opName, boolean streaming) {
+    return streaming
+        ? List.of("Parse" + opName + "Input")
+        : List.of("Parse" + opName + "Input", "Build" + opName + "Response");
+  }
+
+  /**
    * Whether an unidentified error response falls back to matching the operation's declared errors
    * by HTTP status (simpleRestJson: the X-Error-Type header is the discriminator, with status-code
    * fallback when absent). Only statuses unique within the operation's error set are matched.

@@ -57,6 +57,18 @@ final class JsonRpc2Protocol implements ProtocolGenerator {
   }
 
   @Override
+  public String serverErrorHelperName() {
+    return "JsonRpcError";
+  }
+
+  @Override
+  public List<String> serverOperationHelperNames(String opName, boolean streaming) {
+    // RPC dispatch: unary operations get a Handle<Op> body; streaming ones
+    // ride the stream/session seams with no per-operation helper.
+    return streaming ? List.of() : List.of("Handle" + opName);
+  }
+
+  @Override
   public ShapeId traitId() {
     return TRAIT;
   }

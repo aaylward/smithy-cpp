@@ -52,6 +52,16 @@ via `git_override` until then.
 
 ### Runtime
 
+- Gzip feeds zlib in bounded slices (issue #109): `avail_in` is 32-bit, and
+  the old single feed truncated the length silently — a 4 GiB + N byte
+  `@requestCompression` body compressed to a *valid* gzip stream of its
+  first N bytes, corrupting large uploads with no error anywhere (4 GiB
+  exactly compressed to the empty stream). Both directions now re-feed
+  input in bounded slices with no size cliff; the decompress side's
+  trailing-garbage check now judges the whole input rather than its
+  truncated 32-bit view. Teardown is RAII on every path, and `ZLIB_CONST`
+  replaces the `const_cast`s. The slice bound is test-parameterized, so the
+  re-feed loop is pinned by kilobyte fixtures instead of 4 GiB ones.
 - `smithy::Document` pivot, JSON (nlohmann-backed) and hand-rolled CBOR
   codecs (RFC 8949 vectors + fuzzers), `Outcome`/`Error` model, retries with
   full-jitter exponential backoff, client interceptors, server middleware,

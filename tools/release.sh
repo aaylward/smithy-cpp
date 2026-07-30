@@ -3,9 +3,10 @@
 # the logic the tag-push workflow depends on is exercised by every PR instead
 # of first running on tag day.
 #
-#   release.sh check          assert the version sources agree
-#   release.sh notes X.Y.Z    print the CHANGELOG section for a version
-#   release.sh version        print the version the tree declares
+#   release.sh check            assert the version sources agree
+#   release.sh notes X.Y.Z      print the CHANGELOG section for a version
+#   release.sh version          print the version the tree declares
+#   release.sh bump X.Y.Z-dev   open the next development cycle
 #
 # Run from the repo root (the sh_test runs from the runfiles root, where the
 # same relative paths resolve).
@@ -88,13 +89,62 @@ notes() {
   printf '%s\n' "$section"
 }
 
+# In-place edit without sed -i, whose syntax differs between BSD and GNU.
+rewrite() {
+  local file=$1 expression=$2 tmp
+  tmp=$(mktemp "${TMPDIR:-/tmp}/release.XXXXXX")
+  sed "$expression" "$file" >"$tmp"
+  mv "$tmp" "$file"
+}
+
+# Reopens the CHANGELOG and moves the three version strings on to the next
+# development version. Edits the tree only — review the diff and commit it
+# yourself.
+bump() {
+  local target=${1-}
+  [[ $target =~ ^[0-9]+\.[0-9]+\.[0-9]+-dev$ ]] ||
+    die "bump needs an X.Y.Z-dev version, got '${target:-<none>}'"
+
+  local current heading
+  current=$(read_version)
+  [[ -n $current ]] || die "no version literal in $VERSION_CC"
+  [[ $current != *-dev ]] ||
+    die "already developing $current; bump runs once, right after a release"
+
+  heading=$(read_changelog_heading)
+  [[ $heading =~ ^##\ \[$current\]\ - ]] ||
+    die "$CHANGELOG opens with '$heading', expected the closed '## [$current] - ...' section"
+
+  rewrite "$VERSION_CC" \
+    "s|^std::string_view Version() { return \"[^\"]*\"; }$|std::string_view Version() { return \"$target\"; }|"
+  rewrite "$CONFIG_H" \
+    "s|^  std::string user_agent = \"smithy-cpp/[^\"]*\";$|  std::string user_agent = \"smithy-cpp/$target\";|"
+  rewrite "$GRADLE_PROPERTIES" "s|^version=.*$|version=$target|"
+
+  # A fresh [Unreleased] above the section just released; the released one and
+  # its link footnote stay untouched.
+  local tmp
+  tmp=$(mktemp "${TMPDIR:-/tmp}/release.XXXXXX")
+  awk '
+    !done && /^## \[/ { print "## [Unreleased]"; print ""; done = 1 }
+    { print }
+  ' "$CHANGELOG" >"$tmp"
+  mv "$tmp" "$CHANGELOG"
+
+  # The bump is only done if the tree it produced satisfies the same guard
+  # every PR runs.
+  check
+  echo "release.sh: bumped $current -> $target; review the diff and commit"
+}
+
 case "${1-}" in
   check) check ;;
   notes) notes "${2-}" ;;
+  bump) bump "${2-}" ;;
   version)
     version=$(read_version)
     [[ -n $version ]] || die "no version literal in $VERSION_CC"
     printf '%s\n' "$version"
     ;;
-  *) die "usage: release.sh check | release.sh notes X.Y.Z | release.sh version" ;;
+  *) die "usage: release.sh check | notes X.Y.Z | version | bump X.Y.Z-dev" ;;
 esac

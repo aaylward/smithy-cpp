@@ -65,6 +65,44 @@ else
   fi
 fi
 
+# bump rewrites the tree, so it runs against a throwaway copy of the four files.
+release_abs="$PWD/$RELEASE"
+work="${TEST_TMPDIR:-$(mktemp -d)}/bump"
+mkdir -p "$work/runtime/src/core" "$work/runtime/include/smithy/client" "$work/codegen"
+cp CHANGELOG.md "$work/"
+cp runtime/src/core/version.cc "$work/runtime/src/core/"
+cp runtime/include/smithy/client/config.h "$work/runtime/include/smithy/client/"
+cp codegen/gradle.properties "$work/codegen/"
+cd "$work"
+
+expect_failure "bump with no argument" "$release_abs" bump
+expect_failure "bump to a release version" "$release_abs" bump 9.9.9
+expect_failure "bump to a malformed version" "$release_abs" bump next
+
+if [[ $version == *-dev ]]; then
+  expect_failure "bump while already developing" "$release_abs" bump 9.9.9-dev
+else
+  expect_success "bump" "$release_abs" bump 9.9.9-dev
+  # bump runs check itself, but a tree that passes check is the whole point.
+  expect_success "check on the bumped tree" "$release_abs" check
+
+  grep -q 'return "9.9.9-dev";' runtime/src/core/version.cc ||
+    fail "bump: version.cc not rewritten"
+  grep -q 'smithy-cpp/9.9.9-dev' runtime/include/smithy/client/config.h ||
+    fail "bump: config.h not rewritten"
+  grep -qx 'version=9.9.9-dev' codegen/gradle.properties ||
+    fail "bump: gradle.properties not rewritten"
+  [[ $(grep -m1 '^## \[' CHANGELOG.md) == "## [Unreleased]" ]] ||
+    fail "bump: CHANGELOG does not reopen with [Unreleased]"
+  # Reopening must not swallow the release that was just cut.
+  grep -q "^## \[$version\] - " CHANGELOG.md ||
+    fail "bump: dropped the [$version] section"
+  grep -q "^\[$version\]: " CHANGELOG.md ||
+    fail "bump: dropped the [$version] link footnote"
+
+  expect_failure "bump twice" "$release_abs" bump 9.9.10-dev
+fi
+
 if ((failures > 0)); then
   echo "$failures assertion(s) failed" >&2
   exit 1

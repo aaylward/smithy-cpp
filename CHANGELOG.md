@@ -4,14 +4,13 @@ All notable changes to smithy-cpp are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow the
 policy in [docs/versioning.md](docs/versioning.md).
 
-## [Unreleased]
+## [0.1.0] - 2026-07-30
 
-The 0.1.0 milestone: a vendor-neutral Smithy → C++ code generator, the runtime
+The first release: a vendor-neutral Smithy → C++ code generator, the runtime
 it targets, and Bazel-native consumption — with every generated surface
-conformance-tested and integration-tested in CI. Developed on `main` and
-**not yet tagged**; the runtime reports `0.1.0-dev` until the first signed
-release (see [docs/versioning.md](docs/versioning.md)). Consumers pin a commit
-via `git_override` until then.
+conformance-tested and integration-tested in CI. Consumers pin the `v0.1.0`
+tag via `git_override` / `archive_override`; Bazel Central Registry and Maven
+Central publishing remain deferred (see [docs/versioning.md](docs/versioning.md)).
 
 ### Protocols
 
@@ -522,4 +521,4 @@ via `git_override` until then.
   per-module summary, and uploads the rendered HTML report as an artifact;
   `make coverage` runs the same locally. Measurement only — no gate yet.
 
-[Unreleased]: https://github.com/aaylward/smithy-cpp/commits/main
+[0.1.0]: https://github.com/muchq/smithy-cpp/releases/tag/v0.1.0

@@ -5,19 +5,17 @@ release is one git tag (`vX.Y.Z`, signed) covering both, and generated code
 from generator X.Y is supported against runtime X.Y. `smithy::Version()`
 returns the runtime's version.
 
-## Current state: pre-release, untagged
+## Current state: 0.1.0
 
-No release is tagged yet. The 0.1.0 milestone is developed on `main`, and the
-one product version consumers observe — `smithy::Version()`
-(`runtime/src/core/version.cc`) and the client `User-Agent`
-(`smithy::ClientConfig::user_agent`) — reports **`0.1.0-dev`** until the first
-signed tag lands. The bzlmod **module** version in `MODULE.bazel` is a separate
+`v0.1.0` is the current release. The one product version consumers observe —
+`smithy::Version()` (`runtime/src/core/version.cc`) and the client `User-Agent`
+(`smithy::ClientConfig::user_agent`) — reports **`0.1.0`**, and the generator's
+Gradle `version` (`codegen/gradle.properties`) tracks it, since the two ship
+under one tag. The bzlmod **module** version in `MODULE.bazel` is a separate
 identifier and stays `0.0.0` until the module is published to the Bazel Central
 Registry (deferred, PLAN Phase 6); consumers override the module source with
-`git_override`/`local_path_override`, which ignores that value, so pin a commit
-on `main` (there is no tag to pin). When 0.1.0 is cut, drop the `-dev` suffix,
-move the CHANGELOG's `[Unreleased]` section under `[0.1.0]`, and follow the
-release mechanics below.
+`git_override`/`archive_override`, which ignores that value, so pin the
+`v0.1.0` tag.
 
 ## Semantic versioning
 

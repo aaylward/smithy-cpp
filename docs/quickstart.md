@@ -50,14 +50,12 @@ module(name = "my_service", version = "0.0.0")
 bazel_dep(name = "smithy_cpp", version = "0.0.0")
 
 # Until smithy_cpp is published to the Bazel Central Registry (deferred until
-# the project is production-validated), consume it by git override. No release
-# is tagged yet, so pin a specific commit on main (copy the full SHA from
-# https://github.com/aaylward/smithy-cpp/commits/main). The `version` above is
-# ignored while an override is in effect.
+# the project is production-validated), consume it by git override, pinning a
+# release tag. The `version` above is ignored while an override is in effect.
 git_override(
     module_name = "smithy_cpp",
-    remote = "https://github.com/aaylward/smithy-cpp.git",
-    commit = "0000000000000000000000000000000000000000",  # replace with a real commit SHA
+    remote = "https://github.com/muchq/smithy-cpp.git",
+    tag = "v0.1.0",
 )
 
 bazel_dep(name = "googletest", version = "1.17.0.bcr.2")
@@ -345,7 +343,7 @@ SIGTERM → drain → clean exit.
 ## The first build: cost, caching, and locked-down networks
 
 The first `bazel build` fetches everything the module graph needs: the smithy-cpp sources at
-your `git_override` commit, a hermetic JDK 17, the generator's five Maven jars from
+your `git_override` tag, a hermetic JDK 17, the generator's five Maven jars from
 `repo1.maven.org`, and the C++ runtime's dependencies (BoringSSL, Boost.Beast/asio,
 nlohmann_json, zlib). That's hundreds of MB — expect a multi-minute cold build. It happens
 once: every archive lands in Bazel's caches and later builds fetch nothing. For CI or a team,
@@ -410,7 +408,7 @@ full generator command line. The usual causes:
   (see [§3](#3-declare-the-generated-libraries) — the trait usually lives in an overlay).
 
 If the action fails with **no** `cpp-codegen:` line, you have found a generator bug — please
-[file an issue](https://github.com/aaylward/smithy-cpp/issues) with the stack trace.
+[file an issue](https://github.com/muchq/smithy-cpp/issues) with the stack trace.
 
 ## Header validation (`parse_headers`) and third-party closures
 

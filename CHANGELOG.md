@@ -52,6 +52,22 @@ via `git_override` until then.
 
 ### Runtime
 
+- Client TLS verification gains its two missing negative tests. Both pin
+  properties that were previously only ever asserted to be *configured*, never
+  observed to bite, so a silent weakening — in our code or underneath us in a
+  BoringSSL bump — would not have failed a single test. (1) Hostname
+  verification: a server presenting a certificate the client explicitly trusts
+  as its own root, but whose SAN covers another host, must be refused; the
+  existing untrusted-CA test cannot reach this, since it fails at chain
+  validation instead. A second self-signed test identity
+  (`kMismatchedNameCertificatePem`, `CN=other.example.com`) makes the name
+  check the only thing left that can reject the handshake. (2) The client's
+  TLS 1.2 floor: a hand-built listener capped at TLS 1.1 must be unreachable
+  even with a fully trusted certificate — the mirror of the server-side floor
+  test the suite already had — with a TLS 1.2 control proving the refusal is
+  the floor and not a broken fixture. Both were verified by mutation: removing
+  the hostname check, and removing the client floor, each fails exactly its
+  own test.
 - Exception containment and the `-fno-exceptions` gate (issue #109, ADR-0003):
   no exception may cross a smithy `Outcome` boundary or unwind a transport io
   thread. Two changes reconcile that contract with ADR-0009's fail-fast

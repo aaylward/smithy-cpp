@@ -1,17 +1,21 @@
 // BeastHttpClient against BeastServerTransport: plaintext round trips with
 // keep-alive reuse, TLS with certificate + hostname verification against the
-// server's TLS termination, the verification failure mode, and the server's
-// TLS posture (version floor, ALPN). The server-observability tests that
-// need a TLS fixture (rejection and connection events under TLS, ADR-0013)
-// live here too.
+// server's TLS termination, the verification failure modes (untrusted chain,
+// and a trusted chain carrying the wrong name), and both ends' TLS posture —
+// the server's version floor and ALPN, and the client's own floor against a
+// deliberately downgraded peer. The server-observability tests that need a
+// TLS fixture (rejection and connection events under TLS, ADR-0013) live
+// here too.
 
 #include <gtest/gtest.h>
 #include <openssl/ssl.h>
 
+#include <array>
 #include <boost/asio/connect.hpp>
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/ssl.hpp>
+#include <boost/asio/write.hpp>
 #include <chrono>
 #include <memory>
 #include <mutex>
@@ -34,6 +38,8 @@
 namespace smithy::http {
 namespace {
 
+using smithy::testing::kMismatchedNameCertificatePem;
+using smithy::testing::kMismatchedNamePrivateKeyPem;
 using smithy::testing::kTestCertificatePem;
 using smithy::testing::kTestPrivateKeyPem;
 
@@ -268,6 +274,141 @@ TEST(BeastClientTest, TlsVerificationRejectsUntrustedServers) {
   ASSERT_FALSE(response.ok());
   EXPECT_EQ(response.error().kind(), ErrorKind::kTransport);
   server.Stop();
+}
+
+TEST(BeastClientTest, TlsVerificationRejectsATrustedCertificateForTheWrongHost) {
+  // The other half of verification, and the half a trusted-CA test cannot
+  // reach: this server's certificate chains to a root the client explicitly
+  // trusts (it IS the root — self-signed, handed over as ca_pem), so chain
+  // validation succeeds and the ONLY thing left to reject the handshake is
+  // the hostname check. Its SAN covers other.example.com; the client dials
+  // 127.0.0.1. A client that stopped verifying names — or one whose SAN
+  // matching silently changed underneath it, the standing risk every
+  // BoringSSL bump carries — would round-trip here instead of failing.
+  BeastServerTransport server({.port = 0,
+                               .threads = 1,
+                               .tls_certificate_chain_pem = kMismatchedNameCertificatePem,
+                               .tls_private_key_pem = kMismatchedNamePrivateKeyPem});
+  ASSERT_TRUE(server.Start(EchoHandler()).ok());
+
+  BeastHttpClient client({.host = "127.0.0.1",
+                          .port = server.port(),
+                          .tls = true,
+                          .tls_options = {.ca_pem = kMismatchedNameCertificatePem}});
+  auto response = client.Send(PostRequest("secret"));
+  ASSERT_FALSE(response.ok()) << "handshake succeeded against a certificate for another host";
+  EXPECT_EQ(response.error().kind(), ErrorKind::kTransport);
+
+  // The same server and the same trust anchor, with verification off, does
+  // round-trip — proving the refusal above is the name check and not an
+  // unrelated failure to reach or trust this server.
+  BeastHttpClient unverified({.host = "127.0.0.1",
+                              .port = server.port(),
+                              .tls = true,
+                              .tls_options = {.verify_peer = false}});
+  auto reached = unverified.Send(PostRequest("secret"));
+  ASSERT_TRUE(reached.ok()) << reached.error().message();
+  EXPECT_EQ(reached->body, "secret");
+  server.Stop();
+}
+
+// A bare TLS listener that answers exactly one handshake under a protocol
+// ceiling of its caller's choosing. BeastServerTransport deliberately exposes
+// no knob to weaken its own posture (the floor is fixed, not configuration),
+// so pinning what the *client* refuses needs a server built by hand.
+class CappedTlsServer {
+ public:
+  explicit CappedTlsServer(int max_proto_version)
+      : ctx_(boost::asio::ssl::context::tls_server),
+        acceptor_(io_,
+                  boost::asio::ip::tcp::endpoint(boost::asio::ip::make_address("127.0.0.1"), 0)) {
+    boost::system::error_code ec;
+    (void)ctx_.use_certificate_chain(boost::asio::buffer(std::string_view(kTestCertificatePem)),
+                                     ec);
+    EXPECT_FALSE(ec) << ec.message();
+    (void)ctx_.use_private_key(boost::asio::buffer(std::string_view(kTestPrivateKeyPem)),
+                               boost::asio::ssl::context::pem, ec);
+    EXPECT_FALSE(ec) << ec.message();
+    EXPECT_EQ(SSL_CTX_set_max_proto_version(ctx_.native_handle(), max_proto_version), 1);
+    port_ = acceptor_.local_endpoint().port();
+    thread_ = std::thread([this] {
+      boost::system::error_code accept_ec;
+      boost::asio::ip::tcp::socket socket(io_);
+      (void)acceptor_.accept(socket, accept_ec);
+      if (accept_ec) {
+        return;  // closed before anyone dialed
+      }
+      boost::asio::ssl::stream<boost::asio::ip::tcp::socket> stream(std::move(socket), ctx_);
+      boost::system::error_code ec;
+      (void)stream.handshake(boost::asio::ssl::stream_base::server, ec);
+      if (ec) {
+        return;  // a refused downgrade ends here; the test asserts client-side
+      }
+      // Answer one request so a handshake the client DOES accept round-trips
+      // like any other server, which is what makes the TLS 1.2 control
+      // meaningful. Read the request first so the client is never writing
+      // into a socket this side has already finished with.
+      std::array<char, 1024> scratch{};
+      (void)stream.read_some(boost::asio::buffer(scratch), ec);
+      constexpr std::string_view kResponse =
+          "HTTP/1.1 200 OK\r\nContent-Length: 6\r\nConnection: close\r\n\r\nsecret";
+      (void)boost::asio::write(stream, boost::asio::buffer(kResponse), ec);
+      (void)stream.shutdown(ec);
+    });
+  }
+
+  ~CappedTlsServer() {
+    boost::system::error_code ec;
+    (void)acceptor_.close(ec);  // unblocks accept() if nobody ever dialed
+    if (thread_.joinable()) {
+      thread_.join();
+    }
+  }
+
+  CappedTlsServer(const CappedTlsServer&) = delete;
+  CappedTlsServer& operator=(const CappedTlsServer&) = delete;
+
+  int port() const { return port_; }
+
+ private:
+  boost::asio::io_context io_;
+  boost::asio::ssl::context ctx_;
+  boost::asio::ip::tcp::acceptor acceptor_;
+  int port_ = 0;
+  std::thread thread_;
+};
+
+TEST(BeastClientTest, TlsClientRefusesAPreTls12Server) {
+  // The client's own version floor (SetupClientTlsContext's ApplyTls12Floor).
+  // The suite already pins the server refusing downgraded clients; this is
+  // the mirror, and until now the client's floor was only ever asserted to be
+  // *set*, never observed to bite. The certificate here is the matching one
+  // the client fully trusts, so the sole reason this handshake cannot
+  // complete is that the peer tops out below TLS 1.2.
+  CappedTlsServer server(TLS1_1_VERSION);
+
+  BeastHttpClient client({.host = "127.0.0.1",
+                          .port = server.port(),
+                          .tls = true,
+                          .tls_options = {.ca_pem = kTestCertificatePem}});
+  auto response = client.Send(PostRequest("secret"));
+  ASSERT_FALSE(response.ok()) << "completed a handshake below the TLS 1.2 floor";
+  EXPECT_EQ(response.error().kind(), ErrorKind::kTransport);
+}
+
+TEST(BeastClientTest, TlsClientAcceptsATls12Server) {
+  // The control for the floor test above: the identical hand-built listener
+  // capped at TLS 1.2 — the lowest version the floor admits — does complete.
+  // Without this, a client that refused every CappedTlsServer for some
+  // unrelated reason would still pass the test above.
+  CappedTlsServer server(TLS1_2_VERSION);
+
+  BeastHttpClient client({.host = "127.0.0.1",
+                          .port = server.port(),
+                          .tls = true,
+                          .tls_options = {.ca_pem = kTestCertificatePem}});
+  auto response = client.Send(PostRequest("secret"));
+  ASSERT_TRUE(response.ok()) << response.error().message();
 }
 
 TEST(BeastClientTest, TlsVerificationCanBeDisabledExplicitly) {

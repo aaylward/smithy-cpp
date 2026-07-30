@@ -1,13 +1,12 @@
 // Fuzz target: client-address derivation (ADR-0012). The walk parses two
 // attacker-influenced inputs — the x-forwarded-for header and, indirectly,
 // whatever ends up in peer_address — and must never crash on either.
-// TrustedProxies construction must either succeed or throw
-// std::invalid_argument, never anything else.
+// TrustedProxies::Parse must return a valid boundary or an Error::Validation,
+// never anything else (in particular, never crash on arbitrary text).
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 
@@ -17,7 +16,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
   if (size == 0) {
     return 0;
   }
-  static const smithy::http::TrustedProxies trusted(
+  static const smithy::http::TrustedProxies trusted = *smithy::http::TrustedProxies::Parse(
       {"10.0.0.0/8", "192.0.2.1", "2001:db8::/32", "::ffff:172.16.0.0/108"});
 
   // data[0] picks the peer so every run anchors a walk — trusted and
@@ -55,9 +54,10 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
   const std::string& client = derived.address;
   if (!client.empty()) {
     // Canonical output is a fixed point: a derived key is a valid
-    // host-route trust entry, and re-deriving from it changes nothing.
-    const smithy::http::TrustedProxies echo({client});
-    if (!echo.Contains(client)) std::abort();
+    // host-route trust entry (Parse must accept it), and re-deriving from it
+    // changes nothing.
+    const auto echo = smithy::http::TrustedProxies::Parse({client});
+    if (!echo.ok() || !echo->Contains(client)) std::abort();
     smithy::http::HttpRequest again;
     again.peer_address = client;
     if (smithy::http::ClientAddress(again, smithy::http::TrustedProxies::None()) != client) {
@@ -67,12 +67,12 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
 
   const std::string_view text(reinterpret_cast<const char*>(data), size);
   // Contains is total on raw attacker text (unparseable is in no network),
-  // and construction throws invalid_argument or nothing.
+  // and Parse returns a valid boundary or an Error — never a crash. When it
+  // parses, exercise Contains on the result; the parser is fuzzed either way.
   (void)trusted.Contains(text);
-  try {
-    const smithy::http::TrustedProxies probe({std::string(text)});
-    (void)probe.Contains("10.0.0.1");
-  } catch (const std::invalid_argument&) {
+  const auto probe = smithy::http::TrustedProxies::Parse({std::string(text)});
+  if (probe.ok()) {
+    (void)probe->Contains("10.0.0.1");
   }
   return 0;
 }

@@ -3,10 +3,10 @@
 #include <netdb.h>
 
 #include <array>
-#include <exception>
 #include <iostream>
 #include <string>
 
+#include "smithy/core/exception_guard.h"
 #include "smithy/http/trace_context.h"
 
 namespace smithy::http {
@@ -78,15 +78,19 @@ HttpResponse InvokeHandlerGuarded(const RequestHandler& handler, HttpRequest req
     return HttpResponse{503, {}, "", ""};
   }
   EnsureInboundTraceIdentity(request);
-  try {
-    HttpResponse response = handler(request);
-    CorrelateServerError(request, response);
-    return response;
-  } catch (const std::exception& e) {
-    return InternalError(request, e.what());
-  } catch (...) {
-    return InternalError(request, "unknown exception");
-  }
+  // Contain any handler exception as a correlated 500 — otherwise it unwinds
+  // out of the transport executor and terminates the process, dropping every
+  // in-flight request (ADR-0003). Under -fno-exceptions the handler cannot
+  // throw, so this compiles to a direct call.
+  return smithy::internal::Contain(
+      [&] {
+        HttpResponse response = handler(request);
+        CorrelateServerError(request, response);
+        return response;
+      },
+      [&](const char* what) {
+        return InternalError(request, what != nullptr ? what : "unknown exception");
+      });
 }
 
 }  // namespace smithy::http

@@ -171,6 +171,43 @@ TEST(BeastWebSocketTest, ATimedOutReceiveReleasesTheOneOutstandingSlotOnTheWire)
   server.Stop();
 }
 
+TEST(BeastWebSocketTest, AThrowingAsyncReceiveCallbackDoesNotKillTheSession) {
+  // ADR-0003/#109: an application completion callback that throws runs on the
+  // connection's io thread. It must be contained there — never unwind
+  // io_context::run() and terminate the process, and never abandon the read
+  // pump — so the session keeps working after the throw.
+  BeastServerTransport server(EchoOptions());
+  ASSERT_TRUE(server.Start(NotFoundHandler()).ok());
+
+  auto dialed = BeastWebSocketClient::Dial({.host = "127.0.0.1", .port = server.port()});
+  ASSERT_TRUE(dialed.ok()) << dialed.error().message();
+  const std::shared_ptr<WebSocket>& socket = *dialed;
+
+  std::promise<void> fired;
+  socket->ReceiveAsync([&fired](Outcome<std::optional<Message>> message) {
+    ASSERT_TRUE(message.ok()) << message.error().message();
+    fired.set_value();
+    throw std::runtime_error("application receive callback blew up");
+  });
+  ASSERT_TRUE(socket->Send(Text("chat", "first")).ok());
+
+  // The echo delivered to the async callback, which threw; the callback still
+  // ran (the promise was set) and the io thread survived the throw.
+  auto future = fired.get_future();
+  ASSERT_EQ(future.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+
+  // The read pump re-armed and the session is still usable: a fresh message
+  // round-trips over the same connection.
+  ASSERT_TRUE(socket->Send(Text("chat", "second")).ok());
+  auto again = socket->Receive(std::chrono::seconds(5));
+  ASSERT_TRUE(again.ok()) << again.error().message();
+  ASSERT_TRUE(again->has_value());
+  EXPECT_EQ((**again).payload.ToString(), "echo:second");
+
+  socket->Close();
+  server.Stop();
+}
+
 TEST(BeastWebSocketTest, AServeLoopBoundsItsReceiveAndKeepsWorkingBetweenMessages) {
   // The server-side shape the deadline unlocks: a serve loop that gets
   // control back on a quiet stream (here to push a nudge) instead of

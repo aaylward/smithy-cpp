@@ -7,6 +7,8 @@
 #include <string_view>
 #include <vector>
 
+#include "smithy/core/error.h"
+#include "smithy/core/outcome.h"
 #include "smithy/http/message.h"
 
 namespace smithy::http {
@@ -16,21 +18,25 @@ struct DerivedClient;
 // The deployment's reverse-proxy trust boundary (ADR-0012): the set of
 // addresses whose x-forwarded-for entries count during client-address
 // derivation. Built from CIDR strings ("10.0.0.0/8", "2600:1f00::/24"); a
-// bare address is a host route. Construction throws std::invalid_argument
-// on a malformed entry — a misconfigured trust boundary must fail
-// deployment, not silently widen or narrow. A copyable value; Contains is
-// const and safe to share across threads.
+// bare address is a host route. Parse() returns an Error::Validation on a
+// malformed entry — a misconfigured trust boundary must fail deployment, not
+// silently widen or narrow, but the failure is recoverable config (like a bad
+// bind address), so it is an Outcome, not an exception or an abort (ADR-0003).
+// A copyable value; Contains is const and safe to share across threads.
 //
 // "Trust nothing" is a statement, not an absence (issue #104): None() is
 // the greppable claim that the service is directly reachable — ClientAddress
 // then reduces every request to its bare canonical peer. There is
-// deliberately no default constructor, because behind a proxy the
+// deliberately no public default constructor, because behind a proxy the
 // accidental empty set (an unset config value) silently collapses all
 // traffic onto the proxy's one policy key.
 class TrustedProxies {
  public:
   static TrustedProxies None();
-  explicit TrustedProxies(const std::vector<std::string>& cidrs);
+
+  // Parses CIDR and host-route entries into a trust boundary, or an
+  // Error::Validation naming the first malformed entry.
+  static Outcome<TrustedProxies> Parse(const std::vector<std::string>& cidrs);
 
   // Whether a bare numeric address (no port, no brackets) is inside any
   // trusted network. IPv4-mapped IPv6 matches as the embedded IPv4.

@@ -43,12 +43,15 @@ Placement options considered:
 
 - **`TrustedProxies`** — the deployment's trust boundary as a CIDR set
   (`{"10.0.0.0/8", "2600:1f00::/24"}`; a bare address is a host route).
-  Parsed at construction; a malformed entry throws `std::invalid_argument`,
-  because a misconfigured trust boundary must fail deployment, not silently
-  widen or narrow. A CIDR set rather than Envoy-style hop counts: hop counts
-  are only correct when every request path traverses exactly that many
-  proxies, and the failure mode of a wrong count is silent forgeability.
-  "Trust nothing" is the named constructor `TrustedProxies::None()`, not a
+  Built by the factory `TrustedProxies::Parse`, which returns an
+  `Error::Validation` on a malformed entry — a misconfigured trust boundary
+  must fail deployment, not silently widen or narrow, but the failure is
+  recoverable config, so it is an `Outcome`, not an exception or an abort
+  (ADR-0003, reconciled 2026-07). A CIDR set rather than Envoy-style hop
+  counts: hop counts are only correct when every request path traverses
+  exactly that many proxies, and the failure mode of a wrong count is silent
+  forgeability. "Trust nothing" is the named constructor
+  `TrustedProxies::None()`, not a
   default constructor: the first adoption (issue #104) showed the empty set
   means two opposite things — a deliberate directly-reachable topology, or
   a forgotten config behind a proxy that silently collapses all traffic

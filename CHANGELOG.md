@@ -52,6 +52,32 @@ via `git_override` until then.
 
 ### Runtime
 
+- Exception containment and the `-fno-exceptions` gate (issue #109, ADR-0003):
+  no exception may cross a smithy `Outcome` boundary or unwind a transport io
+  thread. Two changes reconcile that contract with ADR-0009's fail-fast
+  posture. (1) Composition-time misuses that threw `std::invalid_argument` no
+  longer throw. Programming errors — a null rate-limit policy, a null
+  health-check probe or a JSON-corrupting check name, a null observe sink —
+  `Fatal`-abort with the same message (ADR-0009); they are not conditions a
+  caller can handle. A malformed proxy-trust CIDR is instead recoverable
+  config (like a bad bind address), so `TrustedProxies` gains a
+  `Parse() -> Outcome<TrustedProxies>` factory returning `Error::Validation`
+  (the throwing constructor is removed). Either way the `throw` is gone, so
+  the paths compile without exceptions. (2) Wire-facing callbacks in the
+  `-fno-exceptions`-clean runtime (request handlers, readiness probes, metrics
+  sinks) run inside a new `smithy::internal::Contain`
+  (`smithy/core/exception_guard.h`), which compiles to a direct call under
+  `-fno-exceptions`. The Beast transport — which cannot build `-fno-exceptions`,
+  so it always has exceptions — carries its own containment: each background
+  `io_context::run()` is wrapped in a catch-and-re-enter backstop (a stray throw
+  drains remaining work instead of terminating the process), its handler-pool
+  posts and WebSocket completion callbacks are contained at the call, and its
+  `Send`/`Start`/`FromConfig` Outcome boundaries are guarded against
+  resource-construction failures (a `std::bad_alloc`, a `std::thread` ctor
+  failing under load). A dedicated CI leg (`bazel build --config=noexcept`,
+  `make noexcept`) now builds the dependency-light runtime with exceptions
+  disabled — the ADR's enforcement gate — with `//runtime:http_beast` and its
+  Boost-dependent subtree out of scope.
 - Request-line injection defense (issue #109): the client transports now
   reject a space, control byte (CR/LF included), or DEL in `HttpRequest`'s
   `method` and `target` before dialing — the request-line companion to the

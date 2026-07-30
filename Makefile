@@ -17,7 +17,7 @@ verify: test codegen goldens lint
 # verify plus the slower jobs: sanitizers, fuzzer smoke runs, the out-of-tree
 # consumer module, and clang-tidy.
 .PHONY: verify-full
-verify-full: verify sanitize fuzz-smoke consumer tidy
+verify-full: verify sanitize fuzz-smoke consumer tidy noexcept
 	@echo "verify-full: OK"
 
 # --config=werror mirrors the CI gate (build:ci implies it): first-party
@@ -53,6 +53,17 @@ tidy:
 .PHONY: sanitize
 sanitize:
 	CC=clang CXX=clang++ $(BAZEL) test //... --config=asan --config=ubsan --config=werror
+
+# ADR-0003 enforcement gate: the dependency-light runtime must build with
+# exceptions disabled (many large consumers compile -fno-exceptions).
+# Boost.Asio/Beast are not -fno-exceptions-clean, so //runtime:http_beast and
+# its dependents are excluded; every other runtime library is in.
+.PHONY: noexcept
+noexcept:
+	$(BAZEL) build --config=noexcept --config=werror \
+		//runtime:core //runtime:json //runtime:cbor //runtime:eventstream \
+		//runtime:eventstream_json //runtime:eventstream_jsonrpc \
+		//runtime:compression //runtime:http //runtime:server //runtime:client
 
 .PHONY: fuzz-smoke
 fuzz-smoke:

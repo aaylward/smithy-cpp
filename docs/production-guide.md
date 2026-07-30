@@ -188,8 +188,12 @@ auto db = std::make_shared<MyDbPool>(/* ... */);
 // The deployment's proxy trust boundary (ADR-0012): x-forwarded-for
 // entries count only when appended by these networks. Directly reachable
 // (no proxy)? Say so: TrustedProxies::None() — the header is then ignored
-// and every request keys as its TCP peer.
-const smithy::http::TrustedProxies trusted({"10.0.0.0/8"});
+// and every request keys as its TCP peer. Parse() rejects a malformed CIDR
+// with an Error::Validation, so fail startup rather than deploy a boundary
+// that silently widens or narrows.
+auto trusted_result = smithy::http::TrustedProxies::Parse({"10.0.0.0/8"});
+if (!trusted_result) { /* report trusted_result.error(); refuse to start */ }
+const smithy::http::TrustedProxies trusted = *std::move(trusted_result);
 
 transport.Start(smithy::server::Chain(
     {// Outermost: shed abusive traffic before it costs anything. The
@@ -266,17 +270,19 @@ appending `x-forwarded-for`.
 convention is a `TRUSTED_PROXY_CIDRS` environment variable holding a
 comma-separated CIDR list, parsed once at startup. Unset must mean a
 *deliberate* direct-connect topology — and only unset: a set-but-empty
-value fails construction like any other malformed entry, so a template
-that renders an empty string aborts boot instead of silently collapsing
+value is a parse error like any other malformed entry, so a template that
+renders an empty string fails startup instead of silently collapsing
 proxied traffic onto one key (the issue-#104 accident, config edition):
 
 ```cpp
 const char* cidrs = std::getenv("TRUSTED_PROXY_CIDRS");
-const auto trusted = cidrs == nullptr
-                         ? smithy::http::TrustedProxies::None()
-                         : smithy::http::TrustedProxies(
-                               // the comma-list splitter from smithy/http/headers.h
-                               smithy::http::SplitHeaderListValues(cidrs));
+smithy::http::TrustedProxies trusted = smithy::http::TrustedProxies::None();
+if (cidrs != nullptr) {
+  // the comma-list splitter from smithy/http/headers.h
+  auto parsed = smithy::http::TrustedProxies::Parse(smithy::http::SplitHeaderListValues(cidrs));
+  if (!parsed) { /* log parsed.error(); refuse to start */ }
+  trusted = *std::move(parsed);
+}
 ```
 
 ## Serving lifecycle

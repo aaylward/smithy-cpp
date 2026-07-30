@@ -2,14 +2,15 @@
 
 #include <cctype>
 #include <cstddef>
-#include <exception>
 #include <iostream>
 #include <optional>
 #include <ranges>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
+
+#include "smithy/core/exception_guard.h"
+#include "smithy/core/fatal.h"
 
 namespace smithy::server {
 
@@ -52,8 +53,8 @@ Middleware PerClientRateLimit(std::function<bool(const std::string& client)> all
                               std::optional<std::chrono::seconds> retry_after) {
   if (allow == nullptr) {
     // A null policy would throw std::bad_function_call per request — fail
-    // at composition like HealthEndpoint and Observe do.
-    throw std::invalid_argument("PerClientRateLimit: allow must not be null");
+    // fast at composition like HealthEndpoint and Observe do (ADR-0009).
+    smithy::internal::Fatal("smithy::server::PerClientRateLimit: allow must not be null");
   }
   return Guard(
       [allow = std::move(allow), trusted = std::move(trusted)](const http::HttpRequest& request) {
@@ -67,16 +68,19 @@ namespace {
 
 // A throwing observation sink (e.g. a metrics backend under backpressure)
 // must not discard a response or unwind into the transport thread; swallow
-// it after logging.
+// it after logging. Contain() makes this a no-op wrapper under
+// -fno-exceptions, where the sink cannot throw.
 template <typename Callback, typename Observation>
 void CallContained(const Callback& callback, const Observation& observation, const char* which) {
-  try {
-    callback(observation);
-  } catch (const std::exception& e) {
-    std::clog << "smithy: " << which << " callback threw: " << e.what() << "\n";
-  } catch (...) {
-    std::clog << "smithy: " << which << " callback threw a non-std exception\n";
-  }
+  smithy::internal::Contain(
+      [&] { callback(observation); },
+      [&](const char* what) {
+        if (what != nullptr) {
+          std::clog << "smithy: " << which << " callback threw: " << what << "\n";
+        } else {
+          std::clog << "smithy: " << which << " callback threw a non-std exception\n";
+        }
+      });
 }
 
 // Same containment policy for readiness probes: a throw is a failing
@@ -84,14 +88,16 @@ void CallContained(const Callback& callback, const Observation& observation, con
 // message is the one clue to why /readyz is flapping, so keep the log
 // trail.
 bool ProbeContained(const ReadinessCheck& check) {
-  try {
-    return check.probe();
-  } catch (const std::exception& e) {
-    std::clog << "smithy: readiness probe '" << check.name << "' threw: " << e.what() << "\n";
-  } catch (...) {
-    std::clog << "smithy: readiness probe '" << check.name << "' threw a non-std exception\n";
-  }
-  return false;
+  return smithy::internal::Contain(
+      [&] { return check.probe(); },
+      [&](const char* what) -> bool {
+        if (what != nullptr) {
+          std::clog << "smithy: readiness probe '" << check.name << "' threw: " << what << "\n";
+        } else {
+          std::clog << "smithy: readiness probe '" << check.name << "' threw a non-std exception\n";
+        }
+        return false;
+      });
 }
 
 }  // namespace
@@ -103,13 +109,13 @@ Middleware HealthEndpoint(std::string path, std::vector<ReadinessCheck> checks) 
   // monitoring is parsing it.
   for (const ReadinessCheck& check : checks) {
     if (check.probe == nullptr) {
-      throw std::invalid_argument("smithy::server::HealthEndpoint: check '" + check.name +
-                                  "' has a null probe");
+      smithy::internal::Fatal("smithy::server::HealthEndpoint: check '" + check.name +
+                              "' has a null probe");
     }
     for (const char c : check.name) {
       if (c == '"' || c == '\\' || static_cast<unsigned char>(c) < 0x20) {
-        throw std::invalid_argument("smithy::server::HealthEndpoint: check name '" + check.name +
-                                    "' contains a quote, backslash, or control character");
+        smithy::internal::Fatal("smithy::server::HealthEndpoint: check name '" + check.name +
+                                "' contains a quote, backslash, or control character");
       }
     }
   }
@@ -149,7 +155,7 @@ Middleware Observe(std::function<void(const RequestObservation&)> on_complete,
                    std::function<void(const RequestStart&)> on_start,
                    std::function<std::chrono::steady_clock::time_point()> now) {
   if (on_complete == nullptr) {
-    throw std::invalid_argument("smithy::server::Observe: on_complete may not be null");
+    smithy::internal::Fatal("smithy::server::Observe: on_complete may not be null");
   }
   if (now == nullptr) {
     now = [] { return std::chrono::steady_clock::now(); };
@@ -166,17 +172,22 @@ Middleware Observe(std::function<void(const RequestObservation&)> on_complete,
       observation.trace_parent = request.headers.Get("traceparent").value_or("");
       const auto start = now();
       http::HttpResponse response;
+#if defined(__cpp_exceptions)
       try {
         response = next(request);
       } catch (...) {
         // Keep start/complete paired when dispatch throws: report a 500
         // completion, then let the exception continue to the transport's
-        // containment (server_dispatch.h).
+        // containment (server_dispatch.h). Under -fno-exceptions next()
+        // cannot throw, so this pairing is unreachable and compiled out.
         observation.status = 500;
         observation.duration = std::chrono::duration_cast<std::chrono::microseconds>(now() - start);
         CallContained(on_complete, observation, "Observe on_complete");
         throw;
       }
+#else
+      response = next(request);
+#endif
       observation.operation = response.operation;
       observation.status = response.status;
       observation.duration = std::chrono::duration_cast<std::chrono::microseconds>(now() - start);

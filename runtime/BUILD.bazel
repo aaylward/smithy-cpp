@@ -3,6 +3,12 @@ load("//bazel:copts.bzl", COPTS = "SMITHY_COPTS")
 
 package(default_visibility = ["//visibility:public"])
 
+# Read by //tools:release_test, which pins the User-Agent to smithy::Version().
+exports_files([
+    "src/core/version.cc",
+    "include/smithy/client/config.h",
+])
+
 cc_library(
     name = "core",
     srcs = [

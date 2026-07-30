@@ -2,6 +2,9 @@ load("@rules_java//java:defs.bzl", "java_binary", "java_library")
 
 package(default_visibility = ["//visibility:public"])
 
+# Read by //tools:release_test, which pins it to smithy::Version().
+exports_files(["gradle.properties"])
+
 # The generator, compiled from the same sources the Gradle build uses, so the
 # smithy_cpp_*_library rules (bazel/defs.bzl) can run generation as a hermetic
 # action inside the build graph. Gradle remains the dev workflow (unit tests,

@@ -13,6 +13,7 @@
 set -euo pipefail
 
 VERSION_CC=runtime/src/core/version.cc
+VERSION_TEST=runtime/tests/core/version_test.cc
 CONFIG_H=runtime/include/smithy/client/config.h
 GRADLE_PROPERTIES=codegen/gradle.properties
 CHANGELOG=CHANGELOG.md
@@ -26,6 +27,12 @@ die() {
 # files mirror it (docs/versioning.md).
 read_version() {
   sed -n 's/^std::string_view Version() { return "\(.*\)"; }$/\1/p' "$VERSION_CC"
+}
+
+# The literal the runtime test pins, which is what turns a missed file into a
+# red test rather than a wrong User-Agent in production.
+read_test_expectation() {
+  sed -n 's/^  EXPECT_EQ(Version(), "\(.*\)");$/\1/p' "$VERSION_TEST"
 }
 
 read_user_agent() {
@@ -42,9 +49,13 @@ read_changelog_heading() {
 }
 
 check() {
-  local version user_agent gradle_version heading
+  local version test_expectation user_agent gradle_version heading
   version=$(read_version)
   [[ -n $version ]] || die "no version literal in $VERSION_CC"
+
+  test_expectation=$(read_test_expectation)
+  [[ $test_expectation == "$version" ]] ||
+    die "$VERSION_TEST pins '$test_expectation', expected '$version'"
 
   user_agent=$(read_user_agent)
   [[ $user_agent == "smithy-cpp/$version" ]] ||
@@ -67,7 +78,7 @@ check() {
       die "$CHANGELOG has no '[$version]:' link footnote"
   fi
 
-  echo "release.sh: $version consistent across $VERSION_CC, $CONFIG_H, $GRADLE_PROPERTIES, $CHANGELOG"
+  echo "release.sh: $version consistent across $VERSION_CC, $VERSION_TEST, $CONFIG_H, $GRADLE_PROPERTIES, $CHANGELOG"
 }
 
 notes() {
@@ -117,6 +128,8 @@ bump() {
 
   rewrite "$VERSION_CC" \
     "s|^std::string_view Version() { return \"[^\"]*\"; }$|std::string_view Version() { return \"$target\"; }|"
+  rewrite "$VERSION_TEST" \
+    "s|^  EXPECT_EQ(Version(), \"[^\"]*\");$|  EXPECT_EQ(Version(), \"$target\");|"
   rewrite "$CONFIG_H" \
     "s|^  std::string user_agent = \"smithy-cpp/[^\"]*\";$|  std::string user_agent = \"smithy-cpp/$target\";|"
   rewrite "$GRADLE_PROPERTIES" "s|^version=.*$|version=$target|"

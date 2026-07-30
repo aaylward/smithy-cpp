@@ -14,5 +14,6 @@ sh_test(
         "//codegen:gradle.properties",
         "//runtime:include/smithy/client/config.h",
         "//runtime:src/core/version.cc",
+        "//runtime:tests/core/version_test.cc",
     ],
 )

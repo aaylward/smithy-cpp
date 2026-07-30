@@ -66,9 +66,16 @@ suites are the contract instead).
 
 - Update `smithy::Version()` + `CHANGELOG.md` in the release PR; CI must be
   fully green (full test matrix, consumer acceptance, all three protocol
-  conformance suites).
+  conformance suites). `//tools:release_test` fails the PR if the version
+  sources disagree or the CHANGELOG's leading section doesn't match the state
+  the version implies (`-dev` ⇒ `[Unreleased]`, otherwise `[X.Y.Z]`).
 - Tag the merge commit `vX.Y.Z` with a **signed, annotated tag**; the tag
-  message is the CHANGELOG section for the release.
+  message is the CHANGELOG section for the release
+  (`tools/release.sh notes X.Y.Z` prints it). Pushing the tag runs
+  [release.yml](../.github/workflows/release.yml), which re-checks the tree,
+  refuses a lightweight tag or one pushed at a commit declaring a different
+  version, and publishes the GitHub Release with those notes. Signing stays
+  local — Actions holds no key.
 - BCR and Maven Central publishing remain deferred until production
   validation (PLAN Phase 6); consumers pin the tag via `git_override` /
   `archive_override` as shown in [quickstart.md](quickstart.md).

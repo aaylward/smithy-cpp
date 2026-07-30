@@ -1,0 +1,18 @@
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+exports_files(["release.sh"])
+
+# The version sources are spread across three build systems' worth of files;
+# nothing but this test relates them (docs/versioning.md).
+sh_test(
+    name = "release_test",
+    size = "small",
+    srcs = ["release_test.sh"],
+    data = [
+        "release.sh",
+        "//:CHANGELOG.md",
+        "//codegen:gradle.properties",
+        "//runtime:include/smithy/client/config.h",
+        "//runtime:src/core/version.cc",
+    ],
+)

@@ -1,0 +1,51 @@
+name: Release
+
+# Publishing is driven by the signed tag. Creating it stays a human step —
+# Actions has no access to the signing key, and docs/versioning.md requires a
+# signed annotated tag — so this workflow's job is to verify what was tagged
+# and turn the CHANGELOG section into a GitHub Release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: publish GitHub Release
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # `git tag vX.Y.Z` (no -s/-a) writes a commit object, not a tag object,
+      # and produces a release with no message and no signature.
+      - name: tag is annotated
+        run: |
+          if [ "$(git cat-file -t "$GITHUB_REF_NAME")" != tag ]; then
+            echo "::error::$GITHUB_REF_NAME is a lightweight tag; the release policy requires 'git tag -s'"
+            exit 1
+          fi
+
+      # This trigger fires for any pushed tag, including one cut from a stale
+      # branch, so the tagged tree has to agree with the tag's own name.
+      - name: tag matches the tagged commit
+        run: |
+          tools/release.sh check
+          version="$(tools/release.sh version)"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::$GITHUB_REF_NAME was pushed at a commit declaring $version"
+            exit 1
+          fi
+
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(tools/release.sh version)"
+          tools/release.sh notes "$version" > "$RUNNER_TEMP/notes.md"
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file "$RUNNER_TEMP/notes.md"

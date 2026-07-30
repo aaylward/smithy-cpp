@@ -1,2 +1,6 @@
-# Root package: hosts the rules_jvm_external lock file (//:maven_install.json).
-exports_files(["maven_install.json"])
+# Root package: hosts the rules_jvm_external lock file (//:maven_install.json)
+# and the CHANGELOG, which //tools:release_test reads.
+exports_files([
+    "CHANGELOG.md",
+    "maven_install.json",
+])

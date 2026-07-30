@@ -22,6 +22,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <exception>
 #include <future>
 #include <iostream>
 #include <memory>
@@ -34,6 +35,7 @@
 #include <vector>
 
 #include "smithy/client/config.h"
+#include "smithy/core/exception_guard.h"
 #include "smithy/eventstream/json_frame.h"
 #include "smithy/http/headers.h"
 #include "smithy/http/server_dispatch.h"
@@ -46,6 +48,47 @@ namespace asio = boost::asio;
 namespace beast = boost::beast;
 namespace bhttp = boost::beast::http;
 namespace bws = boost::beast::websocket;
+
+// The exception backstop for a background io thread (ADR-0003, #109). Beast
+// is not -fno-exceptions-clean, so this transport always builds with
+// exceptions — and an exception escaping io_context::run() would leave run()
+// via std::terminate, killing the whole process along with every other
+// connection the thread multiplexes. Completions are contained at their own
+// boundaries (handlers via InvokeHandlerGuarded, gates via InvokeGateGuarded,
+// application callbacks via InvokeCompletion below), so reaching this loop is
+// a last resort — a framework std::bad_alloc under memory pressure, say. Log
+// it and re-enter run() so the remaining work drains instead of the process
+// dying; a clean drain returns normally and the thread exits.
+void RunIoThread(asio::io_context& io, const char* which) {
+  for (;;) {
+    try {
+      io.run();
+      return;  // clean drain: no more work, thread exits
+    } catch (const std::exception& e) {
+      std::clog << "smithy: " << which << " io thread caught: " << e.what()
+                << "; re-entering run()\n";
+    } catch (...) {
+      std::clog << "smithy: " << which
+                << " io thread caught a non-std exception; re-entering run()\n";
+    }
+  }
+}
+
+// Contains an application completion callback fired on an io thread. A
+// throwing user callback is the application's bug, but per ADR-0003 it must
+// not unwind the transport — losing follow-up work queued after the call
+// (e.g. re-arming the read pump) or, without RunIoThread, terminating the
+// process. Swallow after logging; the connection keeps running.
+template <typename Fn, typename... Args>
+void InvokeCompletion(const char* which, Fn&& fn, Args&&... args) {
+  try {
+    std::forward<Fn>(fn)(std::forward<Args>(args)...);
+  } catch (const std::exception& e) {
+    std::clog << "smithy: " << which << " callback threw: " << e.what() << "\n";
+  } catch (...) {
+    std::clog << "smithy: " << which << " callback threw a non-std exception\n";
+  }
+}
 
 HttpRequest ToSmithyRequest(bhttp::request<bhttp::string_body> wire) {
   HttpRequest request;
@@ -556,9 +599,10 @@ class WsSession final : public WebSocketSessionBase,
       }
     }
     if (receive) {
-      // The pump runs on the connection's executor — this IS the
-      // completion context.
-      receive(std::move(handoff));
+      // The pump runs on the connection's executor — this IS the completion
+      // context, so contain a throwing app callback here rather than let it
+      // abandon PumpRead() below or unwind the io thread (ADR-0003).
+      InvokeCompletion("websocket receive", receive, std::move(handoff));
     }
     PumpRead();
   }
@@ -581,13 +625,16 @@ class WsSession final : public WebSocketSessionBase,
   void CompleteAsyncWaiters(const AsyncWaiters& waiters, bool clean, const std::string& reason) {
     if (waiters.receive) {
       if (clean) {
-        waiters.receive(std::optional<eventstream::Message>());
+        InvokeCompletion("websocket receive", waiters.receive,
+                         std::optional<eventstream::Message>());
       } else {
-        waiters.receive(Error::Transport("websocket: " + reason));
+        InvokeCompletion("websocket receive", waiters.receive,
+                         Error::Transport("websocket: " + reason));
       }
     }
     if (waiters.send) {
-      waiters.send(Error::Transport("websocket: " + (clean ? "session is closed" : reason)));
+      InvokeCompletion("websocket send", waiters.send,
+                       Error::Transport("websocket: " + (clean ? "session is closed" : reason)));
     }
   }
 
@@ -601,7 +648,7 @@ class WsSession final : public WebSocketSessionBase,
       wake_.notify_all();
       lock.unlock();
       if (send) {
-        send(Error::Transport("websocket: " + why));
+        InvokeCompletion("websocket send", send, Error::Transport("websocket: " + why));
       }
       return;
     }
@@ -643,9 +690,9 @@ class WsSession final : public WebSocketSessionBase,
     if (send) {
       // On the connection's executor — the completion context.
       if (send_error.empty()) {
-        send(Unit{});
+        InvokeCompletion("websocket send", send, Unit{});
       } else {
-        send(Error::Transport("websocket: " + send_error));
+        InvokeCompletion("websocket send", send, Error::Transport("websocket: " + send_error));
       }
     }
   }
@@ -1299,19 +1346,25 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
     }
     asio::post(*handler_pool, [weak = weak_from_this(), stream, request = std::move(request),
                                keep_alive, peer = std::move(peer)]() mutable {
-      auto self = weak.lock();
-      if (self == nullptr) {
-        return;  // Torn down; the abandoned stream closes the fd.
-      }
-      HttpResponse response = InvokeHandlerGuarded(self->handler, std::move(request));
-      asio::post(stream->get_executor(), [weak, stream, response = std::move(response), keep_alive,
-                                          peer = std::move(peer)]() mutable {
+      // A handler-pool worker has no RunIoThread backstop, so contain any
+      // throw here — the handler itself is already contained by
+      // InvokeHandlerGuarded, leaving only a framework bad_alloc, which must
+      // not terminate the process (ADR-0003).
+      InvokeCompletion("beast handler dispatch", [&] {
         auto self = weak.lock();
         if (self == nullptr) {
-          CloseStream(*stream);
-          return;
+          return;  // Torn down; the abandoned stream closes the fd.
         }
-        self->Respond(stream, std::move(response), keep_alive, std::move(peer));
+        HttpResponse response = InvokeHandlerGuarded(self->handler, std::move(request));
+        asio::post(stream->get_executor(), [weak, stream, response = std::move(response),
+                                            keep_alive, peer = std::move(peer)]() mutable {
+          auto self = weak.lock();
+          if (self == nullptr) {
+            CloseStream(*stream);
+            return;
+          }
+          self->Respond(stream, std::move(response), keep_alive, std::move(peer));
+        });
       });
     });
   }
@@ -1381,28 +1434,33 @@ struct BeastServerTransport::State : std::enable_shared_from_this<State> {
     request.peer_address = PeerAddressOf(*stream);
     asio::post(*handler_pool, [weak = weak_from_this(), stream, parser,
                                request = std::move(request)]() mutable {
-      auto self = weak.lock();
-      if (self == nullptr) {
-        return;  // Torn down; the abandoned stream closes the fd.
-      }
-      std::optional<HttpResponse> refusal = InvokeGateGuarded(self->opts.websocket_gate, request);
-      asio::post(stream->get_executor(), [weak, stream, parser, request = std::move(request),
-                                          refusal = std::move(refusal)]() mutable {
+      // Handler-pool worker: no RunIoThread backstop, and the gate is already
+      // contained by InvokeGateGuarded, so contain any residual (framework)
+      // throw here to keep a pool worker from terminating the process.
+      InvokeCompletion("beast upgrade dispatch", [&] {
         auto self = weak.lock();
-        if (self == nullptr || self->stopping) {
-          // Torn down, or Stop() began while the gate ran: no new streams.
-          CloseStream(*stream);
-          return;
+        if (self == nullptr) {
+          return;  // Torn down; the abandoned stream closes the fd.
         }
-        if (refusal.has_value()) {
-          // Refused before any 101 exists: the answer is a plain HTTP
-          // response on the plain HTTP connection, keep-alive intact.
-          self->active.fetch_add(1);
-          const bool keep_alive = parser->get().keep_alive() && !self->stopping;
-          self->Respond(stream, *std::move(refusal), keep_alive, std::move(request.peer_address));
-          return;
-        }
-        self->CompleteUpgrade(stream, parser, std::move(request));
+        std::optional<HttpResponse> refusal = InvokeGateGuarded(self->opts.websocket_gate, request);
+        asio::post(stream->get_executor(), [weak, stream, parser, request = std::move(request),
+                                            refusal = std::move(refusal)]() mutable {
+          auto self = weak.lock();
+          if (self == nullptr || self->stopping) {
+            // Torn down, or Stop() began while the gate ran: no new streams.
+            CloseStream(*stream);
+            return;
+          }
+          if (refusal.has_value()) {
+            // Refused before any 101 exists: the answer is a plain HTTP
+            // response on the plain HTTP connection, keep-alive intact.
+            self->active.fetch_add(1);
+            const bool keep_alive = parser->get().keep_alive() && !self->stopping;
+            self->Respond(stream, *std::move(refusal), keep_alive, std::move(request.peer_address));
+            return;
+          }
+          self->CompleteUpgrade(stream, parser, std::move(request));
+        });
       });
     });
   }
@@ -1496,6 +1554,20 @@ BeastServerTransport::BeastServerTransport(Options options) : options_(std::move
 BeastServerTransport::~BeastServerTransport() { Shutdown(); }
 
 Outcome<Unit> BeastServerTransport::Start(RequestHandler handler) {
+  // No exception may cross this Outcome boundary (ADR-0003). The throw vector
+  // is resource construction — a std::thread ctor failing with EAGAIN under
+  // load, a bad_alloc — which Contain turns into a transport Error rather
+  // than unwinding into the caller. The destructor's Shutdown() joins any
+  // threads that did start.
+  return smithy::internal::Contain(
+      [&]() -> Outcome<Unit> { return StartContained(std::move(handler)); },
+      [](const char* what) -> Outcome<Unit> {
+        return Error::Transport(std::string("beast: start failed: ") +
+                                (what != nullptr ? what : "unknown exception"));
+      });
+}
+
+Outcome<Unit> BeastServerTransport::StartContained(RequestHandler handler) {
   if (state_ != nullptr) {
     return Error::Validation("beast: transport already started");
   }
@@ -1600,7 +1672,7 @@ Outcome<Unit> BeastServerTransport::Start(RequestHandler handler) {
   const int threads = options_.threads > 0 ? options_.threads : 1;
   threads_.reserve(static_cast<std::size_t>(threads));
   for (int i = 0; i < threads; ++i) {
-    threads_.emplace_back([state] { state->io.run(); });
+    threads_.emplace_back([state] { RunIoThread(state->io, "beast server"); });
   }
   return Unit{};
 }
@@ -1943,21 +2015,44 @@ BeastHttpClient::BeastHttpClient(Options options)
 BeastHttpClient::~BeastHttpClient() = default;
 
 Outcome<std::shared_ptr<BeastHttpClient>> BeastHttpClient::FromConfig(const ClientConfig& config) {
-  auto endpoint = ParseEndpoint(config.endpoint);
-  if (!endpoint) {
-    return std::move(endpoint).error();
-  }
-  Options options;
-  options.host = endpoint->host;
-  options.port = endpoint->port;
-  options.tls = endpoint->tls();
-  options.tls_options = config.tls;
-  options.request_timeout_ms = config.request_timeout_ms;
-  options.max_idle_connections = config.max_idle_connections;
-  return std::make_shared<BeastHttpClient>(std::move(options));
+  // The make_shared (State ctor allocates the io_context) is the throw
+  // vector; contain it so no exception crosses the Outcome boundary
+  // (ADR-0003).
+  return smithy::internal::Contain(
+      [&]() -> Outcome<std::shared_ptr<BeastHttpClient>> {
+        auto endpoint = ParseEndpoint(config.endpoint);
+        if (!endpoint) {
+          return std::move(endpoint).error();
+        }
+        Options options;
+        options.host = endpoint->host;
+        options.port = endpoint->port;
+        options.tls = endpoint->tls();
+        options.tls_options = config.tls;
+        options.request_timeout_ms = config.request_timeout_ms;
+        options.max_idle_connections = config.max_idle_connections;
+        return std::make_shared<BeastHttpClient>(std::move(options));
+      },
+      [](const char* what) -> Outcome<std::shared_ptr<BeastHttpClient>> {
+        return Error::Transport(std::string("beast client: FromConfig failed: ") +
+                                (what != nullptr ? what : "unknown exception"));
+      });
 }
 
 Outcome<HttpResponse> BeastHttpClient::Send(const HttpRequest& request) {
+  // No exception may cross this Outcome boundary (ADR-0003). Network ops are
+  // all error_code-based, so the residual throw vector is a std::bad_alloc
+  // from the sync drive under memory pressure; Contain turns it into a
+  // transport Error instead of unwinding into the caller.
+  return smithy::internal::Contain(
+      [&]() -> Outcome<HttpResponse> { return SendContained(request); },
+      [](const char* what) -> Outcome<HttpResponse> {
+        return Error::Transport(std::string("beast client: send failed: ") +
+                                (what != nullptr ? what : "unknown exception"));
+      });
+}
+
+Outcome<HttpResponse> BeastHttpClient::SendContained(const HttpRequest& request) {
   if (state_->opts.host.empty()) {
     return Error::Validation("beast client: options need a host");
   }
@@ -2054,7 +2149,7 @@ class DialedWebSocket final : public WebSocket {
       : connection_(std::move(connection)),
         session_(std::move(session)),
         work_guard_(asio::make_work_guard(connection_->io)),
-        runner_([this] { connection_->io.run(); }) {}
+        runner_([this] { RunIoThread(connection_->io, "beast client websocket"); }) {}
 
   ~DialedWebSocket() override {
     session_->Abort("client released the session");

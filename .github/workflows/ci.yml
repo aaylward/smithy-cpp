@@ -94,6 +94,37 @@ jobs:
           //runtime:beast_transport_test
           //runtime:beast_websocket_test --config=ci --config=tsan
 
+  noexcept:
+    name: bazel (-fno-exceptions runtime)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: bazel-contrib/setup-bazel@0.19.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+          disk-cache: noexcept-ubuntu
+      # ADR-0003 enforcement gate: the dependency-light runtime must compile
+      # with exceptions disabled, because many large C++ consumers build
+      # -fno-exceptions and could not otherwise link it. Boost.Asio/Beast are
+      # not -fno-exceptions-clean, so //runtime:http_beast and its dependents
+      # are out of scope; every other runtime library is in. A build (not a
+      # test) is the gate — the goal is that the object code exists without a
+      # single `throw` or `catch` reachable.
+      - name: bazel build (exceptions disabled)
+        run: >
+          bazelisk build --config=ci --config=noexcept
+          //runtime:core
+          //runtime:json
+          //runtime:cbor
+          //runtime:eventstream
+          //runtime:eventstream_json
+          //runtime:eventstream_jsonrpc
+          //runtime:compression
+          //runtime:http
+          //runtime:server
+          //runtime:client
+
   fuzz:
     name: fuzz (libFuzzer smoke)
     runs-on: ubuntu-24.04

@@ -97,3 +97,10 @@ common --java_language_version=17
 common --tool_java_language_version=17
 common --java_runtime_version=remotejdk_17
 common --tool_java_runtime_version=remotejdk_17
+
+# ADR-0003 enforcement: the dependency-light runtime must build without
+# exceptions (many large consumers use -fno-exceptions). Boost.Asio/Beast
+# are not -fno-exceptions-clean, so //runtime:http_beast and its dependents
+# are excluded from this leg; the core runtime is not.
+build:noexcept --copt=-fno-exceptions
+build:noexcept --copt=-fno-unwind-tables

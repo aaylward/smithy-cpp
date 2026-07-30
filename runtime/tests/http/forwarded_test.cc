@@ -7,7 +7,6 @@
 
 #include <gtest/gtest.h>
 
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -129,22 +128,25 @@ TEST(TrustedProxiesTest, NoneAndTheUnparseableTrustNothing) {
   EXPECT_FALSE(trusted.Contains("10.0.0.1:443"));  // bare addresses only
 }
 
-TEST(TrustedProxiesTest, MalformedConfigurationThrows) {
+TEST(TrustedProxiesDeathTest, MalformedConfigurationAborts) {
   // A trust boundary that does not parse must fail deployment (ADR-0012),
-  // not silently widen or narrow.
-  EXPECT_THROW(TrustedProxies({"10.0.0.0/33"}), std::invalid_argument);
-  EXPECT_THROW(TrustedProxies({"2001:db8::/129"}), std::invalid_argument);
-  EXPECT_THROW(TrustedProxies({"10.0.0.0/"}), std::invalid_argument);
-  EXPECT_THROW(TrustedProxies({"10.0.0.0/8/8"}), std::invalid_argument);
-  EXPECT_THROW(TrustedProxies({"10.0.0.0/ 8"}), std::invalid_argument);
-  EXPECT_THROW(TrustedProxies({"gateway/8"}), std::invalid_argument);
-  EXPECT_THROW(TrustedProxies({""}), std::invalid_argument);
-  EXPECT_THROW(TrustedProxies({"fe80::1%eth0/64"}), std::invalid_argument);
+  // not silently widen or narrow. It is a composition-time contract
+  // violation, so it fails fast via Fatal (ADR-0009) rather than throwing —
+  // the runtime carries no exception across this boundary and builds under
+  // -fno-exceptions.
+  EXPECT_DEATH(TrustedProxies({"10.0.0.0/33"}), "TrustedProxies:");
+  EXPECT_DEATH(TrustedProxies({"2001:db8::/129"}), "TrustedProxies:");
+  EXPECT_DEATH(TrustedProxies({"10.0.0.0/"}), "TrustedProxies:");
+  EXPECT_DEATH(TrustedProxies({"10.0.0.0/8/8"}), "TrustedProxies:");
+  EXPECT_DEATH(TrustedProxies({"10.0.0.0/ 8"}), "TrustedProxies:");
+  EXPECT_DEATH(TrustedProxies({"gateway/8"}), "TrustedProxies:");
+  EXPECT_DEATH(TrustedProxies({""}), "TrustedProxies:");
+  EXPECT_DEATH(TrustedProxies({"fe80::1%eth0/64"}), "TrustedProxies:");
   // A mapped base with a prefix spanning non-IPv4 space is meaningless as a
   // proxy trust boundary; both /96 boundary neighbors are pinned.
-  EXPECT_THROW(TrustedProxies({"::ffff:10.0.0.0/64"}), std::invalid_argument);
-  EXPECT_THROW(TrustedProxies({"::ffff:10.0.0.0/95"}), std::invalid_argument);
-  EXPECT_THROW(TrustedProxies({"::ffff:10.0.0.0/129"}), std::invalid_argument);
+  EXPECT_DEATH(TrustedProxies({"::ffff:10.0.0.0/64"}), "TrustedProxies:");
+  EXPECT_DEATH(TrustedProxies({"::ffff:10.0.0.0/95"}), "TrustedProxies:");
+  EXPECT_DEATH(TrustedProxies({"::ffff:10.0.0.0/129"}), "TrustedProxies:");
 }
 
 TEST(ClientAddressTest, AnUntrustedPeerIsTheClientAndTheHeaderIsIgnored) {

@@ -11,6 +11,7 @@
 #include <string_view>
 #include <utility>
 
+#include "smithy/core/exception_guard.h"
 #include "smithy/http/headers.h"
 #include "smithy/http/http1.h"
 #include "smithy/http/server_dispatch.h"
@@ -243,19 +244,21 @@ void SocketHttpServer::Stop() { Shutdown(); }
 void SocketHttpServer::Shutdown() noexcept {
   if (!accept_thread_.joinable()) return;
   stopping_ = true;
-  try {
-    // Nudge the accept loop awake with a throwaway connection, then close.
-    {
-      SocketHttpClient nudge("127.0.0.1", bound_port_, /*timeout_ms=*/1000);
-      HttpRequest wake;
-      wake.method = "GET";
-      wake.target = "/";
-      (void)nudge.Send(wake);
-    }
-    accept_thread_.join();
-  } catch (...) {
-    // Teardown must not propagate out of a destructor.
-  }
+  // Teardown must not propagate out of a destructor; Contain swallows any
+  // throw (and is a no-op wrapper under -fno-exceptions).
+  smithy::internal::Contain(
+      [&] {
+        // Nudge the accept loop awake with a throwaway connection, then close.
+        {
+          SocketHttpClient nudge("127.0.0.1", bound_port_, /*timeout_ms=*/1000);
+          HttpRequest wake;
+          wake.method = "GET";
+          wake.target = "/";
+          (void)nudge.Send(wake);
+        }
+        accept_thread_.join();
+      },
+      [](const char*) {});
   close(static_cast<SocketFd>(listener_));
   listener_ = -1;
   handler_ = nullptr;

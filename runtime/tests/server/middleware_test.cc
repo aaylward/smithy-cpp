@@ -237,8 +237,10 @@ TEST(ObserveTest, CountsEveryRequest) {
   EXPECT_EQ(count, 3);
 }
 
-TEST(ObserveTest, NullOnCompleteThrowsAtComposition) {
-  EXPECT_THROW(Observe(nullptr), std::invalid_argument);
+TEST(ObserveDeathTest, NullOnCompleteAbortsAtComposition) {
+  // A composition-time contract violation fails fast (ADR-0009), so no
+  // exception crosses the boundary and the runtime builds -fno-exceptions.
+  EXPECT_DEATH(Observe(nullptr), "smithy::server::Observe: on_complete may not be null");
 }
 
 TEST(ObserveTest, ThrowingCallbackDoesNotDiscardResponseOrPropagate) {
@@ -384,8 +386,9 @@ TEST(PerClientRateLimitTest, AnUnknownClientIsAdmittedWithoutConsultingAllow) {
   EXPECT_FALSE(consulted);
 }
 
-TEST(PerClientRateLimitTest, ANullPolicyThrowsAtComposition) {
-  EXPECT_THROW(PerClientRateLimit(nullptr, http::TrustedProxies::None()), std::invalid_argument);
+TEST(PerClientRateLimitDeathTest, ANullPolicyAbortsAtComposition) {
+  EXPECT_DEATH(PerClientRateLimit(nullptr, http::TrustedProxies::None()),
+               "smithy::server::PerClientRateLimit: allow must not be null");
 }
 
 TEST(TooManyRequestsTest, ShapesThe429) {
@@ -531,16 +534,18 @@ TEST(HealthEndpointTest, AThrowingProbeLogsTheCheckNameAndReason) {
   EXPECT_NE(log.str().find("connection refused"), std::string::npos) << log.str();
 }
 
-TEST(HealthEndpointTest, NullProbeThrowsAtComposition) {
-  // Contained per-request, a null probe would read as a permanent outage.
-  EXPECT_THROW(HealthEndpoint("/readyz", {{"db", nullptr}}), std::invalid_argument);
+TEST(HealthEndpointDeathTest, NullProbeAbortsAtComposition) {
+  // Contained per-request, a null probe would read as a permanent outage, so
+  // it fails fast at composition (ADR-0009).
+  EXPECT_DEATH(HealthEndpoint("/readyz", {{"db", nullptr}}), "has a null probe");
 }
 
-TEST(HealthEndpointTest, NameThatWouldCorruptTheJsonThrowsAtComposition) {
+TEST(HealthEndpointDeathTest, NameThatWouldCorruptTheJsonAbortsAtComposition) {
   // Names land verbatim between the failing list's quotes; reject at
   // composition time what would produce invalid JSON during an outage.
   for (const std::string name : {"d\"b", "d\\b", "d\nb"}) {
-    EXPECT_THROW(HealthEndpoint("/readyz", {{name, [] { return true; }}}), std::invalid_argument)
+    EXPECT_DEATH(HealthEndpoint("/readyz", {{name, [] { return true; }}}),
+                 "contains a quote, backslash, or control character")
         << name;
   }
   EXPECT_NO_THROW(HealthEndpoint("/readyz", {{"db:primary/us-east 1", [] { return true; }}}));

@@ -144,6 +144,25 @@ cc_test(
     ],
 )
 
+# Exception-containment acceptance (ADR-0003, issue #109 item C): a throwing
+# application callback — handler or WebSocket completion — is contained by the
+# transport instead of unwinding an io thread and crashing the module.
+# Beast-backed; behind a download-blocking proxy exclude it the same way:
+# bazel test //... -- -//:exception_safety_acceptance_test
+cc_test(
+    name = "exception_safety_acceptance_test",
+    size = "small",
+    srcs = ["exception_safety_acceptance_test.cc"],
+    copts = SMITHY_COPTS,
+    deps = [
+        "@googletest//:gtest_main",
+        "@smithy_cpp//runtime:client",
+        "@smithy_cpp//runtime:eventstream",
+        "@smithy_cpp//runtime:http",
+        "@smithy_cpp//runtime:http_beast",
+    ],
+)
+
 # Completion-driven streams acceptance (ADR-0019): the async socket
 # primitives, the shared-session serve seam, the coroutine adapter, and
 # async-delivery fan-out, all through the module boundary. Beast-backed;

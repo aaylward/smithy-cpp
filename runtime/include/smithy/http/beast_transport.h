@@ -213,6 +213,9 @@ class BeastServerTransport : public HttpServerTransport {
   struct State;  // Hides boost headers from this public header.
 
   void Shutdown() noexcept;
+  // Start()'s body; Start() wraps it so no exception (a std::thread ctor
+  // failure, a bad_alloc) crosses the Outcome boundary (ADR-0003).
+  Outcome<Unit> StartContained(RequestHandler handler);
 
   Options options_;
   std::shared_ptr<State> state_;
@@ -263,6 +266,10 @@ class BeastHttpClient : public HttpClient {
 
  private:
   struct State;  // Hides boost headers from this public header.
+
+  // Send()'s body; Send() wraps it so no exception (a bad_alloc from the sync
+  // drive) crosses the Outcome boundary (ADR-0003).
+  Outcome<HttpResponse> SendContained(const HttpRequest& request);
 
   std::shared_ptr<State> state_;
 };

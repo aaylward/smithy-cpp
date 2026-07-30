@@ -36,6 +36,10 @@ struct Detached {
     std::suspend_never final_suspend() noexcept { return {}; }
     void return_void() noexcept {}
     void unhandled_exception() noexcept {
+      // A coroutine promise must declare unhandled_exception(), but under
+      // -fno-exceptions it is unreachable — nothing can throw — so the
+      // containment body compiles only when exceptions are enabled.
+#if defined(__cpp_exceptions)
       try {
         std::rethrow_exception(std::current_exception());
       } catch (const std::exception& e) {
@@ -43,6 +47,7 @@ struct Detached {
       } catch (...) {
         std::clog << "smithy: detached stream coroutine threw a non-std exception\n";
       }
+#endif
     }
     // NOLINTEND(readability-convert-member-functions-to-static)
   };
@@ -82,6 +87,9 @@ class [[nodiscard]] StreamTask {
     FinalAwaiter final_suspend() noexcept { return {}; }
     void return_value(Outcome<Unit> outcome) noexcept { result = std::move(outcome); }
     void unhandled_exception() noexcept {
+      // Required by the coroutine machinery, but unreachable under
+      // -fno-exceptions; the containment body compiles only with exceptions.
+#if defined(__cpp_exceptions)
       try {
         std::rethrow_exception(std::current_exception());
       } catch (const std::exception& e) {
@@ -89,6 +97,7 @@ class [[nodiscard]] StreamTask {
       } catch (...) {
         result = Error::Unknown("streaming handler threw a non-std exception");
       }
+#endif
     }
     // NOLINTEND(readability-convert-member-functions-to-static)
     Outcome<Unit> result = Unit{};

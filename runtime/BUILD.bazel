@@ -6,6 +6,7 @@ package(default_visibility = ["//visibility:public"])
 # Read by //tools:release_test, which pins the User-Agent to smithy::Version().
 exports_files([
     "src/core/version.cc",
+    "tests/core/version_test.cc",
     "include/smithy/client/config.h",
 ])
 

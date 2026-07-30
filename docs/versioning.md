@@ -76,6 +76,10 @@ suites are the contract instead).
   refuses a lightweight tag or one pushed at a commit declaring a different
   version, and publishes the GitHub Release with those notes. Signing stays
   local — Actions holds no key.
+- Open the next cycle with `tools/release.sh bump X.Y.Z-dev`, which moves the
+  four version strings on and reopens the CHANGELOG with `[Unreleased]` above
+  the section just released. It edits the tree and stops there — review the
+  diff and commit it yourself.
 - BCR and Maven Central publishing remain deferred until production
   validation (PLAN Phase 6); consumers pin the tag via `git_override` /
   `archive_override` as shown in [quickstart.md](quickstart.md).

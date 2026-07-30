@@ -4,6 +4,8 @@ All notable changes to smithy-cpp are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow the
 policy in [docs/versioning.md](docs/versioning.md).
 
+## [Unreleased]
+
 ## [0.1.0] - 2026-07-30
 
 The first release: a vendor-neutral Smithy → C++ code generator, the runtime

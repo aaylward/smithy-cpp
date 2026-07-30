@@ -17,13 +17,14 @@ exceptions and result types, and many large consumers build with `-fno-exception
   retryability metadata, plus `ErrorsAs<T>()` accessors for typed access.
 - Exceptions never cross the generated API boundary. The runtime must be buildable with
   `-fno-exceptions`; internal use of exception-throwing std APIs is avoided in hot paths.
-- **Contract violations fail fast, they do not throw.** A composition-time misuse (a null
-  callback, an unparseable trust-boundary CIDR, a health-check name that would corrupt the
-  failing-list JSON) is a programming error, not a runtime condition a caller can handle, so it
-  aborts via `smithy::internal::Fatal` (ADR-0009) rather than throwing `std::invalid_argument`.
-  This is what lets those code paths compile under `-fno-exceptions`, and it is reconciled with
-  ADR-0009: fail-fast is the runtime's single posture for contract violations, error `Outcome`s
-  for conditions the caller can act on.
+- **Contract violations fail fast; recoverable bad config returns an error; neither throws.** A
+  composition-time *programming* error — a null callback, a health-check name that would corrupt
+  the failing-list JSON — is not a condition a caller can handle, so it aborts via
+  `smithy::internal::Fatal` (ADR-0009) rather than throwing `std::invalid_argument`. Bad *config*
+  the caller can act on — a malformed proxy-trust CIDR (`TrustedProxies::Parse`), like a bad bind
+  address in `Start` — returns an `Error::Validation` through an `Outcome`. Both replace the old
+  `throw`, so both compile under `-fno-exceptions`; the split is the ADR-0009 line: fail-fast for
+  "the program is wired wrong," an error `Outcome` for "the input/config is bad."
 - **Exceptions are contained at every boundary that must not unwind.** Nothing in the runtime lets
   an exception cross an `Outcome`-returning entry point or escape a transport io thread. Wire-facing
   callbacks in the `-fno-exceptions`-clean runtime (request handlers, readiness probes, metrics

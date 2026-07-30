@@ -314,7 +314,7 @@ TEST(PerClientRateLimitTest, KeysOnTheDerivedClientBehindTheTrustBoundary) {
                              seen.push_back(client);
                              return client != "203.0.113.9";
                            },
-                           http::TrustedProxies({"10.0.0.0/8"}), std::chrono::seconds(7))},
+                           *http::TrustedProxies::Parse({"10.0.0.0/8"}), std::chrono::seconds(7))},
                        [](const http::HttpRequest&) { return Ok("in"); });
 
   http::HttpRequest first;
@@ -377,7 +377,7 @@ TEST(PerClientRateLimitTest, AnUnknownClientIsAdmittedWithoutConsultingAllow) {
                              consulted = true;
                              return false;
                            },
-                           http::TrustedProxies({"10.0.0.0/8"}))},
+                           *http::TrustedProxies::Parse({"10.0.0.0/8"}))},
                        [](const http::HttpRequest&) { return Ok("in"); });
 
   http::HttpRequest unkeyable;

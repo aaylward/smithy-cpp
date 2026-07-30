@@ -6,7 +6,6 @@
 #include <optional>
 #include <ranges>
 
-#include "smithy/core/fatal.h"
 #include "smithy/http/headers.h"
 
 namespace smithy::http {
@@ -160,21 +159,22 @@ bool PrefixMatch(const std::array<std::uint8_t, 16>& network,
 
 TrustedProxies TrustedProxies::None() { return TrustedProxies(); }
 
-TrustedProxies::TrustedProxies(const std::vector<std::string>& cidrs) {
-  networks_.reserve(cidrs.size());
+Outcome<TrustedProxies> TrustedProxies::Parse(const std::vector<std::string>& cidrs) {
+  TrustedProxies result;
+  result.networks_.reserve(cidrs.size());
   for (const std::string& cidr : cidrs) {
     const auto slash = cidr.find('/');
     const std::string_view base_text = std::string_view(cidr).substr(0, slash);
     const auto base = ParseAddress(base_text);
     if (!base.has_value()) {
-      smithy::internal::Fatal("TrustedProxies: unparseable address in \"" + cidr + "\"");
+      return Error::Validation("TrustedProxies: unparseable address in \"" + cidr + "\"");
     }
     const int max_bits = base->family == AF_INET ? 32 : 128;
     int prefix_bits = max_bits;
     if (slash != std::string::npos) {
       const std::string_view digits = std::string_view(cidr).substr(slash + 1);
       if (!AllDigits(digits) || digits.size() > 3) {
-        smithy::internal::Fatal("TrustedProxies: malformed prefix in \"" + cidr + "\"");
+        return Error::Validation("TrustedProxies: malformed prefix in \"" + cidr + "\"");
       }
       prefix_bits = 0;
       for (const char c : digits) {
@@ -188,11 +188,12 @@ TrustedProxies::TrustedProxies(const std::vector<std::string>& cidrs) {
         prefix_bits -= 96;
       }
       if (prefix_bits < 0 || prefix_bits > max_bits) {
-        smithy::internal::Fatal("TrustedProxies: prefix out of range in \"" + cidr + "\"");
+        return Error::Validation("TrustedProxies: prefix out of range in \"" + cidr + "\"");
       }
     }
-    networks_.push_back(Network{base->bytes, base->family, prefix_bits});
+    result.networks_.push_back(Network{base->bytes, base->family, prefix_bits});
   }
+  return result;
 }
 
 bool TrustedProxies::Contains(std::string_view address) const {

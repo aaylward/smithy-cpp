@@ -50,8 +50,8 @@ std::function<http::HttpResponse(const http::HttpRequest&)> TooManyRequests(
 // (ADR-0012 records why hand-wiring it is the hazard). allow is the
 // pluggable policy (a token bucket) keyed by the derived bare address; it
 // runs on the transport's request thread, concurrently across requests —
-// it must be thread-safe. A null allow throws std::invalid_argument at
-// composition time. A request with no derivable client (the in-memory
+// it must be thread-safe. A null allow is a contract violation and aborts
+// at composition time (ADR-0009). A request with no derivable client (the in-memory
 // Loopback, handler chains driven directly in tests — Source::kUnknown)
 // is admitted without consulting allow, so such requests never share one
 // "" bucket; compose Guard + DeriveClient directly for a stricter policy.
@@ -68,10 +68,10 @@ Middleware PerClientRateLimit(std::function<bool(const std::string& client)> all
 // concurrently across requests — they must be thread-safe and cheap (cache
 // expensive checks behind the callable). A probe that throws counts as
 // failing; the exception is logged, never reaching the transport. The name
-// lands verbatim in the JSON failing list, so HealthEndpoint throws
-// std::invalid_argument at composition time for a name that would corrupt
-// it (quote, backslash, control character) — or for a null probe, which
-// would otherwise present as a permanent outage.
+// lands verbatim in the JSON failing list, so HealthEndpoint aborts at
+// composition time (ADR-0009) for a name that would corrupt it (quote,
+// backslash, control character) — or for a null probe, which would
+// otherwise present as a permanent outage.
 struct ReadinessCheck {
   std::string name;
   std::function<bool()> probe;
@@ -128,11 +128,10 @@ struct RequestStart {
 // the two always pair, even when dispatch throws: the completion then
 // reports status 500 with an empty operation before the exception continues
 // to the transport's containment). Throwing callbacks are logged and
-// swallowed. A null on_complete throws std::invalid_argument at composition
-// time (a null sink would otherwise fail silently); on_start and now may be
-// null. Callbacks run on the transport's request thread; keep them cheap or
-// hand off. now is injectable for deterministic tests (null means
-// steady_clock).
+// swallowed. A null on_complete aborts at composition time (ADR-0009; a null
+// sink would otherwise fail silently); on_start and now may be null. Callbacks run on the
+// transport's request thread; keep them cheap or hand off. now is injectable for deterministic
+// tests (null means steady_clock).
 Middleware Observe(std::function<void(const RequestObservation&)> on_complete,
                    std::function<void(const RequestStart&)> on_start = nullptr,
                    std::function<std::chrono::steady_clock::time_point()> now = nullptr);

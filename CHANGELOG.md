@@ -55,12 +55,15 @@ via `git_override` until then.
 - Exception containment and the `-fno-exceptions` gate (issue #109, ADR-0003):
   no exception may cross a smithy `Outcome` boundary or unwind a transport io
   thread. Two changes reconcile that contract with ADR-0009's fail-fast
-  posture. (1) Seven composition-time contract violations that threw
-  `std::invalid_argument` — a null rate-limit policy, a null health-check probe
-  or a JSON-corrupting check name, a null observe sink, an unparseable
-  proxy-trust CIDR — now `Fatal`-abort with the same message; they are
-  programming errors, not handleable conditions, and this is what lets those
-  paths compile without exceptions. (2) Wire-facing callbacks in the
+  posture. (1) Composition-time misuses that threw `std::invalid_argument` no
+  longer throw. Programming errors — a null rate-limit policy, a null
+  health-check probe or a JSON-corrupting check name, a null observe sink —
+  `Fatal`-abort with the same message (ADR-0009); they are not conditions a
+  caller can handle. A malformed proxy-trust CIDR is instead recoverable
+  config (like a bad bind address), so `TrustedProxies` gains a
+  `Parse() -> Outcome<TrustedProxies>` factory returning `Error::Validation`
+  (the throwing constructor is removed). Either way the `throw` is gone, so
+  the paths compile without exceptions. (2) Wire-facing callbacks in the
   `-fno-exceptions`-clean runtime (request handlers, readiness probes, metrics
   sinks) run inside a new `smithy::internal::Contain`
   (`smithy/core/exception_guard.h`), which compiles to a direct call under

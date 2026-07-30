@@ -431,11 +431,11 @@ TEST(TodoMiddlewareTest, PerClientRateLimitKeysOnTheDerivedClientAddressNotTheSp
     // client is seen through the appended entry — the walk never reaches
     // the spoofed prefix — and shed as the shaped 429.
     smithy::http::SocketHttpServer transport;
-    ASSERT_TRUE(
-        transport
-            .Start(smithy::server::Chain(
-                {deny_banned(smithy::http::TrustedProxies({"127.0.0.0/8"}))}, server.Handler()))
-            .ok());
+    ASSERT_TRUE(transport
+                    .Start(smithy::server::Chain(
+                        {deny_banned(*smithy::http::TrustedProxies::Parse({"127.0.0.0/8"}))},
+                        server.Handler()))
+                    .ok());
     smithy::http::SocketHttpClient raw("127.0.0.1", transport.port());
 
     const auto direct = raw.Send(add);

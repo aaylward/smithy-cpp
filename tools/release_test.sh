@@ -29,6 +29,15 @@ expect_failure() {
 
 expect_success "check on the committed tree" "$RELEASE" check
 
+# Smithy trait names are @-prefixed. Outside a code span GitHub renders them as
+# user mentions, so the notes credit whoever owns that account: v0.1.0 shipped
+# listing @required and @timestampFormat as contributors.
+bare_mentions=$(sed 's/`[^`]*`//g' CHANGELOG.md | grep -n '@[A-Za-z]' || true)
+if [[ -n $bare_mentions ]]; then
+  fail "CHANGELOG.md has @-mentions outside code spans:
+$bare_mentions"
+fi
+
 # Not a released version: the CHANGELOG heading exists while developing, but
 # there are no notes to publish for it.
 expect_failure "notes Unreleased" "$RELEASE" notes Unreleased

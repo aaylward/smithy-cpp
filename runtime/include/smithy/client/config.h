@@ -27,7 +27,7 @@ struct ClientConfig {
   int request_timeout_ms = 30000;
   // Mirrors smithy::Version() (runtime/src/core/version.cc), the single source
   // of truth for the product version.
-  std::string user_agent = "smithy-cpp/0.1.0";
+  std::string user_agent = "smithy-cpp/0.2.0-dev";
 
   // TLS knobs for transports constructed from this config (issue #49):
   // BeastHttpClient::FromConfig honors them; the built-in socket transport is

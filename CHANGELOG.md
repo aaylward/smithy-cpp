@@ -507,10 +507,10 @@ Central publishing remain deferred (see [docs/versioning.md](docs/versioning.md)
   untested generator internals — CppLiterals (the issue-#43 escaping
   chokepoint: octal escapes, int64-min idiom, float literal typing),
   CppReservedWords (keyword vs macro boundary), ProtocolSupport bounds,
-  CppSettings validation, MemberDefaults (the @default/@input/@required
+  CppSettings validation, MemberDefaults (the `@default`/`@input`/`@required`
   semantics matrix), RecursionIndex (boxing decisions and refused cycles),
   plus emitted-source suites for SerdeGenerator (required-member errors,
-  dense-null rejection, union exactly-one arithmetic, @timestampFormat),
+  dense-null rejection, union exactly-one arithmetic, `@timestampFormat`),
   ValidationGenerator (suite-exact messages, compilable bounds, one-time
   pattern compilation, code-point vs element length), and
   BuildFileGenerator (target set per mode, runtime target wiring,

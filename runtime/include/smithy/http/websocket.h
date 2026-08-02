@@ -106,8 +106,12 @@ class WebSocket {
   // the write, and the peer then observes an error instead of a clean
   // end). The peer's acknowledging close surfaces through Receive the
   // same way. To end a session, Close(); never use destruction as
-  // cross-thread cancellation. Close also completes any outstanding async
-  // operation (below) the way it unblocks the blocking calls.
+  // cross-thread cancellation. Close also completes any async operation
+  // (below) still parked in the session, the way it unblocks the blocking
+  // calls — but only those still parked: a terminal transition that already
+  // took a parked completion owns it from then on, and Close can no longer
+  // reach it. That distinction is load-bearing for implementors; see
+  // TerminalWaiters.
   virtual void Close() = 0;
 
   // --- Completion-driven twins (ADR-0019) ------------------------------
@@ -123,6 +127,22 @@ class WebSocket {
   // serialize-by-waiting behavior. Callback code runs on the wire's
   // threads: never block there.
   //
+  // A session that ends while both classes are parked must complete the
+  // SEND before the RECEIVE (#173). Completions fire inline on the
+  // ending thread, so a receive completion can run an entire session
+  // teardown underneath the transition: it resumes the awaiting coroutine,
+  // the loop exits, and ~AsyncEventStream drains the ADR-0017 revocation
+  // pins. A parked EventStreamHandle::SendAsync holds one of those pins
+  // until its completion runs — and once the transition has taken that
+  // completion out of the session, Close() can no longer fire it and
+  // neither can the write path, so the only thing that can release the pin
+  // is the completion the transition is still holding, one frame below the
+  // drain, on the very thread that is blocked. No other thread can help:
+  // nothing was queued to an executor. A send completion releases and
+  // returns; only a receive can end a session, so receives go last.
+  // TerminalWaiters below is the enforcement — take into it, fire with it,
+  // and the order is not yours to get wrong.
+  //
   // The base-class defaults keep every existing implementor compiling:
   // they refuse with Error::Validation and report SupportsAsync() false,
   // so layers above (SessionRegistry's async delivery, the coroutine
@@ -131,6 +151,43 @@ class WebSocket {
 
   using ReceiveCallback = std::function<void(Outcome<std::optional<eventstream::Message>>)>;
   using SendCallback = std::function<void(Outcome<Unit>)>;
+
+  // The parked completions one session's terminal transition took, and the
+  // one safe order to run them in. Implementations move their parked slots
+  // in under their own lock (std::exchange, never a bare std::move:
+  // libc++'s small-buffer std::function move leaves the source engaged, and
+  // an empty slot is what marks the class idle), then release the lock and
+  // Fire.
+  //
+  // Fire is rvalue-only and runs the send first — that ordering is the
+  // whole point of the type, so the callbacks are private and Fire is the
+  // only way to reach them: there is nothing to fire out of order with.
+  // `invoke` receives (label, callback, outcome) and performs the call,
+  // which is where a transport that must contain a throwing application
+  // callback (ADR-0003) wraps it; a transport with nothing to contain just
+  // calls through. Both outcomes are built by the caller because their
+  // wording is the session's, not this type's.
+  class TerminalWaiters {
+   public:
+    TerminalWaiters() = default;
+    TerminalWaiters(ReceiveCallback receive, SendCallback send)
+        : receive_(std::move(receive)), send_(std::move(send)) {}
+
+    template <typename Invoke>
+    void Fire(Outcome<Unit> sent, Outcome<std::optional<eventstream::Message>> received,
+              Invoke&& invoke) && {
+      if (send_) {
+        invoke("websocket send", send_, std::move(sent));
+      }
+      if (receive_) {
+        invoke("websocket receive", receive_, std::move(received));
+      }
+    }
+
+   private:
+    ReceiveCallback receive_;
+    SendCallback send_;
+  };
 
   // The by-value callbacks are the overriders' contract (they park and
   // later move them); the defaults only refuse.

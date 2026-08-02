@@ -36,6 +36,7 @@
 #include "smithy/http/websocket.h"
 #include "smithy/testing/connection_event_recorder.h"
 #include "smithy/testing/tls_test_identity.h"
+#include "smithy/testing/websocket_contract_test.h"
 
 namespace smithy::http {
 namespace {
@@ -1901,5 +1902,75 @@ TEST(BeastWebSocketTest, BothServeSeamsSetIsRefusedAtStart) {
   EXPECT_NE(started.error().message().find("cannot both be set"), std::string::npos);
 }
 
+// ---------------------------------------------------------------------------
+// The shared WebSocket contract (websocket_contract_test.h), Beast half.
+// ---------------------------------------------------------------------------
+
+// The Beast driver: a real loopback session whose peer handshakes and never
+// reads, so writes back up in the socket buffers and a send eventually
+// parks. The session arrives on a handler thread through the ADR-0019
+// shared seam, so Socket() waits for it.
+//
+// EndSessionFromPeer sends a text frame on the binary wire: the protocol
+// violation drives FailAndClose, which takes both parked waiters at once.
+// A real close frame would too, but Beast's close op drains the peer's
+// queued frames as part of the handshake — which unwedges the parked write
+// and races the transition away. The violation has no such race.
+struct BeastContractDriver {
+  static constexpr int kWedgeAttempts = 64;
+
+  BeastContractDriver() {
+    BeastServerTransport::Options options;
+    options.handler_threads = 1;
+    auto arrived = arrived_;
+    options.on_websocket_session = [arrived](const HttpRequest&,
+                                             std::shared_ptr<WebSocket> socket) {
+      arrived->set_value(std::move(socket));
+    };
+    server_ = std::make_unique<BeastServerTransport>(options);
+    EXPECT_TRUE(server_->Start(NotFoundHandler()).ok());
+    peer_ = std::make_unique<RawWsPeer>(server_->port());
+  }
+
+  ~BeastContractDriver() {
+    peer_.reset();
+    server_->Stop();
+  }
+
+  BeastContractDriver(const BeastContractDriver&) = delete;
+  BeastContractDriver& operator=(const BeastContractDriver&) = delete;
+
+  std::shared_ptr<WebSocket> Socket() {
+    auto ready = arrived_->get_future();
+    if (ready.wait_for(std::chrono::seconds(10)) != std::future_status::ready) {
+      // A bare EXPECT would fall through to get() and block forever — the
+      // hang this whole suite exists to turn into a legible failure.
+      ADD_FAILURE() << "the session never reached the shared seam";
+      std::abort();
+    }
+    return ready.get();
+  }
+
+  // A megabyte a go: the wire wedges once the socket buffers fill, well
+  // inside kWedgeAttempts on any loopback.
+  eventstream::Message BulkMessage(int /*n*/) {
+    return Text("bulk", std::string(1024 * 1024, 'x'));
+  }
+
+  void EndSessionFromPeer() { peer_->SendText("boom"); }
+
+  std::shared_ptr<std::promise<std::shared_ptr<WebSocket>>> arrived_ =
+      std::make_shared<std::promise<std::shared_ptr<WebSocket>>>();
+  std::unique_ptr<BeastServerTransport> server_;
+  std::unique_ptr<RawWsPeer> peer_;
+};
+
 }  // namespace
 }  // namespace smithy::http
+
+// The instantiation lives where the suite was registered: gtest builds the
+// registration symbols from the bare suite name, so a qualified one does
+// not resolve.
+namespace smithy::testing {
+INSTANTIATE_TYPED_TEST_SUITE_P(Beast, WebSocketContractTest, http::BeastContractDriver);
+}  // namespace smithy::testing

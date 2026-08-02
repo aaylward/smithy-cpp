@@ -96,31 +96,38 @@ class PairEnd final : public WebSocket {
   }
 
   void Close() override {
-    std::array<WebSocket::ReceiveCallback, 2> receives;
-    std::array<WebSocket::SendCallback, 2> sends;
+    // One close ends the session for both ends, so both ends' waiters come
+    // out here — one TerminalWaiters each, since the send-before-receive
+    // rule it enforces is per-session-state: what an end's receive
+    // completion can tear down waits only on that end's pins.
+    std::array<WebSocket::TerminalWaiters, 2> waiters;
     {
       const std::lock_guard<std::mutex> lock(state_->mutex);
       state_->closed = true;
       for (std::size_t end = 0; end < 2; ++end) {
+        WebSocket::SendCallback send;
+        std::optional<PendingSend>& parked = state_->pending_send[end];
+        if (parked.has_value()) {
+          send = std::move(parked->callback);
+          parked.reset();  // emptied here, as the slot is an optional, not a callback
+        }
         // std::exchange, never a bare std::move: libc++'s small-buffer
         // std::function move leaves the source engaged, and these slots'
         // emptiness is the one-outstanding busy signal.
-        receives[end] = std::exchange(state_->pending_receive[end], nullptr);
-        std::optional<PendingSend>& parked = state_->pending_send[end];
-        if (parked.has_value()) {
-          sends[end] = std::move(parked->callback);
-          parked.reset();
-        }
+        waiters[end] = WebSocket::TerminalWaiters(
+            std::exchange(state_->pending_receive[end], nullptr), std::move(send));
       }
       state_->changed.notify_all();
     }
     // A parked receive implies its queue was empty (any push completes it
-    // immediately), so the clean end is the honest outcome.
-    for (auto& receive : receives) {
-      if (receive) receive(std::optional<eventstream::Message>());
-    }
-    for (auto& send : sends) {
-      if (send) send(Error::Transport("websocket pair: session is closed"));
+    // immediately), so the clean end is the honest outcome. Nothing to
+    // contain here: the pair has no io thread to protect, so the invoker
+    // just calls through.
+    for (auto& end : waiters) {
+      std::move(end).Fire(
+          Error::Transport("websocket pair: session is closed"),
+          std::optional<eventstream::Message>(),
+          [](const char*, const auto& callback, auto outcome) { callback(std::move(outcome)); });
     }
   }
 

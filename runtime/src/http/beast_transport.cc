@@ -612,30 +612,26 @@ class WsSession final : public WebSocketSessionBase,
   // (never a bare std::move: libc++'s small-buffer std::function move
   // leaves the source still engaged) empties the slots, so a completion
   // can never fire twice and the slots' emptiness stays the busy signal.
-  struct AsyncWaiters {
-    WebSocket::ReceiveCallback receive;
-    WebSocket::SendCallback send;
-  };
+  using AsyncWaiters = WebSocket::TerminalWaiters;
   AsyncWaiters TakeAsyncWaitersLocked() {
     return {std::exchange(pending_receive_, nullptr), std::exchange(pending_send_, nullptr)};
   }
 
   // Fires the taken completions with the session's terminal outcome:
-  // nullopt for a clean end, the recorded error otherwise.
-  void CompleteAsyncWaiters(const AsyncWaiters& waiters, bool clean, const std::string& reason) {
-    if (waiters.receive) {
-      if (clean) {
-        InvokeCompletion("websocket receive", waiters.receive,
-                         std::optional<eventstream::Message>());
-      } else {
-        InvokeCompletion("websocket receive", waiters.receive,
-                         Error::Transport("websocket: " + reason));
-      }
-    }
-    if (waiters.send) {
-      InvokeCompletion("websocket send", waiters.send,
-                       Error::Transport("websocket: " + (clean ? "session is closed" : reason)));
-    }
+  // nullopt for a clean end, the recorded error otherwise. TerminalWaiters
+  // owns the send-before-receive order (websocket.h, #173); the
+  // invoker is where a throwing application callback is contained, since
+  // this runs on an io thread (ADR-0003).
+  void CompleteAsyncWaiters(AsyncWaiters waiters, bool clean, const std::string& reason) {
+    Outcome<std::optional<eventstream::Message>> received =
+        clean ? Outcome<std::optional<eventstream::Message>>(std::optional<eventstream::Message>())
+              : Outcome<std::optional<eventstream::Message>>(
+                    Error::Transport("websocket: " + reason));
+    std::move(waiters).Fire(
+        Error::Transport("websocket: " + (clean ? "session is closed" : reason)),
+        std::move(received), [](const char* which, const auto& callback, auto outcome) {
+          InvokeCompletion(which, callback, std::move(outcome));
+        });
   }
 
   void StartWrite(std::string frame) {

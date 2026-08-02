@@ -207,6 +207,7 @@ cc_test(
     deps = [
         ":eventstream",
         ":http",
+        ":websocket_contract_test_support",
         "@googletest//:gtest_main",
     ],
 )
@@ -272,6 +273,24 @@ cc_library(
     copts = COPTS,
     includes = ["testing/include"],
     deps = [":http_beast"],
+)
+
+# The transport-neutral half of the ADR-0019 WebSocket contract (#173),
+# as a type-parameterized gtest suite each transport instantiates
+# with its own driver. Written once so a rule cannot hold on one transport
+# and silently lapse on another — which is how the terminal-waiter ordering
+# bug lived in both at once.
+cc_library(
+    name = "websocket_contract_test_support",
+    testonly = True,
+    hdrs = ["testing/include/smithy/testing/websocket_contract_test.h"],
+    copts = COPTS,
+    includes = ["testing/include"],
+    deps = [
+        ":eventstream",
+        ":http",
+        "@googletest//:gtest",
+    ],
 )
 
 cc_library(
@@ -439,6 +458,7 @@ cc_test(
         ":http",
         ":http_beast",
         ":test_tls_identity",
+        ":websocket_contract_test_support",
         # The hostile raw-websocket peer speaks Beast directly, for the
         # protocol-violation cases the typed client cannot produce.
         "@boost.asio",

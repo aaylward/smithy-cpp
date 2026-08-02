@@ -27,6 +27,7 @@
 #include "smithy/eventstream/frame.h"
 #include "smithy/http/websocket.h"
 #include "smithy/http/websocket_pair.h"
+#include "smithy/testing/websocket_contract_test.h"
 
 namespace smithy::eventstream {
 namespace {
@@ -713,5 +714,40 @@ TEST(StreamTaskTest, ResumesTheAwaiterAfterARealSuspensionOnTheCompletionThread)
   client_socket->Close();
 }
 
+// ---------------------------------------------------------------------------
+// The shared WebSocket contract (websocket_contract_test.h), pair half.
+// ---------------------------------------------------------------------------
+
+// The pair's driver: the server end is under test and the client end never
+// receives, so the direction's queue fills and the next send parks. The
+// pair's Close runs the whole teardown on the calling thread, which is
+// exactly the shape the suite's ender thread exists for.
+struct PairContractDriver {
+  // kQueueDepth fills the wire; the margin covers the parking send itself.
+  static constexpr int kWedgeAttempts = static_cast<int>(kWireDepth) + 4;
+
+  std::shared_ptr<http::WebSocket> Socket() { return server_; }
+
+  Message BulkMessage(int n) {
+    // Nothing has to be big here: the bound is the queue's depth, not bytes.
+    return RawPing(n);
+  }
+
+  void EndSessionFromPeer() { client_->Close(); }
+
+  std::shared_ptr<http::WebSocket> client_;
+  std::shared_ptr<http::WebSocket> server_;
+
+  PairContractDriver() { std::tie(client_, server_) = http::InMemoryWebSocketPair::Create(); }
+};
+
 }  // namespace
 }  // namespace smithy::eventstream
+
+// The instantiation lives where the suite was registered: gtest builds the
+// registration symbols from the bare suite name, so a qualified one does
+// not resolve.
+namespace smithy::testing {
+INSTANTIATE_TYPED_TEST_SUITE_P(InMemoryPair, WebSocketContractTest,
+                               eventstream::PairContractDriver);
+}  // namespace smithy::testing

@@ -1774,6 +1774,79 @@ TEST(BeastWebSocketTest, AsyncSendParkedOnAWedgedWireIsRefusedThenCompletedByClo
   server.Stop();
 }
 
+TEST(BeastWebSocketTest, ATerminalTransitionFiresTheParkedSendBeforeTheParkedReceive) {
+  // The two waiters a terminal transition takes together are not
+  // interchangeable in order (the pair carries the same test). The parked
+  // handle send holds the revocation pin (ADR-0017); the parked receive is
+  // the Detached loop's, and completing it ends the loop, destroys the
+  // stream, and runs the drain that waits for that pin. Both completions
+  // fire inline on this io thread, so a receive-first order waits on a pin
+  // whose only release is the send completion one frame below — no other io
+  // thread can help, because nothing was queued to an executor. Sends
+  // release and return; receives can end a session, so receives go last.
+  BeastServerTransport::Options options;
+  options.handler_threads = 1;
+  auto minted =
+      std::make_shared<std::promise<eventstream::EventStreamHandle<eventstream::Message>>>();
+  auto handle_future = minted->get_future();
+  std::atomic<int> ended{0};
+  options.on_websocket_session = [minted, &ended](const HttpRequest&,
+                                                  std::shared_ptr<WebSocket> socket) {
+    [](std::shared_ptr<WebSocket> session,
+       std::shared_ptr<std::promise<eventstream::EventStreamHandle<eventstream::Message>>> minted,
+       std::atomic<int>* ended) -> eventstream::Detached {
+      eventstream::AsyncEventStream<eventstream::Message, eventstream::Message> stream(
+          std::move(session), [](const eventstream::Message& message) { return message; },
+          [](const eventstream::Message& message) { return message; });
+      minted->set_value(stream.Share());
+      (void)co_await stream.Receive();  // parked until the session ends
+      ++*ended;
+    }(std::move(socket), minted, &ended);
+  };
+  BeastServerTransport server(options);
+  ASSERT_TRUE(server.Start(NotFoundHandler()).ok());
+
+  // A peer that handshakes and never reads, so the fan-out write below
+  // wedges on the wire instead of completing.
+  RawWsPeer peer(server.port());
+  ASSERT_EQ(handle_future.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+  eventstream::EventStreamHandle<eventstream::Message> handle = handle_future.get();
+
+  // Async-send until one fails to complete: that one is parked, pin held.
+  const std::string bulk(1024 * 1024, 'x');
+  std::future<Outcome<Unit>> parked_future;
+  bool parked = false;
+  for (int i = 0; i < 64 && !parked; ++i) {
+    auto result = std::make_shared<std::promise<Outcome<Unit>>>();
+    parked_future = result->get_future();
+    handle.SendAsync(Text("bulk", bulk),
+                     [result](Outcome<Unit> outcome) { result->set_value(std::move(outcome)); });
+    if (parked_future.wait_for(std::chrono::seconds(2)) != std::future_status::ready) {
+      parked = true;
+    } else {
+      ASSERT_TRUE(parked_future.get().ok());
+    }
+  }
+  ASSERT_TRUE(parked) << "the wire never wedged; the setup is wrong";
+
+  // A text frame on the binary wire is the protocol violation that takes
+  // both waiters at once (FailAndClose) — the peer close of the report,
+  // without the timing race a real close frame would carry.
+  peer.SendText("boom");
+
+  ASSERT_EQ(parked_future.wait_for(std::chrono::seconds(10)), std::future_status::ready)
+      << "the terminal transition never completed the parked handle send";
+  auto outcome = parked_future.get();
+  ASSERT_FALSE(outcome.ok());
+  EXPECT_EQ(outcome.error().kind(), ErrorKind::kTransport);
+
+  for (int i = 0; i < 1000 && ended.load() < 1; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  EXPECT_EQ(ended.load(), 1) << "the Detached loop never unwound";
+  server.Stop();
+}
+
 TEST(BeastWebSocketTest, TheGateGuardsTheSharedSeamToo) {
   BeastServerTransport::Options options;
   options.handler_threads = 1;

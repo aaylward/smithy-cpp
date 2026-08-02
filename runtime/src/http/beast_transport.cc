@@ -622,7 +622,26 @@ class WsSession final : public WebSocketSessionBase,
 
   // Fires the taken completions with the session's terminal outcome:
   // nullopt for a clean end, the recorded error otherwise.
+  //
+  // Send before receive, and the order is load-bearing (issue #173). These
+  // fire inline on the completing thread, so a receive completion can run a
+  // whole session teardown underneath this frame: it resumes the awaiting
+  // coroutine, the loop exits, and ~AsyncEventStream revokes its Share()
+  // handles — which waits for every pinned handle operation to drain
+  // (ADR-0017). A parked handle SendAsync holds exactly such a pin from
+  // issue to completion, and once this transition took it the socket's slot
+  // is empty, so End()'s Close() has nothing left to fire and OnWrite can
+  // no longer reach it either: the only thing that can release that pin is
+  // the completion sitting right here, one frame below the wait. Firing
+  // receive first therefore parks the io thread forever. A send completion
+  // releases its pin and returns — it never tears down a session — so it is
+  // always safe to run first. (A single coroutine cannot hold both waiters:
+  // its awaits are sequential, so a parked send here belongs to a handle.)
   void CompleteAsyncWaiters(const AsyncWaiters& waiters, bool clean, const std::string& reason) {
+    if (waiters.send) {
+      InvokeCompletion("websocket send", waiters.send,
+                       Error::Transport("websocket: " + (clean ? "session is closed" : reason)));
+    }
     if (waiters.receive) {
       if (clean) {
         InvokeCompletion("websocket receive", waiters.receive,
@@ -631,10 +650,6 @@ class WsSession final : public WebSocketSessionBase,
         InvokeCompletion("websocket receive", waiters.receive,
                          Error::Transport("websocket: " + reason));
       }
-    }
-    if (waiters.send) {
-      InvokeCompletion("websocket send", waiters.send,
-                       Error::Transport("websocket: " + (clean ? "session is closed" : reason)));
     }
   }
 

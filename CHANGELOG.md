@@ -6,6 +6,22 @@ policy in [docs/versioning.md](docs/versioning.md).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Event streams: a terminal transition no longer deadlocks the completing
+  thread** (#173). When a session ended with both an async receive and an
+  async send parked — a peer close or reset arriving while a registry
+  fan-out write was in flight — the transports fired the receive completion
+  first. That resumed the session loop inline, and `~AsyncEventStream`'s
+  revocation drain then waited for a pin held by the send completion the
+  same transition had already taken, sitting one frame below on that very
+  thread: unreachable by `Close()` and by every other io thread, so the
+  thread parked forever (with the Beast default of four io threads, four
+  such events take the process out). Both transports now fire the send
+  waiter first — it releases its pin and returns — and the receive last.
+  Affects `BeastServerTransport`/`BeastWebSocketClient` sessions and
+  `InMemoryWebSocketPair`.
+
 ## [0.1.0] - 2026-07-30
 
 The first release: a vendor-neutral Smithy → C++ code generator, the runtime

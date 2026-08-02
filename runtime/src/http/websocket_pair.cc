@@ -114,13 +114,25 @@ class PairEnd final : public WebSocket {
       }
       state_->changed.notify_all();
     }
+    // Sends before receives, and the order is load-bearing (issue #173) —
+    // the Beast session's CompleteAsyncWaiters carries the same rule and
+    // the same reasoning. These completions run inline on the closing
+    // thread, so a receive completion can run a whole session teardown
+    // underneath this frame: it resumes the awaiting coroutine, the loop
+    // exits, and ~AsyncEventStream waits for every pinned handle operation
+    // to drain (ADR-0017). A parked handle SendAsync holds exactly such a
+    // pin, and this close already emptied the slot that held its
+    // completion — so the only thing that can release it is the callback
+    // sitting right here, one frame below the wait. A send completion
+    // releases its pin and returns; only a receive can end a session, so
+    // receives go last.
+    for (auto& send : sends) {
+      if (send) send(Error::Transport("websocket pair: session is closed"));
+    }
     // A parked receive implies its queue was empty (any push completes it
     // immediately), so the clean end is the honest outcome.
     for (auto& receive : receives) {
       if (receive) receive(std::optional<eventstream::Message>());
-    }
-    for (auto& send : sends) {
-      if (send) send(Error::Transport("websocket pair: session is closed"));
     }
   }
 

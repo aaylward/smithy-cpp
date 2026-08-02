@@ -507,6 +507,52 @@ TEST(AsyncEventStreamTest, DestructionCompletesAParkedHandleSendWithoutHanging) 
   EXPECT_EQ(dead.error().kind(), ErrorKind::kTransport);
 }
 
+TEST(AsyncEventStreamTest, ATerminalTransitionFiresTheParkedSendBeforeTheParkedReceive) {
+  // The two waiters a terminal transition takes together are not
+  // interchangeable in order. The parked handle send holds the revocation
+  // pin (ADR-0017, issue-#112 semantics); the parked receive is the loop's,
+  // and completing it ends the loop, destroys the stream, and runs
+  // ~SharedViewOwner — which waits for that pin. Fire the receive first and
+  // the wait is unsatisfiable by construction: the pin's holder is the send
+  // completion the transition already took, sitting one frame below on this
+  // same thread with nothing left to fire it. Sends release and return;
+  // receives can end the session, so receives go last.
+  auto [client_socket, server_socket] = http::InMemoryWebSocketPair::Create();
+  Mailbox<EventStreamHandle<Pong>> minted;
+  Mailbox<Outcome<Unit>> parked;
+  Mailbox<Unit> torn_down;
+  std::atomic<bool> done{false};
+
+  [](std::shared_ptr<http::WebSocket> socket, Mailbox<EventStreamHandle<Pong>>* minted,
+     std::atomic<bool>* done) -> Detached {
+    AsyncServer stream(std::move(socket), EncodePong, DecodePing);
+    minted->Post(stream.Share());
+    (void)co_await stream.Receive();  // parked until the client closes
+    *done = true;
+  }(server_socket, &minted, &done);
+
+  EventStreamHandle<Pong> handle = minted.Wait();
+  for (std::size_t i = 0; i < kWireDepth; ++i) {
+    ASSERT_TRUE(handle.Send(Pong{"fill"}).ok());  // the client never drains
+  }
+  handle.SendAsync(Pong{"parked"}, [&](Outcome<Unit> sent) { parked.Post(std::move(sent)); });
+  ASSERT_TRUE(parked.Empty());  // in flight behind the full wire, pin held
+
+  // The close runs the whole teardown — receive completion, loop exit,
+  // ~AsyncEventStream, drain — on this thread. Off the main thread and
+  // deadlined, so a regression fails legibly instead of wedging the run.
+  std::thread closer([&] {
+    client_socket->Close();
+    torn_down.Post(Unit{});
+  });
+  torn_down.Wait();  // a wedged teardown aborts here, before the join
+  closer.join();     // nothing outlives the mailboxes on this frame
+  EXPECT_TRUE(done.load());
+  auto dead = parked.Wait();
+  ASSERT_FALSE(dead.ok());
+  EXPECT_EQ(dead.error().kind(), ErrorKind::kTransport);
+}
+
 TEST(AsyncEventStreamTest, AHandleEncoderFailureCompletesInlineAndSparesTheSession) {
   auto [client_socket, server_socket] = http::InMemoryWebSocketPair::Create();
   AsyncEventStream<Ping, Pong> stream(

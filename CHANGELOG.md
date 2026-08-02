@@ -6,6 +6,22 @@ policy in [docs/versioning.md](docs/versioning.md).
 
 ## [Unreleased]
 
+### Added
+
+- **`WebSocket::TerminalWaiters`** — the parked ADR-0019 completions a
+  session's terminal transition takes, plus the one safe order to run them
+  in. Its `Fire` is rvalue-only and completes the send before the receive,
+  so the rule below cannot be restated wrongly (or forgotten) by the next
+  implementation; both in-repo transports now take and fire through it.
+  Additive: existing `WebSocket` implementors are unaffected.
+- **A shared WebSocket contract suite**
+  (`smithy/testing/websocket_contract_test.h`) — the transport-neutral half
+  of ADR-0019 as a type-parameterized gtest suite each transport
+  instantiates with a small driver. Both transports carried the identical
+  terminal-ordering bug precisely because their suites mirrored each other
+  by hand; anything an implementation must do regardless of its wire now
+  lives in one body that runs against all of them.
+
 ### Fixed
 
 - **Event streams: a terminal transition no longer deadlocks the completing

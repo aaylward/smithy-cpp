@@ -612,45 +612,26 @@ class WsSession final : public WebSocketSessionBase,
   // (never a bare std::move: libc++'s small-buffer std::function move
   // leaves the source still engaged) empties the slots, so a completion
   // can never fire twice and the slots' emptiness stays the busy signal.
-  struct AsyncWaiters {
-    WebSocket::ReceiveCallback receive;
-    WebSocket::SendCallback send;
-  };
+  using AsyncWaiters = WebSocket::TerminalWaiters;
   AsyncWaiters TakeAsyncWaitersLocked() {
     return {std::exchange(pending_receive_, nullptr), std::exchange(pending_send_, nullptr)};
   }
 
   // Fires the taken completions with the session's terminal outcome:
-  // nullopt for a clean end, the recorded error otherwise.
-  //
-  // Send before receive, and the order is load-bearing (issue #173). These
-  // fire inline on the completing thread, so a receive completion can run a
-  // whole session teardown underneath this frame: it resumes the awaiting
-  // coroutine, the loop exits, and ~AsyncEventStream revokes its Share()
-  // handles — which waits for every pinned handle operation to drain
-  // (ADR-0017). A parked handle SendAsync holds exactly such a pin from
-  // issue to completion, and once this transition took it the socket's slot
-  // is empty, so End()'s Close() has nothing left to fire and OnWrite can
-  // no longer reach it either: the only thing that can release that pin is
-  // the completion sitting right here, one frame below the wait. Firing
-  // receive first therefore parks the io thread forever. A send completion
-  // releases its pin and returns — it never tears down a session — so it is
-  // always safe to run first. (A single coroutine cannot hold both waiters:
-  // its awaits are sequential, so a parked send here belongs to a handle.)
-  void CompleteAsyncWaiters(const AsyncWaiters& waiters, bool clean, const std::string& reason) {
-    if (waiters.send) {
-      InvokeCompletion("websocket send", waiters.send,
-                       Error::Transport("websocket: " + (clean ? "session is closed" : reason)));
-    }
-    if (waiters.receive) {
-      if (clean) {
-        InvokeCompletion("websocket receive", waiters.receive,
-                         std::optional<eventstream::Message>());
-      } else {
-        InvokeCompletion("websocket receive", waiters.receive,
-                         Error::Transport("websocket: " + reason));
-      }
-    }
+  // nullopt for a clean end, the recorded error otherwise. TerminalWaiters
+  // owns the send-before-receive order (websocket.h, issue #173); the
+  // invoker is where a throwing application callback is contained, since
+  // this runs on an io thread (ADR-0003).
+  void CompleteAsyncWaiters(AsyncWaiters waiters, bool clean, const std::string& reason) {
+    Outcome<std::optional<eventstream::Message>> received =
+        clean ? Outcome<std::optional<eventstream::Message>>(std::optional<eventstream::Message>())
+              : Outcome<std::optional<eventstream::Message>>(
+                    Error::Transport("websocket: " + reason));
+    std::move(waiters).Fire(
+        Error::Transport("websocket: " + (clean ? "session is closed" : reason)),
+        std::move(received), [](const char* which, const auto& callback, auto outcome) {
+          InvokeCompletion(which, callback, std::move(outcome));
+        });
   }
 
   void StartWrite(std::string frame) {

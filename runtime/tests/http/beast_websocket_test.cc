@@ -36,6 +36,7 @@
 #include "smithy/http/websocket.h"
 #include "smithy/testing/connection_event_recorder.h"
 #include "smithy/testing/tls_test_identity.h"
+#include "smithy/testing/websocket_contract_test.h"
 
 namespace smithy::http {
 namespace {
@@ -1774,79 +1775,6 @@ TEST(BeastWebSocketTest, AsyncSendParkedOnAWedgedWireIsRefusedThenCompletedByClo
   server.Stop();
 }
 
-TEST(BeastWebSocketTest, ATerminalTransitionFiresTheParkedSendBeforeTheParkedReceive) {
-  // The two waiters a terminal transition takes together are not
-  // interchangeable in order (the pair carries the same test). The parked
-  // handle send holds the revocation pin (ADR-0017); the parked receive is
-  // the Detached loop's, and completing it ends the loop, destroys the
-  // stream, and runs the drain that waits for that pin. Both completions
-  // fire inline on this io thread, so a receive-first order waits on a pin
-  // whose only release is the send completion one frame below — no other io
-  // thread can help, because nothing was queued to an executor. Sends
-  // release and return; receives can end a session, so receives go last.
-  BeastServerTransport::Options options;
-  options.handler_threads = 1;
-  auto minted =
-      std::make_shared<std::promise<eventstream::EventStreamHandle<eventstream::Message>>>();
-  auto handle_future = minted->get_future();
-  std::atomic<int> ended{0};
-  options.on_websocket_session = [minted, &ended](const HttpRequest&,
-                                                  std::shared_ptr<WebSocket> socket) {
-    [](std::shared_ptr<WebSocket> session,
-       std::shared_ptr<std::promise<eventstream::EventStreamHandle<eventstream::Message>>> minted,
-       std::atomic<int>* ended) -> eventstream::Detached {
-      eventstream::AsyncEventStream<eventstream::Message, eventstream::Message> stream(
-          std::move(session), [](const eventstream::Message& message) { return message; },
-          [](const eventstream::Message& message) { return message; });
-      minted->set_value(stream.Share());
-      (void)co_await stream.Receive();  // parked until the session ends
-      ++*ended;
-    }(std::move(socket), minted, &ended);
-  };
-  BeastServerTransport server(options);
-  ASSERT_TRUE(server.Start(NotFoundHandler()).ok());
-
-  // A peer that handshakes and never reads, so the fan-out write below
-  // wedges on the wire instead of completing.
-  RawWsPeer peer(server.port());
-  ASSERT_EQ(handle_future.wait_for(std::chrono::seconds(5)), std::future_status::ready);
-  eventstream::EventStreamHandle<eventstream::Message> handle = handle_future.get();
-
-  // Async-send until one fails to complete: that one is parked, pin held.
-  const std::string bulk(1024 * 1024, 'x');
-  std::future<Outcome<Unit>> parked_future;
-  bool parked = false;
-  for (int i = 0; i < 64 && !parked; ++i) {
-    auto result = std::make_shared<std::promise<Outcome<Unit>>>();
-    parked_future = result->get_future();
-    handle.SendAsync(Text("bulk", bulk),
-                     [result](Outcome<Unit> outcome) { result->set_value(std::move(outcome)); });
-    if (parked_future.wait_for(std::chrono::seconds(2)) != std::future_status::ready) {
-      parked = true;
-    } else {
-      ASSERT_TRUE(parked_future.get().ok());
-    }
-  }
-  ASSERT_TRUE(parked) << "the wire never wedged; the setup is wrong";
-
-  // A text frame on the binary wire is the protocol violation that takes
-  // both waiters at once (FailAndClose) — the peer close of the report,
-  // without the timing race a real close frame would carry.
-  peer.SendText("boom");
-
-  ASSERT_EQ(parked_future.wait_for(std::chrono::seconds(10)), std::future_status::ready)
-      << "the terminal transition never completed the parked handle send";
-  auto outcome = parked_future.get();
-  ASSERT_FALSE(outcome.ok());
-  EXPECT_EQ(outcome.error().kind(), ErrorKind::kTransport);
-
-  for (int i = 0; i < 1000 && ended.load() < 1; ++i) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  EXPECT_EQ(ended.load(), 1) << "the Detached loop never unwound";
-  server.Stop();
-}
-
 TEST(BeastWebSocketTest, TheGateGuardsTheSharedSeamToo) {
   BeastServerTransport::Options options;
   options.handler_threads = 1;
@@ -1974,5 +1902,70 @@ TEST(BeastWebSocketTest, BothServeSeamsSetIsRefusedAtStart) {
   EXPECT_NE(started.error().message().find("cannot both be set"), std::string::npos);
 }
 
+// ---------------------------------------------------------------------------
+// The shared WebSocket contract (websocket_contract_test.h), Beast half.
+// ---------------------------------------------------------------------------
+
+// The Beast driver: a real loopback session whose peer handshakes and never
+// reads, so writes back up in the socket buffers and a send eventually
+// parks. The session arrives on a handler thread through the ADR-0019
+// shared seam, so Socket() waits for it.
+//
+// EndSessionFromPeer sends a text frame on the binary wire: the protocol
+// violation drives FailAndClose, which takes both parked waiters at once.
+// A real close frame would too, but Beast's close op drains the peer's
+// queued frames as part of the handshake — which unwedges the parked write
+// and races the transition away. The violation has no such race.
+struct BeastContractDriver {
+  static constexpr int kWedgeAttempts = 64;
+
+  BeastContractDriver() {
+    BeastServerTransport::Options options;
+    options.handler_threads = 1;
+    auto arrived = arrived_;
+    options.on_websocket_session = [arrived](const HttpRequest&,
+                                             std::shared_ptr<WebSocket> socket) {
+      arrived->set_value(std::move(socket));
+    };
+    server_ = std::make_unique<BeastServerTransport>(options);
+    EXPECT_TRUE(server_->Start(NotFoundHandler()).ok());
+    peer_ = std::make_unique<RawWsPeer>(server_->port());
+  }
+
+  ~BeastContractDriver() {
+    peer_.reset();
+    server_->Stop();
+  }
+
+  BeastContractDriver(const BeastContractDriver&) = delete;
+  BeastContractDriver& operator=(const BeastContractDriver&) = delete;
+
+  std::shared_ptr<WebSocket> Socket() {
+    auto ready = arrived_->get_future();
+    EXPECT_EQ(ready.wait_for(std::chrono::seconds(10)), std::future_status::ready);
+    return ready.get();
+  }
+
+  // A megabyte a go: the wire wedges once the socket buffers fill, well
+  // inside kWedgeAttempts on any loopback.
+  eventstream::Message BulkMessage(int /*n*/) {
+    return Text("bulk", std::string(1024 * 1024, 'x'));
+  }
+
+  void EndSessionFromPeer() { peer_->SendText("boom"); }
+
+  std::shared_ptr<std::promise<std::shared_ptr<WebSocket>>> arrived_ =
+      std::make_shared<std::promise<std::shared_ptr<WebSocket>>>();
+  std::unique_ptr<BeastServerTransport> server_;
+  std::unique_ptr<RawWsPeer> peer_;
+};
+
 }  // namespace
 }  // namespace smithy::http
+
+// The instantiation lives where the suite was registered: gtest builds the
+// registration symbols from the bare suite name, so a qualified one does
+// not resolve.
+namespace smithy::testing {
+INSTANTIATE_TYPED_TEST_SUITE_P(Beast, WebSocketContractTest, http::BeastContractDriver);
+}  // namespace smithy::testing

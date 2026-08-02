@@ -128,7 +128,7 @@ class WebSocket {
   // threads: never block there.
   //
   // A session that ends while both classes are parked must complete the
-  // SEND before the RECEIVE (issue #173). Completions fire inline on the
+  // SEND before the RECEIVE (#173). Completions fire inline on the
   // ending thread, so a receive completion can run an entire session
   // teardown underneath the transition: it resumes the awaiting coroutine,
   // the loop exits, and ~AsyncEventStream drains the ADR-0017 revocation

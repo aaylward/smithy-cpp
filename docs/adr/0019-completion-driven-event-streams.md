@@ -156,7 +156,7 @@ variant (PLAN reserves futures for the unary client).
 - That unblocker has one limit, and it constrains the transports: `Close`
   releases a pin by firing the *parked* completion that holds it, so a
   terminal transition which has already taken both parked waiters must fire
-  the **send** before the **receive** (issue #173). A receive completion can
+  the **send** before the **receive** (#173). A receive completion can
   resume a session loop, end it, and run the pin drain inline on the
   completing thread; the send completion it would then be waiting on is a
   local in the frame below, unreachable by `Close` and by every other io

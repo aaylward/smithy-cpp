@@ -2,7 +2,7 @@
 #define SMITHY_TESTING_WEBSOCKET_CONTRACT_TEST_H_
 
 // The transport-neutral half of the ADR-0019 WebSocket contract, written
-// once and run against every implementation (issue #173).
+// once and run against every implementation (#173).
 //
 // The two in-repo transports had the same terminal-ordering bug at the same
 // time, in code that reads nothing alike — because their suites mirror each
@@ -142,7 +142,7 @@ class WebSocketContractTest : public ::testing::Test {};
 
 TYPED_TEST_SUITE_P(WebSocketContractTest);
 
-// The issue-#173 regression, on every transport. A session ends with BOTH
+// The #173 regression, on every transport. A session ends with BOTH
 // classes parked: the loop's receive, and a handle send holding a
 // revocation pin. Completing the receive first resumes the loop, ends it,
 // and runs ~AsyncEventStream's pin drain inline — which can only be

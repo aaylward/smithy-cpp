@@ -619,7 +619,7 @@ class WsSession final : public WebSocketSessionBase,
 
   // Fires the taken completions with the session's terminal outcome:
   // nullopt for a clean end, the recorded error otherwise. TerminalWaiters
-  // owns the send-before-receive order (websocket.h, issue #173); the
+  // owns the send-before-receive order (websocket.h, #173); the
   // invoker is where a throwing application callback is contained, since
   // this runs on an io thread (ADR-0003).
   void CompleteAsyncWaiters(AsyncWaiters waiters, bool clean, const std::string& reason) {

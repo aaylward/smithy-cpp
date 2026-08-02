@@ -275,8 +275,8 @@ cc_library(
     deps = [":http_beast"],
 )
 
-# The transport-neutral half of the ADR-0019 WebSocket contract (issue
-# #173), as a type-parameterized gtest suite each transport instantiates
+# The transport-neutral half of the ADR-0019 WebSocket contract (#173),
+# as a type-parameterized gtest suite each transport instantiates
 # with its own driver. Written once so a rule cannot hold on one transport
 # and silently lapse on another — which is how the terminal-waiter ordering
 # bug lived in both at once.

@@ -20,7 +20,11 @@ policy in [docs/versioning.md](docs/versioning.md).
   instantiates with a small driver. Both transports carried the identical
   terminal-ordering bug precisely because their suites mirrored each other
   by hand; anything an implementation must do regardless of its wire now
-  lives in one body that runs against all of them.
+  lives in one body that runs against all of them. Published as the
+  `websocket_contract_test_support` target, so an out-of-tree `WebSocket`
+  can be held to the same contract; the consumer module implements one and
+  does exactly that. Four implementations run it today — both transports,
+  the `JsonRpcStreamSocket` decorator, and the consumer's.
 
 ### Fixed
 

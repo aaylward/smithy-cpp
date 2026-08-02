@@ -161,6 +161,7 @@ cc_test(
         ":eventstream_jsonrpc",
         ":http",
         ":json",
+        ":websocket_contract_test_support",
         "@googletest//:gtest_main",
     ],
 )

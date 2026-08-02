@@ -22,6 +22,7 @@
 #include "smithy/eventstream/envelope.h"
 #include "smithy/eventstream/frame.h"
 #include "smithy/http/websocket_pair.h"
+#include "smithy/testing/websocket_contract_test.h"
 
 namespace smithy::eventstream {
 namespace {
@@ -330,5 +331,45 @@ TEST(JsonRpcStreamSocketTest, CloseAndThePeersCleanCloseDelegate) {
   EXPECT_FALSE(received->has_value());  // the peer's clean close, untranslated
 }
 
+// ---------------------------------------------------------------------------
+// The shared WebSocket contract (websocket_contract_test.h), decorator half.
+// ---------------------------------------------------------------------------
+
+// This wrapper parks nothing of its own — both async twins forward to the
+// socket underneath — which is why the #173 terminal-ordering fix had
+// nothing to change here. That was a claim about this file's code, checked
+// by reading; this instantiation is what keeps it true. If the wrapper ever
+// grows slots of its own, the ordering rule starts applying to it, and the
+// suite says so instead of the next reader having to notice.
+struct JsonRpcContractDriver {
+  static constexpr int kWedgeAttempts =
+      static_cast<int>(http::InMemoryWebSocketPair::kQueueDepth) + 4;
+
+  JsonRpcContractDriver() {
+    auto [peer, wrapped] = http::InMemoryWebSocketPair::Create();
+    peer_ = peer;  // never receives, so the wire behind the wrapper wedges
+    socket_ = Wrap(wrapped, JsonRpcStreamSocket::Role::kServer);
+  }
+
+  std::shared_ptr<http::WebSocket> Socket() { return socket_; }
+
+  Message BulkMessage(int n) {
+    return MakeEventMessage("message", "application/json",
+                            Blob::FromString(R"({"n":)" + std::to_string(n) + "}"));
+  }
+
+  void EndSessionFromPeer() { peer_->Close(); }
+
+  std::shared_ptr<http::WebSocket> peer_;
+  std::shared_ptr<JsonRpcStreamSocket> socket_;
+};
+
 }  // namespace
 }  // namespace smithy::eventstream
+
+// gtest builds the registration symbols from the bare suite name, so the
+// instantiation lives in the namespace the suite was registered in.
+namespace smithy::testing {
+INSTANTIATE_TYPED_TEST_SUITE_P(JsonRpcStreamSocket, WebSocketContractTest,
+                               eventstream::JsonRpcContractDriver);
+}  // namespace smithy::testing

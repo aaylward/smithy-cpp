@@ -137,6 +137,38 @@ std::shared_ptr<ContractMailbox<Outcome<Unit>>> WedgeThenPark(Driver& driver, Is
   return nullptr;
 }
 
+// Waits for a session loop to unwind. Aborts rather than returning false:
+// the loop holds pointers into the test's frame, so a test that gives up
+// and returns would unwind that frame underneath a live coroutine.
+inline void AwaitLoopEnd(const std::atomic<bool>& ended, const char* what) {
+  for (int i = 0; i < 3000 && !ended.load(); ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  if (!ended.load()) {
+    ADD_FAILURE() << what;
+    std::abort();
+  }
+}
+
+// Waits until a counter stops advancing — how a loop parked in its own
+// `co_await Send` announces itself. Stability rather than a fixed count
+// because how many writes a wire accepts before wedging is the
+// transport's business, not this suite's. Two consecutive equal readings,
+// so a slow-but-progressing write is not mistaken for a parked one.
+inline bool WaitUntilStable(const std::atomic<int>& counter) {
+  constexpr auto kSettle = std::chrono::milliseconds(500);
+  int last = -1;
+  int stable = 0;
+  for (int i = 0; i < 60; ++i) {
+    std::this_thread::sleep_for(kSettle);
+    const int now = counter.load();
+    stable = (now == last && now > 0) ? stable + 1 : 0;
+    if (stable >= 2) return true;
+    last = now;
+  }
+  return false;
+}
+
 template <typename Driver>
 class WebSocketContractTest : public ::testing::Test {};
 
@@ -188,10 +220,45 @@ TYPED_TEST_P(WebSocketContractTest, ATerminalTransitionFiresTheParkedSendBeforeT
   auto dead = parked->Wait();
   ASSERT_FALSE(dead.ok()) << "a send on an ended session must fail";
   EXPECT_EQ(dead.error().kind(), ErrorKind::kTransport);
-  for (int i = 0; i < 1000 && !loop_ended.load(); ++i) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  EXPECT_TRUE(loop_ended.load()) << "the session loop never unwound";
+  AwaitLoopEnd(loop_ended, "the session loop never unwound");
+}
+
+// The mirror case, and the branch the send-first order created. When the
+// only parked waiter is the loop's OWN `co_await Send`, completing it
+// resumes the loop — which may end, destroy its stream and run the whole
+// revocation drain inline, underneath Fire, BEFORE Fire reaches its
+// receive branch. That is safe only because a coroutine's awaits are
+// sequential: a loop parked in Send has no receive parked anywhere, so the
+// branch Fire returns to is empty. Nothing in the type system says so, and
+// a handle that ever grew a Receive would break it — hence this test,
+// which fails as a use-after-free rather than a hang if that day comes.
+TYPED_TEST_P(WebSocketContractTest, ATerminalTransitionCompletesALoneParkedCoroutineSend) {
+  TypeParam driver;
+  ContractMailbox<Unit> torn_down;
+  std::atomic<int> sent{0};
+  std::atomic<bool> loop_ended{false};
+
+  [](std::shared_ptr<http::WebSocket> socket, TypeParam* driver, std::atomic<int>* sent,
+     std::atomic<bool>* ended) -> eventstream::Detached {
+    ContractStream stream(std::move(socket), IdentityCodec, IdentityCodec);
+    for (int i = 0; i <= TypeParam::kWedgeAttempts; ++i) {
+      auto ok = co_await stream.Send(driver->BulkMessage(i));
+      if (!ok.ok()) break;  // the session ended under the parked send
+      ++*sent;
+    }
+    *ended = true;
+  }(driver.Socket(), &driver, &sent, &loop_ended);
+
+  ASSERT_TRUE(WaitUntilStable(sent)) << "the loop never parked in Send; check the driver";
+
+  std::thread ender([&] {
+    driver.EndSessionFromPeer();
+    torn_down.Post(Unit{});
+  });
+  torn_down.Wait();
+  ender.join();
+
+  AwaitLoopEnd(loop_ended, "the loop never unwound after its parked send completed");
 }
 
 // The same transition with only a receive parked: the send-first ordering
@@ -214,10 +281,7 @@ TYPED_TEST_P(WebSocketContractTest, ATerminalTransitionCompletesALoneParkedRecei
   torn_down.Wait();
   ender.join();
 
-  for (int i = 0; i < 1000 && !loop_ended.load(); ++i) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  EXPECT_TRUE(loop_ended.load()) << "a lone parked receive was left hanging";
+  AwaitLoopEnd(loop_ended, "a lone parked receive was left hanging");
 }
 
 // One outstanding send-class operation per session: the second refuses
@@ -268,6 +332,7 @@ TYPED_TEST_P(WebSocketContractTest, ASecondReceiveClassOperationRefusesWhileOneI
 
 REGISTER_TYPED_TEST_SUITE_P(WebSocketContractTest,
                             ATerminalTransitionFiresTheParkedSendBeforeTheParkedReceive,
+                            ATerminalTransitionCompletesALoneParkedCoroutineSend,
                             ATerminalTransitionCompletesALoneParkedReceive,
                             ASecondSendClassOperationRefusesWhileOneIsParked,
                             ASecondReceiveClassOperationRefusesWhileOneIsParked);

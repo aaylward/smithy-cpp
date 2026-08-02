@@ -160,26 +160,33 @@ class WebSocket {
   // Fire.
   //
   // Fire is rvalue-only and runs the send first — that ordering is the
-  // whole point of the type, so there is no per-callback accessor to fire
-  // them out of order with. `invoke` receives (label, callback, outcome)
-  // and performs the call, which is where a transport that must contain a
-  // throwing application callback (ADR-0003) wraps it; a transport with
-  // nothing to contain just calls through. Both outcomes are built by the
-  // caller because their wording is the session's, not this type's.
-  struct TerminalWaiters {
-    ReceiveCallback receive;
-    SendCallback send;
+  // whole point of the type, so the callbacks are private and Fire is the
+  // only way to reach them: there is nothing to fire out of order with.
+  // `invoke` receives (label, callback, outcome) and performs the call,
+  // which is where a transport that must contain a throwing application
+  // callback (ADR-0003) wraps it; a transport with nothing to contain just
+  // calls through. Both outcomes are built by the caller because their
+  // wording is the session's, not this type's.
+  class TerminalWaiters {
+   public:
+    TerminalWaiters() = default;
+    TerminalWaiters(ReceiveCallback receive, SendCallback send)
+        : receive_(std::move(receive)), send_(std::move(send)) {}
 
     template <typename Invoke>
     void Fire(Outcome<Unit> sent, Outcome<std::optional<eventstream::Message>> received,
               Invoke&& invoke) && {
-      if (send) {
-        invoke("websocket send", send, std::move(sent));
+      if (send_) {
+        invoke("websocket send", send_, std::move(sent));
       }
-      if (receive) {
-        invoke("websocket receive", receive, std::move(received));
+      if (receive_) {
+        invoke("websocket receive", receive_, std::move(received));
       }
     }
+
+   private:
+    ReceiveCallback receive_;
+    SendCallback send_;
   };
 
   // The by-value callbacks are the overriders' contract (they park and

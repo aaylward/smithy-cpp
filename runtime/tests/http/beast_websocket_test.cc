@@ -1942,7 +1942,12 @@ struct BeastContractDriver {
 
   std::shared_ptr<WebSocket> Socket() {
     auto ready = arrived_->get_future();
-    EXPECT_EQ(ready.wait_for(std::chrono::seconds(10)), std::future_status::ready);
+    if (ready.wait_for(std::chrono::seconds(10)) != std::future_status::ready) {
+      // A bare EXPECT would fall through to get() and block forever — the
+      // hang this whole suite exists to turn into a legible failure.
+      ADD_FAILURE() << "the session never reached the shared seam";
+      std::abort();
+    }
     return ready.get();
   }
 

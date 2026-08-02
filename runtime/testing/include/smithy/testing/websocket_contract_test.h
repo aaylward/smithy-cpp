@@ -170,14 +170,20 @@ TYPED_TEST_P(WebSocketContractTest, ATerminalTransitionFiresTheParkedSendBeforeT
       });
   ASSERT_NE(parked, nullptr) << "the wire never wedged; check the driver";
 
-  // On transports whose teardown runs on the caller's thread, this call is
-  // what deadlocks; keep it off the test thread so the failure is legible.
+  // Where a regression surfaces depends on how the driver ends the
+  // session, so both places are deadlined. A driver that runs the teardown
+  // itself (the pair's Close) wedges the ender thread and never posts
+  // torn_down; one that only puts something on the wire (Beast's violation
+  // frame) returns at once, and the wedge shows up below instead, as a
+  // parked send that never completes and a loop that never unwinds. The
+  // ender stays off the test thread either way, so the first case fails
+  // legibly rather than taking the test thread down with it.
   std::thread ender([&] {
     driver.EndSessionFromPeer();
     torn_down.Post(Unit{});
   });
-  torn_down.Wait();  // a wedged teardown aborts here, before the join
-  ender.join();      // nothing outlives the mailboxes on this frame
+  torn_down.Wait();
+  ender.join();  // nothing outlives the mailboxes on this frame
 
   auto dead = parked->Wait();
   ASSERT_FALSE(dead.ok()) << "a send on an ended session must fail";

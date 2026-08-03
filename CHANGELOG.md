@@ -4,7 +4,13 @@ All notable changes to smithy-cpp are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow the
 policy in [docs/versioning.md](docs/versioning.md).
 
-## [Unreleased]
+## [0.2.0] - 2026-08-02
+
+Event-stream hardening: a terminal transition with both an async send and an
+async receive parked no longer deadlocks the completing thread, and the
+transport-neutral half of the ADR-0019 contract now runs as one shared suite
+against every `WebSocket` implementation, in-repo and out. Additive for the
+public runtime headers — existing implementors are unaffected.
 
 ### Added
 
@@ -559,4 +565,5 @@ Central publishing remain deferred (see [docs/versioning.md](docs/versioning.md)
   per-module summary, and uploads the rendered HTML report as an artifact;
   `make coverage` runs the same locally. Measurement only — no gate yet.
 
+[0.2.0]: https://github.com/muchq/smithy-cpp/releases/tag/v0.2.0
 [0.1.0]: https://github.com/muchq/smithy-cpp/releases/tag/v0.1.0

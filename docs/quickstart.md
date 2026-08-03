@@ -55,7 +55,7 @@ bazel_dep(name = "smithy_cpp", version = "0.0.0")
 git_override(
     module_name = "smithy_cpp",
     remote = "https://github.com/muchq/smithy-cpp.git",
-    tag = "v0.1.0",
+    tag = "v0.2.0",
 )
 
 bazel_dep(name = "googletest", version = "1.17.0.bcr.2")

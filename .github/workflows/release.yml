@@ -46,6 +46,12 @@ jobs:
         run: |
           version="$(tools/release.sh version)"
           tools/release.sh notes "$version" > "$RUNNER_TEMP/notes.md"
+          # --generate-notes appends GitHub's own "What's Changed" (the merged
+          # PRs since the previous release, plus a compare link) under the
+          # CHANGELOG section, which stays the release's own prose. --title is
+          # passed explicitly because --generate-notes would otherwise name the
+          # release itself.
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
-            --notes-file "$RUNNER_TEMP/notes.md"
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            --generate-notes

@@ -5,18 +5,17 @@ release is one git tag (`vX.Y.Z`, signed) covering both, and generated code
 from generator X.Y is supported against runtime X.Y. `smithy::Version()`
 returns the runtime's version.
 
-## Current state: 0.1.0 released, 0.2.0 in development
+## Current state: 0.2.0
 
-`v0.1.0` is the current release; `main` develops 0.2.0. The one product version
-consumers observe — `smithy::Version()` (`runtime/src/core/version.cc`) and the
-client `User-Agent` (`smithy::ClientConfig::user_agent`) — reports
-**`0.2.0-dev`** on `main` until that tag lands, and the generator's Gradle
-`version` (`codegen/gradle.properties`) tracks it, since the two ship under one
-tag. The bzlmod **module** version in `MODULE.bazel` is a separate identifier
-and stays `0.0.0` until the module is published to the Bazel Central Registry
-(deferred, PLAN Phase 6); consumers override the module source with
+`v0.2.0` is the current release. The one product version consumers observe —
+`smithy::Version()` (`runtime/src/core/version.cc`) and the client `User-Agent`
+(`smithy::ClientConfig::user_agent`) — reports **`0.2.0`**, and the generator's
+Gradle `version` (`codegen/gradle.properties`) tracks it, since the two ship
+under one tag. The bzlmod **module** version in `MODULE.bazel` is a separate
+identifier and stays `0.0.0` until the module is published to the Bazel Central
+Registry (deferred, PLAN Phase 6); consumers override the module source with
 `git_override`/`archive_override`, which ignores that value, so pin the
-`v0.1.0` tag — the released one, not `main`.
+`v0.2.0` tag.
 
 ## Semantic versioning
 
@@ -75,8 +74,10 @@ suites are the contract instead).
   (`tools/release.sh notes X.Y.Z` prints it). Pushing the tag runs
   [release.yml](../.github/workflows/release.yml), which re-checks the tree,
   refuses a lightweight tag or one pushed at a commit declaring a different
-  version, and publishes the GitHub Release with those notes. Signing stays
-  local — Actions holds no key.
+  version, and publishes the GitHub Release with those notes — followed by
+  GitHub's generated list of the merged PRs since the previous release, so
+  the CHANGELOG section carries the prose and the commit log comes for free.
+  Signing stays local — Actions holds no key.
 - BCR and Maven Central publishing remain deferred until production
   validation (PLAN Phase 6); consumers pin the tag via `git_override` /
   `archive_override` as shown in [quickstart.md](quickstart.md).

@@ -237,15 +237,22 @@ TYPED_TEST_P(WebSocketContractTest, ATerminalTransitionFiresTheParkedSendBeforeT
   AwaitLoopEnd(loop_ended, "the session loop never unwound");
 }
 
-// The mirror case, and the branch the send-first order created. When the
-// only parked waiter is the loop's OWN `co_await Send`, completing it
-// resumes the loop — which may end, destroy its stream and run the whole
-// revocation drain inline, underneath Fire, BEFORE Fire reaches its
-// receive branch. That is safe only because a coroutine's awaits are
-// sequential: a loop parked in Send has no receive parked anywhere, so the
-// branch Fire returns to is empty. Nothing in the type system says so, and
-// a handle that ever grew a Receive would break it — hence this test,
-// which fails as a use-after-free rather than a hang if that day comes.
+// A terminal transition whose ONLY parked waiter is the loop's own
+// `co_await Send`: it must complete that send, and the loop must unwind
+// through its whole teardown without wedging the thread that fired it.
+//
+// What makes this worth its own test is where the teardown runs. Firing
+// the send resumes the loop inline, so the loop's exit — ~AsyncEventStream
+// revoking its shared view, closing the session, draining pins — all
+// happens underneath Fire, on the completing thread, before Fire returns.
+// The session's Close() reenters the very transition that is running. So
+// the stream Share()s: without a shared view End() is a no-op and this
+// exercises nothing but a resume.
+//
+// It is NOT the ordering tripwire, despite being the send-first case —
+// with no receive parked, Fire's order is unobservable here. Ordering is
+// pinned by ATerminalTransitionFiresTheParkedSendBeforeTheParkedReceive,
+// which is the test to look at if the send-before-receive rule regresses.
 TYPED_TEST_P(WebSocketContractTest, ATerminalTransitionCompletesALoneParkedCoroutineSend) {
   TypeParam driver;
   ContractMailbox<Unit> torn_down;
@@ -255,6 +262,10 @@ TYPED_TEST_P(WebSocketContractTest, ATerminalTransitionCompletesALoneParkedCorou
   [](std::shared_ptr<http::WebSocket> socket, TypeParam* driver, std::atomic<int>* sent,
      std::atomic<bool>* ended) -> eventstream::Detached {
     ContractStream stream(std::move(socket), IdentityCodec, IdentityCodec);
+    // A live shared view, so the stream's destructor really revokes and
+    // drains instead of returning early (ADR-0017) — the hub shape, and
+    // the whole point of ending the session from inside Fire.
+    (void)stream.Share();
     for (int i = 0; i <= TypeParam::kWedgeAttempts; ++i) {
       auto ok = co_await stream.Send(driver->BulkMessage(i));
       if (!ok.ok()) break;  // the session ended under the parked send

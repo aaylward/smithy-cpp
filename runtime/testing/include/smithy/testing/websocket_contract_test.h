@@ -137,6 +137,52 @@ std::shared_ptr<ContractMailbox<Outcome<Unit>>> WedgeThenPark(Driver& driver, Is
   return nullptr;
 }
 
+// Waits for a session loop to unwind. Aborts rather than returning false:
+// the loop holds pointers into the test's frame, so a test that gives up
+// and returns would unwind that frame underneath a live coroutine.
+inline void AwaitLoopEnd(const std::atomic<bool>& ended, const char* what) {
+  for (int i = 0; i < 3000 && !ended.load(); ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  if (!ended.load()) {
+    ADD_FAILURE() << what;
+    std::abort();
+  }
+}
+
+// Waits until a counter stops advancing — how a loop parked in its own
+// `co_await Send` announces itself. Stability rather than a fixed count,
+// because how many writes a wire accepts before wedging is the transport's
+// business, not this suite's.
+//
+// Telling "parked" from "slow" is the whole difficulty, and it is the
+// driver's job to make it easy: a BulkMessage larger than the wire's
+// buffers wedges decisively, so the counter stops dead rather than
+// crawling. Three consecutive equal readings a second apart is the margin
+// for that; a driver whose messages are too small to wedge fails here
+// instead, which is what "check the driver" means.
+//
+// Zero is a perfectly good stable value — with a message big enough, the
+// FIRST send parks and the counter never leaves zero. (Requiring progress
+// before believing the count made this unable to see the most decisively
+// parked case there is.) A Detached coroutine starts eagerly and issues
+// its first send before the launch expression returns, so by the time
+// anyone polls, "stable" cannot mean "not started yet"; it means parked —
+// or finished, which the caller rules out separately.
+inline bool WaitUntilStable(const std::atomic<int>& counter) {
+  constexpr auto kSettle = std::chrono::seconds(1);
+  int last = -1;
+  int stable = 0;
+  for (int i = 0; i < 20; ++i) {
+    std::this_thread::sleep_for(kSettle);
+    const int now = counter.load();
+    stable = (now == last) ? stable + 1 : 0;
+    if (stable >= 3) return true;
+    last = now;
+  }
+  return false;
+}
+
 template <typename Driver>
 class WebSocketContractTest : public ::testing::Test {};
 
@@ -188,10 +234,59 @@ TYPED_TEST_P(WebSocketContractTest, ATerminalTransitionFiresTheParkedSendBeforeT
   auto dead = parked->Wait();
   ASSERT_FALSE(dead.ok()) << "a send on an ended session must fail";
   EXPECT_EQ(dead.error().kind(), ErrorKind::kTransport);
-  for (int i = 0; i < 1000 && !loop_ended.load(); ++i) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  EXPECT_TRUE(loop_ended.load()) << "the session loop never unwound";
+  AwaitLoopEnd(loop_ended, "the session loop never unwound");
+}
+
+// A terminal transition whose ONLY parked waiter is the loop's own
+// `co_await Send`: it must complete that send, and the loop must unwind
+// through its whole teardown without wedging the thread that fired it.
+//
+// What makes this worth its own test is where the teardown runs. Firing
+// the send resumes the loop inline, so the loop's exit — ~AsyncEventStream
+// revoking its shared view, closing the session, draining pins — all
+// happens underneath Fire, on the completing thread, before Fire returns.
+// The session's Close() reenters the very transition that is running. So
+// the stream Share()s: without a shared view End() is a no-op and this
+// exercises nothing but a resume.
+//
+// It is NOT the ordering tripwire, despite being the send-first case —
+// with no receive parked, Fire's order is unobservable here. Ordering is
+// pinned by ATerminalTransitionFiresTheParkedSendBeforeTheParkedReceive,
+// which is the test to look at if the send-before-receive rule regresses.
+TYPED_TEST_P(WebSocketContractTest, ATerminalTransitionCompletesALoneParkedCoroutineSend) {
+  TypeParam driver;
+  ContractMailbox<Unit> torn_down;
+  std::atomic<int> sent{0};
+  std::atomic<bool> loop_ended{false};
+
+  [](std::shared_ptr<http::WebSocket> socket, TypeParam* driver, std::atomic<int>* sent,
+     std::atomic<bool>* ended) -> eventstream::Detached {
+    ContractStream stream(std::move(socket), IdentityCodec, IdentityCodec);
+    // A live shared view, so the stream's destructor really revokes and
+    // drains instead of returning early (ADR-0017) — the hub shape, and
+    // the whole point of ending the session from inside Fire.
+    (void)stream.Share();
+    for (int i = 0; i <= TypeParam::kWedgeAttempts; ++i) {
+      auto ok = co_await stream.Send(driver->BulkMessage(i));
+      if (!ok.ok()) break;  // the session ended under the parked send
+      ++*sent;
+    }
+    *ended = true;
+  }(driver.Socket(), &driver, &sent, &loop_ended);
+
+  ASSERT_TRUE(WaitUntilStable(sent)) << "the loop never parked in Send; check the driver";
+  // Stable-and-finished is the other way a counter stops moving, and it
+  // would make this test pass with nothing parked at all.
+  ASSERT_FALSE(loop_ended.load()) << "the loop ran to completion instead of parking in Send";
+
+  std::thread ender([&] {
+    driver.EndSessionFromPeer();
+    torn_down.Post(Unit{});
+  });
+  torn_down.Wait();
+  ender.join();
+
+  AwaitLoopEnd(loop_ended, "the loop never unwound after its parked send completed");
 }
 
 // The same transition with only a receive parked: the send-first ordering
@@ -214,10 +309,7 @@ TYPED_TEST_P(WebSocketContractTest, ATerminalTransitionCompletesALoneParkedRecei
   torn_down.Wait();
   ender.join();
 
-  for (int i = 0; i < 1000 && !loop_ended.load(); ++i) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  EXPECT_TRUE(loop_ended.load()) << "a lone parked receive was left hanging";
+  AwaitLoopEnd(loop_ended, "a lone parked receive was left hanging");
 }
 
 // One outstanding send-class operation per session: the second refuses
@@ -268,6 +360,7 @@ TYPED_TEST_P(WebSocketContractTest, ASecondReceiveClassOperationRefusesWhileOneI
 
 REGISTER_TYPED_TEST_SUITE_P(WebSocketContractTest,
                             ATerminalTransitionFiresTheParkedSendBeforeTheParkedReceive,
+                            ATerminalTransitionCompletesALoneParkedCoroutineSend,
                             ATerminalTransitionCompletesALoneParkedReceive,
                             ASecondSendClassOperationRefusesWhileOneIsParked,
                             ASecondReceiveClassOperationRefusesWhileOneIsParked);

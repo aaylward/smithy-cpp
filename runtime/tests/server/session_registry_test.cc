@@ -30,6 +30,7 @@
 #include <utility>
 #include <vector>
 
+#include "smithy/eventstream/async_event_stream.h"
 #include "smithy/eventstream/event_stream.h"
 #include "smithy/eventstream/frame.h"
 #include "smithy/http/websocket.h"
@@ -571,6 +572,70 @@ TEST(SessionRegistryAsyncTest, TeardownWithAParkedChainNeverHangs) {
   while (NextAt(stalled).has_value()) {
   }
   SUCCEED();
+}
+
+// The whole composition a hub actually runs (ADR-0019 + ADR-0017): a
+// Detached loop owning the session, its Share() handle in an
+// async_delivery registry, and a peer that closes while a fan-out delivery
+// is still parked on the wire. This is the shape #173 wedged, and the one
+// no test had: the transport suites park waiters without a registry above
+// them, and the registry suites park chains without a coroutine loop
+// below. The bug needed both halves at once.
+using AsyncServerStream = eventstream::AsyncEventStream<Note, Message>;
+
+Outcome<Message> DecodeAnything(const Message& message) { return message; }
+
+TEST(SessionRegistryAsyncTest, APeerCloseWithAParkedFanOutEndsTheLoopAndTheDelivery) {
+  // The loop parks in Receive; the chain parks inside SendAsync on the full
+  // wire, holding its revocation pin. The peer's close then has to complete
+  // the delivery, resume the loop, and let ~AsyncEventStream drain that pin
+  // — all on the closing thread, in that order. This test hanging is the
+  // failure mode.
+  auto [client_end, server_end] = http::InMemoryWebSocketPair::Create();
+  Registry registry = AsyncRegistry();
+  std::atomic<bool> loop_ended{false};
+  std::promise<EventStreamHandle<Note>> minted;
+  auto handle_ready = minted.get_future();
+
+  [](std::shared_ptr<http::WebSocket> socket, std::promise<EventStreamHandle<Note>>* minted,
+     std::atomic<bool>* ended) -> eventstream::Detached {
+    AsyncServerStream stream(std::move(socket), EncodeNote, DecodeAnything);
+    minted->set_value(stream.Share());
+    (void)co_await stream.Receive();  // parked until the peer closes
+    *ended = true;
+  }(server_end, &minted, &loop_ended);
+
+  ASSERT_EQ(handle_ready.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+  ASSERT_TRUE(registry.Add("ada", handle_ready.get()));
+
+  // Past the wire bound on purpose: the wire takes what it can and the
+  // chain parks on the next delivery, which is where the pin lives.
+  for (std::size_t i = 0; i < 2 * kWireDepth; ++i) {
+    ASSERT_TRUE(registry.SendTo("ada", Note{"pile-up"}));
+  }
+
+  // The pair runs the entire teardown on whoever calls Close, so keep it
+  // off the test thread — a wedge there cannot even be joined.
+  std::promise<void> closed;
+  auto closed_future = closed.get_future();
+  std::thread closer([&] {
+    client_end->Close();
+    closed.set_value();
+  });
+  if (closed_future.wait_for(std::chrono::seconds(30)) != std::future_status::ready) {
+    ADD_FAILURE() << "the close wedged: a parked fan-out delivery was never completed";
+    std::abort();  // the closer cannot be joined, and the loop still holds this frame
+  }
+  closer.join();
+
+  for (int i = 0; i < 1000 && !loop_ended.load(); ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  if (!loop_ended.load()) {
+    ADD_FAILURE() << "the session loop never unwound";
+    std::abort();
+  }
+  EXPECT_TRUE(registry.Remove("ada"));  // the entry outlived the session, harmlessly
 }
 
 TEST(SessionRegistryAsyncTest, ChurnUnderBroadcastStaysSafe) {

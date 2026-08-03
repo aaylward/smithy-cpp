@@ -126,6 +126,26 @@ cc_test(
     ],
 )
 
+# Out-of-tree proof of the ADR-0019 implementor contract (#173): a
+# WebSocket written in consumer code, held to the same shared contract
+# suite the in-repo transports are. Depends on the runtime's testonly
+# contract-suite target, which is the point — that seam is published for
+# implementors, so a consumer must be able to reach it. No wire, no
+# network: this one runs everywhere.
+cc_test(
+    name = "websocket_contract_consumer_test",
+    size = "small",
+    srcs = ["websocket_contract_consumer_test.cc"],
+    copts = SMITHY_COPTS,
+    deps = [
+        "@googletest//:gtest_main",
+        "@smithy_cpp//runtime:core",
+        "@smithy_cpp//runtime:eventstream",
+        "@smithy_cpp//runtime:http",
+        "@smithy_cpp//runtime:websocket_contract_test_support",
+    ],
+)
+
 # Streaming-transport acceptance (ADR-0015, the e2e ADR-0014's amendment
 # requires): a consumer dials the upgraded server and drains real frames
 # through the module boundary. Beast-backed like todo_beast_acceptance_test;

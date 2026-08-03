@@ -151,19 +151,33 @@ inline void AwaitLoopEnd(const std::atomic<bool>& ended, const char* what) {
 }
 
 // Waits until a counter stops advancing — how a loop parked in its own
-// `co_await Send` announces itself. Stability rather than a fixed count
-// because how many writes a wire accepts before wedging is the
-// transport's business, not this suite's. Two consecutive equal readings,
-// so a slow-but-progressing write is not mistaken for a parked one.
+// `co_await Send` announces itself. Stability rather than a fixed count,
+// because how many writes a wire accepts before wedging is the transport's
+// business, not this suite's.
+//
+// Telling "parked" from "slow" is the whole difficulty, and it is the
+// driver's job to make it easy: a BulkMessage larger than the wire's
+// buffers wedges decisively, so the counter stops dead rather than
+// crawling. Three consecutive equal readings a second apart is the margin
+// for that; a driver whose messages are too small to wedge fails here
+// instead, which is what "check the driver" means.
+//
+// Zero is a perfectly good stable value — with a message big enough, the
+// FIRST send parks and the counter never leaves zero. (Requiring progress
+// before believing the count made this unable to see the most decisively
+// parked case there is.) A Detached coroutine starts eagerly and issues
+// its first send before the launch expression returns, so by the time
+// anyone polls, "stable" cannot mean "not started yet"; it means parked —
+// or finished, which the caller rules out separately.
 inline bool WaitUntilStable(const std::atomic<int>& counter) {
-  constexpr auto kSettle = std::chrono::milliseconds(500);
+  constexpr auto kSettle = std::chrono::seconds(1);
   int last = -1;
   int stable = 0;
-  for (int i = 0; i < 60; ++i) {
+  for (int i = 0; i < 20; ++i) {
     std::this_thread::sleep_for(kSettle);
     const int now = counter.load();
-    stable = (now == last && now > 0) ? stable + 1 : 0;
-    if (stable >= 2) return true;
+    stable = (now == last) ? stable + 1 : 0;
+    if (stable >= 3) return true;
     last = now;
   }
   return false;
@@ -250,6 +264,9 @@ TYPED_TEST_P(WebSocketContractTest, ATerminalTransitionCompletesALoneParkedCorou
   }(driver.Socket(), &driver, &sent, &loop_ended);
 
   ASSERT_TRUE(WaitUntilStable(sent)) << "the loop never parked in Send; check the driver";
+  // Stable-and-finished is the other way a counter stops moving, and it
+  // would make this test pass with nothing parked at all.
+  ASSERT_FALSE(loop_ended.load()) << "the loop ran to completion instead of parking in Send";
 
   std::thread ender([&] {
     driver.EndSessionFromPeer();

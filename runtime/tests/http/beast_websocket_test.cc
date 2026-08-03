@@ -1951,10 +1951,14 @@ struct BeastContractDriver {
     return ready.get();
   }
 
-  // A megabyte a go: the wire wedges once the socket buffers fill, well
-  // inside kWedgeAttempts on any loopback.
+  // Eight mebibytes a go — one message larger than any loopback's socket
+  // buffers, so the wedge is decisive rather than a race against how fast
+  // the kernel drains. A megabyte was not: macOS absorbed 1 MiB writes for
+  // 30s straight without ever parking, and the 2s-per-attempt detector in
+  // WedgeThenPark read those slow-but-progressing writes as parked ones.
+  // Sized against the 16 MiB frame limit, with room for the envelope.
   eventstream::Message BulkMessage(int /*n*/) {
-    return Text("bulk", std::string(1024 * 1024, 'x'));
+    return Text("bulk", std::string(8 * 1024 * 1024, 'x'));
   }
 
   void EndSessionFromPeer() { peer_->SendText("boom"); }

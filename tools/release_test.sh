@@ -65,16 +65,18 @@ else
   fi
 fi
 
-# bump rewrites the tree, so it runs against a throwaway copy of the four files.
+# bump rewrites the tree, so it runs against a throwaway copy of the files it
+# touches.
 release_abs="$PWD/$RELEASE"
 work="${TEST_TMPDIR:-$(mktemp -d)}/bump"
 mkdir -p "$work/runtime/src/core" "$work/runtime/tests/core" \
-  "$work/runtime/include/smithy/client" "$work/codegen"
+  "$work/runtime/include/smithy/client" "$work/codegen" "$work/docs"
 cp CHANGELOG.md "$work/"
 cp runtime/src/core/version.cc "$work/runtime/src/core/"
 cp runtime/tests/core/version_test.cc "$work/runtime/tests/core/"
 cp runtime/include/smithy/client/config.h "$work/runtime/include/smithy/client/"
 cp codegen/gradle.properties "$work/codegen/"
+cp docs/versioning.md "$work/docs/"
 cd "$work"
 
 expect_failure "bump with no argument" "$release_abs" bump
@@ -103,6 +105,22 @@ else
     fail "bump: dropped the [$version] section"
   grep -q "^\[$version\]: " CHANGELOG.md ||
     fail "bump: dropped the [$version] link footnote"
+
+  state_heading=$(grep -m1 '^## Current state' docs/versioning.md)
+  [[ $state_heading == "## Current state: $version released, 9.9.9 in development" ]] ||
+    fail "bump: versioning.md heading is '$state_heading'"
+  grep -q '`9.9.9-dev`' docs/versioning.md ||
+    fail "bump: versioning.md does not report the development version"
+  # Swapping the section must consume exactly it: one heading left, and the
+  # section after it still there.
+  [[ $(grep -c '^## Current state' docs/versioning.md) -eq 1 ]] ||
+    fail "bump: versioning.md has a duplicated Current state section"
+  grep -q '^## Semantic versioning' docs/versioning.md ||
+    fail "bump: versioning.md lost the section after Current state"
+  # The policy prose inside the swapped section is not version-dependent, so
+  # regenerating must not quietly drop it.
+  grep -q 'Bazel Central Registry' docs/versioning.md ||
+    fail "bump: versioning.md lost the bzlmod/BCR paragraph"
 
   expect_failure "bump twice" "$release_abs" bump 9.9.10-dev
 fi

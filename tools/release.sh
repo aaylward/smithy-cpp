@@ -17,6 +17,7 @@ VERSION_TEST=runtime/tests/core/version_test.cc
 CONFIG_H=runtime/include/smithy/client/config.h
 GRADLE_PROPERTIES=codegen/gradle.properties
 CHANGELOG=CHANGELOG.md
+VERSIONING_DOC=docs/versioning.md
 
 die() {
   echo "release.sh: $*" >&2
@@ -108,6 +109,53 @@ rewrite() {
   mv "$tmp" "$file"
 }
 
+# The development-state "Current state" section, verbatim apart from the two
+# versions. bump owns the whole section rather than patching the versions
+# inside it: the paragraph rewraps whenever it is reworded, so line-targeted
+# edits go stale silently, while a whole-section swap cannot.
+current_state_section() {
+  local released=$1 dev=$2
+  cat <<EOF
+## Current state: $released released, $dev in development
+
+\`v$released\` is the current release; \`main\` develops $dev. The one product version
+consumers observe — \`smithy::Version()\` (\`runtime/src/core/version.cc\`) and the
+client \`User-Agent\` (\`smithy::ClientConfig::user_agent\`) — reports
+**\`$dev-dev\`** on \`main\` until that tag lands, and the generator's Gradle
+\`version\` (\`codegen/gradle.properties\`) tracks it, since the two ship under one
+tag. The bzlmod **module** version in \`MODULE.bazel\` is a separate identifier
+and stays \`0.0.0\` until the module is published to the Bazel Central Registry
+(deferred, PLAN Phase 6); consumers override the module source with
+\`git_override\`/\`archive_override\`, which ignores that value, so pin the
+\`v$released\` tag — the released one, not \`main\`.
+EOF
+}
+
+# Swaps the section spanning "## Current state" up to the next "## " heading.
+rewrite_current_state() {
+  local released=$1 dev=$2 section tmp
+  grep -q '^## Current state' "$VERSIONING_DOC" ||
+    die "no '## Current state' section in $VERSIONING_DOC"
+
+  section=$(mktemp "${TMPDIR:-/tmp}/release.XXXXXX")
+  current_state_section "$released" "$dev" >"$section"
+
+  tmp=$(mktemp "${TMPDIR:-/tmp}/release.XXXXXX")
+  awk -v section="$section" '
+    /^## Current state/ {
+      while ((getline line < section) > 0) print line
+      close(section)
+      print ""
+      skipping = 1
+      next
+    }
+    skipping && /^## / { skipping = 0 }
+    !skipping { print }
+  ' "$VERSIONING_DOC" >"$tmp"
+  mv "$tmp" "$VERSIONING_DOC"
+  rm -f "$section"
+}
+
 # Reopens the CHANGELOG and moves the three version strings on to the next
 # development version. Edits the tree only — review the diff and commit it
 # yourself.
@@ -143,6 +191,8 @@ bump() {
     { print }
   ' "$CHANGELOG" >"$tmp"
   mv "$tmp" "$CHANGELOG"
+
+  rewrite_current_state "$current" "${target%-dev}"
 
   # The bump is only done if the tree it produced satisfies the same guard
   # every PR runs.

@@ -23,10 +23,10 @@ make verify        # what CI gates a PR on
 make verify-full   # + sanitizers, fuzzer smoke runs, the consumer module, clang-tidy
 ```
 
-Each aggregate is also callable piecemeal (`make test codegen goldens lint
-sanitize fuzz-smoke consumer tidy coverage benchmarks format`); the recipes
-mirror `.github/workflows/ci.yml`, one target per job. The underlying
-commands:
+Each aggregate is also callable piecemeal (`make test lockfiles codegen
+goldens lint sanitize fuzz-smoke consumer tidy coverage benchmarks format`);
+the recipes mirror `.github/workflows/ci.yml`, one target per job. The
+underlying commands:
 
 ```sh
 # C++ runtime: build + run all tests, warnings-as-errors like CI

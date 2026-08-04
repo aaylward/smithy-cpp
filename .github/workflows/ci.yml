@@ -186,6 +186,40 @@ jobs:
         if: matrix.os == 'ubuntu-24.04'
         working-directory: examples/bazel-consumer
         run: ./model-evolution-check.sh
+      # The consumer's resolved boringssl must be exactly the version
+      # smithy_cpp pins — MVS would silently select anything higher that a
+      # transitive dep requests, and every leg above stays green while
+      # consumers link a TLS library no job tested. Resolution is
+      # platform-independent, so one OS suffices.
+      - name: resolved boringssl matches the pin
+        if: matrix.os == 'ubuntu-24.04'
+        working-directory: examples/bazel-consumer
+        run: ./boringssl-resolution-check.sh
+
+  # MODULE.bazel.lock records the registry state resolution actually saw.
+  # Every other leg runs with the default --lockfile_mode=update, which
+  # silently re-resolves — so a dependency bump that forgets to repin still
+  # rides green and the diff no longer shows which versions CI tested. This
+  # leg makes staleness a red check instead: a MODULE.bazel edit lands
+  # together with its lockfile, and dependency PRs (Renovate's included)
+  # stay auditable from the diff alone. Same posture as the codegen job's
+  # golden-fixture freshness check. Repin with:
+  #   bazelisk mod deps --lockfile_mode=update   (root and examples/bazel-consumer)
+  lockfiles:
+    name: lockfiles (resolution freshness)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: bazel-contrib/setup-bazel@0.19.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+          disk-cache: lockfiles
+      - name: root module lockfile is current
+        run: bazelisk mod deps --lockfile_mode=error
+      - name: consumer module lockfile is current
+        working-directory: examples/bazel-consumer
+        run: bazelisk mod deps --lockfile_mode=error
 
   codegen:
     name: codegen (gradle)

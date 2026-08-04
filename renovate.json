@@ -4,6 +4,7 @@
   "extends": [
     "config:recommended"
   ],
+  "osvVulnerabilityAlerts": true,
   "labels": [
     "dependencies"
   ],
@@ -17,6 +18,15 @@
     "**/__fixtures__/**"
   ],
   "packageRules": [
+    {
+      "description": "MODULE.bazel edits invalidate MODULE.bazel.lock (root and examples/bazel-consumer), which Renovate does not repin; the lockfiles CI leg stays red until both are regenerated.",
+      "matchManagers": [
+        "bazel-module"
+      ],
+      "prBodyNotes": [
+        "**Repin required**: run `bazelisk mod deps --lockfile_mode=update` at the repo root and in `examples/bazel-consumer`, then commit both `MODULE.bazel.lock` files."
+      ]
+    },
     {
       "description": "maven.install artifact bumps invalidate maven_install.json, which Renovate cannot repin; the golden-freshness CI leg stays red until it is regenerated.",
       "matchManagers": [

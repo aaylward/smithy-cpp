@@ -9,9 +9,10 @@ BAZEL ?= bazelisk
 GRADLE ?= gradle
 
 # What CI gates a PR on: the bazel test matrix (one platform of it), the
-# gradle build + format check, golden freshness, and the format/starlark lint.
+# gradle build + format check, golden freshness, lockfile freshness, and the
+# format/starlark lint.
 .PHONY: verify
-verify: test codegen goldens lint
+verify: test lockfiles codegen goldens lint
 	@echo "verify: OK"
 
 # verify plus the slower jobs: sanitizers, fuzzer smoke runs, the out-of-tree
@@ -75,7 +76,16 @@ fuzz-smoke:
 
 .PHONY: consumer
 consumer:
-	cd examples/bazel-consumer && $(BAZEL) test //... --config=werror && ./model-evolution-check.sh
+	cd examples/bazel-consumer && $(BAZEL) test //... --config=werror \
+		&& ./model-evolution-check.sh && ./boringssl-resolution-check.sh
+
+# The checked-in MODULE.bazel.lock files must match what resolution would
+# produce today; --lockfile_mode=error (the CI leg's mode) overrides the
+# `off` that .bazelrc.user sets for the git-overrides flow.
+.PHONY: lockfiles
+lockfiles:
+	$(BAZEL) mod deps --lockfile_mode=error
+	cd examples/bazel-consumer && $(BAZEL) mod deps --lockfile_mode=error
 
 # Line coverage for the runtime; the combined lcov report path prints at the
 # end (render with genhtml, or read the CI job's artifact).

@@ -313,12 +313,13 @@ TEST(BeastClientTest, TlsVerificationRejectsATrustedCertificateForTheWrongHost) 
 }
 
 // A bare TLS listener that answers exactly one handshake under a protocol
-// ceiling of its caller's choosing. BeastServerTransport deliberately exposes
-// no knob to weaken its own posture (the floor is fixed, not configuration),
-// so pinning what the *client* refuses needs a server built by hand.
+// ceiling (and optionally a floor) of its caller's choosing.
+// BeastServerTransport deliberately exposes no knob to weaken its own posture
+// (the floor is fixed, not configuration), so pinning what the *client*
+// refuses — or the versions it can reach — needs a server built by hand.
 class CappedTlsServer {
  public:
-  explicit CappedTlsServer(int max_proto_version)
+  explicit CappedTlsServer(int max_proto_version, int min_proto_version = 0)
       : ctx_(boost::asio::ssl::context::tls_server),
         acceptor_(io_,
                   boost::asio::ip::tcp::endpoint(boost::asio::ip::make_address("127.0.0.1"), 0)) {
@@ -330,6 +331,9 @@ class CappedTlsServer {
                                boost::asio::ssl::context::pem, ec);
     EXPECT_FALSE(ec) << ec.message();
     EXPECT_EQ(SSL_CTX_set_max_proto_version(ctx_.native_handle(), max_proto_version), 1);
+    if (min_proto_version != 0) {
+      EXPECT_EQ(SSL_CTX_set_min_proto_version(ctx_.native_handle(), min_proto_version), 1);
+    }
     port_ = acceptor_.local_endpoint().port();
     thread_ = std::thread([this] {
       boost::system::error_code accept_ec;
@@ -668,6 +672,39 @@ TEST(BeastClientTest, TlsServerRefusesAlpnWithoutHttp11) {
   // instead of silently proceeding in a protocol the client didn't agree to.
   EXPECT_TRUE(probe.Handshake(server.port()));
   server.Stop();
+}
+
+TEST(BeastClientTest, TlsDefaultHandshakeNegotiatesTls13) {
+  // The ceiling actually reached, not just the floor enforced: neither end
+  // caps its maximum version, so what an uncapped handshake lands on is
+  // whatever the linked TLS library offers by default — today TLS 1.3. A
+  // boringssl bump that quietly moved that default would change every
+  // consumer's negotiated protocol without failing any floor test; this pin
+  // turns that drift into a red leg instead of a changelog argument.
+  BeastServerTransport server(TlsServerOptions());
+  ASSERT_TRUE(server.Start(EchoHandler()).ok());
+
+  RawTlsProbe probe;
+  ASSERT_FALSE(probe.Handshake(server.port()));
+  EXPECT_STREQ(SSL_get_version(probe.stream->native_handle()), "TLSv1.3");
+  server.Stop();
+}
+
+TEST(BeastClientTest, TlsClientReachesATls13OnlyServer) {
+  // The client-side twin: a listener that requires TLS 1.3 (floor == ceiling
+  // == 1.3). The floor tests above only prove the client refuses below 1.2;
+  // this proves its own uncapped ceiling reaches 1.3, so a regression in the
+  // client context (or the linked TLS library) that stranded it at 1.2
+  // cannot hide behind servers that still allow 1.2.
+  CappedTlsServer server(TLS1_3_VERSION, TLS1_3_VERSION);
+
+  BeastHttpClient client({.host = "127.0.0.1",
+                          .port = server.port(),
+                          .tls = true,
+                          .tls_options = {.ca_pem = kTestCertificatePem}});
+  auto response = client.Send(PostRequest("secret"));
+  ASSERT_TRUE(response.ok()) << response.error().message();
+  EXPECT_EQ(response->body, "secret");
 }
 
 }  // namespace

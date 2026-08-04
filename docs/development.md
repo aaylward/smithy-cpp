@@ -16,17 +16,17 @@ Two build trees live in this repository (see PLAN §3.1):
 ## Building and testing
 
 One command verifies everything the CI gate checks (bazel tests, gradle
-build + format, golden freshness, lint):
+build + format, golden freshness, lockfile freshness, lint):
 
 ```sh
 make verify        # what CI gates a PR on
 make verify-full   # + sanitizers, fuzzer smoke runs, the consumer module, clang-tidy
 ```
 
-Each aggregate is also callable piecemeal (`make test codegen goldens lint
-sanitize fuzz-smoke consumer tidy coverage benchmarks format`); the recipes
-mirror `.github/workflows/ci.yml`, one target per job. The underlying
-commands:
+Each aggregate is also callable piecemeal (`make test lockfiles codegen
+goldens lint sanitize fuzz-smoke consumer tidy coverage benchmarks format`);
+the recipes mirror `.github/workflows/ci.yml`, one target per job. The
+underlying commands:
 
 ```sh
 # C++ runtime: build + run all tests, warnings-as-errors like CI
@@ -34,6 +34,10 @@ bazel test //... --config=werror
 
 # With sanitizers (clang recommended: CC=clang CXX=clang++)
 bazel test //... --config=asan --config=ubsan
+
+# Module lockfiles: fail if a MODULE.bazel changed without its repin
+# (run in the repo root and in examples/bazel-consumer)
+bazel mod deps --lockfile_mode=error
 
 # Codegen: build + unit tests + format check
 cd codegen && gradle build spotlessCheck

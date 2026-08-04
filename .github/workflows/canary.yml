@@ -1,0 +1,68 @@
+# Front-runs the next boringssl bump instead of waiting for it: BoringSSL is
+# live-at-head and its BCR snapshots carry no API/behavior guarantees, so the
+# question "is the next snapshot safe?" otherwise gets answered by reading
+# upstream commit logs after Renovate opens the PR. This job answers it by
+# test, ahead of time, and doubles as the real consumer scenario in which
+# another dependency's MVS claim drags boringssl past our pin: it forces the
+# newest BCR snapshot onto the graph and runs the suites that pin TLS
+# behavior (version floor/ceiling, cipher policy, ALPN — beast_client_test)
+# plus the out-of-tree consumer's acceptance tests, which terminate real TLS
+# handshakes. A red run here means the *next* Renovate boringssl PR needs a
+# human look; nothing on main changed.
+name: canary
+
+on:
+  schedule:
+    # Mon + Thu, early UTC: BCR boringssl snapshots land roughly twice a
+    # week, so this cadence checks each one about once without burning a
+    # daily slot.
+    - cron: "23 5 * * 1,4"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  boringssl-latest:
+    name: bazel vs latest BCR boringssl
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: bazel-contrib/setup-bazel@0.19.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+          disk-cache: canary
+      - name: resolve the newest boringssl in the BCR
+        id: latest
+        run: |
+          latest=$(curl -fsSL https://bcr.bazel.build/modules/boringssl/metadata.json \
+            | jq -r '.versions[]' | sort -V | tail -1)
+          # Registry data is external input: refuse anything that is not a
+          # plain version string before it gets spliced into a MODULE.bazel.
+          [[ "$latest" =~ ^[0-9A-Za-z._-]+$ ]] || { echo "unexpected version: $latest" >&2; exit 1; }
+          echo "latest boringssl in the BCR: ${latest}"
+          echo "version=${latest}" >> "$GITHUB_OUTPUT"
+      # single_version_override only takes effect in the root module, and the
+      # runtime suite and the consumer suite have different roots — so both
+      # MODULE.bazel files get the override. Appended, not committed: the
+      # checkout is discarded with the runner. The override makes the
+      # checked-in lockfiles stale by construction, so the test steps pass
+      # --lockfile_mode=off explicitly rather than leaning on Bazel's default
+      # (update) — a future default of error would otherwise fail the run
+      # before any test executes.
+      - name: force the newest boringssl onto both module graphs
+        env:
+          LATEST: ${{ steps.latest.outputs.version }}
+        run: |
+          for module in MODULE.bazel examples/bazel-consumer/MODULE.bazel; do
+            printf '\nsingle_version_override(module_name = "boringssl", version = "%s")\n' \
+              "$LATEST" >> "$module"
+          done
+      - name: runtime TLS suites vs latest boringssl
+        run: >
+          bazelisk test //runtime:beast_client_test //runtime:beast_transport_test
+          //runtime:beast_websocket_test --config=ci --lockfile_mode=off
+      - name: consumer suite vs latest boringssl
+        working-directory: examples/bazel-consumer
+        run: bazelisk test //... --config=werror --lockfile_mode=off --verbose_failures

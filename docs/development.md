@@ -16,7 +16,7 @@ Two build trees live in this repository (see PLAN §3.1):
 ## Building and testing
 
 One command verifies everything the CI gate checks (bazel tests, gradle
-build + format, golden freshness, lint):
+build + format, golden freshness, lockfile freshness, lint):
 
 ```sh
 make verify        # what CI gates a PR on
@@ -34,6 +34,10 @@ bazel test //... --config=werror
 
 # With sanitizers (clang recommended: CC=clang CXX=clang++)
 bazel test //... --config=asan --config=ubsan
+
+# Module lockfiles: fail if a MODULE.bazel changed without its repin
+# (run in the repo root and in examples/bazel-consumer)
+bazel mod deps --lockfile_mode=error
 
 # Codegen: build + unit tests + format check
 cd codegen && gradle build spotlessCheck

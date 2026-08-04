@@ -46,7 +46,11 @@ jobs:
       # single_version_override only takes effect in the root module, and the
       # runtime suite and the consumer suite have different roots — so both
       # MODULE.bazel files get the override. Appended, not committed: the
-      # checkout is discarded with the runner.
+      # checkout is discarded with the runner. The override makes the
+      # checked-in lockfiles stale by construction, so the test steps pass
+      # --lockfile_mode=off explicitly rather than leaning on Bazel's default
+      # (update) — a future default of error would otherwise fail the run
+      # before any test executes.
       - name: force the newest boringssl onto both module graphs
         env:
           LATEST: ${{ steps.latest.outputs.version }}
@@ -58,7 +62,7 @@ jobs:
       - name: runtime TLS suites vs latest boringssl
         run: >
           bazelisk test //runtime:beast_client_test //runtime:beast_transport_test
-          //runtime:beast_websocket_test --config=ci
+          //runtime:beast_websocket_test --config=ci --lockfile_mode=off
       - name: consumer suite vs latest boringssl
         working-directory: examples/bazel-consumer
-        run: bazelisk test //... --config=werror --verbose_failures
+        run: bazelisk test //... --config=werror --lockfile_mode=off --verbose_failures

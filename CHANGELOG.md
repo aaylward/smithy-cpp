@@ -4,6 +4,8 @@ All notable changes to smithy-cpp are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow the
 policy in [docs/versioning.md](docs/versioning.md).
 
+## [Unreleased]
+
 ## [0.2.0] - 2026-08-02
 
 Event-stream hardening: a terminal transition with both an async send and an
